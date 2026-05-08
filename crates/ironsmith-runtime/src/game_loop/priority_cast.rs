@@ -1710,11 +1710,7 @@ pub(super) fn get_legal_sacrifice_targets(
     filter: &ObjectFilter,
     reason: crate::costs::PaymentReason,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
-        you: Some(player),
-        source: Some(source),
-        ..Default::default()
-    };
+    let ctx = game.filter_context_for(player, Some(source));
     game.battlefield
         .iter()
         .copied()
@@ -1846,11 +1842,7 @@ pub(super) fn get_legal_return_to_hand_targets(
     source: ObjectId,
     filter: &ObjectFilter,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
-        you: Some(player),
-        source: Some(source),
-        ..Default::default()
-    };
+    let ctx = game.filter_context_for(player, Some(source));
     game.battlefield
         .iter()
         .copied()
@@ -1868,11 +1860,7 @@ pub(super) fn get_legal_cost_choice_objects(
     filter: &ObjectFilter,
     zone: Zone,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
-        you: Some(player),
-        source: Some(source),
-        ..Default::default()
-    };
+    let ctx = game.filter_context_for(player, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
         Zone::Battlefield => game.battlefield.iter().copied().collect(),
@@ -1959,6 +1947,19 @@ pub(super) fn card_cost_choice_description_and_candidates(
         } => (
             format!("Choose a permanent to return: {}", description),
             get_legal_return_to_hand_targets(game, player, source, filter),
+        ),
+        ActivationCardCostChoice::MoveChosenObjectToZone {
+            filter,
+            source_zone,
+            destination_zone,
+            description,
+            ..
+        } => (
+            format!(
+                "Choose an object to move to {}: {}",
+                destination_zone, description
+            ),
+            get_legal_cost_choice_objects(game, player, source, filter, *source_zone),
         ),
     };
     candidates.retain(|id| !already_chosen.contains(id));
@@ -2049,7 +2050,10 @@ pub(super) fn describe_pending_cost_step(step: &ActivationCostStep) -> String {
             | ActivationCardCostChoice::ExileFromGraveyard { description, .. }
             | ActivationCardCostChoice::ExileChosenObject { description, .. }
             | ActivationCardCostChoice::RevealFromHand { description, .. }
-            | ActivationCardCostChoice::ReturnToHand { description, .. } => description.clone(),
+            | ActivationCardCostChoice::ReturnToHand { description, .. }
+            | ActivationCardCostChoice::MoveChosenObjectToZone { description, .. } => {
+                description.clone()
+            }
         },
     }
 }
@@ -2180,22 +2184,81 @@ pub(super) fn continue_activation_remove_counters_among_payment(
     decision_maker: &mut impl DecisionMaker,
     provided_ctx: Option<&crate::decisions::context::DecisionContext>,
 ) -> Result<GameProgress, GameLoopError> {
-    let cost = if let Some(staged) = pending.pending_remove_counters_among.as_ref() {
-        staged.cost.clone()
-    } else {
+    let pending_cost = pending
+        .remaining_cost_steps
+        .first()
+        .and_then(|step| match step {
+            ActivationCostStep::Cost(cost) => remove_any_counters_among_effect(cost).cloned(),
+            _ => None,
+        });
+    let cost = if pending
+        .pending_remove_counters_among
+        .as_ref()
+        .is_some_and(|staged| staged.distribution_ready)
+    {
         pending
-            .remaining_cost_steps
-            .first()
-            .and_then(|step| match step {
-                ActivationCostStep::Cost(cost) => remove_any_counters_among_effect(cost).cloned(),
-                _ => None,
-            })
-            .ok_or_else(|| {
-                GameLoopError::InvalidState(
-                    "No remove-counters-among activation cost is currently pending".to_string(),
-                )
-            })?
+            .pending_remove_counters_among
+            .as_ref()
+            .map(|staged| staged.cost.clone())
+            .expect("checked staged remove-counters-among cost")
+    } else {
+        pending_cost.ok_or_else(|| {
+            GameLoopError::InvalidState(
+                "No remove-counters-among activation cost is currently pending".to_string(),
+            )
+        })?
     };
+
+    let requested_count = if cost.dynamic_count {
+        let total_available = crate::effects::remove_any_counters_among_valid_targets_with_tags(
+            &cost,
+            game,
+            pending.source,
+            pending.activator,
+            &pending.tagged_objects,
+        )
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .map(|object| {
+            if let Some(counter_type) = cost.counter_type {
+                object.counters.get(&counter_type).copied().unwrap_or(0)
+            } else {
+                object.counters.values().copied().sum::<u32>()
+            }
+        })
+        .sum::<u32>();
+        let max_count = cost.count.min(total_available);
+        if pending.x_value.is_none() {
+            if max_count < cost.min_count {
+                return Err(GameLoopError::InvalidState(format!(
+                    "not enough counters to pay remove-counters-among cost: need at least {}, have {}",
+                    cost.min_count, max_count
+                )));
+            }
+            let activator = pending.activator;
+            let source = pending.source;
+            state.pending_activation = Some(pending);
+            let ctx = crate::decisions::context::NumberContext::new(
+                activator,
+                Some(source),
+                cost.min_count,
+                max_count,
+                "Choose value for X",
+            );
+            return Ok(GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Number(ctx),
+            ));
+        }
+        pending
+            .x_value
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or(cost.min_count)
+            .clamp(cost.min_count, max_count)
+    } else {
+        cost.count
+    };
+    let mut cost = cost;
+    cost.count = requested_count;
 
     let staged = pending
         .pending_remove_counters_among

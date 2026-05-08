@@ -195,6 +195,9 @@ pub(crate) fn lower_granted_ability_ast(
     match ability {
         GrantedAbilityAst::KeywordAction(action) => lower_keyword_action_or_err(action.clone()),
         GrantedAbilityAst::StaticAbility(ability) => Ok(ability.clone()),
+        GrantedAbilityAst::ThisAbility => Err(CardTextError::InvariantViolation(
+            "this ability cannot lower as a static ability".to_string(),
+        )),
         GrantedAbilityAst::MustAttack => Ok(StaticAbility::must_attack()),
         GrantedAbilityAst::MustBlock => Ok(StaticAbility::must_block()),
         GrantedAbilityAst::CanAttackAsThoughNoDefender => {
@@ -231,6 +234,9 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
         GrantedAbilityAst::StaticAbility(static_ability) => {
             Ok(Ability::static_ability(static_ability.clone()))
         }
+        GrantedAbilityAst::ThisAbility => Err(CardTextError::InvariantViolation(
+            "this ability cannot lower as a granted object ability".to_string(),
+        )),
         GrantedAbilityAst::MustAttack => {
             let static_ability = StaticAbility::must_attack();
             Ok(Ability::static_ability(static_ability))

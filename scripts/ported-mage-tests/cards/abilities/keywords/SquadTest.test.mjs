@@ -94,7 +94,8 @@ registerPortedMageTests({
           "name": "Arco-Flagellant",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_Squad_UseOnce",

@@ -817,6 +817,22 @@ pub(super) fn apply_reference_and_tag_stage(
         && all_words.get(attached_idx + 1) == Some(&"to")
     {
         let attached_to_words = &all_words[attached_idx + 2..];
+        if starts_with_any_filter_phrase(attached_to_words, &[&["enchanted", "player"]]) {
+            let trim_start = if attached_idx >= 2
+                && all_words[attached_idx - 2] == "that"
+                && matches!(all_words[attached_idx - 1], "were" | "was" | "is" | "are")
+            {
+                attached_idx - 2
+            } else {
+                attached_idx
+            };
+            all_words.truncate(trim_start);
+            filter.attached_to_player = Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")));
+            return ReferenceTagStageResult {
+                source_linked_exile_reference: false,
+                early_return: false,
+            };
+        }
         let references_it = starts_with_any_filter_phrase(
             attached_to_words,
             &[

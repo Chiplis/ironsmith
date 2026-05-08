@@ -148,13 +148,20 @@ fn make_payload(name: &str, oracle_text: &str, mana_cost: &str, type_line: &str)
 }
 
 fn sync_registry_db(cards_path: &Path, db_path: &Path) {
-    let status = Command::new(env!("CARGO_BIN_EXE_sync_registry_db"))
+    sync_registry_db_with_args(cards_path, db_path, &[]);
+}
+
+fn sync_registry_db_with_args(cards_path: &Path, db_path: &Path, extra_args: &[&str]) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sync_registry_db"));
+    command
         .arg("--cards")
         .arg(cards_path)
         .arg("--db-path")
-        .arg(db_path)
-        .status()
-        .expect("run sync_registry_db");
+        .arg(db_path);
+    for arg in extra_args {
+        command.arg(arg);
+    }
+    let status = command.status().expect("run sync_registry_db");
     assert!(status.success(), "sync_registry_db should succeed");
 }
 
@@ -342,6 +349,168 @@ fn sync_registry_db_writes_registry_rows_by_default() {
     assert_eq!(
         query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
         2
+    );
+}
+
+#[test]
+fn sync_registry_db_includes_pioneer_legal_cards() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Pioneer Fixture",
+    "oracle_text":"Draw a card.",
+    "mana_cost":"{U}",
+    "type_line":"Sorcery",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"not_legal",
+      "pioneer":"legal",
+      "legacy":"not_legal",
+      "vintage":"not_legal",
+      "commander":"not_legal"
+    }
+  },
+  {
+    "name":"Contract from Below",
+    "oracle_text":"Discard your hand, ante the top card of your library, then draw seven cards.",
+    "mana_cost":"{B}",
+    "type_line":"Sorcery",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"not_legal",
+      "pioneer":"not_legal",
+      "legacy":"not_legal",
+      "vintage":"not_legal",
+      "commander":"not_legal"
+    }
+  }
+]"#,
+    )
+    .expect("write pioneer fixture cards.json");
+
+    sync_registry_db(&cards_path, &db_path);
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM registry_card WHERE card_name = 'Pioneer Fixture'"
+        ),
+        1
+    );
+}
+
+#[test]
+fn sync_registry_db_can_explicitly_include_named_cards_outside_supported_legalities() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 3 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"legal",
+      "pioneer":"not_legal",
+      "legacy":"legal",
+      "vintage":"legal",
+      "commander":"legal"
+    }
+  },
+  {
+    "name":"Mox Sapphire",
+    "oracle_text":"{T}: Add {U}.",
+    "mana_cost":"{0}",
+    "type_line":"Artifact",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"not_legal",
+      "pioneer":"not_legal",
+      "legacy":"not_legal",
+      "vintage":"restricted",
+      "commander":"not_legal"
+    }
+  },
+  {
+    "name":"Contract from Below",
+    "oracle_text":"Discard your hand, ante the top card of your library, then draw seven cards.",
+    "mana_cost":"{B}",
+    "type_line":"Sorcery",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"not_legal",
+      "pioneer":"not_legal",
+      "legacy":"not_legal",
+      "vintage":"not_legal",
+      "commander":"not_legal"
+    }
+  }
+]"#,
+    )
+    .expect("write explicit include fixture cards.json");
+
+    sync_registry_db_with_args(&cards_path, &db_path, &["--include-card", "Mox Sapphire"]);
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
+        2
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM registry_card WHERE card_name = 'Mox Sapphire'"
+        ),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM registry_card WHERE card_name = 'Contract from Below'"
+        ),
+        0
+    );
+}
+
+#[test]
+fn sync_registry_db_can_register_extra_card_json_records() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_json(&cards_path);
+
+    sync_registry_db_with_args(
+        &cards_path,
+        &db_path,
+        &[
+            "--extra-card-json",
+            r#"{"name":"Mox Sapphire","oracle_text":"{T}: Add {U}.","mana_cost":"{0}","type_line":"Artifact","legalities":{"standard":"not_legal","modern":"not_legal","pioneer":"not_legal","legacy":"not_legal","vintage":"restricted","commander":"not_legal"}}"#,
+        ],
+    );
+
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM registry_card WHERE card_name = 'Mox Sapphire'"
+        ),
+        1
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
+        3
     );
 }
 

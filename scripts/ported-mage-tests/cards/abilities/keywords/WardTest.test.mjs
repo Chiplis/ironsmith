@@ -73,7 +73,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Healer's Hawk",
           "count": 1
         },
@@ -415,8 +414,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
@@ -427,8 +425,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertAbility",
@@ -555,8 +552,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
@@ -567,8 +563,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "unsupported",
@@ -713,14 +708,12 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "unsupported",

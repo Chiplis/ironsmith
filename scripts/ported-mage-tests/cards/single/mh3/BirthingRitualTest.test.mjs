@@ -265,8 +265,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertGraveyardCount",
@@ -283,8 +282,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
@@ -351,7 +349,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "try { execute(); Assert.fail(\"should have failed to execute, as Baneslayer Angel is too high mv\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Select up to one creature card with mana value 2 or less\")) { Assert.fail(\"must throw error about missing choice:\\n\" + e.getMessage()); } }"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

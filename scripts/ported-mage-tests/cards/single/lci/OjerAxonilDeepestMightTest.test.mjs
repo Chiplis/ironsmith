@@ -603,10 +603,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Sakashima the Impostor"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Sakashima the Impostor",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "castSpell",

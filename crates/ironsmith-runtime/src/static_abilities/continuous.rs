@@ -616,6 +616,13 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             crate::target::PlayerFilter::Any => "a player's speed".to_string(),
             _ => "that player's speed".to_string(),
         },
+        AnthemCountExpression::UnspentMana { player, symbol } => {
+            format!(
+                "{} unspent {} mana",
+                player.description(),
+                mana_symbol_word(*symbol)
+            )
+        }
     }
 }
 
@@ -663,7 +670,24 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
                 other.description()
             ),
         }),
+        AnthemCountExpression::UnspentMana { player, symbol } => Some(format!(
+            "unspent {} mana {} have",
+            mana_symbol_word(*symbol),
+            player.description()
+        )),
         _ => None,
+    }
+}
+
+fn mana_symbol_word(symbol: crate::mana::ManaSymbol) -> &'static str {
+    match symbol {
+        crate::mana::ManaSymbol::White => "white",
+        crate::mana::ManaSymbol::Blue => "blue",
+        crate::mana::ManaSymbol::Black => "black",
+        crate::mana::ManaSymbol::Red => "red",
+        crate::mana::ManaSymbol::Green => "green",
+        crate::mana::ManaSymbol::Colorless => "colorless",
+        _ => "mana",
     }
 }
 
@@ -1108,6 +1132,31 @@ pub(crate) fn resolve_anthem_count_expression(
                     )
             })
             .map(|player| game.player_speed(player.id).unwrap_or(0) as i32)
+            .sum(),
+        AnthemCountExpression::UnspentMana {
+            player: player_filter,
+            symbol,
+        } => game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game()
+                    && crate::filter::player_filter_matches_game(
+                        player_filter,
+                        player.id,
+                        game,
+                        &filter_ctx,
+                    )
+            })
+            .map(|player| match symbol {
+                crate::mana::ManaSymbol::White => player.mana_pool.white,
+                crate::mana::ManaSymbol::Blue => player.mana_pool.blue,
+                crate::mana::ManaSymbol::Black => player.mana_pool.black,
+                crate::mana::ManaSymbol::Red => player.mana_pool.red,
+                crate::mana::ManaSymbol::Green => player.mana_pool.green,
+                crate::mana::ManaSymbol::Colorless => player.mana_pool.colorless,
+                _ => 0,
+            } as i32)
             .sum(),
     }
 }
@@ -1749,7 +1798,7 @@ impl StaticAbilityKind for SoulbondSharedBonus {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        let Some(partner) = game.soulbond_partner(source) else {
+        let Some(partner) = game.soulbond_partner_for_shared_bonus(source) else {
             return Vec::new();
         };
 
@@ -1788,7 +1837,7 @@ impl StaticAbilityKind for SoulbondSharedBonus {
         let SoulbondSharedMode::Ability(ability) = &self.mode else {
             return;
         };
-        let Some(partner) = game.soulbond_partner(source) else {
+        let Some(partner) = game.soulbond_partner_for_shared_bonus(source) else {
             return;
         };
         ability.apply_restrictions(game, source, controller);
@@ -4236,6 +4285,35 @@ mod tests {
         assert_eq!(grant.id(), StaticAbilityId::GrantAbility);
         assert!(grant.grants_abilities());
         assert_eq!(grant.display(), "creatures you control have Flying");
+    }
+
+    #[test]
+    fn soulbond_shared_bonus_generation_does_not_reenter_characteristics() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let soulbond_card = CardBuilder::new(CardId::new(), "Trusted Forcemage")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let partner_card = CardBuilder::new(CardId::new(), "Paired Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let source = game.create_object_from_card(&soulbond_card, alice, Zone::Battlefield);
+        game.object_mut(source)
+            .expect("source should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::soulbond_shared_power_toughness(1, 1),
+            ));
+        let partner = game.create_object_from_card(&partner_card, alice, Zone::Battlefield);
+        game.set_soulbond_pair(source, partner);
+
+        assert_eq!(game.soulbond_partner(source), Some(partner));
+        assert_eq!(game.calculated_power(source), Some(3));
+        assert_eq!(game.calculated_power(partner), Some(3));
     }
 
     #[test]

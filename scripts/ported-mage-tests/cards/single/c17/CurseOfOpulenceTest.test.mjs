@@ -63,13 +63,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
@@ -136,13 +134,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
@@ -214,13 +210,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
@@ -299,13 +293,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Gold Token",
           "count": 0
         },

@@ -122,7 +122,8 @@ registerPortedMageTests({
           "name": "Essence of the Wild",
           "count": 3
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_CopyCreatureWithContinuusEffect",

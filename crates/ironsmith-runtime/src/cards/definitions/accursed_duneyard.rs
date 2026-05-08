@@ -339,6 +339,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_multiple_regeneration_shields_with_lethal_damage_consumes_one() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let zombie_id = create_undead_creature(&mut game, alice, "Test Zombie", Subtype::Zombie);
+
+        let regenerate_effect =
+            Effect::regenerate(ChooseSpec::SpecificObject(zombie_id), Until::EndOfTurn);
+        let mut regen_ctx = ExecutionContext::new_default(zombie_id, alice);
+        execute_effect(&mut game, &regenerate_effect, &mut regen_ctx).unwrap();
+        execute_effect(&mut game, &regenerate_effect, &mut regen_ctx).unwrap();
+
+        game.mark_damage(zombie_id, 2);
+
+        crate::rules::apply_state_based_actions(&mut game);
+
+        assert!(game.battlefield.contains(&zombie_id));
+        assert_eq!(game.damage_on(zombie_id), 0);
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .count_one_shot_effects_from_source(zombie_id),
+            1
+        );
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_shield_works_with_deathtouch_damage() {

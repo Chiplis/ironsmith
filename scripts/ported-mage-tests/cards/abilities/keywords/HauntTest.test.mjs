@@ -58,7 +58,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Blind Hunter",
           "count": 1
         }
@@ -127,7 +126,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Blind Hunter",
           "count": 1
         },
@@ -214,7 +212,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Blind Hunter",
           "count": 1
         },

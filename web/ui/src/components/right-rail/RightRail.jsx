@@ -303,6 +303,7 @@ export default function RightRail({
   const { state } = useGame();
   const [, setPreferredInlineWidth] = useState(null);
   const [preferredExpandedInlineWidth, setPreferredExpandedInlineWidth] = useState(null);
+  const [preferredExpandedInlineHeight, setPreferredExpandedInlineHeight] = useState(null);
   const [maxExpandedInlineWidth, setMaxExpandedInlineWidth] = useState(INLINE_EXPANDED_MAX_WIDTH_PX);
   const railRef = useRef(null);
   const compactInspectorRef = useRef(null);
@@ -429,6 +430,7 @@ export default function RightRail({
   const renderedTransientInspectorPreview = hasActiveTransientInspectorPreview
     ? transientInspectorPreview
     : null;
+  const renderedTransitionToken = renderedTransientInspectorPreview?.token || undefined;
   const selectedCanExpandInline = expandSelectedInline && validSelectedObjectId != null;
   const shouldShowRail = shouldShowInspector && (
     !inline
@@ -589,9 +591,17 @@ export default function RightRail({
       const defaultExpandedHeight = inlineExpandedMaxHeight == null
         ? INLINE_EXPANDED_DEFAULT_HEIGHT
         : Math.min(INLINE_EXPANDED_DEFAULT_HEIGHT, inlineExpandedMaxHeight);
+      const contentPreferredHeight = Number(preferredExpandedInlineHeight);
+      const hasPreferredHeight = Number.isFinite(contentPreferredHeight) && contentPreferredHeight > 0;
+      const preferredHeight = hasPreferredHeight
+        ? Math.ceil(contentPreferredHeight + 4)
+        : defaultExpandedHeight;
+      const heightCap = inlineExpandedMaxHeight == null
+        ? availableHeight
+        : Math.min(inlineExpandedMaxHeight, availableHeight);
       const nextHeight = Math.max(
         minimumHeight,
-        Math.min(defaultExpandedHeight, availableHeight)
+        Math.min(Math.max(defaultExpandedHeight, preferredHeight), heightCap)
       );
 
       setExpandedInlineHeight((currentHeight) => (
@@ -659,6 +669,7 @@ export default function RightRail({
     inline,
     inlineDockPlacement,
     inlineExpandedMaxHeight,
+    preferredExpandedInlineHeight,
     expandInlineToZoneViewer,
     shouldRenderExpandedInlineInspector,
     shouldShowRail,
@@ -720,6 +731,7 @@ export default function RightRail({
         <div
           ref={compactInspectorRef}
           data-card-inspector="true"
+          data-zone-transition-token={renderedTransitionToken}
           className={cn(
             "ironsmith-inspector-shell h-full overflow-hidden border border-[#2a3647]/70 bg-transparent shadow-[0_18px_42px_rgba(0,0,0,0.24)]",
             inline
@@ -751,6 +763,7 @@ export default function RightRail({
           <div
             ref={expandedInspectorRef}
             data-card-inspector="true"
+            data-zone-transition-token={renderedTransitionToken}
             className={cn(
               "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
               useExpandedInlineInspector ? "is-open pointer-events-auto z-[60]" : "is-closed pointer-events-none z-0"
@@ -775,6 +788,7 @@ export default function RightRail({
                   inspectorVariant={inspectorVariant}
                   availableInspectorWidth={expandedInlineWidth}
                   availableInspectorHeight={expandedInlineHeight}
+                  onOracleTextHeightChange={setPreferredExpandedInlineHeight}
                   onPreferredInspectorWidthChange={setPreferredExpandedInlineWidth}
                   onInspectorAccentChange={useExpandedInlineInspector ? setInspectorAccent : null}
                 />

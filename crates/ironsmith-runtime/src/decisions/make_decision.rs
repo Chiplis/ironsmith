@@ -86,6 +86,18 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
             R::from_text(result, fallback)
         }
         DecisionContext::SelectObjects(ctx) => {
+            if game.auto_choose_single_object_decisions()
+                && ctx.min == 1
+                && ctx.max == Some(1)
+                && !ctx.allow_partial_completion
+            {
+                let mut legal = ctx.candidates.iter().filter(|candidate| candidate.legal);
+                if let Some(candidate) = legal.next()
+                    && legal.next().is_none()
+                {
+                    return R::from_objects(vec![candidate.id], fallback);
+                }
+            }
             let result = dm.decide_objects(game, &ctx);
             R::from_objects(result, fallback)
         }
@@ -742,5 +754,80 @@ mod tests {
 
         let result: Vec<usize> = make_decision(&game, &mut dm, player, Some(source), spec);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn make_decision_auto_selects_single_required_object_when_policy_enabled() {
+        let mut game = setup_game();
+        let player = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1);
+        let candidate = ObjectId::from_raw(2);
+
+        struct PromptOnlyDm {
+            prompted: bool,
+        }
+        impl DecisionMaker for PromptOnlyDm {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.prompted = true;
+                Vec::new()
+            }
+        }
+
+        game.set_auto_choose_single_object_decisions(true);
+        let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+            source,
+            "Choose the only object",
+            vec![candidate],
+            1,
+            Some(1),
+        );
+        let mut dm = PromptOnlyDm { prompted: false };
+
+        let result: Vec<ObjectId> = make_decision(&game, &mut dm, player, Some(source), spec);
+        assert_eq!(result, vec![candidate]);
+        assert!(!dm.prompted);
+    }
+
+    #[test]
+    fn make_decision_surfaces_single_required_object_when_policy_disabled() {
+        let mut game = setup_game();
+        let player = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1);
+        let candidate = ObjectId::from_raw(2);
+
+        struct PromptingDm {
+            prompted: bool,
+        }
+        impl DecisionMaker for PromptingDm {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.prompted = true;
+                ctx.candidates
+                    .iter()
+                    .map(|candidate| candidate.id)
+                    .collect()
+            }
+        }
+
+        game.set_auto_choose_single_object_decisions(false);
+        let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+            source,
+            "Choose the only object",
+            vec![candidate],
+            1,
+            Some(1),
+        );
+        let mut dm = PromptingDm { prompted: false };
+
+        let result: Vec<ObjectId> = make_decision(&game, &mut dm, player, Some(source), spec);
+        assert_eq!(result, vec![candidate]);
+        assert!(dm.prompted);
     }
 }

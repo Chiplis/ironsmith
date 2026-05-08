@@ -82,6 +82,7 @@ impl EffectExecutor for GainControlEffect {
         if let Some(previous_controller) = previous_controller
             && previous_controller != ctx.controller
         {
+            game.clear_soulbond_pair(target_id);
             outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                 ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
                 ctx.provenance,
@@ -150,6 +151,29 @@ mod tests {
             game.effect_store.continuous_effects.effects_sorted().len(),
             1
         );
+    }
+
+    #[test]
+    fn gain_control_breaks_soulbond_pair() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let paired_a = create_creature(&mut game, "Soulbond A", alice);
+        let paired_b = create_creature(&mut game, "Soulbond B", alice);
+        game.set_soulbond_pair(paired_a, paired_b);
+        assert_eq!(game.soulbond_partner(paired_a), Some(paired_b));
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, bob)
+            .with_targets(vec![ResolvedTarget::Object(paired_a)]);
+
+        let effect = GainControlEffect::until_end_of_turn(ChooseSpec::creature());
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(game.soulbond_partner(paired_a), None);
+        assert_eq!(game.soulbond_partner(paired_b), None);
     }
 
     #[test]

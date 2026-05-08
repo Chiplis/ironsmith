@@ -65,8 +65,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, wretchedBoneMass, abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Wretched Bonemass",
+          "abilities": [
+            "abilities"
+          ]
         }
       ]
     }

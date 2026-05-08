@@ -78,6 +78,18 @@ pub(super) fn parse_statement_line_cst(
     ) {
         return Ok(None);
     }
+    if token_words_have_any_prefix(&line.tokens, &[&["the", "next", "time"]])
+        && token_words_have_sequence(&line.tokens, &["source", "of", "your", "choice"])
+        && token_words_have_sequence(&line.tokens, &["prevent", "that", "damage"])
+        && token_words_have_sequence(&line.tokens, &["damage", "is", "prevented", "this", "way"])
+    {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: vec![line.tokens.clone()],
+        }));
+    }
     let parse_groups = normalize_statement_parse_groups_lexed(&line.tokens);
     let mut found_effects = false;
     for group_tokens in &parse_groups {

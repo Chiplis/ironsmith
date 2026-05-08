@@ -84,7 +84,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Hangarback Walker",
           "count": 1
         }

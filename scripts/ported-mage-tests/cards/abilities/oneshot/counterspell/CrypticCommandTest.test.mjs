@@ -109,8 +109,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -120,21 +119,18 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         }
       ]
     },
@@ -281,9 +277,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         }
       ]
     }

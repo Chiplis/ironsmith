@@ -8,15 +8,31 @@ export function packageBase(pkg = "root") {
   throw new Error(`unknown wasm package: ${pkg}`);
 }
 
-export async function initWasmGame({ pkg = "root" } = {}) {
+const wasmRuntimeCache = new Map();
+
+export async function initWasmRuntime({ pkg = "root" } = {}) {
+  if (!wasmRuntimeCache.has(pkg)) {
+    wasmRuntimeCache.set(pkg, loadWasmRuntime(pkg));
+  }
+  return wasmRuntimeCache.get(pkg);
+}
+
+async function loadWasmRuntime(pkg) {
   const base = packageBase(pkg);
   const wasmModule = await import(`${base}/ironsmith.js`);
   const wasmBytes = await readFile(new URL(`${base}/ironsmith_bg.wasm`, import.meta.url));
   await wasmModule.default({ module_or_path: wasmBytes });
   return {
-    game: new wasmModule.WasmGame(),
     wasmModule,
     packagePath: base.replace(/^\.\.\//, ""),
+  };
+}
+
+export async function initWasmGame({ pkg = "root" } = {}) {
+  const runtime = await initWasmRuntime({ pkg });
+  return {
+    ...runtime,
+    game: new runtime.wasmModule.WasmGame(),
   };
 }
 

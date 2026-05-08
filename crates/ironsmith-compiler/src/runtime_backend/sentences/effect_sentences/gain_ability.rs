@@ -643,9 +643,12 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     }
 
-    let (abilities, _) =
-        parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
     let ability_word_refs = GainAbilityWordView::new(ability_tokens).to_word_refs();
+    let (abilities, _) = if losing && matches!(ability_word_refs.as_slice(), ["this", "ability"]) {
+        (vec![GrantedAbilityAst::ThisAbility], false)
+    } else {
+        parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?
+    };
     let removes_all_abilities =
         losing && matches!(ability_word_refs.as_slice(), ["all", "abilities"]);
     if abilities.is_empty() && !removes_all_abilities {
@@ -835,8 +838,12 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         return Ok(None);
     }
 
-    let (abilities, _) =
-        parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?;
+    let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
+    let (abilities, _) = if losing && matches!(ability_word_refs.as_slice(), ["this", "ability"]) {
+        (vec![GrantedAbilityAst::ThisAbility], false)
+    } else {
+        parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?
+    };
     if abilities.is_empty() {
         return Ok(None);
     }
@@ -1092,11 +1099,18 @@ pub(crate) fn parse_gain_ability_sentence(
         {
             tail_tokens = &tail_tokens[1..];
         }
-        let (trailing_abilities, trailing_is_choice) =
-            parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
-        if !trailing_abilities.is_empty() && !trailing_is_choice {
-            abilities.extend(trailing_abilities);
-            trailing_tail_tokens.clear();
+        let tail_words = GainAbilityWordView::new(tail_tokens).to_word_refs();
+        let is_restriction_tail = matches!(
+            tail_words.as_slice(),
+            ["cant", "be", "blocked", ..] | ["can't", "be", "blocked", ..]
+        );
+        if !is_restriction_tail {
+            let (trailing_abilities, trailing_is_choice) =
+                parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
+            if !trailing_abilities.is_empty() && !trailing_is_choice {
+                abilities.extend(trailing_abilities);
+                trailing_tail_tokens.clear();
+            }
         }
     }
     let removes_all_abilities = losing

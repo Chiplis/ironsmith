@@ -55,6 +55,7 @@ pub(crate) enum KeywordLineKindCst {
     Multikicker,
     Replicate,
     Offspring,
+    Reconfigure,
     Reinforce,
     Retrace,
     Squad,

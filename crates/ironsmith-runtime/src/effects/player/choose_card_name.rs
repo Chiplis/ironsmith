@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption, TextInputContext};
+use crate::decisions::context::TextInputContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -8,32 +8,10 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, StableId};
 use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
-use crate::target::ObjectFilter;
 use crate::zone::Zone;
 pub use ironsmith_core::ChooseCardNameEffect;
 
-fn choice_options(filter: Option<&ObjectFilter>) -> Vec<String> {
-    let mut names = CardRegistry::supported_card_names();
-    if let Some(filter) = filter
-        && !filter.card_types.is_empty()
-    {
-        let mut full_registry = CardRegistry::with_builtin_cards();
-        full_registry.ensure_all_generated_cards_loaded();
-        names.retain(|name| {
-            full_registry.get(name).is_some_and(|definition| {
-                filter
-                    .card_types
-                    .iter()
-                    .all(|card_type| definition.card.card_types.contains(card_type))
-            })
-        });
-    }
-    names.sort_unstable();
-    names.dedup();
-    names
-}
-
-fn synthetic_snapshot(
+pub(crate) fn synthetic_chosen_name_snapshot(
     source: ObjectId,
     chooser: crate::ids::PlayerId,
     name: String,
@@ -80,6 +58,15 @@ fn synthetic_snapshot(
     }
 }
 
+pub(crate) fn split_chosen_card_names(names: &str) -> Vec<String> {
+    names
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 impl EffectExecutor for ChooseCardNameEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -91,63 +78,41 @@ impl EffectExecutor for ChooseCardNameEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
-        let uses_filtered_option_list = self
-            .filter
-            .as_ref()
-            .is_some_and(|filter| !filter.card_types.is_empty());
-        if !uses_filtered_option_list {
-            let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
-                .with_placeholder("Enter a card name")
-                .require_known_value(true);
-            let chosen_name = ctx.decision_maker.decide_text(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let chosen_name = chosen_name.trim();
-            if chosen_name.is_empty() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            let mut registry = CardRegistry::new();
-            registry.ensure_cards_loaded([chosen_name]);
-            let canonical_name = registry
-                .get(chosen_name)
-                .map(|definition| definition.name().to_string())
-                .unwrap_or_else(|| chosen_name.to_string());
-
-            let snapshot = synthetic_snapshot(ctx.source, chooser, canonical_name);
-            ctx.set_tagged_objects(self.tag.clone(), vec![snapshot]);
-            return Ok(EffectOutcome::count(1));
-        }
-
-        let names = choice_options(self.filter.as_ref());
-        if names.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let options: Vec<SelectableOption> = names
-            .iter()
-            .enumerate()
-            .map(|(idx, name)| SelectableOption::new(idx, name.clone()))
-            .collect();
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            "Choose a card name",
-            options,
-            1,
-            1,
-        );
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
+        let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
+            .with_placeholder("Enter a card name")
+            .require_known_value(true);
+        let chosen_name = ctx.decision_maker.decide_text(game, &choice_ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let Some(chosen_idx) = selected.into_iter().next().filter(|idx| *idx < names.len()) else {
+        let chosen_name = chosen_name.trim();
+        if chosen_name.is_empty() {
             return Ok(EffectOutcome::count(0));
-        };
+        }
 
-        let snapshot = synthetic_snapshot(ctx.source, chooser, names[chosen_idx].clone());
-        ctx.set_tagged_objects(self.tag.clone(), vec![snapshot]);
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded([chosen_name]);
+        let canonical_name = registry
+            .get(chosen_name)
+            .map(|definition| definition.name().to_string())
+            .unwrap_or_else(|| chosen_name.to_string());
+
+        let mut chosen_names = game
+            .chosen_named_option(ctx.source)
+            .map(split_chosen_card_names)
+            .unwrap_or_default();
+        if !chosen_names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&canonical_name))
+        {
+            chosen_names.push(canonical_name);
+        }
+        game.set_chosen_named_option(ctx.source, chosen_names.join("\n"));
+        let snapshots = chosen_names
+            .into_iter()
+            .map(|name| synthetic_chosen_name_snapshot(ctx.source, chooser, name))
+            .collect();
+        ctx.set_tagged_objects(self.tag.clone(), snapshots);
         Ok(EffectOutcome::count(1))
     }
 }

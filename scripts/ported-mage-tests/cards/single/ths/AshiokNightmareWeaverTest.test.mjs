@@ -41,9 +41,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         },
         {
           "op": "assertCounterCount",
@@ -141,9 +140,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertPermanentCount",

@@ -779,18 +779,26 @@ pub(crate) fn clone_return_effect_with_subtype(
                 converted,
                 controller,
                 count_value,
+                as_aura,
             } => {
                 let mut cloned_target = target.clone();
-                replace_target_subtype(&mut cloned_target, subtype).then_some(
-                    EffectAst::subject_verb_return_to_battlefield(
+                replace_target_subtype(&mut cloned_target, subtype).then(|| {
+                    let mut effect = EffectAst::subject_verb_return_to_battlefield(
                         cloned_target,
                         *tapped,
                         *transformed,
                         *converted,
                         *controller,
                         count_value.clone(),
-                    ),
-                )
+                    );
+                    if let EffectAst::SubjectVerb(subject_verb) = &mut effect
+                        && let SubjectVerbActionAst::ReturnToBattlefield { as_aura: dst, .. } =
+                            &mut subject_verb.action
+                    {
+                        *dst = as_aura.clone();
+                    }
+                    effect
+                })
             }
             SubjectVerbActionAst::ReturnAllToBattlefield { filter, tapped } => {
                 let mut cloned_filter = filter.clone();

@@ -51,23 +51,29 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 1,
-          "toughness": "Harvest Hand"
+          "name": "Harvest Hand",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
-          "player": "t2",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Harvest Hand",
+          "power": 2,
           "toughness": 1
         },
         {
           "op": "assertPowerToughness",
-          "player": "t3",
-          "name": 3,
-          "power": "PRECOMBAT_MAIN",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Harvest Hand",
+          "power": 2,
           "toughness": 1
         },
         {
@@ -93,23 +99,29 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "t5",
-          "name": 5,
-          "power": "PRECOMBAT_MAIN",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Mist Leopard",
+          "power": 3,
+          "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 6,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Mist Leopard",
+          "power": 3,
           "toughness": 1
         },
         {
           "op": "assertPowerToughness",
-          "player": "t6",
-          "name": 6,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": "t7",
-          "name": 7,
-          "power": "PRECOMBAT_MAIN",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Mist Leopard",
+          "power": 3,
           "toughness": 1
         },
         {

@@ -587,6 +587,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "as this enters, choose a card name" abilities.
+    fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
+        None
+    }
+
     /// Returns info for "as this enters, choose a basic land type" abilities.
     fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
         None
@@ -887,6 +892,10 @@ pub struct ChooseColorAsEntersSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChoosePlayerAsEntersSpec;
 
+/// Spec for "as this enters, choose a card name" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChooseCardNameAsEntersSpec;
+
 /// Spec for "as this enters, choose a basic land type" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChooseBasicLandTypeAsEntersSpec;
@@ -986,6 +995,10 @@ impl StaticAbility {
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         self.0.player_choice_as_enters()
+    }
+
+    pub fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
+        self.0.card_name_choice_as_enters()
     }
 
     pub fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
@@ -2326,6 +2339,10 @@ impl StaticAbility {
         Self::new(ChoosePlayerAsEnters::new(display))
     }
 
+    pub fn choose_card_name_as_enters(display: String) -> Self {
+        Self::new(ChooseCardNameAsEnters::new(display))
+    }
+
     pub fn choose_basic_land_type_as_enters(display: String) -> Self {
         Self::new(ChooseBasicLandTypeAsEnters::new(display))
     }
@@ -2451,6 +2468,32 @@ impl StaticAbility {
             target_player_filter,
             target_object_filter,
             delta,
+            display,
+        ))
+    }
+
+    pub fn double_damage_amount_replacement(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleDamageAmountReplacement::new(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            display,
+        ))
+    }
+
+    pub fn double_counters_replacement(
+        filter: crate::target::ObjectFilter,
+        counter_type: Option<crate::object::CounterType>,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleCountersReplacement::new(
+            filter,
+            counter_type,
             display,
         ))
     }

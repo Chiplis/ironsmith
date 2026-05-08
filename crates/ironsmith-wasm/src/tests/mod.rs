@@ -4,7 +4,7 @@ use super::{
     CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot, MatchFormatInput,
     MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
     TargetChoiceView, TargetInput, WasmGame, action_drag_metadata, build_object_details_snapshot,
-    build_stack_object_snapshot, convert_and_validate_targets,
+    build_stack_object_snapshot, convert_and_validate_targets, normalize_select_object_choice_ids,
 };
 use crate::colors_for_context;
 use ironsmith::ability::Ability;
@@ -13,6 +13,7 @@ use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::CardRegistry;
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::continuous::ContinuousEffect;
+use ironsmith::continuous::{EffectTarget, Modification};
 use ironsmith::cost::OptionalCostsPaid;
 use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
 use ironsmith::decisions::context::{
@@ -468,6 +469,34 @@ fn object_details_reports_calculated_battlefield_power_toughness() {
     let details = build_object_details_snapshot(&game, bears_id).expect("expected object details");
     assert_eq!(details.power, Some(5));
     assert_eq!(details.toughness, Some(2));
+}
+
+#[test]
+fn object_details_reports_current_granted_abilities() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let bears_def = grizzly_bears();
+    let bears_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            bears_id,
+            alice,
+            EffectTarget::Specific(bears_id),
+            Modification::AddAbility(StaticAbility::lifelink()),
+        ));
+
+    let details = build_object_details_snapshot(&game, bears_id).expect("expected object details");
+    assert!(
+        details
+            .abilities
+            .iter()
+            .any(|ability| ability == "Lifelink"),
+        "expected object details to expose current granted lifelink, got {:?}",
+        details.abilities
+    );
 }
 
 #[test]
@@ -1004,6 +1033,48 @@ fn add_card_to_zone_battlefield_surfaces_roaming_throne_type_choice() {
             .any(|object| object.name == "Roaming Throne"),
         "Roaming Throne should not be committed to the battlefield until the choice is confirmed"
     );
+}
+
+#[test]
+fn add_card_to_zone_day_of_the_moon_goads_chosen_name_after_text_choice() {
+    let mut wasm = WasmGame::new();
+
+    let memnite_id = wasm
+        .add_card_to_zone(1, "Memnite".to_string(), "battlefield".to_string(), true)
+        .expect("should add Memnite");
+    let vanguard_id = wasm
+        .add_card_to_zone(
+            1,
+            "Elite Vanguard".to_string(),
+            "battlefield".to_string(),
+            true,
+        )
+        .expect("should add Elite Vanguard");
+    wasm.add_card_to_zone(
+        0,
+        "Day of the Moon".to_string(),
+        "battlefield".to_string(),
+        false,
+    )
+    .expect("should start Day of the Moon chapter choice");
+
+    assert!(
+        matches!(wasm.pending_decision, Some(DecisionContext::TextInput(_))),
+        "Day of the Moon should ask for a card name, got {:?}",
+        wasm.pending_decision
+    );
+
+    wasm.dispatch(
+        serde_wasm_bindgen::to_value(&serde_json::json!({
+            "type": "text_choice",
+            "value": "Memnite",
+        }))
+        .expect("choice should serialize"),
+    )
+    .expect("dispatching Day of the Moon card-name choice should succeed");
+
+    assert!(wasm.game.is_goaded(ObjectId::from_raw(memnite_id)));
+    assert!(!wasm.game.is_goaded(ObjectId::from_raw(vanguard_id)));
 }
 
 #[test]
@@ -2123,6 +2194,27 @@ fn snapshot_redacts_hidden_opponent_select_object_candidates() {
             .all(|candidate| candidate.object_controller.is_none()),
         "redacted candidates should not expose hidden object controllers"
     );
+}
+
+#[test]
+fn redacted_select_object_choice_ids_resolve_to_real_candidates() {
+    let card_a = ObjectId::from_raw(101);
+    let card_b = ObjectId::from_raw(102);
+    let ctx = SelectObjectsContext::new(
+        PlayerId::from_index(1),
+        None,
+        "Choose a card to discard",
+        vec![
+            SelectableObject::new(card_a, "Mountain"),
+            SelectableObject::new(card_b, "Forest"),
+        ],
+        1,
+        Some(1),
+    );
+
+    let selected = normalize_select_object_choice_ids(&ctx, &[super::redacted_choice_id(1)]);
+
+    assert_eq!(selected, vec![card_b.0]);
 }
 
 #[test]

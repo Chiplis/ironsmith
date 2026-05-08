@@ -5,7 +5,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_player_from_spec, resolve_value,
+};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
@@ -47,10 +49,9 @@ pub(crate) fn apply_processed_damage_outcome(
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
 ) -> EffectOutcome {
-    let source_controller = game
-        .object(source)
-        .map(|obj| game.controller_of(obj))
-        .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
+    let source_controller = source_snapshot
+        .map(|snapshot| snapshot.controller)
+        .or_else(|| game.object(source).map(|obj| game.controller_of(obj)));
 
     let processed = process_damage_assignments_with_event_with_source_snapshot(
         game,
@@ -312,6 +313,49 @@ impl EffectExecutor for DealDamageEffect {
             ));
         }
 
+        let controller_of_specific = match &self.target {
+            ChooseSpec::Player(
+                PlayerFilter::ControllerOf(ObjectRef::Specific(id))
+                | PlayerFilter::AliasedControllerOf(ObjectRef::Specific(id)),
+            ) => Some(*id),
+            _ => None,
+        };
+        if let Some(object_id) = controller_of_specific {
+            let controller = game
+                .object(object_id)
+                .map(|object| game.controller_of(object))
+                .or_else(|| {
+                    ctx.target_snapshots
+                        .get(&object_id)
+                        .map(|snapshot| snapshot.controller)
+                })
+                .or_else(|| {
+                    ctx.triggering_event
+                        .as_ref()
+                        .and_then(|event| event.downcast::<DamageEvent>())
+                        .filter(|event| event.source == object_id)
+                        .and_then(|event| {
+                            event.cause.source_controller.or_else(|| {
+                                game.object(object_id)
+                                    .map(|object| game.controller_of(object))
+                            })
+                        })
+                });
+            let Some(controller) = controller else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            return Ok(apply_processed_damage_outcome(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                DamageTarget::Player(controller),
+                amount,
+                self.source_is_combat,
+                ctx.provenance,
+                ctx.cause.clone(),
+            ));
+        }
+
         if matches!(
             self.target,
             ChooseSpec::Player(_)
@@ -326,6 +370,27 @@ impl EffectExecutor for DealDamageEffect {
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(player_id),
+                amount,
+                self.source_is_combat,
+                ctx.provenance,
+                ctx.cause.clone(),
+            ));
+        }
+
+        if let Ok(object_ids) = resolve_objects_for_effect(game, ctx, &self.target)
+            && let Some(object_id) = object_ids.into_iter().find(|object_id| {
+                game.object(*object_id).is_some_and(|obj| {
+                    obj.zone == crate::zone::Zone::Battlefield
+                        && (obj.has_card_type(CardType::Creature)
+                            || obj.has_card_type(CardType::Planeswalker))
+                })
+            })
+        {
+            return Ok(apply_processed_damage_outcome(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                DamageTarget::Object(object_id),
                 amount,
                 self.source_is_combat,
                 ctx.provenance,
@@ -451,6 +516,28 @@ mod tests {
         );
     }
 
+    fn create_player_aura_attached_to(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> crate::ids::ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![crate::types::Subtype::Aura])
+            .build();
+        let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        obj.attached_to = Some(crate::object::AttachmentTarget::Player(player));
+        game.add_object(obj);
+        game.player_mut(player)
+            .expect("attached player should exist")
+            .attachments
+            .push(id);
+        id
+    }
+
     #[test]
     fn damage_to_object_records_affected_object_memory() {
         let mut game = setup_game();
@@ -473,6 +560,59 @@ mod tests {
         assert_eq!(memory.len(), 1);
         assert_eq!(memory[0].controller, bob);
         assert_eq!(memory[0].toughness, Some(2));
+    }
+
+    #[test]
+    fn damage_to_tagged_enchanted_player_resolves_from_aura_attachment() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let aura = create_player_aura_attached_to(&mut game, "Curse", alice, bob);
+        let mut ctx = ExecutionContext::new_default(aura, alice);
+
+        let outcome = DealDamageEffect::new(
+            6,
+            ChooseSpec::Player(PlayerFilter::TaggedPlayer(crate::tag::TagKey::from(
+                "enchanted",
+            ))),
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("damage should resolve");
+
+        assert_eq!(outcome.count_or_zero(), 6);
+        assert_eq!(
+            game.player(bob).expect("bob should exist").life,
+            14,
+            "damage should apply to the player enchanted by the Aura source"
+        );
+    }
+
+    #[test]
+    fn object_damage_resolves_matching_target_instead_of_first_raw_target() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(&mut game, "Pinger", 1, 1, alice, vec![]);
+        let bounced = create_creature(&mut game, "Bounced", 2, 4, bob, vec![]);
+        let damaged = create_creature(&mut game, "Damaged", 2, 2, bob, vec![]);
+        game.move_object_by_effect(bounced, Zone::Hand);
+
+        let mut filter = crate::filter::ObjectFilter::default();
+        filter.zone = Some(Zone::Battlefield);
+        filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            ResolvedTarget::Object(bounced),
+            ResolvedTarget::Object(damaged),
+        ]);
+
+        DealDamageEffect::new(2, ChooseSpec::target(ChooseSpec::Object(filter)))
+            .execute(&mut game, &mut ctx)
+            .expect("damage should resolve");
+
+        assert_eq!(game.damage_on(damaged), 2);
+        assert_eq!(game.damage_on(bounced), 0);
     }
 
     #[test]

@@ -80,8 +80,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         }
       ]
     },
@@ -138,8 +137,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     },
@@ -208,8 +206,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     }

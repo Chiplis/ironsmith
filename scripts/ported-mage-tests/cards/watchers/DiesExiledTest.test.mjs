@@ -66,7 +66,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sejiri Merfolk",
           "count": 1
         }
@@ -120,7 +119,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sejiri Merfolk",
           "count": 1
         }
@@ -174,7 +172,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sejiri Merfolk",
           "count": 1
         }
@@ -228,7 +225,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sejiri Merfolk",
           "count": 1
         }
@@ -281,7 +277,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sejiri Merfolk",
           "count": 2
         }

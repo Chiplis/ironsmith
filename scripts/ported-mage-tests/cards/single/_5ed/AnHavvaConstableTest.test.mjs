@@ -54,10 +54,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "An-Havva Constable"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "An-Havva Constable",
+          "power": 2,
+          "toughness": 7
         },
         {
           "op": "castSpell",
@@ -75,10 +77,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "An-Havva Constable"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "An-Havva Constable",
+          "power": 2,
+          "toughness": 6
         },
         {
           "op": "setStopAt",

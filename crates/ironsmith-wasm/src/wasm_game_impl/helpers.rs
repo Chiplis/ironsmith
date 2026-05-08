@@ -1091,6 +1091,31 @@ pub(super) fn validate_object_selection(
     Ok(())
 }
 
+pub(super) fn normalize_select_object_choice_ids(
+    ctx: &ironsmith::decisions::context::SelectObjectsContext,
+    selected: &[u64],
+) -> Vec<u64> {
+    selected
+        .iter()
+        .map(|selected_id| {
+            if ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.legal && candidate.id.0 == *selected_id)
+            {
+                return *selected_id;
+            }
+
+            ctx.candidates
+                .iter()
+                .enumerate()
+                .find(|(index, candidate)| candidate.legal && redacted_choice_id(*index) == *selected_id)
+                .map(|(_, candidate)| candidate.id.0)
+                .unwrap_or(*selected_id)
+        })
+        .collect()
+}
+
 /// Convert and validate target inputs against the requirements in a TargetsContext.
 ///
 /// Validates that:

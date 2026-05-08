@@ -359,7 +359,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lingering Souls",
           "count": 1
         }

@@ -11,6 +11,7 @@ import RightRail from "@/components/right-rail/RightRail";
 import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
+import ZoneMoveEffects from "@/components/overlays/ZoneMoveEffects";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
@@ -27,6 +28,7 @@ const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
 const HAND_LANE_HOVER_FUZZ = 6;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
+const INSPECTOR_SHADER_REVEAL_CONSUME_MS = 2500;
 
 const ZONE_TRANSITION_LABELS = {
   battlefield: "Battlefield",
@@ -166,6 +168,7 @@ function stackObjectTransitionCard(stackObject) {
     name: stackObject.name || "",
     mana_cost: stackObject.mana_cost ?? null,
     card_types: [],
+    __transition_origin: "stack",
   };
 }
 
@@ -240,20 +243,6 @@ function buildZoneTransitionSnapshot(players, stackObjects = []) {
     );
   }
   return snapshot;
-}
-
-function buildZoneCardLocationMap(snapshot) {
-  const locationMap = new Map();
-  for (const zone of TRANSITION_TRACKED_ZONE_IDS) {
-    for (const card of snapshot?.[zone] || []) {
-      const trackingKeys = collectCardTrackingKeys(card);
-      for (const key of trackingKeys) {
-        if (locationMap.has(key)) continue;
-        locationMap.set(key, { zone, card });
-      }
-    }
-  }
-  return locationMap;
 }
 
 function normalizeTransitionCardName(card) {
@@ -335,9 +324,150 @@ function buildTransitionPreview(playerKey, previousEntry, currentEntry, tokenSee
   return {
     token: `${playerKey}:${tokenSeed}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
     objectId: currentEntry?.card?.id ?? previousEntry?.card?.id ?? null,
+    fromObjectId: previousEntry?.card?.id ?? null,
+    toObjectId: currentEntry?.card?.id ?? null,
+    fromZone,
+    toZone,
+    playerKey,
+    fromTransitionOrigin: previousEntry?.card?.__transition_origin || null,
     card,
+    trackingKeys: Array.from(new Set([
+      ...(previousEntry?.trackingKeys || []),
+      ...(currentEntry?.trackingKeys || []),
+    ])),
     title: `${zoneTransitionLabel(fromZone)} -> ${zoneTransitionLabel(toZone)}`,
   };
+}
+
+function isResolvingCastToGraveyardPreview(preview) {
+  return (
+    preview?.toZone === "graveyard"
+    && preview?.fromTransitionOrigin === "stack"
+  );
+}
+
+function orderZoneTransitionPreviews(previews) {
+  const orderedPreviews = previews
+    .map((preview, index) => ({ preview, index }))
+    .sort((left, right) => {
+      const leftCastToGraveyard = isResolvingCastToGraveyardPreview(left.preview);
+      const rightCastToGraveyard = isResolvingCastToGraveyardPreview(right.preview);
+      if (leftCastToGraveyard !== rightCastToGraveyard) {
+        return leftCastToGraveyard ? 1 : -1;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.preview);
+
+  let inspectorRevealAssigned = false;
+  return orderedPreviews.map((preview) => {
+    const isBattlefieldToExile = preview?.fromZone === "battlefield" && preview?.toZone === "exile";
+    if (!isBattlefieldToExile || inspectorRevealAssigned) {
+      return { ...preview, inspectorShaderReveal: false };
+    }
+    inspectorRevealAssigned = true;
+    return { ...preview, inspectorShaderReveal: true };
+  });
+}
+
+function collectVisibleCardRects() {
+  if (typeof document === "undefined") return new Map();
+  const rects = new Map();
+  const cardEls = document.querySelectorAll(".game-card[data-object-id]");
+
+  for (const el of cardEls) {
+    const rect = el.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+
+    const snapshot = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      x: rect.x,
+      y: rect.y,
+      sourceCloneHtml: el.cloneNode(true).outerHTML,
+      sourceImageUrl: el.querySelector("img")?.currentSrc || el.querySelector("img")?.src || null,
+    };
+    const objectId = el.getAttribute("data-object-id");
+    const stableId = el.getAttribute("data-stable-id");
+    const memberStableIds = String(el.getAttribute("data-member-stable-ids") || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (objectId) rects.set(`object:${objectId}`, snapshot);
+    if (stableId) rects.set(`stable:${stableId}`, snapshot);
+    for (const memberStableId of memberStableIds) {
+      rects.set(`stable:${memberStableId}`, snapshot);
+    }
+  }
+
+  return rects;
+}
+
+function rectFromTransitionPreview(preview, previousCardRects) {
+  for (const key of preview?.trackingKeys || []) {
+    const rect = previousCardRects?.get(key);
+    if (rect) return rect;
+  }
+
+  const fallbackObjectId = preview?.fromObjectId ?? preview?.objectId;
+  if (fallbackObjectId != null) {
+    return previousCardRects?.get(`object:${fallbackObjectId}`) || null;
+  }
+
+  return null;
+}
+
+function buildZoneMoveVisualEffects(previews, previousCardRects) {
+  if (!Array.isArray(previews) || previews.length === 0) return [];
+  const inspectorRevealPreview = previews.find((preview) => preview?.inspectorShaderReveal);
+  const exilePreviews = previews.filter((preview) => preview?.fromZone === "battlefield" && preview?.toZone === "exile");
+  if (exilePreviews.length === 0) return [];
+
+  const sourceBurnEffects = exilePreviews
+    .map((preview) => {
+      const sourceRect = rectFromTransitionPreview(preview, previousCardRects);
+      if (!sourceRect) return null;
+
+      return {
+        id: `exile-source:${preview.token}`,
+        kind: "angelic-exile",
+        rect: sourceRect,
+        travelsToInspector: false,
+        includeSourceClone: true,
+        sourceCloneHtml: sourceRect.sourceCloneHtml || null,
+        sourceImageUrl: sourceRect.sourceImageUrl || null,
+        card: preview.card,
+        objectId: preview.fromObjectId ?? preview.objectId ?? null,
+        targetToken: null,
+      };
+    })
+    .filter(Boolean);
+
+  if (!inspectorRevealPreview) return sourceBurnEffects;
+
+  const sharedSourceRect = rectFromTransitionPreview(inspectorRevealPreview, previousCardRects);
+  if (!sharedSourceRect) return sourceBurnEffects;
+
+  return [
+    ...sourceBurnEffects,
+    {
+      id: `exile-travel:${inspectorRevealPreview.token}`,
+      kind: "angelic-exile",
+      rect: sharedSourceRect,
+      travelsToInspector: true,
+      includeSourceClone: false,
+      sourceCloneHtml: null,
+      sourceImageUrl: sharedSourceRect.sourceImageUrl || null,
+      card: inspectorRevealPreview.card,
+      objectId: inspectorRevealPreview.fromObjectId ?? inspectorRevealPreview.objectId ?? null,
+      targetToken: inspectorRevealPreview.token,
+    },
+  ];
 }
 
 function buildZoneTransitionPreviews(previousSnapshot, currentSnapshot, playerKey) {
@@ -472,7 +602,9 @@ export default function Workspace({
   const workspaceRef = useRef(null);
   const previousStackIdsRef = useRef([]);
   const previousZoneTransitionSnapshotRef = useRef(null);
+  const previousCardRectsRef = useRef(new Map());
   const transitionInspectorRestoreRef = useRef(null);
+  const transitionInspectorRevealTimerRef = useRef(null);
   const handRevealShellRef = useRef(null);
   const handRevealMotionRef = useRef(null);
   const handHoverCloseTimerRef = useRef(null);
@@ -570,12 +702,20 @@ export default function Workspace({
   );
 
   const clearTransientInspectorPreviews = useCallback(() => {
+    if (transitionInspectorRevealTimerRef.current) {
+      clearTimeout(transitionInspectorRevealTimerRef.current);
+      transitionInspectorRevealTimerRef.current = null;
+    }
     transitionInspectorRestoreRef.current = null;
     setTransientInspectorPreviews([]);
     setTransientInspectorPreviewIndex(0);
   }, []);
 
   const restoreInspectorBeforeTransitionPreview = useCallback(() => {
+    if (transitionInspectorRevealTimerRef.current) {
+      clearTimeout(transitionInspectorRevealTimerRef.current);
+      transitionInspectorRevealTimerRef.current = null;
+    }
     const restoreState = transitionInspectorRestoreRef.current;
     transitionInspectorRestoreRef.current = null;
     setTransientInspectorPreviews([]);
@@ -604,6 +744,24 @@ export default function Workspace({
     setTransientInspectorPreviews(previews);
     setTransientInspectorPreviewIndex(0);
     setZoneActivityByPlayer({});
+
+    if (transitionInspectorRevealTimerRef.current) {
+      clearTimeout(transitionInspectorRevealTimerRef.current);
+      transitionInspectorRevealTimerRef.current = null;
+    }
+
+    if (previews.some((preview) => preview?.inspectorShaderReveal === true)) {
+      transitionInspectorRevealTimerRef.current = setTimeout(() => {
+        transitionInspectorRevealTimerRef.current = null;
+        setTransientInspectorPreviews((currentPreviews) => (
+          currentPreviews.map((preview) => (
+            preview?.inspectorShaderReveal
+              ? { ...preview, inspectorShaderReveal: false }
+              : preview
+          ))
+        ));
+      }, INSPECTOR_SHADER_REVEAL_CONSUME_MS);
+    }
   }, [focusedStackObjectId, pinnedInspectorObjectId, selectedObjectId, suppressFallbackInspector]);
 
   const showPreviousTransientInspectorPreview = useCallback(() => {
@@ -675,7 +833,7 @@ export default function Workspace({
     });
   }, [focusedStackObjectId, state]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const currentSnapshot = buildZoneTransitionSnapshot(players, state?.stack_objects || []);
     const previousSnapshot = previousZoneTransitionSnapshotRef.current;
     previousZoneTransitionSnapshotRef.current = currentSnapshot;
@@ -702,16 +860,31 @@ export default function Workspace({
       ));
     }
 
-    if (nextPreviews.length === 0) {
+    const orderedPreviews = orderZoneTransitionPreviews(nextPreviews);
+
+    if (orderedPreviews.length === 0) {
       return;
+    }
+
+    const visualEffects = buildZoneMoveVisualEffects(orderedPreviews, previousCardRectsRef.current);
+    if (visualEffects.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent("ironsmith:zone-move-effects", {
+          detail: { effects: visualEffects },
+        })
+      );
     }
 
     queueMicrotask(() => {
       startTransition(() => {
-        showTransitionInspectorPreviews(nextPreviews);
+        showTransitionInspectorPreviews(orderedPreviews);
       });
     });
   }, [deckLoadingMode, players, puzzleSetupMode, showTransitionInspectorPreviews, state?.stack_objects]);
+
+  useLayoutEffect(() => {
+    previousCardRectsRef.current = collectVisibleCardRects();
+  });
 
   useEffect(() => {
     if (!combatDeclarationActive) return;
@@ -751,6 +924,10 @@ export default function Workspace({
   ]);
 
   useEffect(() => () => {
+    if (transitionInspectorRevealTimerRef.current) {
+      clearTimeout(transitionInspectorRevealTimerRef.current);
+      transitionInspectorRevealTimerRef.current = null;
+    }
     if (handHoverCloseTimerRef.current) {
       clearTimeout(handHoverCloseTimerRef.current);
       handHoverCloseTimerRef.current = null;
@@ -772,7 +949,7 @@ export default function Workspace({
       cancelMotion(handRevealMotionRef.current);
       handRevealMotionRef.current = null;
     };
-  }, [handLaneOpen]);
+  }, [HAND_COLLAPSED_SHELL_HEIGHT, HAND_REVEAL_HEIGHT, handLaneOpen]);
 
   useLayoutEffect(() => {
     const root = workspaceRef.current;
@@ -1170,6 +1347,7 @@ export default function Workspace({
     >
       <DragOverlay />
       <CastParticles />
+      <ZoneMoveEffects />
       <ArrowOverlay />
       {notices.length > 0 && (
         <div className="absolute top-2 right-2 z-[120] flex max-w-[min(460px,clamp(52vw,58vw,65vw))] flex-col gap-2">
@@ -1288,7 +1466,7 @@ export default function Workspace({
                 inline
                 inlineDockPlacement="top"
                 inlineExpandedAnchor="top"
-                inlineExpandedMaxHeight={232}
+                inlineExpandedMaxHeight={248}
                 expandInlineToZoneViewer
                 allowTopInlinePlacement
                 inlineExpanded={inlineInspectorExpanded}

@@ -6,12 +6,97 @@ use super::battlefield_entry::{
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::permanents::attach_battlefield_object_to_target;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+use crate::decisions::make_decision;
+use crate::decisions::specs::objects::ChooseObjectsSpec;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
+use crate::object::AttachmentTarget;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-pub use ironsmith_core::ReturnFromGraveyardToBattlefieldEffect;
+pub use ironsmith_core::{ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect};
+
+fn choose_aura_attachment_target(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    options: &ReturnAsAuraOptions,
+) -> Result<Option<ObjectId>, ExecutionError> {
+    let filter_ctx = ctx.filter_context(game);
+    let candidates: Vec<ObjectId> = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| options.attachment_filter.matches(object, &filter_ctx, game))
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    if candidates.len() == 1 {
+        return Ok(candidates.first().copied());
+    }
+
+    let chosen: Vec<ObjectId> = make_decision(
+        game,
+        ctx.decision_maker,
+        ctx.controller,
+        Some(ctx.source),
+        ChooseObjectsSpec::new(
+            ctx.source,
+            format!("Choose {}", options.attachment_filter.description()),
+            candidates.clone(),
+            1,
+            Some(1),
+        ),
+    );
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+
+    Ok(chosen.into_iter().find(|id| candidates.contains(id)))
+}
+
+fn apply_returned_aura_effect(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    object_id: ObjectId,
+    options: &ReturnAsAuraOptions,
+) {
+    let group = game.effect_store.continuous_effects.next_effect_group_id();
+    let target = EffectTarget::Specific(object_id);
+    let mut modifications = vec![
+        Modification::AddCardTypes(vec![CardType::Enchantment]),
+        Modification::RemoveCardTypes(vec![
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Kindred,
+            CardType::Land,
+            CardType::Planeswalker,
+        ]),
+        Modification::AddSubtypes(vec![Subtype::Aura]),
+        Modification::SetAuraAttachmentFilter(options.attachment_filter.clone().into()),
+    ];
+    if options.remove_all_abilities {
+        modifications.push(Modification::RemoveAllAbilities);
+    }
+
+    for modification in modifications {
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(ctx.source, ctx.controller, target.clone(), modification)
+                .with_group(group),
+        );
+    }
+    game.refresh_continuous_state();
+}
 
 /// Effect that returns a target card from a graveyard to the battlefield.
 ///
@@ -56,6 +141,15 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
             ));
         }
 
+        let attachment_target = if let Some(as_aura) = &self.as_aura {
+            match choose_aura_attachment_target(game, ctx, as_aura)? {
+                Some(target) => Some(target),
+                None => return Ok(EffectOutcome::target_invalid()),
+            }
+        } else {
+            None
+        };
+
         let mut moved = Vec::new();
         for target_id in target_ids {
             match move_to_battlefield_with_options(
@@ -64,7 +158,22 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                 target_id,
                 BattlefieldEntryOptions::preserve(self.tapped),
             ) {
-                BattlefieldEntryOutcome::Moved(new_id) => moved.push(new_id),
+                BattlefieldEntryOutcome::Moved(new_id) => {
+                    if let Some(as_aura) = &self.as_aura {
+                        apply_returned_aura_effect(game, ctx, new_id, as_aura);
+                        if let Some(attachment_target) = attachment_target
+                            && !attach_battlefield_object_to_target(
+                                game,
+                                new_id,
+                                AttachmentTarget::Object(attachment_target),
+                            )
+                        {
+                            game.move_object(new_id, Zone::Graveyard, ctx.cause.clone());
+                            continue;
+                        }
+                    }
+                    moved.push(new_id);
+                }
                 BattlefieldEntryOutcome::Prevented => {}
             }
         }
@@ -236,6 +345,52 @@ mod tests {
             .expect("reanimated permanent should exist");
         assert_eq!(returned_name, "Second");
         assert!(game.players[0].graveyard.contains(&first));
+    }
+
+    #[test]
+    fn test_return_as_aura_attaches_to_legal_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_in_graveyard(&mut game, "Returned Aura", alice);
+        let bear = create_creature_on_battlefield(&mut game, "Bear", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let effect = ReturnFromGraveyardToBattlefieldEffect::creature()
+            .as_aura_removing_all_abilities(crate::filter::ObjectFilter::creature().you_control());
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 1);
+        let returned = ids[0];
+        assert_eq!(
+            game.object(returned).and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(bear))
+        );
+        assert!(game.current_has_card_type(returned, CardType::Enchantment));
+        assert!(!game.current_has_card_type(returned, CardType::Creature));
+        assert!(game.current_has_subtype(returned, Subtype::Aura));
+    }
+
+    #[test]
+    fn test_return_as_aura_without_legal_attachment_stays_in_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_in_graveyard(&mut game, "Returned Aura", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let effect = ReturnFromGraveyardToBattlefieldEffect::creature()
+            .as_aura(crate::filter::ObjectFilter::creature().you_control());
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert!(game.players[0].graveyard.contains(&creature_id));
+        assert!(!game.battlefield.contains(&creature_id));
     }
 
     #[test]

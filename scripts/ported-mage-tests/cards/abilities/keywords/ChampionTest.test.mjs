@@ -60,7 +60,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Goblin Roughrider",
           "count": 1
         }
@@ -137,7 +136,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Goblin Roughrider",
           "count": 0
         },
@@ -218,7 +216,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Zephyr Sprite",
           "count": 1
         },

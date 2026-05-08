@@ -332,7 +332,8 @@ registerPortedMageTests({
           "name": "Gideon Blackblade",
           "count": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_CopyOfSparksCopy_BySpell",

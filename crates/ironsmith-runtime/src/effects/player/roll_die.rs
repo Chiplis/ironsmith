@@ -27,6 +27,10 @@ impl EffectExecutor for RollDieEffect {
         if self.sides == 0 {
             return Ok(EffectOutcome::count(0));
         }
+        if let Some(forced) = game.take_forced_die_roll() {
+            let clamped = forced.clamp(1, self.sides);
+            return Ok(EffectOutcome::count(clamped as i32));
+        }
 
         let mut faces: Vec<u32> = (1..=self.sides).collect();
         game.shuffle_slice(&mut faces);
@@ -66,6 +70,31 @@ mod tests {
         assert!(
             (1..=20).contains(&rolled),
             "expected a valid d20 result, got {rolled}"
+        );
+    }
+
+    #[test]
+    fn roll_die_uses_queued_forced_result_before_rng() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.set_random_seed(7);
+        game.force_next_die_roll(6);
+
+        let before = game.irreversible_random_count();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::roll_die(20, PlayerFilter::You),
+            &mut ctx,
+        )
+        .expect("die roll should resolve");
+
+        assert_eq!(outcome.as_count(), Some(6));
+        assert_eq!(
+            game.irreversible_random_count(),
+            before,
+            "forced die rolls should not consume RNG state"
         );
     }
 

@@ -530,6 +530,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_attached_to_enchanted_player() {
+        let tokens = lex_line("Curse attached to enchanted player", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Curse]);
+        assert_eq!(
+            filter.attached_to_player,
+            Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")))
+        );
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_its_attached_to_reference_alias() {
         let tokens = lex_line("creature its attached to", 0).unwrap();
 

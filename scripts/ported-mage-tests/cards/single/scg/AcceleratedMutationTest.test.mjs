@@ -51,10 +51,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Centaur Courser"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Centaur Courser",
+          "power": 10,
+          "toughness": 10
         },
         {
           "op": "setStrictChooseMode",

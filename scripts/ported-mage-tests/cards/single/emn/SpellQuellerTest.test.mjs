@@ -71,7 +71,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Languish",
           "count": 1
         }
@@ -152,8 +151,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -263,15 +261,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Divination",
           "count": 0
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     },
@@ -441,8 +437,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     }

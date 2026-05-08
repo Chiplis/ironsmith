@@ -313,6 +313,31 @@ pub(crate) fn split_search_same_name_reference_filter(
     Some((base_filter_tokens, reference_tokens))
 }
 
+pub(crate) fn split_search_different_name_reference_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    const PATTERNS: &[&[&str]] = &[
+        &["that", "doesn't", "have", "the", "same", "name", "as"],
+        &["that", "doesnt", "have", "the", "same", "name", "as"],
+        &["that", "does", "not", "have", "the", "same", "name", "as"],
+        &["that", "don't", "have", "the", "same", "name", "as"],
+        &["that", "dont", "have", "the", "same", "name", "as"],
+        &["that", "do", "not", "have", "the", "same", "name", "as"],
+        &["with", "a", "different", "name", "from"],
+        &["with", "different", "name", "from"],
+    ];
+
+    for pattern in PATTERNS {
+        if let Some((start_token_idx, end_token_idx)) = find_phrase_token_bounds(tokens, pattern) {
+            let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
+            let reference_tokens = trim_commas(&tokens[end_token_idx..]);
+            return Some((base_filter_tokens, reference_tokens));
+        }
+    }
+
+    None
+}
+
 pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
     matches!(
         words,

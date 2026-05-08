@@ -60,6 +60,7 @@ pub use cascade::CascadeEffect;
 pub use cast_source::CastSourceEffect;
 pub use cast_tagged::CastTaggedEffect;
 pub use choose_card_name::ChooseCardNameEffect;
+pub(crate) use choose_card_name::{split_chosen_card_names, synthetic_chosen_name_snapshot};
 pub use choose_card_type::ChooseCardTypeEffect;
 pub use choose_color::ChooseColorEffect;
 pub use choose_creature_type::ChooseCreatureTypeEffect;

@@ -108,19 +108,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Memnite",
           "count": 5
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Steel Overseer",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Memnite",
           "count": 0
         }
@@ -237,19 +234,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Memnite",
           "count": 5
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Steel Overseer",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Memnite",
           "count": 5
         }

@@ -29,24 +29,30 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Akroma, Vision of Ixidor"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akroma, Vision of Ixidor",
+          "power": 6,
+          "toughness": 6
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Shalai, Voice of Plenty"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Shalai, Voice of Plenty",
+          "power": 3,
+          "toughness": 4
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 1,
-          "toughness": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "waitStackResolved",
@@ -56,31 +62,39 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Akroma, Vision of Ixidor"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akroma, Vision of Ixidor",
+          "power": 6,
+          "toughness": 6
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Shalai, Voice of Plenty"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Shalai, Voice of Plenty",
+          "power": 4,
+          "toughness": 5
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 1,
-          "toughness": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
-          "player": "end boost on end turn",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Shalai, Voice of Plenty",
+          "power": 3,
+          "toughness": 4
         },
         {
           "op": "setStrictChooseMode",

@@ -184,6 +184,8 @@ struct SyncCheckpoint {
     perspective: u8,
     snapshot_serial: u64,
     auto_cleanup_discard: bool,
+    #[serde(default = "default_auto_choose_single_object_decisions")]
+    auto_choose_single_object_decisions: bool,
     semantic_threshold: f32,
     turn: SyncTurn,
     players: Vec<SyncPlayer>,
@@ -192,7 +194,15 @@ struct SyncCheckpoint {
     exile: Vec<u64>,
     command: Vec<u64>,
     stack: Vec<SyncStackEntry>,
+    #[serde(default)]
+    exiled_with_source: Vec<(u64, Vec<u64>)>,
+    #[serde(default)]
+    return_exiled_when_source_leaves: Vec<u64>,
     id_counters: SyncIdCounters,
+}
+
+fn default_auto_choose_single_object_decisions() -> bool {
+    true
 }
 
 fn sync_zone_name(zone: Zone) -> &'static str {
@@ -624,6 +634,7 @@ impl WasmGame {
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
             auto_cleanup_discard: self.auto_cleanup_discard,
+            auto_choose_single_object_decisions: self.game.auto_choose_single_object_decisions(),
             semantic_threshold: self.semantic_threshold,
             turn: SyncTurn {
                 active_player: self.game.turn.active_player.0,
@@ -650,6 +661,18 @@ impl WasmGame {
                     source_stable_id: entry.source_stable_id.map(|id| id.0.0),
                     source_name: entry.source_name.clone(),
                 })
+                .collect(),
+            exiled_with_source: self
+                .game
+                .exiled_with_source
+                .iter()
+                .map(|(source, linked)| (source.0, raw_ids(linked)))
+                .collect(),
+            return_exiled_when_source_leaves: self
+                .game
+                .return_exiled_when_source_leaves
+                .iter()
+                .map(|id| id.0)
                 .collect(),
             id_counters: SyncIdCounters::from(snapshot_id_counters()),
         }
@@ -684,6 +707,8 @@ impl WasmGame {
         self.runner_awaiting_priority = false;
         self.runner_pending_decision = false;
         self.auto_cleanup_discard = checkpoint.auto_cleanup_discard;
+        self.game
+            .set_auto_choose_single_object_decisions(checkpoint.auto_choose_single_object_decisions);
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
@@ -822,6 +847,16 @@ impl WasmGame {
                 stack_entry.source_name = entry.source_name.clone();
                 stack_entry
             })
+            .collect();
+        self.game.exiled_with_source = checkpoint
+            .exiled_with_source
+            .iter()
+            .map(|(source, linked)| (ObjectId::from_raw(*source), object_ids(linked.clone())))
+            .collect();
+        self.game.return_exiled_when_source_leaves = checkpoint
+            .return_exiled_when_source_leaves
+            .iter()
+            .map(|id| ObjectId::from_raw(*id))
             .collect();
 
         self.game.turn = TurnState {

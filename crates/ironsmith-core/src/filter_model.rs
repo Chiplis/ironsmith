@@ -69,11 +69,13 @@ pub enum TaggedOpbjectRelation {
     SharesColorWithTagged,
     SameStableId,
     SameNameAsTagged,
+    DifferentNameFromTagged,
     SameControllerAsTagged,
     SameManaValueAsTagged,
     ManaValueLteTagged,
     ManaValueLtTagged,
     AttachedToTaggedObject,
+    SoulbondPartnerOfTagged,
     IsNotTaggedObject,
 }
 
@@ -403,6 +405,7 @@ pub struct ObjectFilter {
     pub untapped: bool,
     pub attacking: bool,
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
+    pub attached_to_player: Option<PlayerFilter>,
     pub nonattacking: bool,
     pub blocking: bool,
     pub nonblocking: bool,
@@ -493,6 +496,7 @@ impl ObjectFilter {
             || self.historic
             || self.nonhistoric
             || self.modified
+            || self.attached_to_player.is_some()
             || self.drawn_this_turn
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
@@ -1341,6 +1345,10 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SameNameAsTagged => {
                     post_noun_qualifiers.push("with the same name as that object".to_string());
                 }
+                TaggedOpbjectRelation::DifferentNameFromTagged => {
+                    post_noun_qualifiers
+                        .push("with a different name from those objects".to_string());
+                }
                 TaggedOpbjectRelation::SameControllerAsTagged => {
                     post_noun_qualifiers.push("controlled by that object's controller".to_string());
                 }
@@ -1400,6 +1408,9 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
                     post_noun_qualifiers.push("attached to that object".to_string());
+                }
+                TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
+                    post_noun_qualifiers.push("paired with that object".to_string());
                 }
                 TaggedOpbjectRelation::SameStableId => {}
             }

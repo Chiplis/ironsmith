@@ -92,9 +92,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
@@ -184,8 +183,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     }

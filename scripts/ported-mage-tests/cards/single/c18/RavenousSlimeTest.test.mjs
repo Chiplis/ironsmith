@@ -41,10 +41,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Ravenous Slime"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Ravenous Slime",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "attack",

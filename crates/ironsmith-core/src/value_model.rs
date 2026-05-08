@@ -249,6 +249,7 @@ pub enum Restriction {
     GainLife(PlayerFilter),
     SearchLibraries(PlayerFilter),
     CastSpellsMatching(PlayerFilter, ObjectFilter),
+    CastSpellsOnlyAsSorcery(PlayerFilter),
     ActivateNonManaAbilities(PlayerFilter),
     ActivateAbilitiesOf(ObjectFilter),
     ActivateTapAbilitiesOf(ObjectFilter),
@@ -372,6 +373,10 @@ impl Restriction {
 
     pub fn cast_spells_matching(filter: PlayerFilter, spell_filter: ObjectFilter) -> Self {
         Self::CastSpellsMatching(filter, spell_filter)
+    }
+
+    pub fn cast_spells_only_as_sorcery(filter: PlayerFilter) -> Self {
+        Self::CastSpellsOnlyAsSorcery(filter)
     }
 
     pub fn cast_creature_spells(filter: PlayerFilter) -> Self {

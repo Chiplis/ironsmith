@@ -48,24 +48,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -115,24 +111,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 0
         }
@@ -167,24 +159,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 0
         }
@@ -239,24 +227,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -326,24 +310,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -449,24 +429,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -572,24 +548,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -692,32 +664,27 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -823,24 +790,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -991,24 +954,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -1133,32 +1092,27 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -1294,32 +1248,27 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 2
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -1404,31 +1353,26 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Exotic Orchard",
           "count": 1
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "playerD",
           "count": 2
         }

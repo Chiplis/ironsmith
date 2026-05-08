@@ -419,7 +419,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertManaOptions(\"{Any}\", manaOptions)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "TestEyeOfRamos",

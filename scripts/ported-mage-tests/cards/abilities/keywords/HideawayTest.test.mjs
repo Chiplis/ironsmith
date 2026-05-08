@@ -142,7 +142,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Dross Crocodile",
           "count": 2
         },
@@ -155,12 +154,10 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Ulamog, the Ceaseless Hunger",
           "count": 0
         },
@@ -685,8 +682,7 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -775,9 +771,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertLibraryCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         },
         {
           "op": "assertTappedCount",
@@ -1074,8 +1069,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -1291,8 +1285,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "unsupported",

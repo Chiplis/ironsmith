@@ -165,21 +165,51 @@ fn lower_rewrite_statement_to_chunks_impl(
     if !parse_groups.is_empty() {
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
-            let effects = parse_effect_sentences_lexed(group_tokens)?;
-            chunks.push(LineAst::Statement { effects });
+            if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens) {
+                chunks.push(chunk);
+            } else if let Some(abilities) = parse_static_ability_ast_line_lexed(group_tokens)? {
+                chunks.push(LineAst::StaticAbilities(abilities));
+            } else {
+                let effects = parse_effect_sentences_lexed(group_tokens)?;
+                chunks.push(LineAst::Statement { effects });
+            }
         }
         return Ok(chunks);
     }
     if !parse_tokens.is_empty() {
-        let grouped_tokens = group_statement_sentences_for_lowering_lexed(
-            rewrite_statement_parse_sentences_for_lowering_lexed(parse_tokens),
-            parse_tokens,
-        );
+        let sentence_tokens = rewrite_statement_parse_sentences_for_lowering_lexed(parse_tokens);
+        if sentence_tokens.len() > 1
+            && sentence_tokens.iter().any(|sentence| {
+                parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
+                    || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
+            })
+        {
+            let mut chunks = Vec::with_capacity(sentence_tokens.len());
+            for sentence in sentence_tokens {
+                if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&sentence) {
+                    chunks.push(chunk);
+                } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&sentence)? {
+                    chunks.push(LineAst::StaticAbilities(abilities));
+                } else {
+                    let effects = parse_effect_sentences_lexed(&sentence)?;
+                    chunks.push(LineAst::Statement { effects });
+                }
+            }
+            return Ok(chunks);
+        }
+        let grouped_tokens =
+            group_statement_sentences_for_lowering_lexed(sentence_tokens, parse_tokens);
         if !grouped_tokens.is_empty() {
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
-                let effects = parse_effect_sentences_lexed(&group_tokens)?;
-                chunks.push(LineAst::Statement { effects });
+                if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&group_tokens) {
+                    chunks.push(chunk);
+                } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)? {
+                    chunks.push(LineAst::StaticAbilities(abilities));
+                } else {
+                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
+                    chunks.push(LineAst::Statement { effects });
+                }
             }
             return Ok(chunks);
         }
@@ -188,6 +218,42 @@ fn lower_rewrite_statement_to_chunks_impl(
         "rewrite statement lowering expected prepared parse tokens for '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
+    let rendered = render_token_slice(tokens).to_ascii_lowercase();
+    let normalized = rendered
+        .replace('\u{2019}', "'")
+        .replace("  ", " ")
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let is_self_x_counter_etb = normalized
+        .starts_with("this creature enters with x +1/+1 counters on it")
+        || normalized.starts_with("this permanent enters with x +1/+1 counters on it")
+        || normalized.starts_with("it enters with x +1/+1 counters on it");
+    if !is_self_x_counter_etb {
+        return None;
+    }
+
+    let count = if normalized.contains("where x is the total mana value of all cards revealed this way")
+        || normalized.contains("where x is the total mana value of cards revealed this way")
+    {
+        crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
+            "__public_revealed",
+        )))
+    } else {
+        crate::effect::Value::X
+    };
+
+    Some(LineAst::StaticAbilities(vec![
+        crate::cards::builders::StaticAbilityAst::Static(
+            StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                count,
+            ),
+        ),
+    ]))
 }
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
@@ -285,6 +351,87 @@ fn lower_rewrite_triggered_to_chunk_impl(
             chosen_option_label,
             presentation_label,
         );
+    }
+
+    let full_sentences = split_lexed_sentences(full_parse_tokens);
+    if full_sentences.len() > 1
+        && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
+    {
+        let mut chunks = Vec::with_capacity(full_sentences.len());
+        chunks.push(apply_chosen_option_to_triggered_chunk(
+            apply_explicit_intervening_if_to_triggered_chunk(
+                first_triggered,
+                line.intervening_if.clone(),
+            )?,
+            source_text,
+            inferred_max_triggers_per_turn,
+            chosen_option_label.clone(),
+            presentation_label,
+        )?);
+
+        let mut parsed_all_static = true;
+        for sentence in full_sentences.iter().skip(1) {
+            if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(sentence) {
+                chunks.push(chunk);
+            } else if let Some(abilities) = parse_static_ability_ast_line_lexed(sentence)? {
+                chunks.push(LineAst::StaticAbilities(abilities));
+            } else {
+                parsed_all_static = false;
+                break;
+            }
+        }
+        if parsed_all_static {
+            return Ok(LineAst::Multiple(chunks));
+        }
+    }
+
+    let effect_sentences = split_lexed_sentences(effect_parse_tokens);
+    if effect_sentences.len() > 1
+        && let Some(first_static_idx) =
+            effect_sentences.iter().enumerate().skip(1).find_map(|(idx, sentence)| {
+                (parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
+                    || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+                .then_some(idx)
+            })
+        && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
+    {
+        let trigger_effect_sentences = effect_sentences[..first_static_idx]
+            .iter()
+            .map(|sentence| sentence.to_vec())
+            .collect::<Vec<_>>();
+        let trigger_effect_tokens = join_sentences_with_period(&trigger_effect_sentences);
+        let effects = parse_effect_sentences_lexed(&trigger_effect_tokens)?;
+        if !effects.is_empty() {
+            let mut chunks = Vec::new();
+            chunks.push(apply_chosen_option_to_triggered_chunk(
+                apply_explicit_intervening_if_to_triggered_chunk(
+                    LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: inferred_max_triggers_per_turn,
+                    },
+                    line.intervening_if.clone(),
+                )?,
+                source_text,
+                inferred_max_triggers_per_turn,
+                chosen_option_label.clone(),
+                presentation_label,
+            )?);
+
+            for sentence in effect_sentences.iter().skip(first_static_idx) {
+                if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(sentence) {
+                    chunks.push(chunk);
+                } else if let Some(abilities) = parse_static_ability_ast_line_lexed(sentence)? {
+                    chunks.push(LineAst::StaticAbilities(abilities));
+                } else {
+                    return Err(CardTextError::ParseError(format!(
+                        "could not parse trailing static sentence in triggered line '{}'",
+                        line.info.raw_line
+                    )));
+                }
+            }
+            return Ok(LineAst::Multiple(chunks));
+        }
     }
 
     let normalized_full_text = line.full_text.to_ascii_lowercase();

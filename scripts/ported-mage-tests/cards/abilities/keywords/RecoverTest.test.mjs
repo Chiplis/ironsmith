@@ -188,7 +188,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sun's Bounty",
           "count": 1
         },

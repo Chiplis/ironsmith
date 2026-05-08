@@ -452,10 +452,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Silent Artisan"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Silent Artisan",
+          "power": 7,
+          "toughness": 7
         },
         {
           "op": "castSpell",
@@ -1592,10 +1594,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Silvercoat Lion"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertPermanentCount",
@@ -1829,24 +1833,30 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Memnite"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Memnite",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Eager Cadet"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Eager Cadet",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Crusader of Odric"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Crusader of Odric",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -1886,8 +1896,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     }

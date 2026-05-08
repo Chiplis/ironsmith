@@ -145,6 +145,8 @@ impl WasmGame {
                     }
 
                     TurnAction::RunPriority => {
+                        self.priority_state
+                            .reset_for_new_priority_window(&mut self.game);
                         self.runner_awaiting_priority = true;
                         // Fall through to the priority loop below
                     }
@@ -343,6 +345,7 @@ impl WasmGame {
                     .respond_blockers(converted, player);
             }
             (DecisionContext::SelectObjects(obj_ctx), UiCommand::SelectObjects { object_ids }) => {
+                let object_ids = normalize_select_object_choice_ids(obj_ctx, &object_ids);
                 // Validate discard selection against the decision context.
                 let legal_ids: Vec<u64> = obj_ctx
                     .candidates
@@ -991,6 +994,7 @@ impl WasmGame {
                 Ok(ReplayDecisionAnswer::Priority(action))
             }
             (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
+                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()
@@ -1370,6 +1374,7 @@ impl WasmGame {
                 Ok(PriorityResponse::HybridChoice(choice))
             }
             (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
+                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()

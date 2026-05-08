@@ -287,7 +287,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Skyrider Trainee",
           "count": 1
         },
@@ -399,7 +398,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Thran Golem",
           "count": 1
         },

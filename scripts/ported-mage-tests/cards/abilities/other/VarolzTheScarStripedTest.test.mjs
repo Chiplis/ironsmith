@@ -68,7 +68,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Goblin Roughrider",
           "count": 1
         },

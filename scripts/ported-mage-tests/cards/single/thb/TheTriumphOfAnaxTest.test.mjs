@@ -48,10 +48,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Memnite"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "assertAbility",
@@ -67,10 +69,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "T3: Memnite is 3/1",
-          "name": 3,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "power": 3,
+          "toughness": 1
         },
         {
           "op": "assertAbility",
@@ -86,10 +90,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "T4: Memnite is 4/1",
-          "name": 5,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "power": 4,
+          "toughness": 1
         },
         {
           "op": "assertAbility",

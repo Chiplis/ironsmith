@@ -50,10 +50,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dream Devourer",
           "power": 0,
-          "toughness": "Dream Devourer"
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -86,10 +88,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dream Devourer",
           "power": 0,
-          "toughness": "Dream Devourer"
+          "toughness": 3
         },
         {
           "op": "activateAbility",
@@ -122,17 +126,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Dream Devourer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dream Devourer",
+          "power": 2,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": "turn 2 - boosted end",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dream Devourer",
+          "power": 0,
+          "toughness": 3
         },
         {
           "op": "activateManaAbility",
@@ -173,10 +181,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "after foretell cast - no boost",
-          "name": 3,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Dream Devourer",
+          "power": 0,
+          "toughness": 3
         },
         {
           "op": "setStrictChooseMode",

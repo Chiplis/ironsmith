@@ -187,6 +187,13 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Queue a forced die result for deterministic test harness scenarios.
+     * @param {number} result
+     */
+    forceNextDieRoll(result) {
+        wasm.wasmgame_forceNextDieRoll(this.__wbg_ptr, result);
+    }
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      * @param {string} card_name
      * @returns {number}
@@ -380,6 +387,12 @@ export class WasmGame {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    setAutoChooseSingleObjectDecisions(enabled) {
+        wasm.wasmgame_setAutoChooseSingleObjectDecisions(this.__wbg_ptr, enabled);
     }
     /**
      * Toggle automatic cleanup discard (random cards).

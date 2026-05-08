@@ -169,7 +169,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertSubtype(clay, SubType.WALL)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: current workaround implementation doesn't account for this"
     },
     {
       "name": "testClayCopyPTOnBattlefield",
@@ -396,7 +397,8 @@ registerPortedMageTests({
           "name": "Cryptoplasm",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: Chosen characteristics of Primal Clay should be copiable values"
     },
     {
       "name": "testPlasmaClone",

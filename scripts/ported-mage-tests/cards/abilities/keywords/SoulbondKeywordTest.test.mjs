@@ -1076,17 +1076,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Trusted Forcemage"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Trusted Forcemage",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Elite Vanguard"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "power": 3,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -1416,17 +1420,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Trusted Forcemage"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Trusted Forcemage",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Blinkmoth Nexus"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Blinkmoth Nexus",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -1527,17 +1535,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Trusted Forcemage"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Trusted Forcemage",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Elite Vanguard"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "power": 3,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -1549,10 +1561,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_COMBAT",
-          "power": 0,
-          "toughness": "Trusted Forcemage"
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "player": 0,
+          "name": "Trusted Forcemage",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -1674,12 +1688,20 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, nearheath, abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Nearheath Pilgrim",
+          "abilities": [
+            "Lifelink"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, vanguard, abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "abilities": [
+            "Lifelink"
+          ]
         }
       ]
     },

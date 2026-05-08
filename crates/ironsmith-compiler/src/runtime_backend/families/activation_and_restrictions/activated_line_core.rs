@@ -633,7 +633,13 @@ pub(crate) fn infer_activated_functional_zones_lexed(
             f(&clause_words)
         })
     };
-    if contains_source_from_your_graveyard_phrase(&cost_words)
+    let has_stack_only_activation_modifier = effect_sentences.iter().any(|sentence| {
+        is_any_player_may_activate_sentence_lexed(sentence)
+            && ActivationRestrictionCompatWords::new(sentence).has_phrase(&["on", "the", "stack"])
+    });
+    if has_stack_only_activation_modifier {
+        vec![Zone::Stack]
+    } else if contains_source_from_your_graveyard_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]

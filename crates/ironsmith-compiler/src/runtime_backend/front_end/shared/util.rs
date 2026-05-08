@@ -2212,7 +2212,9 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
         return SubjectAst::Player(PlayerAst::Attacking);
     }
 
-    if words_have_prefix(slice, &["that", "player"]) || words_have_prefix(slice, &["the", "player"])
+    if words_have_prefix(slice, &["they"])
+        || words_have_prefix(slice, &["that", "player"])
+        || words_have_prefix(slice, &["the", "player"])
     {
         return SubjectAst::Player(PlayerAst::That);
     }
@@ -2356,6 +2358,12 @@ mod tests {
             parse_subject(&tokens),
             SubjectAst::Player(PlayerAst::Chosen)
         );
+    }
+
+    #[test]
+    fn parse_subject_recognizes_they_as_that_player() {
+        let tokens = lex_line("they lose 5 life", 0).unwrap();
+        assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::That));
     }
 
     #[test]
@@ -3194,6 +3202,16 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
 
+    if matches!(
+        remaining_words.as_slice(),
+        ["one", "of", "your", "opponents"] | ["one", "of", "your", "opponent"]
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(PlayerFilter::Opponent, target_span),
+            target_count,
+        ));
+    }
+
     if remaining_words.as_slice() == ["opponent"] || remaining_words.as_slice() == ["opponents"] {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::Opponent, target_span),
@@ -3213,6 +3231,15 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     ) {
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from("triggering"), span),
+            target_count,
+        ));
+    }
+    if matches!(
+        remaining_words.as_slice(),
+        ["that", "spell", "or", "ability"] | ["that", "ability", "or", "spell"]
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from("triggering_source"), span),
             target_count,
         ));
     }
@@ -4365,11 +4392,6 @@ pub(crate) fn parse_flashback_line(
     }
 
     let total_cost = parse_activation_cost(cost_tokens)?;
-    if total_cost.mana_cost().is_none() {
-        return Err(CardTextError::ParseError(
-            "flashback keyword missing mana symbols".to_string(),
-        ));
-    }
 
     Ok(Some(AlternativeCastingMethod::Flashback { total_cost }))
 }

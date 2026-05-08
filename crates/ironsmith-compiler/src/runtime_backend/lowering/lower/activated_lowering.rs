@@ -726,6 +726,11 @@ fn infer_rewrite_activated_functional_zones(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<Vec<Zone>, CardTextError> {
     let raw_lower = line.info.raw_line.to_ascii_lowercase();
+    if str_contains(raw_lower.as_str(), "any player may activate this ability")
+        && str_contains(raw_lower.as_str(), "on the stack")
+    {
+        return Ok(vec![Zone::Stack]);
+    }
     if str_contains(raw_lower.as_str(), "exile this card from your graveyard")
         || str_contains(
             raw_lower.as_str(),

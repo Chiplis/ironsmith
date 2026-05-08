@@ -106,7 +106,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Clone",
           "count": 1
         },
@@ -232,7 +231,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Phyrexian Metamorph",
           "count": 1
         },

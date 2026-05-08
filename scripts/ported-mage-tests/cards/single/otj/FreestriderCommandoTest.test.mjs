@@ -326,10 +326,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Freestrider Commando"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Freestrider Commando",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "setStopAt",

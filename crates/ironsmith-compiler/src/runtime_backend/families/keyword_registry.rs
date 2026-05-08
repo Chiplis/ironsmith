@@ -3,7 +3,7 @@ use winnow::Parser;
 
 use super::activation_and_restrictions::{
     parse_activation_cost, parse_channel_line_lexed, parse_cycling_line_lexed,
-    parse_equip_line_lexed,
+    parse_equip_line_lexed, parse_reconfigure_line_lexed,
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
@@ -262,6 +262,17 @@ pub(super) fn lower_equip(
         line,
         "equip",
         parse_equip_line_lexed(tokens)?,
+    )?))
+}
+
+pub(super) fn lower_reconfigure(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::Ability(require_keyword_parse(
+        line,
+        "reconfigure",
+        parse_reconfigure_line_lexed(tokens)?,
     )?))
 }
 
@@ -525,6 +536,13 @@ pub(super) fn matches_equip(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_equip_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_reconfigure(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_reconfigure_line_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_kicker(

@@ -31,7 +31,8 @@ registerPortedMageTests({
           "name": "Swamp",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

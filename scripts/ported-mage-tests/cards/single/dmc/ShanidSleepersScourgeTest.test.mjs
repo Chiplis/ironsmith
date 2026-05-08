@@ -57,8 +57,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertLife",
@@ -121,8 +120,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertLife",

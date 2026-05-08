@@ -56,10 +56,13 @@ def main():
         out = OUTPUT_ROOT / rel.with_suffix(".test.mjs")
         out.parent.mkdir(parents=True, exist_ok=True)
         test_specs = []
-        for name, body in tests:
+        for name, body, ignore_reason in tests:
             operations, unsupported = translate_body(body, file_constants)
             unsupported_statements += unsupported
-            test_specs.append({"name": name, "operations": operations})
+            spec = {"name": name, "operations": operations}
+            if ignore_reason is not None:
+                spec["skip"] = ignore_reason
+            test_specs.append(spec)
             total_tests += 1
 
         import_path = os.path.relpath(RUNNER, out.parent).replace(os.sep, "/")
@@ -94,8 +97,24 @@ def extract_tests(text):
         close_brace = matching_brace(text, open_brace)
         if close_brace is None:
             continue
-        tests.append((name, text[open_brace + 1 : close_brace]))
+        previous_lines = "\n".join(text[: match.start()].splitlines()[-4:])
+        annotation_text = previous_lines + "\n" + text[match.start() : match.end() + method.start()]
+        tests.append((name, text[open_brace + 1 : close_brace], extract_ignore_reason(annotation_text)))
     return tests
+
+
+def extract_ignore_reason(annotation_text):
+    if "@Ignore" not in annotation_text:
+        return None
+    match = re.search(r'@Ignore\s*(?:\(\s*"((?:\\.|[^"])*)"\s*\))?', annotation_text)
+    if not match:
+        return "upstream @Ignore"
+    if not match.group(1):
+        return "upstream @Ignore"
+    try:
+        return "upstream @Ignore: " + json.loads(f'"{match.group(1)}"')
+    except json.JSONDecodeError:
+        return "upstream @Ignore: " + match.group(1)
 
 
 def matching_brace(text, start):
@@ -136,11 +155,24 @@ def extract_constants(text, base_constants):
 
 def translate_body(body, file_constants=None):
     constants = dict(file_constants or {})
+    ability_vars = {}
     operations = []
     unsupported = 0
     for statement in split_statements(strip_comments(body)):
         statement = statement.strip()
         if not statement:
+            continue
+        ability_decl = re.match(r"(?:Abilities<[^>]+>|List<[^>]+>)\s+(\w+)\s*=\s*(?:new\s+AbilitiesImpl<[^>]*>\(\)|new\s+AbilitiesImpl\(\)|Arrays\.asList\((.*)\))$", statement, re.S)
+        if ability_decl:
+            ability_vars[ability_decl.group(1)] = []
+            if ability_decl.group(2):
+                ability_vars[ability_decl.group(1)] = [
+                    parse_value(arg, constants) for arg in split_args(ability_decl.group(2))
+                ]
+            continue
+        ability_add = re.match(r"(\w+)\.add\((.+)\)$", statement, re.S)
+        if ability_add and ability_add.group(1) in ability_vars:
+            ability_vars[ability_add.group(1)].append(parse_value(ability_add.group(2), constants))
             continue
         assignment = re.match(r'(?:(?:final|static)\s+)*(?:String|int|boolean)\s+(\w+)\s*=\s*(.+)$', statement)
         if assignment:
@@ -155,7 +187,7 @@ def translate_body(body, file_constants=None):
                 unsupported += 1
             continue
         name, args = call
-        op = translate_call(name, args, constants, statement)
+        op = translate_call(name, args, constants, statement, ability_vars)
         if op is None:
             continue
         if op.get("op") == "unsupported":
@@ -244,7 +276,8 @@ def split_args(raw):
     return args
 
 
-def translate_call(name, args, constants, source):
+def translate_call(name, args, constants, source, ability_vars=None):
+    ability_vars = ability_vars or {}
     values = [parse_value(arg, constants) for arg in args]
     try:
         if name == "addCard":
@@ -346,8 +379,7 @@ def translate_call(name, args, constants, source):
         if name == "assertLibraryCount":
             return count_assert("assertLibraryCount", values)
         if name in {"assertPowerToughness", "checkPT"}:
-            values = drop_leading_message(values, 4)
-            return {"op": "assertPowerToughness", "player": values[0], "name": values[1], "power": values[2], "toughness": values[3]}
+            return power_toughness_assert(values)
         if name == "assertTappedCount":
             values = drop_leading_message(values, 3)
             return {"op": "assertTappedCount", "name": values[0], "tapped": values[1], "count": values[2]}
@@ -364,6 +396,16 @@ def translate_call(name, args, constants, source):
                 "name": values[1],
                 "ability": values[2],
                 "expected": values[3] if len(values) > 3 else True,
+            }
+        if name == "assertAbilities":
+            abilities = ability_vars.get(str(values[2]), values[2] if len(values) > 2 else [])
+            if isinstance(abilities, str):
+                abilities = [abilities]
+            return {
+                "op": "assertAbilities",
+                "player": values[0],
+                "name": values[1],
+                "abilities": abilities,
             }
         if name == "addCustomCardWithAbility":
             return {
@@ -402,12 +444,52 @@ def count_assert(op, values):
     if len(values) == 1:
         return {"op": op, "player": 0, "count": values[0]}
     if len(values) == 2:
-        if isinstance(values[0], int):
+        if isinstance(values[0], int) and isinstance(values[1], str):
             return {"op": op, "player": 0, "count": values[0], "name": values[1]}
         if isinstance(values[0], str) and isinstance(values[1], int):
-            return {"op": op, "player": 0, "name": values[0], "count": values[1]}
+            return {"op": op, "name": values[0], "count": values[1]}
         return {"op": op, "player": values[0], "count": values[1]}
     return {"op": op, "player": values[0], "name": values[1], "count": values[2]}
+
+
+def power_toughness_assert(values):
+    if (
+        len(values) >= 7
+        and isinstance(values[0], str)
+        and isinstance(values[1], int)
+        and isinstance(values[2], str)
+    ):
+        return {
+            "op": "assertPowerToughness",
+            "turn": values[1],
+            "phase": values[2],
+            "player": values[3],
+            "name": values[4],
+            "power": values[5],
+            "toughness": values[6],
+        }
+    if (
+        len(values) >= 6
+        and isinstance(values[0], int)
+        and isinstance(values[1], str)
+    ):
+        return {
+            "op": "assertPowerToughness",
+            "turn": values[0],
+            "phase": values[1],
+            "player": values[2],
+            "name": values[3],
+            "power": values[4],
+            "toughness": values[5],
+        }
+    values = drop_leading_message(values, 4)
+    return {
+        "op": "assertPowerToughness",
+        "player": values[0],
+        "name": values[1],
+        "power": values[2],
+        "toughness": values[3],
+    }
 
 
 def drop_leading_message(values, minimum_after_drop):

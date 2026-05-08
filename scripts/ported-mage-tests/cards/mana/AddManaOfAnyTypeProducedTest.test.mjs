@@ -213,7 +213,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Swamp",
           "count": 1
         },

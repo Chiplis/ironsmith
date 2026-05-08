@@ -80,19 +80,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "playerD",
           "count": 0
         },
         {
           "op": "assertLibraryCount",
-          "player": 0,
           "name": "Raging Goblin",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
@@ -105,7 +102,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertLibraryCount",
-          "player": 0,
           "name": "Memnite",
           "count": 1
         }

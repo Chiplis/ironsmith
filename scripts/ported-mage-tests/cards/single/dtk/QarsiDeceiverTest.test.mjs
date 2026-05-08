@@ -43,10 +43,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "morph",
-          "name": 3,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "activateAbility",

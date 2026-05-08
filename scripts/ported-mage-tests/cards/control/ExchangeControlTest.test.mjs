@@ -836,7 +836,8 @@ registerPortedMageTests({
           "name": "Gilded Drake",
           "count": 0
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

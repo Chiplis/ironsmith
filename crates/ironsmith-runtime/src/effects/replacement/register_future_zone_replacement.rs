@@ -11,14 +11,21 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let mut matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+            self.filter.clone(),
+            self.from_zone,
+            self.to_zone,
+        );
+        if let Some(cause_filter) = self.cause_filter.clone() {
+            matcher = matcher.with_cause_filter(cause_filter);
+        }
+        if self.require_cause_source_match {
+            matcher = matcher.requiring_cause_source_match();
+        }
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
-            crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                self.filter.clone(),
-                self.from_zone,
-                self.to_zone,
-            ),
+            matcher,
             ReplacementAction::ChangeDestination(self.replacement_zone),
         );
 

@@ -84,6 +84,7 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         filter_text: String,
     },
+    MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {
         display_text: String,
     },
@@ -1009,6 +1010,40 @@ fn parse_put_counter_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
+    if lowered
+        == [
+            "put",
+            "a",
+            "card",
+            "an",
+            "opponent",
+            "owns",
+            "from",
+            "exile",
+            "into",
+            "that",
+            "players",
+            "graveyard",
+        ]
+        || lowered
+            == [
+                "put",
+                "a",
+                "card",
+                "an",
+                "opponent",
+                "owns",
+                "from",
+                "exile",
+                "into",
+                "that",
+                "player's",
+                "graveyard",
+            ]
+    {
+        return Ok(ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard);
+    }
+
     let Some(on_word_idx) = find_word_index(lowered.as_slice(), |word| word == "on") else {
         return Err(CardTextError::ParseError(format!(
             "rewrite put-counter parser missing 'on' in '{raw}'"
@@ -2023,6 +2058,27 @@ pub(crate) fn lower_activation_cost_cst(
                 )));
                 costs.push(Cost::validated_effect(Effect::return_to_hand(
                     ObjectFilter::tagged(tag),
+                )));
+            }
+            ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = format!("graveyard_cost_{return_tag_id}");
+                return_tag_id += 1;
+                let filter = ObjectFilter {
+                    zone: Some(crate::zone::Zone::Exile),
+                    owner: Some(PlayerFilter::Opponent),
+                    ..Default::default()
+                };
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter,
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                    crate::target::ChooseSpec::tagged(tag),
+                    crate::zone::Zone::Graveyard,
+                    false,
                 )));
             }
             ActivationCostSegmentCst::ExertSelf { display_text } => {

@@ -1,4 +1,4 @@
-use crate::{CounterType, ObjectFilter, PlayerFilter};
+use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
@@ -10,6 +10,10 @@ pub enum AnthemCountExpression {
     CreatureTypesAmong(ObjectFilter),
     CommanderCastCount(PlayerFilter),
     PlayerSpeed(PlayerFilter),
+    UnspentMana {
+        player: PlayerFilter,
+        symbol: ManaSymbol,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

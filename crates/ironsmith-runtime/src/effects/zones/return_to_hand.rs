@@ -86,6 +86,51 @@ impl EffectExecutor for ReturnToHandEffect {
             Ok(object_ids)
         };
 
+        if self.spec.is_target()
+            && matches!(
+                self.spec.unhinted(),
+                ChooseSpec::WithCount(_, _) | ChooseSpec::WithCountValue(_, _, _)
+            )
+        {
+            let targets = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if targets.is_empty() {
+                return if self.spec.count().min == 0 {
+                    Ok(EffectOutcome::count(0))
+                } else {
+                    Ok(EffectOutcome::target_invalid())
+                };
+            }
+
+            let mut affected_ids = Vec::new();
+            let mut applied_count = 0usize;
+            for target_id in targets {
+                let stable_id = game.object(target_id).map(|obj| obj.stable_id);
+                let status = return_object_to_hand(game, ctx, target_id)?;
+                let moved_ids = take_recorded_zone_change(game, target_id)
+                    .map(|result| result.new_object_ids)
+                    .or_else(|| match status {
+                        None | Some(OutcomeStatus::Replaced) => stable_id
+                            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+                            .map(|object_id| vec![object_id]),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                if status.is_none() {
+                    applied_count += 1;
+                }
+                affected_ids.extend(moved_ids);
+            }
+            return Ok(EffectOutcome::count(applied_count as i32)
+                .with_affected_objects(affected_ids));
+        }
+
         // Handle targeted effects with special single-target behavior
         if self.spec.is_target() && self.spec.is_single() {
             if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {

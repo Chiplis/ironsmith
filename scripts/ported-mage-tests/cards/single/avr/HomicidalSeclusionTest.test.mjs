@@ -111,8 +111,12 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Horned Turtle\", abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Horned Turtle",
+          "abilities": [
+            "Lifelink"
+          ]
         }
       ]
     },
@@ -238,8 +242,12 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Air Elemental\", abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Air Elemental",
+          "abilities": [
+            "Lifelink"
+          ]
         }
       ]
     }

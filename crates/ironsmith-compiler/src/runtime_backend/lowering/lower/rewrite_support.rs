@@ -21,6 +21,9 @@ pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Op
         (
             &[
                 "this card is in your graveyard",
+                "this creature is in your graveyard",
+                "this permanent is in your graveyard",
+                "this object is in your graveyard",
                 "there is this card in your graveyard",
             ][..],
             Zone::Graveyard,

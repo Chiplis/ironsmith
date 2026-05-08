@@ -701,6 +701,9 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     }
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    if let Some(target) = parse_chosen_name_goad_target(&target_tokens, &target_words)? {
+        return Ok(EffectAst::subject_verb_goad(target));
+    }
     if target_words.as_slice() == ["it"] || target_words.as_slice() == ["them"] {
         return Ok(EffectAst::subject_verb_goad(TargetAst::Tagged(
             TagKey::from(IT_TAG),
@@ -720,6 +723,72 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     }
 
     Ok(EffectAst::subject_verb_goad(target))
+}
+
+fn parse_chosen_name_goad_target(
+    target_tokens: &[OwnedLexToken],
+    target_words: &[&str],
+) -> Result<Option<TargetAst>, CardTextError> {
+    for with_word_idx in 0..target_words.len() {
+        if target_words[with_word_idx] != "with" {
+            continue;
+        }
+
+        let tail = &target_words[with_word_idx + 1..];
+        let name_word_idx = if tail.first().is_some_and(|word| is_article(word)) {
+            1
+        } else {
+            0
+        };
+        let chosen_name_tail = tail
+            .get(name_word_idx..)
+            .is_some_and(|tail| {
+                tail.len() >= 5
+                    && matches!(tail[0], "name" | "names")
+                    && tail[1] == "chosen"
+                    && tail[2] == "for"
+                    && tail[3] == "this"
+                    && matches!(
+                        tail[4],
+                        "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
+                    )
+                    && tail[5..]
+                        .iter()
+                        .all(|word| matches!(*word, "this" | "way"))
+            });
+        if !chosen_name_tail {
+            continue;
+        }
+
+        let Some(with_token_idx) = token_index_for_word_index(target_tokens, with_word_idx) else {
+            continue;
+        };
+        let base_tokens = trim_commas(&target_tokens[..with_token_idx]);
+        if base_tokens.is_empty() {
+            continue;
+        }
+
+        let mut target = parse_target_phrase(&base_tokens)?;
+        add_chosen_name_constraint_to_target(&mut target);
+        return Ok(Some(target));
+    }
+
+    Ok(None)
+}
+
+fn add_chosen_name_constraint_to_target(target: &mut TargetAst) {
+    match target {
+        TargetAst::Object(filter, _, _) => {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from("__chosen_name__"),
+                relation: TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            add_chosen_name_constraint_to_target(inner);
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

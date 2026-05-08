@@ -277,7 +277,8 @@ registerPortedMageTests({
           "counter": "LOYALTY",
           "count": 3
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testRoll5",

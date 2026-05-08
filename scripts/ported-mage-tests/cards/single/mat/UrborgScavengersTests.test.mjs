@@ -52,8 +52,13 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Urborg Scavengers\", abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Urborg Scavengers",
+          "abilities": [
+            "Haste",
+            "Hexproof"
+          ]
         },
         {
           "op": "assertCounterCount",

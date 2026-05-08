@@ -24,7 +24,7 @@ use super::helpers::{
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, Subtype};
 
 fn split_trailing_except_tokens(
@@ -230,6 +230,25 @@ pub(crate) fn parse_become_clause(
 
     if become_words == ["colorless"] {
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
+    }
+
+    if word_slice_starts_with(
+        become_words,
+        &["aura", "enchantment", "with", "enchant", "creature"],
+    ) {
+        let attachment_filter = if word_slice_starts_with(
+            &become_words[5..],
+            &["you", "control"],
+        ) {
+            ObjectFilter::creature().you_control()
+        } else {
+            ObjectFilter::creature()
+        };
+        return Ok(EffectAst::subject_verb_become_aura_enchantment(
+            target,
+            attachment_filter,
+            duration,
+        ));
     }
 
     if word_slice_starts_with(become_words, &["equal", "to"]) {

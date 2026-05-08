@@ -67,6 +67,9 @@ pub enum StateBasedAction {
 
     /// A player controlling Start your engines gets speed 1.
     StartEngines { player: PlayerId },
+
+    /// A soulbond pair no longer satisfies the pairing requirements.
+    SoulbondUnpairs(ObjectId),
 }
 
 /// Reason why a player loses the game.
@@ -153,10 +156,41 @@ pub(crate) fn check_state_based_actions_with_context(
     // Check counter annihilation
     check_counter_annihilation(game, &mut actions);
 
+    // Check soulbond pair validity
+    check_soulbond_pair_sbas_with_view(game, view, &mut actions);
+
     // Check legend rule
     check_legend_rule(game, &mut actions);
 
     actions
+}
+
+fn check_soulbond_pair_sbas_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    let mut seen = HashSet::new();
+    for (&left, &right) in &game.soulbond_pairs {
+        if !seen.insert(left) {
+            continue;
+        }
+        seen.insert(right);
+
+        let valid = match (game.object(left), game.object(right)) {
+            (Some(left_obj), Some(right_obj)) => {
+                left_obj.zone == Zone::Battlefield
+                    && right_obj.zone == Zone::Battlefield
+                    && game.controller_of(left_obj) == game.controller_of(right_obj)
+                    && view.object_has_card_type(left, CardType::Creature)
+                    && view.object_has_card_type(right, CardType::Creature)
+            }
+            _ => false,
+        };
+        if !valid {
+            actions.push(StateBasedAction::SoulbondUnpairs(left));
+        }
+    }
 }
 
 /// Check player-related state-based actions.
@@ -780,6 +814,10 @@ fn apply_single_sba_with_snapshots(
             game.start_engines(player);
         }
 
+        StateBasedAction::SoulbondUnpairs(obj_id) => {
+            game.clear_soulbond_pair(obj_id);
+        }
+
         StateBasedAction::LegendRuleViolation {
             player,
             name: _,
@@ -858,7 +896,9 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
     use crate::decision::DecisionMaker;
+    use crate::effect::Until;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::{Anthem, StaticAbility};
@@ -1060,5 +1100,84 @@ mod tests {
         assert!(apply_state_based_actions_with(&mut game, &mut dm));
         assert_eq!(dm.calls, 2, "new object in exile should prompt again");
         assert_eq!(game.objects_in_zone(Zone::Exile), vec![exile_id]);
+    }
+
+    #[test]
+    fn soulbond_pair_stays_valid_while_land_is_animated() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature = CardBuilder::new(CardId::new(), "Soulbond Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let land = CardBuilder::new(CardId::new(), "Animated Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                land_id,
+                alice,
+                EffectTarget::Specific(land_id),
+                Modification::AddCardTypes(vec![CardType::Creature]),
+            )
+            .until(Until::EndOfTurn),
+        );
+        game.set_soulbond_pair(creature_id, land_id);
+
+        let actions = check_state_based_actions(&game);
+        assert!(
+            !actions
+                .iter()
+                .any(|action| matches!(action, StateBasedAction::SoulbondUnpairs(_))),
+            "animated land should still satisfy soulbond creature requirement"
+        );
+    }
+
+    #[test]
+    fn soulbond_pair_unpairs_when_land_stops_being_creature() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature = CardBuilder::new(CardId::new(), "Soulbond Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let land = CardBuilder::new(CardId::new(), "Former Creature Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                land_id,
+                alice,
+                EffectTarget::Specific(land_id),
+                Modification::AddCardTypes(vec![CardType::Creature]),
+            )
+            .until(Until::EndOfTurn),
+        );
+        game.set_soulbond_pair(creature_id, land_id);
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
+
+        let actions = check_state_based_actions(&game);
+        assert!(
+            actions.iter().any(|action| {
+                matches!(
+                    action,
+                    StateBasedAction::SoulbondUnpairs(id) if *id == creature_id || *id == land_id
+                )
+            }),
+            "noncreature land should no longer satisfy soulbond creature requirement"
+        );
+
+        let mut dm = AlwaysYesDecisionMaker;
+        assert!(apply_state_based_actions_with(&mut game, &mut dm));
+        assert_eq!(game.soulbond_partner(creature_id), None);
+        assert_eq!(game.soulbond_partner(land_id), None);
     }
 }

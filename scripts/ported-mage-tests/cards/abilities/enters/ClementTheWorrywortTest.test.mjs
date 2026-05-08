@@ -61,14 +61,12 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -125,14 +123,12 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -192,14 +188,12 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 6
+          "count": 6
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -249,14 +243,12 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 7
+          "count": 7
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -306,14 +298,12 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "unsupported",

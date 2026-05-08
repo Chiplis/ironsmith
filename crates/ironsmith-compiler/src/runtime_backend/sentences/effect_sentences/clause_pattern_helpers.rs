@@ -1062,9 +1062,38 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
     let this_turn_idx = (would_idx + 4) + this_turn_rel;
 
     let tail = &clause_words[this_turn_idx + 2..];
-    if tail != ["prevent", "that", "damage"] {
+    let reflect_damage_to_source_controller = if tail == ["prevent", "that", "damage"] {
+        false
+    } else if word_slice_starts_with(
+        tail,
+        &[
+            "prevent",
+            "that",
+            "damage",
+            "if",
+            "damage",
+            "is",
+            "prevented",
+            "this",
+            "way",
+        ],
+    ) && word_slice_contains_sequence(
+        tail,
+        &[
+            "deals",
+            "that",
+            "much",
+            "damage",
+            "to",
+            "that",
+            "source's",
+            "controller",
+        ],
+    ) {
+        true
+    } else {
         return Ok(None);
-    }
+    };
 
     let source_words = &clause_words[3..would_idx];
     if source_words.is_empty() {
@@ -1085,12 +1114,19 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
             words.pop();
         }
         if words.is_empty() {
-            return Ok(Some(vec![
+            let effect = if reflect_damage_to_source_controller {
+                EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
+                    PreventNextTimeDamageSourceAst::Filter(ObjectFilter::default()),
+                    PreventNextTimeDamageTargetAst::AnyTarget,
+                    true,
+                )
+            } else {
                 EffectAst::subject_verb_prevent_next_time_damage(
                     PreventNextTimeDamageSourceAst::Filter(ObjectFilter::default()),
                     PreventNextTimeDamageTargetAst::AnyTarget,
-                ),
-            ]));
+                )
+            };
+            return Ok(Some(vec![effect]));
         }
 
         let mut filter = ObjectFilter::default();
@@ -1135,9 +1171,12 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
         )));
     };
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_prevent_next_time_damage(source, target),
-    ]))
+    let effect = if reflect_damage_to_source_controller {
+        EffectAst::subject_verb_prevent_next_time_damage_with_reflection(source, target, true)
+    } else {
+        EffectAst::subject_verb_prevent_next_time_damage(source, target)
+    };
+    Ok(Some(vec![effect]))
 }
 
 pub(crate) fn parse_redirect_next_damage_sentence(

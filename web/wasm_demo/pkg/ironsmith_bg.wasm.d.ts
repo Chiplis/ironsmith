@@ -4,6 +4,7 @@ export const memory: WebAssembly.Memory;
 export const __wbg_wasmgame_free: (a: number, b: number) => void;
 export const wasm_start: () => void;
 export const wasmgame_new: () => number;
+export const wasmgame_setAutoChooseSingleObjectDecisions: (a: number, b: number) => void;
 export const wasmgame_reset: (a: number, b: any, c: number) => [number, number];
 export const wasmgame_startMatch: (a: number, b: any) => [number, number, number];
 export const wasmgame_validateMatchConfig: (a: number, b: any) => [number, number, number];
@@ -21,6 +22,7 @@ export const wasmgame_autocompleteCardNames: (a: number, b: number, c: number, d
 export const wasmgame_isKnownCardName: (a: number, b: number, c: number) => number;
 export const wasmgame_setLife: (a: number, b: number, c: number) => [number, number];
 export const wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
+export const wasmgame_forceNextDieRoll: (a: number, b: number) => void;
 export const wasmgame_drawCard: (a: number, b: number) => [number, number, number];
 export const wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
 export const wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];

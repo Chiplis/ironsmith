@@ -1193,6 +1193,13 @@ pub(super) fn build_object_details_snapshot(
         &obj.subtypes,
     );
 
+    let abilities = game
+        .current_abilities(id)
+        .unwrap_or_else(|| obj.abilities.clone())
+        .iter()
+        .map(ironsmith::compiled_text::ability_surface_text)
+        .collect();
+
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
         stable_id: obj.stable_id.0.0,
@@ -1212,7 +1219,7 @@ pub(super) fn build_object_details_snapshot(
         tapped: game.is_tapped(obj.id),
         counters,
         compiled_text,
-        abilities: ironsmith::compiled_text::compiled_text_lines(&obj.to_card_definition()),
+        abilities,
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
         semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })

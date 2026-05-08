@@ -108,8 +108,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Cairn Wanderer\", abilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Cairn Wanderer",
+          "abilities": [
+            "abilities"
+          ]
         },
         {
           "op": "assertAbility",

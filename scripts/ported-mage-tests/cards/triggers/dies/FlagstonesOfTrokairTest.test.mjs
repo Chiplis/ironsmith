@@ -86,8 +86,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     }

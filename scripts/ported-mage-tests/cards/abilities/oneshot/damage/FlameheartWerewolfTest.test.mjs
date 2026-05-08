@@ -60,7 +60,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Kessig Forgemaster",
           "count": 1
         },

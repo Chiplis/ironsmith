@@ -684,9 +684,18 @@ fn collect_non_battlefield_source_ids(
             .copied()
             .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
     );
+    non_battlefield_ids.extend(game.stack.iter().map(|entry| entry.object_id));
     non_battlefield_ids.sort_by_key(|id| id.0);
     non_battlefield_ids.dedup();
     non_battlefield_ids
+}
+
+fn activated_allows_any_player(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.additional_restrictions.iter().any(|restriction| {
+        restriction
+            .to_ascii_lowercase()
+            .starts_with("any player may activate this ability")
+    })
 }
 
 fn add_non_battlefield_ability_actions(
@@ -702,7 +711,7 @@ fn add_non_battlefield_ability_actions(
         let Some(obj) = game.object(source_id) else {
             continue;
         };
-        if obj.zone == Zone::Battlefield || game.controller_of(obj) != player {
+        if obj.zone == Zone::Battlefield {
             continue;
         }
 
@@ -731,9 +740,15 @@ fn add_non_battlefield_ability_actions(
                 let Some(ability) = obj.abilities.get(ability_index) else {
                     continue;
                 };
+                if !ability.functions_in(&obj.zone) {
+                    continue;
+                }
                 let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
                     continue;
                 };
+                if game.controller_of(obj) != player && !activated_allows_any_player(activated) {
+                    continue;
+                }
                 if can_activate_ability_with_restrictions_with_view(
                     game,
                     source_id,
@@ -972,11 +987,13 @@ fn activation_precheck_with_view(
         owned_facts = ActivationSourceFacts::for_source(game, source, view);
         &owned_facts
     };
-    let controller = source_facts.controller;
+    let controller = if activated_allows_any_player(activated) {
+        game.turn.priority_player.unwrap_or(source_facts.controller)
+    } else {
+        source_facts.controller
+    };
 
-    if let Some(obj) = game.object(source)
-        && !game.can_activate_non_mana_abilities(game.controller_of(obj))
-    {
+    if game.object(source).is_some() && !game.can_activate_non_mana_abilities(controller) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -1173,7 +1190,8 @@ fn activation_card_cost_choice_cost(
         | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone { cost, .. } => cost,
     }
 }
 

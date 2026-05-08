@@ -88,8 +88,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 7
+          "count": 7
         }
       ]
     },
@@ -173,8 +172,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         }
       ]
     },
@@ -257,8 +255,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 8
+          "count": 8
         },
         {
           "op": "assertGraveyardCount",
@@ -366,8 +363,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 11
+          "count": 11
         }
       ]
     }

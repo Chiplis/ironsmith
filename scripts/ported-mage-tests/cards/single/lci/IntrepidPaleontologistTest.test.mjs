@@ -106,7 +106,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Scytheclaw Raptor",
           "count": 1
         }

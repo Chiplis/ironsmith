@@ -59,7 +59,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Wild Hunger",
           "count": 1
         }
@@ -152,7 +151,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Fracturing Gust",
           "count": 1
         }
@@ -237,7 +235,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Repeal",
           "count": 1
         }
@@ -329,7 +326,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Blaze",
           "count": 1
         }
@@ -449,7 +445,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Unburial Rites",
           "count": 1
         }
@@ -551,7 +546,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Unified Front",
           "count": 1
         }
@@ -625,7 +619,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Conflagrate",
           "count": 1
         }
@@ -708,8 +701,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -793,7 +785,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silent Departure",
           "count": 0
         },
@@ -985,7 +976,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Terminate",
           "count": 1
         },
@@ -1069,15 +1059,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Whispers of the Muse",
           "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -1137,8 +1125,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertTappedCount",
@@ -1512,8 +1499,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         },
         {
           "op": "assertCounterCount",

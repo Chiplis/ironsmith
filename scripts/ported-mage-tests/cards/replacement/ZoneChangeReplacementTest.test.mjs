@@ -55,8 +55,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         }
       ]
     },
@@ -114,8 +113,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
@@ -181,8 +179,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "assertPermanentCount",
@@ -248,8 +245,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -327,8 +323,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },
@@ -437,7 +432,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 0
         },
@@ -541,7 +535,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pillarfield Ox",
           "count": 1
         },
@@ -706,7 +699,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pillarfield Ox",
           "count": 0
         },
@@ -914,7 +906,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         }
@@ -1063,7 +1054,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Skyraker Giant",
           "count": 1
         },

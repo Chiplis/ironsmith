@@ -129,8 +129,7 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     }

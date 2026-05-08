@@ -297,6 +297,15 @@ pub enum ActivationCardCostChoice {
         description: String,
         choice_tag: Option<crate::tag::TagKey>,
     },
+    /// Choose an object in a specific zone to move to another zone as a cost.
+    MoveChosenObjectToZone {
+        cost: crate::costs::Cost,
+        filter: ObjectFilter,
+        source_zone: Zone,
+        destination_zone: Zone,
+        description: String,
+        choice_tag: crate::tag::TagKey,
+    },
 }
 
 /// Ordered activation-cost step that still needs to be paid after targets are chosen.
@@ -442,6 +451,42 @@ pub(crate) fn choose_tagged_cost_step(
                     }
                     .display(),
                     choice_tag: Some(choose.tag.clone()),
+                },
+            ));
+        }
+    }
+
+    if let Some(move_to_zone) = next_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        let source_zone = choose.filter.zone.or(choose.zone)?;
+        let matches_choice = match move_to_zone.target.base() {
+            ChooseSpec::Tagged(tag) => tag == &choose.tag,
+            ChooseSpec::Object(filter) => tagged_filter_matches(filter, &choose.tag),
+            _ => false,
+        };
+        if matches_choice {
+            let destination_zone = move_to_zone.zone;
+            let action = match destination_zone {
+                Zone::Graveyard => "put into a graveyard",
+                Zone::Exile => "exile",
+                Zone::Hand => "return to hand",
+                Zone::Library => "put into a library",
+                Zone::Battlefield => "put onto the battlefield",
+                _ => "move",
+            };
+            return Some(ActivationCostStep::CardChoice(
+                ActivationCardCostChoice::MoveChosenObjectToZone {
+                    cost: crate::costs::Cost::validated_effect(crate::effect::Effect::new(
+                        crate::effects::MoveToZoneEffect::new(
+                            ChooseSpec::Tagged(choose.tag.clone()),
+                            destination_zone,
+                            move_to_zone.to_top,
+                        ),
+                    )),
+                    filter: choose.filter.clone(),
+                    source_zone,
+                    destination_zone,
+                    description: format!("{} {}", action, choose.filter.description()),
+                    choice_tag: choose.tag.clone(),
                 },
             ));
         }

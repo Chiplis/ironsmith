@@ -83,9 +83,11 @@ pub(crate) fn capture_tagged_runtime_state(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> TaggedRuntimeState {
-    let mut pre_snapshot = capture_target_object_snapshots(game, ctx)
-        .into_iter()
-        .next();
+    let mut pre_snapshot = capture_effect_target_snapshot(game, effect, ctx).or_else(|| {
+        capture_target_object_snapshots(game, ctx)
+            .into_iter()
+            .next()
+    });
     if pre_snapshot.is_none()
         && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)

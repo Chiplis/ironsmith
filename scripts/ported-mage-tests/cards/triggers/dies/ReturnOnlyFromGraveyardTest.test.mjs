@@ -107,7 +107,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Academy Rector",
           "count": 1
         }
@@ -217,7 +216,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Academy Rector",
           "count": 1
         }

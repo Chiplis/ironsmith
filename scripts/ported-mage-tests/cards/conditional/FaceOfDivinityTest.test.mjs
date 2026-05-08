@@ -75,10 +75,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Balduvian Bears"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertAbility",
@@ -97,10 +99,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_TURN",
-          "power": 0,
-          "toughness": "Balduvian Bears"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "power": 5,
+          "toughness": 4
         },
         {
           "op": "assertAbility",

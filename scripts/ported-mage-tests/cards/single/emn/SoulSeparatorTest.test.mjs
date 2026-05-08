@@ -59,7 +59,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sylvan Advocate",
           "count": 1
         },
@@ -159,7 +158,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Tree of Perdition",
           "count": 1
         },

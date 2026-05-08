@@ -683,6 +683,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::AddCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
+        | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
         | SubjectVerbActionAst::BecomeBasicLandType { .. }
         | SubjectVerbActionAst::SetColors { .. }
         | SubjectVerbActionAst::MakeColorless { .. }
@@ -722,6 +723,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::MayMoveToZone { .. }
         | SubjectVerbActionAst::RegisterZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+        | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }

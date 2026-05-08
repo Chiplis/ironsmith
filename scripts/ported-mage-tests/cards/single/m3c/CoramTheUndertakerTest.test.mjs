@@ -57,10 +57,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Coram, the Undertaker",
           "power": 0,
-          "toughness": "Coram, the Undertaker"
+          "toughness": 5
         },
         {
           "op": "attack",
@@ -71,10 +73,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Coram, the Undertaker"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Coram, the Undertaker",
+          "power": 2,
+          "toughness": 5
         },
         {
           "op": "assertPlayableAbility",

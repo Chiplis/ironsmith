@@ -574,6 +574,18 @@ pub(crate) fn parse_effect_sentences_lexed(
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    fn attacked_player_filter_from_words(words: &[&str]) -> Option<PlayerFilter> {
+        match words {
+            ["enchanted", "player"] => {
+                Some(PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted")))
+            }
+            ["you"] => Some(PlayerFilter::You),
+            ["an", "opponent"] | ["opponent"] => Some(PlayerFilter::Opponent),
+            ["a", "player"] | ["player"] | ["any", "player"] => Some(PlayerFilter::Any),
+            _ => None,
+        }
+    }
+
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.word_refs();
     if word_slice_starts_with(
@@ -827,11 +839,89 @@ pub(crate) fn parse_triggered_line_lexed(
                 }
             }
         }
+
+        if let Some(attack_idx) = attack_idx
+            && let Some(with_idx) = trigger_words[attack_idx + 1..]
+                .iter()
+                .position(|word| *word == "with")
+                .map(|rel| attack_idx + 1 + rel)
+            && with_idx > attack_idx + 1
+        {
+            let subject_words = &trigger_words[..attack_idx];
+            let attacked_words = &trigger_words[attack_idx + 1..with_idx];
+            if let (Some(player), Some(attacked_player)) = (
+                super::activation_and_restrictions::parse_trigger_subject_player_filter(
+                    subject_words,
+                ),
+                attacked_player_filter_from_words(attacked_words),
+            ) {
+                let Some(with_object_start) =
+                    trigger_word_view.token_index_for_word_index(with_idx + 1)
+                else {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing attacking-object filter in trigger clause (clause: '{}')",
+                        trigger_words.join(" ")
+                    )));
+                };
+                let mut object_tokens = &trigger_tokens[with_object_start..];
+                let mut min_total_attackers = None;
+                let mut one_or_more = false;
+                if let Some((count, stripped)) =
+                    super::activation_and_restrictions::parse_leading_or_more_quantifier(
+                        object_tokens,
+                    )
+                {
+                    one_or_more = true;
+                    object_tokens = stripped;
+                    if count > 1 {
+                        min_total_attackers = Some(count);
+                    }
+                }
+                if !object_tokens.is_empty() {
+                    let mut filter = super::object_filters::parse_object_filter_lexed(
+                        object_tokens,
+                        false,
+                    )
+                    .map_err(|_| {
+                        CardTextError::ParseError(format!(
+                            "unsupported attacking-object filter in trigger clause (clause: '{}')",
+                            trigger_words.join(" ")
+                        ))
+                    })?;
+                    if filter.controller.is_none() {
+                        filter.controller = Some(player);
+                    }
+                    filter.attacking_player_or_planeswalker_controlled_by = Some(attacked_player);
+                    filter.targets_only_player = Some(PlayerFilter::Any);
+                    let trigger = if let Some(min_total_attackers) = min_total_attackers {
+                        TriggerSpec::AttacksOneOrMoreWithMinTotal {
+                            filter,
+                            min_total_attackers,
+                        }
+                    } else if one_or_more {
+                        TriggerSpec::AttacksOneOrMore(filter)
+                    } else {
+                        TriggerSpec::Attacks(filter)
+                    };
+                    let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                        trigger_tokens,
+                        &tokens[split_idx + 1..],
+                    );
+                    let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: None,
+                    });
+                }
+            }
+        }
     }
 
     if let Some(mut split_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
         .or_else(|| find_token_index(tokens, |token| token.is_word("then")))
     {
+        let first_split_idx = split_idx;
         if tokens
             .get(split_idx)
             .is_some_and(|token| token.kind == TokenKind::Comma)
@@ -876,7 +966,13 @@ pub(crate) fn parse_triggered_line_lexed(
             }
         }
 
-        if let Some(spec) = split_state_triggered_clause_lexed(tokens, start_idx, split_idx) {
+        let state_split =
+            split_state_triggered_clause_lexed(tokens, start_idx, split_idx).or_else(|| {
+                (first_split_idx != split_idx)
+                    .then(|| split_state_triggered_clause_lexed(tokens, start_idx, first_split_idx))
+                    .flatten()
+            });
+        if let Some(spec) = state_split {
             let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 spec.trigger_tokens,
                 spec.effects_tokens,

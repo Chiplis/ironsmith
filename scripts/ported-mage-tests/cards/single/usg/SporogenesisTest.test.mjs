@@ -132,10 +132,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "boost",
-          "name": 9,
-          "power": "END_TURN",
-          "toughness": 0
+          "turn": 9,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Skophos Warleader",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "setChoice",
@@ -177,10 +179,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "boost",
-          "name": 12,
-          "power": "END_TURN",
-          "toughness": 0
+          "turn": 12,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Skophos Warleader",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "setStrictChooseMode",

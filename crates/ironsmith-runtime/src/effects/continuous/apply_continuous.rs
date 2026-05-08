@@ -34,6 +34,10 @@ pub enum RuntimeModification {
     ModifyToughness { value: Value },
     /// Remove all abilities from the affected objects.
     RemoveAllAbilities,
+    /// Remove the activated ability currently resolving.
+    RemoveThisAbility,
+    /// Set the Aura attachment restriction while this effect applies.
+    SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
 }
 
 /// Effect that registers a continuous effect with the game state.
@@ -163,6 +167,24 @@ fn resolve_runtime_modification(
             resolve_value(game, value, ctx)?,
         )),
         RuntimeModification::RemoveAllAbilities => Ok(Modification::RemoveAllAbilities),
+        RuntimeModification::RemoveThisAbility => {
+            let ability_index = ctx.ability_index.ok_or_else(|| {
+                ExecutionError::Impossible(
+                    "this ability removal requires a resolving activated ability".to_string(),
+                )
+            })?;
+            let ability = game
+                .current_ability(ctx.source, ability_index)
+                .ok_or_else(|| {
+                    ExecutionError::Impossible(
+                        "resolving source no longer has the referenced ability".to_string(),
+                    )
+                })?;
+            Ok(Modification::RemoveAbilityGeneric(ability))
+        }
+        RuntimeModification::SetAuraAttachmentFilter(filter) => {
+            Ok(Modification::SetAuraAttachmentFilter(filter.clone()))
+        }
     }
 }
 
@@ -175,6 +197,34 @@ fn target_object_ids(
     }
     match target {
         EffectTarget::Specific(id) => vec![*id],
+        _ => Vec::new(),
+    }
+}
+
+fn control_change_target_object_ids(
+    target: &EffectTarget,
+    source_type: &Option<EffectSourceType>,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<ObjectId> {
+    let explicit = target_object_ids(target, source_type);
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    match target {
+        EffectTarget::Filter(filter) => lock_targets_for_filter(filter, game, ctx),
+        EffectTarget::AllPermanents => game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|id| game.object(*id).is_some())
+            .collect(),
+        EffectTarget::AllCreatures => game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|id| game.current_is_creature(*id))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -251,6 +301,13 @@ impl EffectExecutor for ApplyContinuousEffect {
         for modification in mods {
             let resolved_modification =
                 resolve_set_pt_modification(self, game, ctx, &modification)?;
+            if let Modification::ChangeController(new_controller) = &resolved_modification {
+                for id in control_change_target_object_ids(&target, &source_type, game, ctx) {
+                    if game.current_controller(id) != Some(*new_controller) {
+                        game.clear_soulbond_pair(id);
+                    }
+                }
+            }
             let expires_end_of_turn = match self.until {
                 Until::EndOfTurn
                 | Until::YourNextTurn
@@ -301,8 +358,10 @@ impl EffectExecutor for ApplyContinuousEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::continuous::{ContinuousEffect, Modification};
+    use crate::cost::TotalCost;
     use crate::effect::Effect;
     use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::ids::{CardId, ObjectId, PlayerId};
@@ -364,6 +423,31 @@ mod tests {
         game.untap(source);
         assert_eq!(game.calculated_power(target), Some(2));
         assert_eq!(game.calculated_toughness(target), Some(2));
+    }
+
+    #[test]
+    fn change_controller_continuous_effect_breaks_soulbond_pair() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let paired_a = create_creature(&mut game, "Soulbond A", alice);
+        let paired_b = create_creature(&mut game, "Soulbond B", alice);
+        game.set_soulbond_pair(paired_a, paired_b);
+        assert_eq!(game.soulbond_partner(paired_a), Some(paired_b));
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, bob);
+        let effect = Effect::new(ApplyContinuousEffect::new(
+            EffectTarget::Specific(paired_a),
+            Modification::ChangeController(bob),
+            Until::EndOfTurn,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("execute control change");
+
+        assert_eq!(game.soulbond_partner(paired_a), None);
+        assert_eq!(game.soulbond_partner(paired_b), None);
     }
 
     #[test]
@@ -494,6 +578,56 @@ mod tests {
             game.calculated_power(target),
             Some(-9),
             "tripling negative power should add twice the current negative value"
+        );
+    }
+
+    #[test]
+    fn remove_this_ability_removes_resolving_activated_ability_only() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Licid Stand-In", alice);
+        game.object_mut(source)
+            .expect("source exists")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: TotalCost::default(),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![]),
+                    choices: vec![],
+                    timing: ActivationTiming::AnyTime,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
+        let ability_index = game
+            .object(source)
+            .unwrap()
+            .abilities
+            .iter()
+            .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            .expect("activated ability exists");
+
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_ability_index(ability_index);
+        let effect = Effect::new(ApplyContinuousEffect::new_runtime(
+            EffectTarget::Specific(source),
+            RuntimeModification::RemoveThisAbility,
+            Until::Forever,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("remove this ability");
+
+        let current = game.current_abilities(source).expect("source abilities");
+        assert!(
+            current
+                .iter()
+                .all(|ability| !matches!(ability.kind, AbilityKind::Activated(_))),
+            "the resolving activated ability should be absent from current characteristics"
         );
     }
 }

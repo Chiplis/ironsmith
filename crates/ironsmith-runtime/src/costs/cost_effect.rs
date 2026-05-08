@@ -9,6 +9,7 @@ use crate::effect::Effect;
 use crate::effects::{CostExecutableEffect, CostValidationError};
 use crate::effects::{ExecutionContext, execute_effect};
 use crate::events::cause::EventCause;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 
 /// Convert a CostValidationError to CostPaymentError.
@@ -60,6 +61,121 @@ impl PartialEq for CostEffect {
     }
 }
 
+fn tagged_sacrifice_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let (filter, count, player) = if let Some(effect) =
+        effect.downcast_ref::<crate::effects::SacrificeEffect>()
+    {
+        (&effect.filter, &effect.count, &effect.player)
+    } else if let Some(effect) = effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
+        (&effect.filter, &effect.count, &effect.player)
+    } else {
+        return None;
+    };
+
+    if filter.tagged_constraints.is_empty() {
+        return None;
+    }
+
+    if filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| !ctx.tagged_objects.contains_key(constraint.tag.as_str()))
+    {
+        return Some(Err(CostPaymentError::NoValidSacrificeTarget));
+    }
+
+    if player != &crate::target::PlayerFilter::You {
+        return Some(Err(CostPaymentError::Other(
+            "sacrifice costs support only 'you'".to_string(),
+        )));
+    }
+
+    let required = match count {
+        crate::effect::Value::Fixed(count) => (*count).max(0) as usize,
+        crate::effect::Value::Count(count_filter)
+            if tagged_selection_tag(count_filter)
+                .zip(tagged_selection_tag(filter))
+                .is_some_and(|(count_tag, sacrifice_tag)| count_tag == sacrifice_tag) =>
+        {
+            filter
+                .tagged_constraints
+                .iter()
+                .find(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+                .and_then(|constraint| ctx.tagged_objects.get(constraint.tag.as_str()))
+                .map_or(0, Vec::len)
+        }
+        _ => {
+            return Some(Err(CostPaymentError::Other(
+                "dynamic sacrifice cost amount is unsupported".to_string(),
+            )));
+        }
+    };
+
+    if required == 0 {
+        return Some(Ok(()));
+    }
+
+    let lands_only = ctx.reason.is_cast_or_ability_payment()
+        && game.player_cant_sacrifice_nonland_to_cast_or_activate(ctx.payer);
+    let filter_ctx = crate::filter::FilterContext::new(ctx.payer)
+        .with_source(ctx.source)
+        .with_tagged_objects(&ctx.tagged_objects);
+    let available = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+        .filter(|(id, obj)| {
+            game.controller_of(obj) == ctx.payer
+                && (!lands_only || obj.has_card_type(crate::types::CardType::Land))
+                && filter.matches(obj, &filter_ctx, game)
+                && game.can_be_sacrificed(*id)
+        })
+        .count();
+
+    if available < required {
+        Some(Err(CostPaymentError::NoValidSacrificeTarget))
+    } else {
+        Some(Ok(()))
+    }
+}
+
+fn tagged_selection_tag(filter: &crate::filter::ObjectFilter) -> Option<&crate::tag::TagKey> {
+    filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        .map(|constraint| &constraint.tag)
+}
+
+fn tagged_move_to_zone_cost_precheck(
+    effect: &Effect,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let tag = match move_to_zone.target.base() {
+        crate::target::ChooseSpec::Tagged(tag) => tag,
+        crate::target::ChooseSpec::Object(filter) => tagged_selection_tag(filter)?,
+        _ => return None,
+    };
+
+    let chosen = ctx.tagged_objects.get(tag.as_str())?;
+    if chosen.is_empty() {
+        Some(Err(CostPaymentError::Other(
+            "move-to-zone cost has no chosen object".to_string(),
+        )))
+    } else {
+        Some(Ok(()))
+    }
+}
+
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
         self.effect
@@ -73,7 +189,13 @@ impl CostPayer for CostEffect {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
-        self.can_pay(game, ctx)?;
+        if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
+            result?;
+        } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+            result?;
+        } else {
+            self.can_pay(game, ctx)?;
+        }
 
         // Clone the existing tags to pass to ExecutionContext
         let existing_tags = ctx.tagged_objects.clone();
@@ -390,9 +512,12 @@ mod tests {
     use super::*;
     use crate::costs::{CostContext, CostPayer, CostPaymentResult};
     use crate::decision::SelectFirstDecisionMaker;
-    use crate::effects::RemoveCountersEffect;
+    use crate::effects::{MoveToZoneEffect, RemoveCountersEffect, SacrificeEffect};
     use crate::ids::{CardId, PlayerId};
     use crate::object::CounterType;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
     use crate::{card::CardBuilder, game_state::GameState, zone::Zone};
 
@@ -428,5 +553,90 @@ mod tests {
         assert_eq!(result, CostPaymentResult::Paid);
         assert_eq!(ctx.x_value, Some(2));
         assert_eq!(game.counter_count(source, CounterType::Charge), 1);
+    }
+
+    #[test]
+    fn tagged_sacrifice_cost_can_validate_with_cost_context_tags() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(1), "Bone Splinters")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(2), "Skarrgan Firebird")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(creature).unwrap(), &game);
+
+        let filter = crate::target::ObjectFilter::default().match_tagged(
+            "sacrificed_0",
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let cost = CostEffect::new(SacrificeEffect::new(filter, 1, PlayerFilter::You));
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+        ctx.tagged_objects
+            .insert(TagKey::from("sacrificed_0"), vec![snapshot]);
+
+        let result = cost
+            .pay(&mut game, &mut ctx)
+            .expect("tagged sacrifice cost should be payable");
+
+        assert_eq!(result, CostPaymentResult::Paid);
+        assert!(!game.battlefield.contains(&creature));
+        assert!(
+            game.player(alice)
+                .unwrap()
+                .graveyard
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|obj| obj.name == "Skarrgan Firebird")
+        );
+    }
+
+    #[test]
+    fn tagged_move_to_zone_cost_can_validate_with_cost_context_tags() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(1), "Oracle of Dust")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(2), "Silvercoat Lion")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let exiled = game.create_object_from_card(&creature_card, bob, Zone::Exile);
+        let snapshot = ObjectSnapshot::from_object(game.object(exiled).unwrap(), &game);
+
+        let tag = TagKey::from("graveyard_cost_0");
+        let cost = CostEffect::new(MoveToZoneEffect::to_graveyard(
+            crate::target::ChooseSpec::Tagged(tag.clone()),
+        ));
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+        ctx.tagged_objects.insert(tag, vec![snapshot]);
+
+        let result = cost
+            .pay(&mut game, &mut ctx)
+            .expect("tagged move-to-zone cost should be payable");
+
+        assert_eq!(result, CostPaymentResult::Paid);
+        assert!(!game.exile.contains(&exiled));
+        assert!(
+            game.player(bob)
+                .unwrap()
+                .graveyard
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|obj| obj.name == "Silvercoat Lion")
+        );
     }
 }

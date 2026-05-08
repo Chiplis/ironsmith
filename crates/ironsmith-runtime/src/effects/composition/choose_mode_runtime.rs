@@ -20,6 +20,9 @@ fn check_mode_legal(
 ) -> bool {
     for effect in &mode.effects {
         if let Some(profile) = effect.target_selection_profile() {
+            if !crate::game_loop::requires_target_selection(profile.spec) {
+                continue;
+            }
             let legal_targets = compute_legal_targets(game, profile.spec, controller, Some(source));
             // If effect requires targets (min > 0) and none exist, mode is illegal.
             if legal_targets.len() < profile.min_targets {
@@ -403,6 +406,65 @@ mod tests {
 
         assert!(!game.battlefield.contains(&creature));
         assert!(!game.battlefield.contains(&land));
+    }
+
+    #[test]
+    fn choose_mode_scopes_tagged_damage_target_after_bounce_mode() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+
+        let bounce_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_002), "Bounced Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 4))
+                .build();
+        let bounced = game.create_object_from_card(&bounce_card, bob, Zone::Battlefield);
+        let creature_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_003), "Damaged Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
+        let creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::effects::ResolvedTarget::Object(bounced),
+                crate::effects::ResolvedTarget::Object(creature),
+            ])
+            .with_target_assignments(vec![
+                TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::creature()),
+                    range: 0..1,
+                },
+                TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::creature()),
+                    range: 1..2,
+                },
+            ]);
+
+        let effect = ChooseModeEffect::choose_exactly(
+            2,
+            vec![
+                EffectMode::new(
+                    "Return target creature",
+                    vec![Effect::return_to_hand(
+                        crate::filter::ObjectFilter::creature(),
+                    )],
+                ),
+                EffectMode::new(
+                    "Deal damage to target creature",
+                    vec![Effect::deal_damage(2, ChooseSpec::creature()).tag("damaged_0")],
+                ),
+            ],
+        );
+
+        run_choose_mode(&effect, &mut game, &mut ctx).expect("choose mode resolves");
+
+        assert!(!game.battlefield.contains(&bounced));
+        assert_eq!(game.damage_on(creature), 2);
     }
 
     #[test]

@@ -55,10 +55,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Hypnox"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Hypnox",
+          "power": 8,
+          "toughness": 8
         },
         {
           "op": "assertExileCount",

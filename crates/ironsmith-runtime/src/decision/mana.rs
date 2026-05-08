@@ -745,6 +745,15 @@ pub(crate) fn has_valid_spell_timing_with_view(
     spell_id: ObjectId,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if game
+        .effect_store
+        .cant_effects
+        .cast_spells_only_as_sorcery
+        .contains(&player)
+    {
+        return game.turn.active_player == player && crate::turn::is_sorcery_timing(game);
+    }
+
     if !is_sorcery_speed_spell(spell)
         || spell_has_active_flash_with_view(game, player, spell, spell_id, view)
     {
@@ -1441,6 +1450,7 @@ pub(crate) fn get_mana_cost_for_method<'a>(
     // Composed costs can intentionally represent "without paying its mana cost"
     // by omitting a mana component, so do not fall back to the card's printed cost.
     if method.is_composed_cost()
+        || method.total_cost().is_some()
         || matches!(
             method,
             crate::alternative_cast::AlternativeCastingMethod::FromZone { .. }
@@ -1597,17 +1607,73 @@ pub(crate) fn can_cast_with_alternative_with_context(
         return false;
     }
 
-    let check_ctx = crate::costs::CostCheckContext::new(spell.id, player)
+    if !can_pay_non_mana_cost_sequence_for_cast(game, player, spell.id, method.non_mana_costs()) {
+        return false;
+    }
+
+    true
+}
+
+fn choose_cost_tag(cost: &crate::costs::Cost) -> Option<crate::tag::TagKey> {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .map(|choose| choose.tag.clone())
+}
+
+fn tagged_dependency_satisfied_by_prior_cost(
+    cost: &crate::costs::Cost,
+    available_tags: &[crate::tag::TagKey],
+) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let tagged_constraints = if let Some(sacrifice) =
+        effect.downcast_ref::<crate::effects::SacrificeEffect>()
+    {
+        &sacrifice.filter.tagged_constraints
+    } else if let Some(sacrifice) =
+        effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
+    {
+        &sacrifice.filter.tagged_constraints
+    } else {
+        return false;
+    };
+
+    !tagged_constraints.is_empty()
+        && tagged_constraints.iter().all(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && available_tags.iter().any(|tag| tag == &constraint.tag)
+        })
+}
+
+fn can_pay_non_mana_cost_sequence_for_cast(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    costs: Vec<crate::costs::Cost>,
+) -> bool {
+    let check_ctx = crate::costs::CostCheckContext::new(source, player)
         .with_reason(crate::costs::PaymentReason::CastSpell);
-    for cost in method.non_mana_costs() {
+    let mut available_tags = Vec::new();
+
+    for cost in costs {
         if game
-            .validate_cost_for_payment_reason(player, spell.id, &cost, check_ctx.reason)
+            .validate_cost_for_payment_reason(player, source, &cost, check_ctx.reason)
             .is_err()
         {
             return false;
         }
-        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
+
+        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err()
+            && !tagged_dependency_satisfied_by_prior_cost(&cost, &available_tags)
+        {
             return false;
+        }
+
+        if let Some(tag) = choose_cost_tag(&cost)
+            && !available_tags.iter().any(|available| available == &tag)
+        {
+            available_tags.push(tag);
         }
     }
 
@@ -1675,20 +1741,7 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
                 return false;
             }
 
-            let check_ctx = crate::costs::CostCheckContext::new(spell_id, player)
-                .with_reason(crate::costs::PaymentReason::CastSpell);
-            for cost in method.non_mana_costs() {
-                if game
-                    .validate_cost_for_payment_reason(player, spell_id, &cost, check_ctx.reason)
-                    .is_err()
-                {
-                    return false;
-                }
-                if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
-                    return false;
-                }
-            }
-            true
+            can_pay_non_mana_cost_sequence_for_cast(game, player, spell_id, method.non_mana_costs())
         }
         AlternativeCastingMethod::Bestow { total_cost } => {
             let Some(cost) = total_cost.mana_cost() else {
@@ -1708,18 +1761,13 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
                 return false;
             }
 
-            let check_ctx = crate::costs::CostCheckContext::new(spell_id, player)
-                .with_reason(crate::costs::PaymentReason::CastSpell);
-            for cost in method.non_mana_costs() {
-                if game
-                    .validate_cost_for_payment_reason(player, spell_id, &cost, check_ctx.reason)
-                    .is_err()
-                {
-                    return false;
-                }
-                if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
-                    return false;
-                }
+            if !can_pay_non_mana_cost_sequence_for_cast(
+                game,
+                player,
+                spell_id,
+                method.non_mana_costs(),
+            ) {
+                return false;
             }
 
             let bestow_spec = ChooseSpec::Object(crate::target::ObjectFilter::creature());
@@ -3662,7 +3710,8 @@ fn activation_card_cost_choice_cost(
         | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone { cost, .. } => cost,
     }
 }
 

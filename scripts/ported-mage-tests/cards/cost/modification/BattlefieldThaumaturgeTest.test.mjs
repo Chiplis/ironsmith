@@ -152,13 +152,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pharika's Chosen",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Battlewise Hoplite",
           "count": 1
         },
@@ -237,8 +235,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 16
+          "count": 16
         },
         {
           "op": "assertLife",
@@ -439,7 +436,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Heliod, God of the Sun",
           "count": 1
         },

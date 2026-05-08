@@ -39,14 +39,7 @@ pub(crate) fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        words.as_slice(),
-        [
-            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
-        ] | [
-            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
-        ]
-    ) {
+    if is_mana_retention_negated_clause(&words) {
         return Ok(None);
     }
 
@@ -108,14 +101,7 @@ pub(crate) fn parse_cant_restriction_clause(
     use crate::effect::Restriction;
 
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        words.as_slice(),
-        [
-            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
-        ] | [
-            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
-        ]
-    ) {
+    if is_mana_retention_negated_clause(&words) {
         return Ok(None);
     }
 
@@ -238,6 +224,113 @@ pub(crate) fn parse_cant_restriction_clause(
         restriction,
         target: None,
     }))
+}
+
+fn is_mana_retention_negated_clause(words: &[&str]) -> bool {
+    let Some((&"you", rest)) = words.split_first() else {
+        return false;
+    };
+    let rest = match rest {
+        ["dont", tail @ ..] | ["don't", tail @ ..] => tail,
+        ["do", "not", tail @ ..] => tail,
+        _ => return false,
+    };
+    if is_mana_retention_tail(rest) {
+        return true;
+    }
+    match rest {
+        [
+            "lose",
+            "this",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "white",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "blue",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "black",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "red",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | [
+            "lose",
+            "unspent",
+            "green",
+            "mana",
+            "as",
+            "steps",
+            "and",
+            "phases",
+            "end",
+        ]
+        | ["lose", "this", "mana", "as", "steps"]
+        | ["lose", "unspent", "mana", "as", "steps"]
+        | ["lose", "unspent", "white", "mana", "as", "steps"]
+        | ["lose", "unspent", "blue", "mana", "as", "steps"]
+        | ["lose", "unspent", "black", "mana", "as", "steps"]
+        | ["lose", "unspent", "red", "mana", "as", "steps"]
+        | ["lose", "unspent", "green", "mana", "as", "steps"] => true,
+        _ => false,
+    }
+}
+
+fn is_mana_retention_tail(words: &[&str]) -> bool {
+    (words.starts_with(&["lose", "unspent"])
+        && words
+            .windows(3)
+            .any(|window| window == ["mana", "as", "steps"]))
+        || words.starts_with(&["lose", "this", "mana", "as", "steps"])
 }
 
 pub(crate) fn parse_cant_cast_restriction_words(
@@ -548,9 +641,8 @@ pub(crate) fn strip_static_restriction_condition(
                 ["this", "equipment", "is", "attached", "to", "a", "creature"]
                 | ["this", "equipment", "is", "attached", "to", "creature"]
                 | ["this", "permanent", "is", "attached", "to", "a", "creature"]
-                | ["this", "permanent", "is", "attached", "to", "creature"] => {
-                    Ok(crate::ConditionExpr::SourceIsEquipped)
-                }
+                | ["this", "permanent", "is", "attached", "to", "creature"]
+                | ["this", "is", "attached"] => Ok(crate::ConditionExpr::SourceIsEquipped),
                 _ => Err(CardTextError::ParseError(format!(
                     "unsupported static condition clause (clause: '{}')",
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -830,7 +922,12 @@ pub(crate) fn parse_negated_object_restriction_clause(
             )
         } else if matches!(
             subject_words.as_slice(),
-            ["you"] | ["your", "opponents"] | ["opponents"] | ["players"] | ["each", "player"]
+            ["you"]
+                | ["your", "opponents"]
+                | ["opponents"]
+                | ["players"]
+                | ["each", "player"]
+                | ["enchanted", "player"]
         ) {
             (ObjectFilter::default(), None, None)
         } else {
@@ -860,9 +957,13 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["you"] => Some(PlayerFilter::You),
         ["your", "opponents"] | ["opponents"] => Some(PlayerFilter::Opponent),
         ["players"] | ["each", "player"] => Some(PlayerFilter::Any),
+        ["enchanted", "player"] => Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))),
         _ => None,
     };
     if let Some(player) = player_subject {
+        if is_mana_retention_tail(&remainder_words) {
+            return Ok(None);
+        }
         let restriction = match remainder_words.as_slice() {
             words if slice_starts_with(words, &["gain", "life"]) => Restriction::gain_life(player),
             words if slice_starts_with(words, &["search", "libraries"]) => {
@@ -879,6 +980,14 @@ pub(crate) fn parse_negated_object_restriction_clause(
             }
             words if slice_starts_with(words, &["draw", "more", "than", "one", "card"]) => {
                 Restriction::draw_extra_cards(player)
+            }
+            words
+                if slice_starts_with(
+                    words,
+                    &["cast", "more", "than", "one", "spell", "each", "turn"],
+                ) =>
+            {
+                Restriction::cast_more_than_one_spell_each_turn(player)
             }
             words if slice_starts_with(words, &["cast", "spells"]) => {
                 Restriction::cast_spells_matching(player, ObjectFilter::spell())

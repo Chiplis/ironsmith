@@ -124,7 +124,8 @@ registerPortedMageTests({
           "name": "Elvish Fury",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testBuybackSpellFizzles",

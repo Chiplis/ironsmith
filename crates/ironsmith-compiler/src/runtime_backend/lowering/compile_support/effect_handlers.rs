@@ -67,6 +67,86 @@ fn compile_delayed_trigger_spec(
     }
 }
 
+fn rewrite_filter_tag_relation(
+    filter: &mut ObjectFilter,
+    tag: &str,
+    from: TaggedOpbjectRelation,
+    to: TaggedOpbjectRelation,
+) {
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == tag && constraint.relation == from {
+            constraint.relation = to;
+        }
+    }
+}
+
+fn rewrite_choose_spec_tag_relation(
+    spec: &mut ChooseSpec,
+    tag: &str,
+    from: TaggedOpbjectRelation,
+    to: TaggedOpbjectRelation,
+) {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            rewrite_choose_spec_tag_relation(spec, tag, from, to);
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            rewrite_filter_tag_relation(filter, tag, from, to);
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_effect_tag_relation(
+    effect: Effect,
+    tag: &str,
+    from: TaggedOpbjectRelation,
+    to: TaggedOpbjectRelation,
+) -> Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            rewrite_effect_tag_relation((*tagged.effect).clone(), tag, from, to),
+        ));
+    }
+
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return Effect::new(crate::effects::ConditionalEffect::new(
+            conditional.condition.clone(),
+            rewrite_effects_tag_relation(conditional.if_true.clone(), tag, from, to),
+            rewrite_effects_tag_relation(conditional.if_false.clone(), tag, from, to),
+        ));
+    }
+
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
+        let mut rewritten = apply.clone();
+        if let crate::continuous::EffectTarget::Filter(filter) = &mut rewritten.target {
+            rewrite_filter_tag_relation(filter, tag, from, to);
+        }
+        if let Some(spec) = &mut rewritten.target_spec {
+            rewrite_choose_spec_tag_relation(spec, tag, from, to);
+        }
+        return Effect::new(rewritten);
+    }
+
+    effect
+}
+
+fn rewrite_effects_tag_relation(
+    effects: Vec<Effect>,
+    tag: &str,
+    from: TaggedOpbjectRelation,
+    to: TaggedOpbjectRelation,
+) -> Vec<Effect> {
+    effects
+        .into_iter()
+        .map(|effect| rewrite_effect_tag_relation(effect, tag, from, to))
+        .collect()
+}
+
 pub(super) fn try_compile_timing_and_control_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -494,6 +574,19 @@ pub(super) fn try_compile_stack_and_condition_effect(
             let condition =
                 compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
             ctx.last_object_tag = original_last_tag;
+
+            let true_effects = if matches!(predicate, PredicateAst::ItIsSoulbondPaired)
+                && let Some(reference_tag) = condition_reference_tag.as_deref()
+            {
+                rewrite_effects_tag_relation(
+                    true_effects,
+                    reference_tag,
+                    TaggedOpbjectRelation::IsTaggedObject,
+                    TaggedOpbjectRelation::SoulbondPartnerOfTagged,
+                )
+            } else {
+                true_effects
+            };
 
             let conditional = if false_effects.is_empty() {
                 Effect::conditional_only(condition, true_effects)

@@ -66,7 +66,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Elite Vanguard",
           "count": 1
         },

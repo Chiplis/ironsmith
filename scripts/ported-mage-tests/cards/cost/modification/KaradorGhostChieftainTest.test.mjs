@@ -240,7 +240,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Cloudshift",
           "count": 1
         },

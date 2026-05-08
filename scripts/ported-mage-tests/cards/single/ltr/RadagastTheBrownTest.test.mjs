@@ -116,8 +116,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
@@ -128,8 +127,7 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         },
         {
           "op": "setChoice",
@@ -159,8 +157,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
@@ -277,8 +274,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 12
+          "count": 12
         }
       ]
     }

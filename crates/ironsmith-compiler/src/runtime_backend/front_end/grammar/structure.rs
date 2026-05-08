@@ -1527,10 +1527,26 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
         return None;
     }
 
+    let predicate = if let Some(comma_idx) = trigger_tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+        && trigger_tokens
+            .get(comma_idx + 1)
+            .is_some_and(|token| token.is_word("if"))
+    {
+        let state_predicate =
+            parse_modeled_predicate(trim_lexed_commas(&trigger_tokens[..comma_idx]))?;
+        let gate_predicate =
+            parse_modeled_predicate(trim_lexed_commas(&trigger_tokens[comma_idx + 2..]))?;
+        PredicateAst::And(Box::new(state_predicate), Box::new(gate_predicate))
+    } else {
+        parse_modeled_predicate(trigger_tokens)?
+    };
+
     Some(StateTriggeredClauseSpec {
         trigger_tokens,
         display_tokens: &tokens[..split_idx],
-        predicate: parse_modeled_predicate(trigger_tokens)?,
+        predicate,
         effects_tokens,
     })
 }

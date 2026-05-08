@@ -62,7 +62,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testCreatureDamageTargetAndSelf",
@@ -127,7 +128,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testSpellDamageTargetAndTarget",
@@ -197,7 +199,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testSpellDamageThreeTargets",
@@ -276,7 +279,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testSpellDamageTargetAndYou",
@@ -337,7 +341,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testSpellDamageTargetAndController",
@@ -398,7 +403,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testSpellDamagePlayerAndControlled",
@@ -459,7 +465,8 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

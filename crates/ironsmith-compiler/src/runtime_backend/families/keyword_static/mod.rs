@@ -475,12 +475,14 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_choose_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
+        single_static_ability_ast_rule!(parse_double_counters_replacement_line),
         single_static_ability_ast_infallible_rule!(parse_static_text_marker_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_choose_color_line),
         single_static_ability_ast_rule!(parse_damage_not_removed_cleanup_line),
@@ -567,6 +569,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             id: stringify!(parse_granted_keyword_static_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
         },
+        multi_static_ability_ast_rule!(parse_equipment_you_control_have_equip_line),
         multi_static_ability_ast_rule!(parse_lose_all_abilities_and_transform_base_pt_line),
         multi_static_ability_ast_rule!(parse_lose_all_abilities_and_base_pt_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_lose_flying_line),
@@ -931,7 +934,14 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
         .filter(|word| !is_article(word))
         .collect();
 
-    let filter = if subject_words.len() == 3 && subject_words[1] == "and" {
+    let filter = if matches!(
+        subject_words.as_slice(),
+        ["sources", "with", "chosen", "name"] | ["sources", "with", "the", "chosen", "name"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.name = Some("{chosen name}".to_string());
+        filter
+    } else if subject_words.len() == 3 && subject_words[1] == "and" {
         let t1 = str_strip_suffix(subject_words[0], "s").unwrap_or(subject_words[0]);
         let t2 = str_strip_suffix(subject_words[2], "s").unwrap_or(subject_words[2]);
         if let (Some(ct1), Some(ct2)) = (parse_card_type(t1), parse_card_type(t2)) {
@@ -1073,7 +1083,14 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
         .filter(|word| !is_article(word))
         .collect();
 
-    let filter = if subject_words.len() == 3 && subject_words[1] == "and" {
+    let filter = if matches!(
+        subject_words.as_slice(),
+        ["sources", "with", "chosen", "name"] | ["sources", "with", "the", "chosen", "name"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.name = Some("{chosen name}".to_string());
+        filter
+    } else if subject_words.len() == 3 && subject_words[1] == "and" {
         let t1 = str_strip_suffix(subject_words[0], "s").unwrap_or(subject_words[0]);
         let t2 = str_strip_suffix(subject_words[2], "s").unwrap_or(subject_words[2]);
         if let (Some(ct1), Some(ct2)) = (parse_card_type(t1), parse_card_type(t2)) {
@@ -1628,6 +1645,59 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         ));
     }
 
+    if crate::runtime_backend::token_word_refs(tokens) == ["you", "have", "hexproof"] {
+        return Some(StaticAbility::restriction(
+            crate::effect::Restriction::be_targeted_player_from(
+                PlayerFilter::You,
+                ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+            ),
+            "You have hexproof".to_string(),
+        ));
+    }
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        == [
+            "each", "opponent", "can", "cast", "spells", "only", "any", "time", "they", "could",
+            "cast", "a", "sorcery",
+        ]
+    {
+        return Some(StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells_only_as_sorcery(PlayerFilter::Opponent),
+            "Each opponent can cast spells only any time they could cast a sorcery.".to_string(),
+        ));
+    }
+
+    if words
+        == [
+            "if",
+            "a",
+            "source",
+            "would",
+            "deal",
+            "damage",
+            "to",
+            "enchanted",
+            "player",
+            "it",
+            "deals",
+            "double",
+            "that",
+            "damage",
+            "to",
+            "that",
+            "player",
+            "instead",
+        ]
+    {
+        return Some(StaticAbility::double_damage_amount_replacement(
+            ObjectFilter::default(),
+            Some(PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))),
+            None,
+            "If a source would deal damage to enchanted player, it deals double that damage to that player instead.".to_string(),
+        ));
+    }
+
     if is_creatures_without_flying_cant_attack_line_lexed(tokens) {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::attack(
@@ -1984,6 +2054,24 @@ pub(crate) fn parse_enchanted_land_is_chosen_type_line(
     Ok(Some(StaticAbility::enchanted_land_is_chosen_type(
         "Enchanted land is the chosen type.".to_string(),
     )))
+}
+
+pub(crate) fn parse_choose_card_name_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if !matches!(&words[idx..], ["choose", "a", "card", "name"]) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
+        "As {display_subject} enters, choose a card name."
+    ))))
 }
 
 pub(crate) fn parse_source_is_chosen_type_in_addition_line(
@@ -5575,6 +5663,48 @@ pub(crate) fn parse_prevent_damage_to_other_creature_you_control_put_counters_li
             display_text_for_tokens(tokens, true),
         ),
     ))
+}
+
+pub(crate) fn parse_double_counters_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let line_words = crate::runtime_backend::token_word_refs(tokens);
+    let prefix = [
+        "if", "one", "or", "more", "+1/+1", "counters", "would", "be", "put", "on",
+    ];
+    if !slice_starts_with(&line_words, &prefix)
+        || !(slice_ends_with(
+            &line_words,
+            &["twice", "that", "many", "are", "put", "on", "it", "instead"],
+        ) || slice_ends_with(
+            &line_words,
+            &[
+                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "it",
+                "instead",
+            ],
+        ))
+    {
+        return Ok(None);
+    }
+
+    let Some(twice_idx) = find_index(&line_words, |word| *word == "twice") else {
+        return Ok(None);
+    };
+    if twice_idx <= prefix.len() {
+        return Ok(None);
+    }
+
+    let filter_tokens = line_words[prefix.len()..twice_idx]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+
+    Ok(Some(StaticAbility::double_counters_replacement(
+        filter,
+        Some(crate::object::CounterType::PlusOnePlusOne),
+        display_text_for_tokens(tokens, true),
+    )))
 }
 
 pub(crate) fn parse_prevent_all_combat_damage_to_source_line(

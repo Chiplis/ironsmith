@@ -58,10 +58,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Runeclaw Bear"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Runeclaw Bear",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "attack",

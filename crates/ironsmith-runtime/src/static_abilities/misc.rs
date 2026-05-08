@@ -3,11 +3,11 @@
 //! This module contains static abilities that don't fit neatly into other categories.
 
 use super::{
-    ChooseBasicLandTypeAsEntersSpec, ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec,
-    ChooseLandTypeAsEntersSpec, ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
-    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec,
-    GraveyardCountMetric, StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind,
-    TriggerDuplicationSpec, TriggerSuppressionSpec,
+    ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsEntersSpec,
+    ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec, ChooseNamedOptionAsEntersSpec,
+    ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
+    EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId, StaticAbilityKind,
+    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -1316,6 +1316,32 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec)
+    }
+}
+
+/// "As this enters, choose a card name."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseCardNameAsEnters {
+    pub display: String,
+}
+
+impl ChooseCardNameAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ChooseCardNameAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseCardNameAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
+        Some(ChooseCardNameAsEntersSpec)
     }
 }
 
@@ -2643,6 +2669,161 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 condition: self.condition.clone(),
             },
             ReplacementAction::Modify(EventModification::Add(self.delta)),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleDamageAmountReplacement {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub display: String,
+}
+
+impl DoubleDamageAmountReplacement {
+    pub fn new(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DoubleDamageAmountReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ModifyDamageAmountReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.source_filter.clone(),
+                target_player_filter: self.target_player_filter.clone(),
+                target_object_filter: self.target_object_filter.clone(),
+                condition: None,
+            },
+            ReplacementAction::Double,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleCountersReplacement {
+    pub filter: ObjectFilter,
+    pub counter_type: Option<CounterType>,
+    pub display: String,
+}
+
+impl DoubleCountersReplacement {
+    pub fn new(filter: ObjectFilter, counter_type: Option<CounterType>, display: String) -> Self {
+        Self {
+            filter,
+            counter_type,
+            display,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WouldPutCountersOrEnterWithCountersMatcher {
+    ability_source: ObjectId,
+    filter: ObjectFilter,
+    counter_type: Option<CounterType>,
+}
+
+impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
+    fn matches_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::EventContext,
+    ) -> bool {
+        match event.event_kind() {
+            EventKind::PutCounters => {
+                let Some(put_counters) =
+                    downcast_event::<crate::events::PutCountersEvent>(event)
+                else {
+                    return false;
+                };
+                if self
+                    .counter_type
+                    .is_some_and(|counter_type| counter_type != put_counters.counter_type)
+                {
+                    return false;
+                }
+                ctx.game.object(put_counters.target).is_some_and(|obj| {
+                    self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                })
+            }
+            EventKind::EnterBattlefield => {
+                let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
+                    return false;
+                };
+                if etb.object == self.ability_source {
+                    return false;
+                }
+                if !etb.enters_with_counters.iter().any(|(counter_type, count)| {
+                    *count > 0 && self.counter_type.is_none_or(|required| required == *counter_type)
+                }) {
+                    return false;
+                }
+                let mut filter = self.filter.clone();
+                filter.zone = None;
+                ctx.game
+                    .object(etb.object)
+                    .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            }
+            _ => false,
+        }
+    }
+
+    fn display(&self) -> String {
+        "When counters would be put on a matching permanent".to_string()
+    }
+}
+
+impl StaticAbilityKind for DoubleCountersReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DoubleCountersReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldPutCountersOrEnterWithCountersMatcher {
+                ability_source: source,
+                filter: self.filter.clone(),
+                counter_type: self.counter_type,
+            },
+            ReplacementAction::DoubleCounters {
+                counter_type: self.counter_type,
+            },
         ))
     }
 }

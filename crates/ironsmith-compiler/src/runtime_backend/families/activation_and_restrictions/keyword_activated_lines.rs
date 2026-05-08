@@ -503,3 +503,61 @@ pub(crate) fn parse_equip_line_lexed(
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_equip_line(tokens)
 }
+
+pub(crate) fn parse_reconfigure_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let tokens = grammar::split_lexed_slices_on_period(tokens)
+        .into_iter()
+        .next()
+        .unwrap_or(tokens);
+    let words = ActivationRestrictionCompatWords::new(tokens);
+    if words.first() != Some("reconfigure") {
+        return Ok(None);
+    }
+
+    let mut cost_end = 1usize;
+    while cost_end < tokens.len() {
+        if matches!(tokens[cost_end].kind, TokenKind::LParen | TokenKind::Period) {
+            break;
+        }
+        cost_end += 1;
+    }
+    let cost_tokens = trim_commas(&tokens[1..cost_end]);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "reconfigure missing activation cost".to_string(),
+        ));
+    }
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+    let text = total_cost
+        .mana_cost()
+        .map(|mana| format!("Reconfigure {}", mana.to_oracle()))
+        .unwrap_or_else(|| "Reconfigure".to_string());
+
+    Ok(Some(ParsedAbility {
+        ability: Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::ReconfigureEffect::new(target.clone()),
+                )]),
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        }
+        .into(),
+        text: Some(text),
+        effects_ast: None,
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: None,
+    }))
+}

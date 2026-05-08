@@ -5191,7 +5191,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if first.amount != Value::Fixed(5)
             || second.amount != Value::Fixed(2)
             || !matches!(first.target.base(), ChooseSpec::Object(filter) if filter.card_types == vec![CardType::Creature])
-            || !matches!(&second.target, ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))) if tag == &first_tagged.tag)
+            || !matches!(second.target.base(), ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))) if tag == &first_tagged.tag)
             || !matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == &first_tagged.tag)
             || replacement.from_zone != Some(Zone::Battlefield)
             || replacement.to_zone != Some(Zone::Graveyard)
@@ -12464,8 +12464,39 @@ fn describe_triggered_inline_ability(
     }
 
     line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
+    line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
     apply_triggered_presentation_label(triggered, line)
+}
+
+fn normalize_modal_named_source_etb_surface(
+    line: String,
+    triggered: &crate::ability::TriggeredAbility,
+    _subject: &str,
+) -> String {
+    let Some(zone_trigger) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+    else {
+        return line;
+    };
+    if zone_trigger.this_object
+        || zone_trigger.to
+            != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || zone_trigger.object_filter.subtypes.len() != 1
+        || !line.contains("choose one or both")
+    {
+        return line;
+    }
+    let subtype = format!("{:?}", zone_trigger.object_filter.subtypes[0]);
+    let prefix = format!("Whenever a {subtype} enters,");
+    if let Some(start) = line.find(&prefix) {
+        if start == 0 || line[..start].ends_with(": ") {
+            let rest = &line[start + prefix.len()..];
+            return format!("{}When this creature enters,{rest}", &line[..start]);
+        }
+    }
+    line
 }
 
 fn normalize_redundant_short_name_etb_surface(
@@ -21187,6 +21218,10 @@ pub(super) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::ColorsAmong(filter) => {
             Some(format!("the number of {}", describe_colors_among(filter)))
         }
+        Value::DistinctPowers(filter) => Some(format!(
+            "the number of different powers among {}",
+            describe_for_each_count_filter(filter)
+        )),
         Value::CountScaled(filter, multiplier) => {
             let counted = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
             Some(if *multiplier == 1 {
@@ -22653,7 +22688,7 @@ pub(super) fn describe_search_choose_then_exile_and_cast(
     }
 
     let cast_tagged = extract_cast_tagged(cast_effect)?;
-    if cast_tagged.tag != choose.tag {
+    if cast_tagged.tag != choose.tag && cast_tagged.tag.as_str() != crate::tag::SOURCE_EXILED_TAG {
         return None;
     }
 
@@ -25575,6 +25610,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&attach.target)
         );
     }
+    if let Some(reconfigure) = effect.downcast_ref::<crate::effects::ReconfigureEffect>() {
+        return format!(
+            "Attach this source to {} or unattach it",
+            describe_choose_spec(&reconfigure.target)
+        );
+    }
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
         let triggering_tag = TagKey::from("triggering");
         if choose_spec_references_exact_tag(&attach.objects, &triggering_tag)
@@ -27992,9 +28033,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::PreventNextTimeDamageTarget::AnyTarget => "any target".to_string(),
             crate::effects::PreventNextTimeDamageTarget::You => "you".to_string(),
         };
-        return format!(
-            "Prevent the next time {source_text} would deal damage to {target_text} this turn"
+        let mut rendered = format!(
+            "The next time {source_text} would deal damage to {target_text} this turn, prevent that damage"
         );
+        if prevent_next_time.reflect_damage_to_source_controller {
+            rendered.push_str(
+                ". If damage is prevented this way, this spell deals that much damage to that source's controller",
+            );
+        }
+        return rendered;
     }
     if let Some(redirect_next) =
         effect.downcast_ref::<crate::effects::RedirectNextDamageToTargetEffect>()
@@ -29522,6 +29569,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(scavenge);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(reconfigure) = describe_structural_reconfigure_keyword(activated)
+    {
+        return Some(reconfigure);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(equip) = describe_structural_equip_keyword(activated)
     {
         return Some(equip);
@@ -30003,6 +30055,33 @@ fn describe_structural_equip_keyword(
     }
 
     Some(rendered)
+}
+
+fn describe_structural_reconfigure_keyword(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed) || !activated.choices.is_empty()
+    {
+        return None;
+    }
+    if activated.effects.segments.len() != 1
+        || !activated.effects.segments[0].self_replacements.is_empty()
+        || activated.effects.segments[0].default_effects.len() != 1
+    {
+        return None;
+    }
+    let reconfigure = activated.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ReconfigureEffect>()?;
+    if !is_target_creature_you_control(&reconfigure.target) {
+        return None;
+    }
+
+    let cost = describe_cost_list(activated.mana_cost.costs());
+    if cost.trim().is_empty() || cost.eq_ignore_ascii_case("Free") {
+        Some("Reconfigure {0}".to_string())
+    } else {
+        Some(format!("Reconfigure {cost}"))
+    }
 }
 
 fn describe_structural_outlast_keyword(
@@ -31695,6 +31774,7 @@ pub(super) fn describe_ability(
             }
             line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
             line = normalize_redundant_short_name_etb_surface(line, triggered, subject);
+            line = normalize_modal_named_source_etb_surface(line, triggered, subject);
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);

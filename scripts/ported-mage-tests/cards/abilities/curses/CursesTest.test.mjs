@@ -133,14 +133,12 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         }
       ]
     },
@@ -997,8 +995,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertPowerToughness",

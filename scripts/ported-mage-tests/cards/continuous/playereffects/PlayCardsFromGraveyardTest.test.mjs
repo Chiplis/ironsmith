@@ -107,7 +107,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Yawgmoth's Will",
           "count": 1
         },
@@ -119,21 +118,18 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Reviving Dose",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -211,19 +207,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Yawgmoth's Will",
           "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Ancestral Vision",
           "count": 0
         },

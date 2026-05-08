@@ -202,13 +202,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bruna, the Fading Light",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Gisela, the Broken Blade",
           "count": 1
         },
@@ -232,9 +230,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 11
+          "player": 1,
+          "count": 11
         }
       ]
     },
@@ -342,13 +339,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bruna, the Fading Light",
           "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Gisela, the Broken Blade",
           "count": 0
         },
@@ -372,9 +367,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         }
       ]
     },

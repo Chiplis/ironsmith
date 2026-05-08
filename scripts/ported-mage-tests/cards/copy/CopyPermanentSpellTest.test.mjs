@@ -617,7 +617,8 @@ registerPortedMageTests({
           "name": "Nimbus Naiad",
           "count": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testBestowRedirectFallOff",
@@ -721,7 +722,8 @@ registerPortedMageTests({
           "name": "Nimbus Naiad",
           "count": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testBestowIllegalTarget",
@@ -813,7 +815,8 @@ registerPortedMageTests({
           "name": "Nimbus Naiad",
           "count": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

@@ -34,10 +34,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Mimic"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mimic",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "unsupported",

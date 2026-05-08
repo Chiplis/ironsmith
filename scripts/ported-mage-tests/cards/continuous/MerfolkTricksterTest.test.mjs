@@ -70,12 +70,18 @@ registerPortedMageTests({
           "source": "assertTapped(\"Flying Men\", true)"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Flying Men\", noAbilities)"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Flying Men",
+          "abilities": []
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerB, mTrickster, flashAbility)"
+          "op": "assertAbilities",
+          "player": 1,
+          "name": "Merfolk Trickster",
+          "abilities": [
+            "Flash"
+          ]
         }
       ]
     },

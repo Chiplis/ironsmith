@@ -324,10 +324,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Daxos's Torment"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertAbility",
@@ -345,10 +347,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_TURN",
-          "power": 0,
-          "toughness": "Daxos's Torment"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertAbility",
@@ -545,9 +549,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "dax not boost",
-          "name": 3,
-          "power": "BEGIN_COMBAT",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 0,
           "toughness": 0
         },
         {
@@ -563,10 +569,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "dax boost",
-          "name": 5,
-          "power": "BEGIN_COMBAT",
-          "toughness": 0
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertAbility",

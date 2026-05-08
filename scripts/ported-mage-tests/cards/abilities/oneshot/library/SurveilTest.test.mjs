@@ -436,8 +436,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "unsupported",

@@ -51,19 +51,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Spelltwine",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Shock",
           "count": 1
         },
@@ -173,39 +170,33 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Impulse",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Blasphemous Act",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Spelltwine",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Night's Whisper",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Divination",
           "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         },
         {
           "op": "assertLife",

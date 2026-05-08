@@ -140,6 +140,7 @@ pub enum StaticAbilityId {
     CantPayLifeOrSacrificeNonlandForCastOrActivate,
     ChooseColorAsEnters,
     ChoosePlayerAsEnters,
+    ChooseCardNameAsEnters,
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
@@ -197,6 +198,7 @@ pub enum StaticAbilityId {
     DrawReplacementDouble,
     ExileToCounteredExileInsteadOfGraveyard,
     ModifyDamageAmountReplacement,
+    DoubleCountersReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     SuppressMatchingTriggeredAbilities,
@@ -358,6 +360,7 @@ impl StaticAbilityId {
             | CantPayLifeOrSacrificeNonlandForCastOrActivate
             | ChooseColorAsEnters
             | ChoosePlayerAsEnters
+            | ChooseCardNameAsEnters
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
@@ -415,6 +418,7 @@ impl StaticAbilityId {
             | DrawReplacementDouble
             | ExileToCounteredExileInsteadOfGraveyard
             | ModifyDamageAmountReplacement
+            | DoubleCountersReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | SuppressMatchingTriggeredAbilities

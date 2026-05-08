@@ -59,7 +59,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertTapped(\"Alpha Myr\", true)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

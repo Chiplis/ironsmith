@@ -289,7 +289,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Banisher Priest",
           "count": 1
         },

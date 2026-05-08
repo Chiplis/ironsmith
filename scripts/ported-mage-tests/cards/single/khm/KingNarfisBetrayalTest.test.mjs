@@ -119,14 +119,12 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 5
+          "count": 5
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 4
+          "player": 1,
+          "count": 4
         },
         {
           "op": "assertPermanentCount",

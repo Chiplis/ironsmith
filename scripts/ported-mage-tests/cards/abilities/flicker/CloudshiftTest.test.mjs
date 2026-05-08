@@ -744,7 +744,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         }
@@ -1018,7 +1017,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Courser of Kruphix",
           "count": 1
         }
@@ -1162,10 +1160,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "UPKEEP",
-          "power": 0,
-          "toughness": "Lone Missionary"
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Lone Missionary",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -1177,10 +1177,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Lone Missionary",
           "power": 0,
-          "toughness": "Lone Missionary"
+          "toughness": 4
         },
         {
           "op": "castSpell",
@@ -1226,7 +1228,8 @@ registerPortedMageTests({
           "player": 0,
           "life": 24
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: Failing, see #9839, perhaps due to game.getState.processAction(game) not cleaning up Permanent::removeAllAbilities in time"
     },
     {
       "name": "testEntersSubtype",
@@ -1275,10 +1278,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "UPKEEP",
-          "power": 0,
-          "toughness": "Elvish Mystic"
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Elvish Mystic",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -1290,10 +1295,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Elvish Mystic",
           "power": 0,
-          "toughness": "Elvish Mystic"
+          "toughness": 4
         },
         {
           "op": "castSpell",
@@ -1341,7 +1348,8 @@ registerPortedMageTests({
           "power": 2,
           "toughness": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: Failing, see #9839, perhaps due to game.getState.processAction(game) not cleaning up MageObject::removeAllSubTypes in time"
     },
     {
       "name": "testEntersTriggerNotSuppressedDelayed",
@@ -1383,10 +1391,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "UPKEEP",
-          "power": 0,
-          "toughness": "Lone Missionary"
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Lone Missionary",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -1398,10 +1408,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Lone Missionary",
           "power": 0,
-          "toughness": "Lone Missionary"
+          "toughness": 4
         },
         {
           "op": "castSpell",

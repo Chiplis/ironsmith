@@ -122,7 +122,8 @@ registerPortedMageTests({
           "name": "Essence of the Wild",
           "count": 3
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_CopyManyTokens",
@@ -191,7 +192,8 @@ registerPortedMageTests({
           "name": "Essence of the Wild",
           "count": 6
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_CopyCreatureWithContinuousEffect",

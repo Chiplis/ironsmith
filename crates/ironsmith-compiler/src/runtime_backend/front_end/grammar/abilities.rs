@@ -996,13 +996,11 @@ fn parse_mana_spend_bonus_spell_filter(spec_words: &[&str]) -> Option<ObjectFilt
 }
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words.len() == 6
-        && primitives::words_match_prefix(
-            tokens,
-            &["any", "player", "may", "activate", "this", "ability"],
-        )
-        .is_some()
+    primitives::words_match_prefix(
+        tokens,
+        &["any", "player", "may", "activate", "this", "ability"],
+    )
+    .is_some()
 }
 
 pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {

@@ -26,6 +26,9 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if is_mana_retention_cant_clause(&normalized_words) {
+        return Ok(None);
+    }
     if matches!(
         normalized_words.as_slice(),
         [
@@ -178,6 +181,21 @@ pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Ve
     Some(vec![first, second])
 }
 
+fn is_mana_retention_cant_clause(words: &[&str]) -> bool {
+    let Some((&"you", rest)) = words.split_first() else {
+        return false;
+    };
+    let rest = match rest {
+        ["dont", tail @ ..] | ["don't", tail @ ..] | ["do", "not", tail @ ..] => tail,
+        _ => return false,
+    };
+    (rest.starts_with(&["lose", "unspent"])
+        && rest
+            .windows(3)
+            .any(|window| window == ["mana", "as", "steps"]))
+        || rest.starts_with(&["lose", "this", "mana", "as", "steps"])
+}
+
 pub(crate) fn parse_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -204,6 +222,9 @@ pub(crate) fn parse_cant_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if is_mana_retention_cant_clause(&normalized) {
+        return Ok(None);
+    }
 
     if let Some(rest) = slice_strip_prefix(
         &normalized,

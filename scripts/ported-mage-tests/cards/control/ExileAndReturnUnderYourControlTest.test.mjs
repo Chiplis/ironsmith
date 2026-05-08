@@ -148,13 +148,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Courser of Kruphix",
           "count": 0
         },
@@ -259,13 +257,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Secret Plans",
           "count": 0
         },
@@ -365,13 +361,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sylvan Library",
           "count": 0
         },
@@ -383,15 +377,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "assertLife",
@@ -518,9 +510,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertPermanentCount",

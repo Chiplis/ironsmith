@@ -2,7 +2,7 @@
 
 use crate::events::EventKind;
 use crate::events::combat::CreatureAttackedEvent;
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
@@ -67,10 +67,7 @@ impl AttacksTrigger {
             return true;
         };
         for info in &combat.attackers {
-            let Some(obj) = ctx.game.object(info.creature) else {
-                continue;
-            };
-            if self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+            if self.matches_attacker_info(info, ctx) {
                 return info.creature == attacker;
             }
         }
@@ -82,13 +79,53 @@ impl AttacksTrigger {
         let count = combat
             .attackers
             .iter()
-            .filter(|info| {
-                ctx.game
-                    .object(info.creature)
-                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
-            })
+            .filter(|info| self.matches_attacker_info(info, ctx))
             .count();
         (count > 0).then_some(count as i32)
+    }
+
+    fn matches_attacker_info(
+        &self,
+        info: &crate::combat_state::AttackerInfo,
+        ctx: &TriggerContext,
+    ) -> bool {
+        let Some(obj) = ctx.game.object(info.creature) else {
+            return false;
+        };
+        self.matches_attacker_object_and_target(obj, &info.target, ctx)
+    }
+
+    fn matches_attacker_object_and_target(
+        &self,
+        obj: &crate::object::Object,
+        target: &crate::combat_state::AttackTarget,
+        ctx: &TriggerContext,
+    ) -> bool {
+        let mut object_filter = self.filter.clone();
+        let attacked_player_filter = object_filter
+            .attacking_player_or_planeswalker_controlled_by
+            .take();
+        let attacked_target_must_be_player = object_filter.targets_only_player.take().is_some();
+        if !object_filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+            return false;
+        }
+        let Some(attacked_player_filter) = attacked_player_filter else {
+            return true;
+        };
+        let attacked_player = match target {
+            crate::combat_state::AttackTarget::Player(player) => Some(*player),
+            crate::combat_state::AttackTarget::Planeswalker(planeswalker) => {
+                if attacked_target_must_be_player {
+                    None
+                } else {
+                    ctx.game
+                        .object(*planeswalker)
+                        .map(|planeswalker| ctx.game.controller_of(planeswalker))
+                }
+            }
+        };
+        attacked_player
+            .is_some_and(|player| attacked_player_filter.matches_player(player, &ctx.filter_ctx))
     }
 }
 
@@ -103,7 +140,15 @@ impl TriggerMatcher for AttacksTrigger {
         let Some(obj) = ctx.game.object(e.attacker) else {
             return false;
         };
-        if !self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+        let attack_target = match e.target {
+            crate::events::combat::AttackEventTarget::Player(player) => {
+                crate::combat_state::AttackTarget::Player(player)
+            }
+            crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
+                crate::combat_state::AttackTarget::Planeswalker(planeswalker)
+            }
+        };
+        if !self.matches_attacker_object_and_target(obj, &attack_target, ctx) {
             return false;
         }
         if e.total_attackers < self.min_total_attackers {
@@ -157,7 +202,9 @@ mod tests {
     use crate::events::combat::AttackEventTarget;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
-    use crate::types::CardType;
+    use crate::object::AttachmentTarget;
+    use crate::target::PlayerFilter;
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {
@@ -240,6 +287,67 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn one_or_more_can_match_attackers_attacking_enchanted_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_card = CardBuilder::new(CardId::from_raw(900), "Curse Probe")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(source_id)
+            .expect("source should exist")
+            .attached_to = Some(AttachmentTarget::Player(bob));
+        let attacker = create_creature(&mut game, "A", alice);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        game.combat = Some(combat);
+
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::Any);
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::TaggedPlayer(
+            crate::tag::TagKey::from("enchanted"),
+        ));
+        let trigger = AttacksTrigger::one_or_more(filter);
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker,
+                AttackEventTarget::Player(bob),
+                1,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&event, &ctx));
+        drop(ctx);
+
+        let walker_card = CardBuilder::new(CardId::from_raw(901), "Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .build();
+        let walker = game.create_object_from_card(&walker_card, bob, Zone::Battlefield);
+        let walker_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker,
+                AttackEventTarget::Planeswalker(walker),
+                1,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&walker_event, &ctx));
+
+        let mut player_only_filter = trigger.filter.clone();
+        player_only_filter.targets_only_player = Some(PlayerFilter::Any);
+        let player_only_trigger = AttacksTrigger::one_or_more(player_only_filter);
+        assert!(!player_only_trigger.matches(&walker_event, &ctx));
     }
 
     #[test]

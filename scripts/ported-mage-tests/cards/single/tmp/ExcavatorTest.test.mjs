@@ -67,7 +67,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertAbilityCount(playerA, \"Balduvian Bears\", LandwalkAbility.class, 5)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: Failing because permanent LKI does not save MageObjectAttribute values"
     }
   ]
 });

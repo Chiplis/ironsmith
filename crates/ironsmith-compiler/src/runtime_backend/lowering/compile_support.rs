@@ -1617,6 +1617,11 @@ fn lower_granted_ability_grant_modifications(
     let mut modifications = Vec::with_capacity(abilities.len());
     for ability in abilities {
         match ability {
+            GrantedAbilityAst::ThisAbility => {
+                return Err(CardTextError::InvariantViolation(
+                    "this ability cannot be granted".to_string(),
+                ));
+            }
             GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
                 let mut lowered = lower_parsed_ability(ability.clone())?;
                 *lowered.text_mut() = Some(display.clone());
@@ -1644,6 +1649,7 @@ fn granted_ability_mode_description(
     }
 
     let display = match ability {
+        GrantedAbilityAst::ThisAbility => "this ability".to_string(),
         GrantedAbilityAst::ParsedObjectAbility { display, .. } => display.clone(),
         _ => lower_granted_abilities_ast(std::slice::from_ref(ability))?
             .into_iter()

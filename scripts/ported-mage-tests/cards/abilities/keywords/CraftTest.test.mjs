@@ -341,7 +341,8 @@ registerPortedMageTests({
           "power": 3,
           "toughness": 3
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testMarketGnomeExilePermanent",
@@ -423,8 +424,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -508,8 +508,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -600,8 +599,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -692,8 +690,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -799,7 +796,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_OreRichStalactite",

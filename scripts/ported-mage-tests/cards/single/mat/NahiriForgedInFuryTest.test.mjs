@@ -184,8 +184,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },

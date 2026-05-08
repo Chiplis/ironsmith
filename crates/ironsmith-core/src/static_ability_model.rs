@@ -282,6 +282,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
     },
+    RemoveCardTypes {
+        filter: ObjectFilter,
+        card_types: Vec<CardType>,
+        condition: Option<Condition>,
+    },
     SetCardTypes {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
@@ -322,6 +327,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
+    ChooseCardNameAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
@@ -353,6 +359,17 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         delta: i32,
+        display: String,
+    },
+    DoubleDamageAmountReplacement {
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        display: String,
+    },
+    DoubleCountersReplacement {
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
         display: String,
     },
     CharacteristicDefiningPt {
@@ -928,6 +945,15 @@ where
             StaticAbilityPayload::AddCardTypes { filter, card_types } => {
                 StaticAbilityPayload::AddCardTypes { filter, card_types }
             }
+            StaticAbilityPayload::RemoveCardTypes {
+                filter,
+                card_types,
+                condition,
+            } => StaticAbilityPayload::RemoveCardTypes {
+                filter,
+                card_types,
+                condition,
+            },
             StaticAbilityPayload::SetCardTypes { filter, card_types } => {
                 StaticAbilityPayload::SetCardTypes { filter, card_types }
             }
@@ -983,6 +1009,9 @@ where
             },
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
+            }
+            StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
+                StaticAbilityPayload::ChooseCardNameAsEnters(display)
             }
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
@@ -1056,6 +1085,26 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                display,
+            },
+            StaticAbilityPayload::DoubleDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                display,
+            } => StaticAbilityPayload::DoubleDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                display,
+            },
+            StaticAbilityPayload::DoubleCountersReplacement {
+                filter,
+                counter_type,
+                display,
+            } => StaticAbilityPayload::DoubleCountersReplacement {
+                filter,
+                counter_type,
                 display,
             },
             StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } => {
@@ -1230,6 +1279,17 @@ impl<
                 payload: StaticAbilityPayload::GrantObjectAbilityForFilter(Box::new(
                     payload.clone(),
                 )),
+            };
+        }
+        if let Some(payload) = label_any.downcast_ref::<RemoveCardTypesForFilter>() {
+            return Self {
+                id: Some(StaticAbilityId::RemoveCardTypes),
+                label: "remove card types".to_string(),
+                payload: StaticAbilityPayload::RemoveCardTypes {
+                    filter: payload.filter.clone(),
+                    card_types: payload.types.clone(),
+                    condition: payload.condition.clone(),
+                },
             };
         }
         if let Some(payload) = label_any.downcast_ref::<CopyActivatedAbilities>() {
@@ -1520,6 +1580,22 @@ impl<
             id: Some(StaticAbilityId::AddCardTypes),
             label: "add card types".to_string(),
             payload: StaticAbilityPayload::AddCardTypes { filter, card_types },
+        }
+    }
+
+    pub fn remove_card_types(
+        filter: ObjectFilter,
+        card_types: Vec<CardType>,
+        condition: Option<Condition>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RemoveCardTypes),
+            label: "remove card types".to_string(),
+            payload: StaticAbilityPayload::RemoveCardTypes {
+                filter,
+                card_types,
+                condition,
+            },
         }
     }
 
@@ -2541,6 +2617,14 @@ impl<
             payload: StaticAbilityPayload::ChoosePlayerAsEnters(display),
         }
     }
+    pub fn choose_card_name_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters(display),
+        }
+    }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {
         Self::identified(
             StaticAbilityId::RedirectDamageToSource,
@@ -2850,6 +2934,42 @@ impl<
             },
         }
     }
+    pub fn double_damage_amount_replacement(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ModifyDamageAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                display,
+            },
+        }
+    }
+
+    pub fn double_counters_replacement(
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DoubleCountersReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleCountersReplacement {
+                filter,
+                counter_type,
+                display,
+            },
+        }
+    }
+
     pub fn discard_or_redirect_replacement(filter: ObjectFilter, redirect_zone: Zone) -> Self {
         Self {
             id: Some(StaticAbilityId::DiscardOrRedirectReplacement),
@@ -3335,13 +3455,19 @@ impl SetColorsForFilter {
 pub struct RemoveCardTypesForFilter {
     pub filter: ObjectFilter,
     pub types: Vec<CardType>,
+    pub condition: Option<Condition>,
 }
 
 impl RemoveCardTypesForFilter {
     pub fn new(filter: ObjectFilter, types: Vec<CardType>) -> Self {
-        Self { filter, types }
+        Self {
+            filter,
+            types,
+            condition: None,
+        }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Condition) -> Self {
+        self.condition = Some(condition);
         self
     }
 }

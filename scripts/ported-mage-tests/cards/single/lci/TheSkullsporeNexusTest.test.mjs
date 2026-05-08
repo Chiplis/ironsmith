@@ -79,10 +79,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Fungus Dinosaur Token"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fungus Dinosaur Token",
+          "power": 7,
+          "toughness": 7
         },
         {
           "op": "castSpell",

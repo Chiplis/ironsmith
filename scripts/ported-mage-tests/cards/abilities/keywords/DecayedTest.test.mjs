@@ -150,7 +150,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Grizzly Bears",
           "count": 0
         },

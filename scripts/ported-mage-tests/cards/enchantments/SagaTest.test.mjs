@@ -726,7 +726,8 @@ registerPortedMageTests({
           "name": "Blood Moon",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testLoreCounterCount",
@@ -773,17 +774,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Memnite"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Memnite",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "assertPowerToughness",
-          "player": "next turn",
-          "name": 2,
-          "power": "BEGIN_COMBAT",
-          "toughness": 0
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Memnite",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "addTarget",
@@ -792,10 +797,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "+2/+0",
-          "name": 3,
-          "power": "BEGIN_COMBAT",
-          "toughness": 0
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Memnite",
+          "power": 3,
+          "toughness": 1
         },
         {
           "op": "addTarget",
@@ -804,10 +811,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "+3/+0",
-          "name": 5,
-          "power": "BEGIN_COMBAT",
-          "toughness": 0
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Memnite",
+          "power": 4,
+          "toughness": 1
         },
         {
           "op": "addTarget",

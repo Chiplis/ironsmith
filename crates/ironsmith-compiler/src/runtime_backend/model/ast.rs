@@ -568,6 +568,12 @@ pub(crate) struct SubjectVerbSubjectAst {
     pub(crate) player: PlayerAst,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ReturnAsAuraAst {
+    pub(crate) attachment_filter: ObjectFilter,
+    pub(crate) remove_all_abilities: bool,
+}
+
 #[derive(Clone, PartialEq)]
 pub(crate) enum SubjectVerbActionAst {
     Draw {
@@ -784,6 +790,10 @@ pub(crate) enum SubjectVerbActionAst {
         replacement_zone: Zone,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterEnterUnderControlReplacement {
+        filter: ObjectFilter,
+        duration: ZoneReplacementDurationAst,
+    },
     ExileInsteadOfGraveyardThisTurn,
     ControlCombatChoicesThisTurn {
         attackers: bool,
@@ -864,6 +874,7 @@ pub(crate) enum SubjectVerbActionAst {
     PreventNextTimeDamage {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
+        reflect_damage_to_source_controller: bool,
     },
     PreventDamage {
         amount: Value,
@@ -943,6 +954,7 @@ pub(crate) enum SubjectVerbActionAst {
         converted: bool,
         controller: ReturnControllerAst,
         count_value: Option<Value>,
+        as_aura: Option<ReturnAsAuraAst>,
     },
     ReturnAllToBattlefield {
         filter: ObjectFilter,
@@ -1032,6 +1044,11 @@ pub(crate) enum SubjectVerbActionAst {
     AddSubtypes {
         target: TargetAst,
         subtypes: Vec<Subtype>,
+        duration: Until,
+    },
+    BecomeAuraEnchantment {
+        target: TargetAst,
+        attachment_filter: ObjectFilter,
         duration: Until,
     },
     BecomeBasicLandType {
@@ -1777,6 +1794,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_zone", replacement_zone)
                 .field("duration", duration)
                 .finish(),
+            Self::RegisterEnterUnderControlReplacement { filter, duration } => f
+                .debug_struct("RegisterEnterUnderControlReplacement")
+                .field("filter", filter)
+                .field("duration", duration)
+                .finish(),
             Self::ExileInsteadOfGraveyardThisTurn => f.write_str("ExileInsteadOfGraveyardThisTurn"),
             Self::ControlCombatChoicesThisTurn {
                 attackers,
@@ -1880,10 +1902,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PreventAllCombatDamageToYou")
                 .field("duration", duration)
                 .finish(),
-            Self::PreventNextTimeDamage { source, target } => f
+            Self::PreventNextTimeDamage {
+                source,
+                target,
+                reflect_damage_to_source_controller,
+            } => f
                 .debug_struct("PreventNextTimeDamage")
                 .field("source", source)
                 .field("target", target)
+                .field(
+                    "reflect_damage_to_source_controller",
+                    reflect_damage_to_source_controller,
+                )
                 .finish(),
             Self::PreventDamage {
                 amount,
@@ -2031,6 +2061,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 converted,
                 controller,
                 count_value,
+                as_aura,
             } => f
                 .debug_struct("ReturnToBattlefield")
                 .field("target", target)
@@ -2039,6 +2070,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("converted", converted)
                 .field("controller", controller)
                 .field("count_value", count_value)
+                .field("as_aura", as_aura)
                 .finish(),
             Self::ReturnAllToBattlefield { filter, tapped } => f
                 .debug_struct("ReturnAllToBattlefield")
@@ -2201,6 +2233,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("AddSubtypes")
                 .field("target", target)
                 .field("subtypes", subtypes)
+                .field("duration", duration)
+                .finish(),
+            Self::BecomeAuraEnchantment {
+                target,
+                attachment_filter,
+                duration,
+            } => f
+                .debug_struct("BecomeAuraEnchantment")
+                .field("target", target)
+                .field("attachment_filter", attachment_filter)
                 .field("duration", duration)
                 .finish(),
             Self::BecomeBasicLandType {
@@ -3103,10 +3145,22 @@ impl EffectAst {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
     ) -> Self {
+        Self::subject_verb_prevent_next_time_damage_with_reflection(source, target, false)
+    }
+
+    pub(crate) fn subject_verb_prevent_next_time_damage_with_reflection(
+        source: PreventNextTimeDamageSourceAst,
+        target: PreventNextTimeDamageTargetAst,
+        reflect_damage_to_source_controller: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PreventNextTimeDamage { source, target },
+            SubjectVerbActionAst::PreventNextTimeDamage {
+                source,
+                target,
+                reflect_damage_to_source_controller,
+            },
         )
     }
 
@@ -3339,6 +3393,7 @@ impl EffectAst {
                 converted,
                 controller,
                 count_value,
+                as_aura: None,
             },
         )
     }
@@ -3597,6 +3652,22 @@ impl EffectAst {
             SubjectVerbActionAst::AddSubtypes {
                 target,
                 subtypes,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_become_aura_enchantment(
+        target: TargetAst,
+        attachment_filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::BecomeAuraEnchantment {
+                target,
+                attachment_filter,
                 duration,
             },
         )
@@ -4208,6 +4279,17 @@ impl EffectAst {
                 replacement_zone,
                 duration,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_enter_under_control_replacement(
+        filter: ObjectFilter,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterEnterUnderControlReplacement { filter, duration },
         )
     }
 

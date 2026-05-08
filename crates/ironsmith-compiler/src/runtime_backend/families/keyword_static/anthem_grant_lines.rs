@@ -1472,6 +1472,9 @@ pub(crate) fn parse_anthem_subject(
     {
         return Ok(AnthemSubjectAst::Filter(filter));
     }
+    if let Some(filter) = parse_enchanted_player_controls_subject(tokens)? {
+        return Ok(AnthemSubjectAst::Filter(filter));
+    }
     if let Some(filter) = parse_shared_suffix_and_subject_filter(tokens) {
         return Ok(AnthemSubjectAst::Filter(filter));
     }
@@ -1485,6 +1488,26 @@ pub(crate) fn parse_anthem_subject(
         "unsupported anthem subject (clause: '{}')",
         crate::runtime_backend::token_word_refs(tokens).join(" ")
     )))
+}
+
+fn parse_enchanted_player_controls_subject(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(enchanted_idx) =
+        anthem_find_word_sequence_index(&words, &["enchanted", "player", "controls"])
+    else {
+        return Ok(None);
+    };
+    if enchanted_idx == 0 || enchanted_idx + 3 != words.len() {
+        return Ok(None);
+    }
+    let Some(prefix_end) = token_index_for_word_index(tokens, enchanted_idx) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter(&tokens[..prefix_end], false)?;
+    filter.controller = Some(PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted")));
+    Ok(Some(filter))
 }
 
 fn infer_attached_subject_filter_from_condition_tokens(
@@ -1642,6 +1665,45 @@ pub(crate) fn parse_static_condition_clause(
 
     if let Some(condition) = parse_cards_in_hand_static_condition(&tokens) {
         return Ok(condition);
+    }
+
+    if clause_words.len() >= 6
+        && clause_words[0] == "you"
+        && clause_words[1] == "have"
+        && clause_words[3] == "or"
+        && clause_words[4] == "less"
+        && clause_words[5] == "life"
+        && let Some((life, _)) = parse_number(tokens.get(2..3).unwrap_or_default())
+    {
+        return Ok(crate::ConditionExpr::LifeTotalOrLess(life as i32));
+    }
+
+    if let Some(condition) = parse_devotion_static_condition(&clause_words)? {
+        return Ok(condition);
+    }
+
+    if clause_words == ["you", "control", "three", "or", "more", "artifacts"]
+        || clause_words == ["as", "you", "control", "three", "or", "more", "artifacts"]
+        || clause_words
+            == [
+                "as",
+                "long",
+                "as",
+                "you",
+                "control",
+                "three",
+                "or",
+                "more",
+                "artifacts",
+            ]
+    {
+        let mut filter = ObjectFilter::artifact();
+        filter.zone = Some(Zone::Battlefield);
+        return Ok(crate::ConditionExpr::PlayerControlsAtLeast {
+            player: PlayerFilter::You,
+            filter,
+            count: 3,
+        });
     }
 
     if clause_words == ["this", "creature", "is", "equipped"]
@@ -2108,6 +2170,107 @@ pub(crate) fn parse_static_condition_clause(
     )))
 }
 
+fn parse_devotion_static_condition(
+    words: &[&str],
+) -> Result<Option<crate::ConditionExpr>, CardTextError> {
+    let Some(devotion_idx) = anthem_find_word_index(words, |word| word == "devotion") else {
+        return Ok(None);
+    };
+    let Some(to_idx) = anthem_find_word_index(&words[devotion_idx + 1..], |word| word == "to")
+        .map(|idx| devotion_idx + 1 + idx)
+    else {
+        return Ok(None);
+    };
+    let Some(is_idx) = anthem_find_word_index(&words[to_idx + 1..], |word| word == "is")
+        .map(|idx| to_idx + 1 + idx)
+    else {
+        return Ok(None);
+    };
+
+    let player = if matches!(&words[..devotion_idx], [.., "your"]) {
+        PlayerFilter::You
+    } else if matches!(&words[..devotion_idx], [.., "their"]) {
+        PlayerFilter::IteratedPlayer
+    } else if matches!(&words[..devotion_idx], [.., "opponent"] | [.., "opponents"]) {
+        PlayerFilter::Opponent
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported devotion player in static condition (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+
+    let mut devotion_values = Vec::new();
+    for word in &words[to_idx + 1..is_idx] {
+        if *word == "and" || *word == "," {
+            continue;
+        }
+        let Some(color) = crate::color::Color::from_name(word) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported devotion color '{}' in static condition (clause: '{}')",
+                word,
+                words.join(" ")
+            )));
+        };
+        devotion_values.push(crate::effect::Value::Devotion {
+            player: player.clone(),
+            color,
+        });
+    }
+
+    let mut devotion_values = devotion_values.into_iter();
+    let Some(mut left) = devotion_values.next() else {
+        return Err(CardTextError::ParseError(format!(
+            "missing devotion color in static condition (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    for value in devotion_values {
+        left = crate::effect::Value::Add(Box::new(left), Box::new(value));
+    }
+
+    let (operator, right_start) = match &words[is_idx + 1..] {
+        ["less", "than", "or", "equal", "to", rest @ ..] => (
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            rest,
+        ),
+        ["less", "than", rest @ ..] => (crate::effect::ValueComparisonOperator::LessThan, rest),
+        ["greater", "than", "or", "equal", "to", rest @ ..] => (
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            rest,
+        ),
+        ["greater", "than", rest @ ..] => (crate::effect::ValueComparisonOperator::GreaterThan, rest),
+        ["equal", "to", rest @ ..] => (crate::effect::ValueComparisonOperator::Equal, rest),
+        ["not", "equal", "to", rest @ ..] => (crate::effect::ValueComparisonOperator::NotEqual, rest),
+        _ => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported devotion comparison in static condition (clause: '{}')",
+                words.join(" ")
+            )));
+        }
+    };
+
+    let Some(amount_word) = right_start.first().copied() else {
+        return Err(CardTextError::ParseError(format!(
+            "missing devotion comparison value in static condition (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    let Some(amount) = parse_named_number(amount_word).or_else(|| amount_word.parse().ok()) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported devotion comparison value '{}' in static condition (clause: '{}')",
+            amount_word,
+            words.join(" ")
+        )));
+    };
+
+    Ok(Some(crate::ConditionExpr::ValueComparison {
+        left,
+        operator,
+        right: crate::effect::Value::Fixed(amount as i32),
+    }))
+}
+
 fn parse_conjoined_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
@@ -2228,6 +2391,15 @@ pub(crate) fn parse_anthem_for_each_expression(
 
     if let Some(player) = parse_commander_cast_count_player(rest) {
         return Ok(AnthemCountExpression::CommanderCastCount(player));
+    }
+
+    if crate::runtime_backend::token_word_refs(rest).as_slice()
+        == ["unspent", "green", "mana", "you", "have"]
+    {
+        return Ok(AnthemCountExpression::UnspentMana {
+            player: PlayerFilter::You,
+            symbol: crate::mana::ManaSymbol::Green,
+        });
     }
 
     let filter = parse_object_filter(rest, false).map_err(|_| {
@@ -3727,6 +3899,72 @@ fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
     }
+}
+
+pub(crate) fn parse_equipment_you_control_have_equip_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = if let Some((label, body_tokens)) = split_em_dash_label_prefix(tokens) {
+        if label.eq_ignore_ascii_case("metalcraft") {
+            body_tokens
+        } else {
+            tokens
+        }
+    } else {
+        tokens
+    };
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words.starts_with(&["equipment", "you", "control", "have", "equip"]) {
+        return Ok(None);
+    }
+    let Some(as_word_idx) = words
+        .windows(3)
+        .position(|window| window == ["as", "long", "as"])
+    else {
+        return Ok(None);
+    };
+    let Some(as_idx) = anthem_token_offset(tokens, |token| token.is_word("as")) else {
+        return Ok(None);
+    };
+    if as_word_idx < 5 || as_idx <= 5 {
+        return Ok(None);
+    }
+    let cost_tokens = trim_edge_punctuation(&tokens[5..as_idx]);
+    let condition = parse_static_condition_clause(&tokens[as_idx..])?;
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+    let ability = ParsedAbility {
+        ability: Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::attach_to(target.clone()),
+                ]),
+                choices: vec![target],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        }
+        .into(),
+        text: Some("Equip {0}".to_string()),
+        effects_ast: None,
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: None,
+    };
+    Ok(Some(vec![StaticAbilityAst::GrantObjectAbility {
+        filter: ObjectFilter::default()
+            .with_subtype(Subtype::Equipment)
+            .you_control(),
+        ability,
+        display: "Equipment you control have equip {0}".to_string(),
+        condition: Some(condition),
+    }]))
 }
 
 fn parsed_exploit_ability() -> ParsedAbility {

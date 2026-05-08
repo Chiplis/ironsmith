@@ -77,10 +77,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Hook-Haunt Drifter"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Hook-Haunt Drifter",
+          "power": 1,
+          "toughness": 2
         },
         {
           "op": "unsupported",
@@ -189,10 +191,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Waildrifter"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Waildrifter",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "unsupported",
@@ -295,8 +299,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 0,
-          "name": 9
+          "count": 9
         },
         {
           "op": "assertPermanentCount",
@@ -615,7 +618,8 @@ registerPortedMageTests({
           "tapped": true,
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_CopySpell",
@@ -915,7 +919,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Mirrorhall Mimic",
           "count": 1
         }

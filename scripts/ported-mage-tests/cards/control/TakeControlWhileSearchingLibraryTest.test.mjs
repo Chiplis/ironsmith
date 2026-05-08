@@ -595,7 +595,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_UnderControlMustUseTestCommandsCorrectrly",
@@ -664,7 +665,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_OppositionAgent",

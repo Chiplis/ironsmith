@@ -69,6 +69,120 @@ fn test_spell_with_effects() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
+    let def = parse_oracle_card_definition("Day of the Moon");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Day of the Moon should compile to a saga chapter trigger");
+    let effects = &triggered.effects.segments[0].default_effects;
+
+    let choose_name = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseCardNameEffect>())
+        .expect("Day of the Moon should choose a card name before goading");
+    assert_eq!(choose_name.tag.as_str(), "__chosen_name__");
+
+    let goad = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::GoadEffect>())
+        .expect("Day of the Moon should goad the matching creatures");
+    let ChooseSpec::All(filter) = &goad.target else {
+        panic!("expected Day of the Moon to goad all matching creatures, got {goad:#?}");
+    };
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert!(
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__chosen_name__"
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                )
+        }),
+        "goad target should match the just-chosen name, got {filter:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
+    struct ChooseMemnite;
+
+    impl crate::decision::DecisionMaker for ChooseMemnite {
+        fn decide_text(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Memnite".to_string()
+        }
+    }
+
+    let def = parse_oracle_card_definition("Day of the Moon");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Day of the Moon should compile to a saga chapter trigger");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let memnite = CardDefinitionBuilder::new(CardId::from_raw(91_001), "Memnite")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let vanguard = CardDefinitionBuilder::new(CardId::from_raw(91_002), "Elite Vanguard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let memnite_id = game.create_object_from_definition(&memnite, bob, Zone::Battlefield);
+    let vanguard_id = game.create_object_from_definition(&vanguard, bob, Zone::Battlefield);
+
+    let mut dm = ChooseMemnite;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("chapter ability should resolve");
+
+    assert!(game.is_goaded(memnite_id));
+    assert!(!game.is_goaded(vanguard_id));
+
+    game.next_turn();
+    let combat = crate::combat_state::CombatState::default();
+    let decision = crate::game_loop::get_declare_attackers_decision(&game, &combat);
+    let crate::decisions::context::DecisionContext::Attackers(attackers) = decision else {
+        panic!("expected attackers decision");
+    };
+    let memnite_option = attackers
+        .attacker_options
+        .iter()
+        .find(|option| option.creature == memnite_id)
+        .expect("Memnite should be able to attack Bob's combat");
+    assert!(
+        memnite_option.must_attack,
+        "chosen-name goad should make Memnite a required attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_lantern_of_insight_public_top_library_static() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
         .card_types(vec![CardType::Artifact])
@@ -1447,6 +1561,23 @@ fn test_parse_you_cant_cast_more_than_one_spell_each_turn() {
         rendered.contains("you can't cast more than one spell each turn")
             || rendered.contains("you cant cast more than one spell each turn"),
         "expected player-scoped cast-limit text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_enchanted_player_cant_cast_more_than_one_spell_each_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Curse Cast Limit Variant")
+        .parse_text("Enchant player\nEnchanted player can't cast more than one spell each turn.")
+        .expect("parse enchanted-player cast-limit restriction");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted player can't cast more than one spell each turn")
+            || rendered.contains("enchanted player cant cast more than one spell each turn"),
+        "expected enchanted-player cast-limit text, got {rendered}"
     );
 }
 
@@ -11635,6 +11766,25 @@ fn parse_all_slivers_have_triggered_ability_as_static_grant() {
         has_filter_grant,
         "expected filter-based object ability grant static ability, got {:?}",
         def.abilities
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_kira_granted_trigger_counters_the_targeting_stack_object() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kira, Great Glass-Spinner")
+        .parse_text(
+            "Creatures you control have \"Whenever this creature becomes the target of a spell or ability for the first time each turn, counter that spell or ability.\"",
+        )
+        .expect("Kira granted trigger should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GrantObjectAbilityForFilter")
+            && abilities_debug.contains("FirstTimeThisTurn")
+            && abilities_debug.contains("CounterEffect")
+            && abilities_debug.contains("triggering_source"),
+        "expected Kira to counter the stack object that targeted the creature, got {abilities_debug}"
     );
 }
 

@@ -47,10 +47,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Grizzly Bears"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "activateAbility",
@@ -136,10 +138,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Grizzly Bears"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "activateAbility",

@@ -75,9 +75,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 6
+          "player": 1,
+          "count": 6
         },
         {
           "op": "assertLife",
@@ -183,9 +182,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 7
+          "player": 1,
+          "count": 7
         },
         {
           "op": "assertExileCount",
@@ -303,9 +301,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 6
+          "player": 1,
+          "count": 6
         },
         {
           "op": "assertLife",
@@ -428,9 +425,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 7
+          "player": 1,
+          "count": 7
         },
         {
           "op": "assertLife",

@@ -57,11 +57,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "opponentSacrificesLevel2",
@@ -112,9 +112,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         }
       ]
     },

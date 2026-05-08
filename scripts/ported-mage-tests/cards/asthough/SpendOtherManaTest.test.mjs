@@ -632,7 +632,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pillarfield Ox",
           "count": 1
         },

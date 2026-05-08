@@ -61,10 +61,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "after II, 4/4 Bears",
-          "name": 3,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertAbility",
@@ -83,10 +85,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "4: back to 2/2 Bears",
-          "name": 4,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertAbility",

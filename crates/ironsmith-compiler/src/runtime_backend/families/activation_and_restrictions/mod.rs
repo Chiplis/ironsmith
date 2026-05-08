@@ -110,7 +110,7 @@ pub(crate) use keyword_action_costs::{
 use keyword_activated_lines::*;
 pub(crate) use keyword_activated_lines::{
     is_land_subtype, parse_channel_line_lexed, parse_cycling_line, parse_cycling_line_lexed,
-    parse_equip_line_lexed,
+    parse_equip_line_lexed, parse_reconfigure_line_lexed,
 };
 use trigger_clause_core::*;
 pub(crate) use trigger_clause_core::{

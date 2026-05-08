@@ -279,10 +279,6 @@ pub(crate) fn friendly_same_name_search_prompt(
     ))
 }
 
-fn should_auto_choose_single_candidate(candidates: &[ObjectId], min: usize, max: usize) -> bool {
-    candidates.len() == 1 && min == 1 && max == 1
-}
-
 fn filter_references_tagged_pool(effect: &ChooseObjectsEffect) -> bool {
     effect.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
@@ -1029,8 +1025,6 @@ pub(crate) fn run_choose_objects(
             game.shuffle_slice(&mut randomized);
             randomized.truncate(max);
             randomized
-        } else if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
-            candidates.clone()
         } else {
             let mut spec =
                 ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));

@@ -54,7 +54,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Tranquil Thicket",
           "count": 1
         },
@@ -67,8 +66,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     },
@@ -204,8 +202,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         }
       ]
     },
@@ -247,14 +244,12 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },
@@ -491,9 +486,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         }
       ]
     }

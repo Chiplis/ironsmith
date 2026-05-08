@@ -673,6 +673,9 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachToEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ReconfigureEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachObjectsEffect>(&effect)
     {
         return Ok(converted);
@@ -934,9 +937,11 @@ where
                 crate::effects::PreventNextTimeDamageTarget::You
             }
         };
-        return Ok(Effect::new(
-            crate::effects::PreventNextTimeDamageEffect::new(source, target),
-        ));
+        let mut effect = crate::effects::PreventNextTimeDamageEffect::new(source, target);
+        if payload.reflect_damage_to_source_controller {
+            effect = effect.reflecting_to_source_controller();
+        }
+        return Ok(Effect::new(effect));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RedirectNextDamageToTargetEffect>(&effect)
@@ -1104,6 +1109,13 @@ where
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterEnterUnderControlReplacementEffect>(
+            &effect,
+        )
     {
         return Ok(converted);
     }

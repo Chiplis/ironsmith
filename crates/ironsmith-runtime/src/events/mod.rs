@@ -319,6 +319,7 @@ impl Event {
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
+                controller_override: None,
             },
             ProvNodeId::default(),
         )

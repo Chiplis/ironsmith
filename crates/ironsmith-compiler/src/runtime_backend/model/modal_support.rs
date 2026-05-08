@@ -440,6 +440,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
@@ -461,6 +462,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
             | SubjectVerbActionAst::MakeColorless { .. }

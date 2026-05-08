@@ -47,15 +47,16 @@ pub use ironsmith_core::{
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect, PutCountersEffect,
     PutOntoBattlefieldEffect, PutStickerEffect, PutTaggedRemainderOnLibraryBottomEffect,
-    RearrangeLookedCardsInLibraryEffect, RedirectNextDamageToTargetEffect,
+    RearrangeLookedCardsInLibraryEffect, ReconfigureEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
     ReflexiveTriggerEffect as CoreReflexiveTriggerEffect, RegenerateEffect,
-    RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect,
+    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
+    RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
     RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, RepeatProcessPromptEffect,
     ReplacementApplyMode, RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
-    ReturnAllToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
+    ReturnAllToBattlefieldEffect, ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealSourceFromHandEffect,
     RevealTaggedEffect, RevealTopEffect, RingTemptsYouEffect, RollDieEffect, SacrificeEffect,
     SacrificePlayerEffect, SacrificeTargetEffect,
@@ -151,6 +152,8 @@ pub mod continuous {
             preserve_source_abilities: bool,
         },
         RemoveAllAbilities,
+        RemoveThisAbility,
+        SetAuraAttachmentFilter(crate::AuraAttachmentFilter),
     }
 }
 

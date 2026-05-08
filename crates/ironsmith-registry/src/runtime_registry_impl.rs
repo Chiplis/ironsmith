@@ -79,14 +79,30 @@ impl CardRegistry {
             .iter()
             .map(|name| normalize_card_lookup_name(name))
             .collect::<std::collections::HashSet<_>>();
+        let requested_loose_name_keys = unresolved_names
+            .iter()
+            .map(|name| normalize_card_loose_lookup_name(name))
+            .collect::<std::collections::HashSet<_>>();
 
         generated_registry::register_generated_parser_cards_if_name(self, |name| {
             requested_name_keys.contains(&normalize_card_lookup_name(name))
+                || requested_loose_name_keys.contains(&normalize_card_loose_lookup_name(name))
         });
 
         for requested in &unresolved_names {
             let normalized = requested.trim();
             if normalized.is_empty() || self.get(normalized).is_some() {
+                continue;
+            }
+
+            let loose_key = normalize_card_loose_lookup_name(normalized);
+            if let Some(canonical) = self
+                .cards
+                .keys()
+                .find(|name| normalize_card_loose_lookup_name(name) == loose_key)
+                .cloned()
+            {
+                self.register_alias(normalized, canonical);
                 continue;
             }
 
@@ -656,10 +672,25 @@ fn normalize_card_lookup_name(name: &str) -> String {
 }
 
 fn normalize_card_loose_lookup_name(name: &str) -> String {
-    name.chars()
-        .filter(|ch| ch.is_ascii_alphanumeric())
-        .map(|ch| ch.to_ascii_lowercase())
-        .collect()
+    let mut normalized = String::new();
+    for ch in name.chars() {
+        match ch {
+            'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' | 'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => {
+                normalized.push('a')
+            }
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => normalized.push('e'),
+            'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => normalized.push('i'),
+            'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'Ó' | 'Ò' | 'Ô' | 'Ö' | 'Õ' => {
+                normalized.push('o')
+            }
+            'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => normalized.push('u'),
+            'ñ' | 'Ñ' => normalized.push('n'),
+            'ç' | 'Ç' => normalized.push('c'),
+            _ if ch.is_ascii_alphanumeric() => normalized.push(ch.to_ascii_lowercase()),
+            _ => {}
+        }
+    }
+    normalized
 }
 
 fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&'a CardDefinition> {

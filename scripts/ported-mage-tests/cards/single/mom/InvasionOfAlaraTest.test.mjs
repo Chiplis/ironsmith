@@ -95,10 +95,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
           "player": 1,
-          "name": "UPKEEP",
-          "power": 1,
-          "toughness": "Bottle Golems"
+          "name": "Bottle Golems",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "activateAbility",
@@ -148,10 +150,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Vampire Hexmage"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Vampire Hexmage",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "assertHandCount",

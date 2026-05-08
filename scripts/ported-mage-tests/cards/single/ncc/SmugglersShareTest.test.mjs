@@ -90,9 +90,8 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "clearZone",
@@ -157,9 +156,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         }
       ]
     },
@@ -168,9 +166,8 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "clearZone",
@@ -271,9 +268,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         }
       ]
     },
@@ -282,9 +278,8 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "clearZone",
@@ -455,13 +450,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Treasure Token",
           "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 2
         }
@@ -473,8 +466,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "addCard",
@@ -590,8 +582,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -616,8 +607,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     }

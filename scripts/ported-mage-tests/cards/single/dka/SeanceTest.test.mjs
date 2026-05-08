@@ -40,7 +40,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Craw Wurm",
           "count": 1
         },
@@ -89,7 +88,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Craw Wurm",
           "count": 1
         },

@@ -926,13 +926,31 @@ fn compile_subject_verb_effect(
                     crate::effects::ReplacementApplyMode::OneShot
                 }
             };
-            let effect = Effect::new(crate::effects::RegisterFutureZoneReplacementEffect::new(
-                filter.clone(),
-                *from_zone,
-                *to_zone,
-                *replacement_zone,
-                mode,
-            ));
+            let effect = Effect::new(
+                crate::effects::RegisterFutureZoneReplacementEffect::new(
+                    filter.clone(),
+                    *from_zone,
+                    *to_zone,
+                    *replacement_zone,
+                    mode,
+                )
+                .with_cause_filter(crate::events::cause::CauseFilter::effect_like())
+                .requiring_cause_source_match(),
+            );
+            Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::RegisterEnterUnderControlReplacement { filter, duration } => {
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+            };
+            let effect = Effect::new(
+                crate::effects::RegisterEnterUnderControlReplacementEffect::new(
+                    filter.clone(),
+                    mode,
+                ),
+            );
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn => {
@@ -1280,7 +1298,11 @@ fn compile_subject_verb_effect(
             vec![Effect::prevent_all_combat_damage_to_you(duration.clone())],
             Vec::new(),
         )),
-        SubjectVerbActionAst::PreventNextTimeDamage { source, target } => {
+        SubjectVerbActionAst::PreventNextTimeDamage {
+            source,
+            target,
+            reflect_damage_to_source_controller,
+        } => {
             let source_spec = match source {
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::PreventNextTimeDamageSource::Choice
@@ -1300,12 +1322,14 @@ fn compile_subject_verb_effect(
                     crate::effects::PreventNextTimeDamageTarget::You
                 }
             };
-            Ok((
-                vec![Effect::new(
-                    crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec),
-                )],
-                Vec::new(),
-            ))
+            let mut effect = crate::effects::PreventNextTimeDamageEffect::new(
+                source_spec,
+                target_spec,
+            );
+            if *reflect_damage_to_source_controller {
+                effect = effect.reflecting_to_source_controller();
+            }
+            Ok((vec![Effect::new(effect)], Vec::new()))
         }
         SubjectVerbActionAst::PreventDamage {
             amount,
@@ -1755,6 +1779,7 @@ fn compile_subject_verb_effect(
             converted,
             controller,
             count_value,
+            as_aura,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1832,7 +1857,21 @@ fn compile_subject_verb_effect(
                     };
                     Effect::new(move_back)
                 } else {
-                    Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped)
+                    let mut effect =
+                        Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped);
+                    if let Some(as_aura) = as_aura {
+                        let mut return_effect = crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                            resolved_spec.clone(),
+                            *tapped,
+                        )
+                        .as_aura(as_aura.attachment_filter.clone());
+                        if as_aura.remove_all_abilities {
+                            return_effect = return_effect
+                                .as_aura_removing_all_abilities(as_aura.attachment_filter.clone());
+                        }
+                        effect = Effect::new(return_effect);
+                    }
+                    effect
                 },
                 &resolved_spec,
                 ctx,
@@ -2244,6 +2283,37 @@ fn compile_subject_verb_effect(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::BecomeAuraEnchantment {
+            target,
+            attachment_filter,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
+            Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::AddCardTypes(vec![CardType::Enchantment]),
+                    duration.clone(),
+                )
+                .with_additional_modification(crate::continuous::Modification::RemoveCardTypes(
+                    vec![
+                        CardType::Artifact,
+                        CardType::Battle,
+                        CardType::Creature,
+                        CardType::Kindred,
+                        CardType::Land,
+                        CardType::Planeswalker,
+                    ],
+                ))
+                .with_additional_modification(crate::continuous::Modification::AddSubtypes(vec![
+                    Subtype::Aura,
+                ]))
+                .with_additional_runtime_modification(
+                    crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(
+                        attachment_filter.clone().into(),
+                    ),
+                ),
+            )
+        }),
         SubjectVerbActionAst::BecomeBasicLandType {
             target,
             subtype,
@@ -2471,6 +2541,23 @@ fn compile_subject_verb_effect(
             abilities,
             duration,
         } => {
+            if abilities
+                .iter()
+                .any(|ability| matches!(ability, GrantedAbilityAst::ThisAbility))
+            {
+                if abilities.len() != 1 {
+                    return Err(CardTextError::InvariantViolation(
+                        "this ability removal cannot be combined with other abilities".to_string(),
+                    ));
+                }
+                return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                    Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                        spec,
+                        crate::effects::continuous::RuntimeModification::RemoveThisAbility,
+                        duration.clone(),
+                    ))
+                });
+            }
             let abilities = lower_granted_abilities_ast(abilities)?;
             let Some(first_ability) = abilities.first() else {
                 return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
@@ -3816,6 +3903,13 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::UntapAll { filter } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("untapped");
+                prelude.push(Effect::new(
+                    crate::effects::TagMatchingObjectsEffect::new(resolved_filter.clone(), tag.clone()),
+                ));
+                ctx.last_object_tag = Some(tag);
+            }
             prelude.push(Effect::untap_all(resolved_filter));
             Ok((prelude, choices))
         }
@@ -3993,31 +4087,40 @@ fn compile_subject_verb_effect(
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut prelude = Vec::new();
             let mut choices = choices;
-            let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
-                tag.as_str().to_string()
-            } else {
-                if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
-                    return Err(CardTextError::ParseError(
-                        "destroy-attached target must be an object target or tagged object"
-                            .to_string(),
-                    ));
-                }
-                let tag = ctx.next_tag("attachment_target");
-                prelude.push(
-                    Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()))
-                        .tag(tag.clone()),
-                );
-                tag
-            };
-            ctx.last_object_tag = Some(target_tag.clone());
-
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            resolved_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(target_tag.as_str()),
-                    relation: TaggedOpbjectRelation::AttachedToTaggedObject,
-                });
+            if let Some(player_filter) = match target_spec.base() {
+                ChooseSpec::Player(player_filter) => Some(player_filter.clone()),
+                ChooseSpec::SourceController => Some(PlayerFilter::You),
+                _ => None,
+            } {
+                resolved_filter.attached_to_player = Some(player_filter);
+                ctx.last_object_tag = None;
+            } else {
+                let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
+                    tag.as_str().to_string()
+                } else {
+                    if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
+                        return Err(CardTextError::ParseError(
+                            "destroy-attached target must be an object, player, or tagged object"
+                                .to_string(),
+                        ));
+                    }
+                    let tag = ctx.next_tag("attachment_target");
+                    prelude.push(
+                        Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()))
+                            .tag(tag.clone()),
+                    );
+                    tag
+                };
+                ctx.last_object_tag = Some(target_tag.clone());
+
+                resolved_filter
+                    .tagged_constraints
+                    .push(TaggedObjectConstraint {
+                        tag: TagKey::from(target_tag.as_str()),
+                        relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+                    });
+            }
 
             let (mut filter_prelude, filter_choices) =
                 target_context_prelude_for_filter(&resolved_filter);

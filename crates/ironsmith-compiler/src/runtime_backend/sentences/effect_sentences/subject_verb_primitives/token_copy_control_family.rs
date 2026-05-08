@@ -954,6 +954,7 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
         })
     });
     let supported_target = target_tokens.first().is_some_and(|t| t.is_word("target"))
+        || grammar::contains_word(&target_tokens, "you") && target_tokens.len() == 1
         || grammar::contains_word(&target_tokens, "it") && target_tokens.len() == 1
         || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "creature"]).is_some()
         || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "permanent"]).is_some()

@@ -722,6 +722,17 @@ mod tests {
     }
 
     #[test]
+    fn leading_player_may_probe_accepts_that_attacking_player_clauses() {
+        let tokens = lex_line("That attacking player may create a tapped Zombie token", 0)
+            .expect("rewrite lexer should classify attacking-player may text");
+
+        assert_eq!(
+            parse_leading_player_may_lexed(&tokens),
+            Some(PlayerAst::Attacking)
+        );
+    }
+
+    #[test]
     fn leading_player_may_probe_accepts_that_player_or_target_controller_clauses() {
         let tokens = lex_line(
             "That player or that permanent's controller may draw a card",
@@ -2513,6 +2524,13 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
                         .value(PlayerAst::Defending),
                     alt((
                         (word_eq("attacking"), word_eq("player"), word_eq("may"))
+                            .value(PlayerAst::Attacking),
+                        (
+                            word_eq("that"),
+                            word_eq("attacking"),
+                            word_eq("player"),
+                            word_eq("may"),
+                        )
                             .value(PlayerAst::Attacking),
                         (
                             word_eq("the"),

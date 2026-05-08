@@ -11,11 +11,39 @@ use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::{GameState, StackEntry, Target, TargetAssignment};
 use crate::zone::Zone;
 pub use ironsmith_core::CastTaggedEffect;
 
 use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
+
+fn build_target_assignments_for_cast_tagged_copy(
+    requirements: &[crate::decision::TargetRequirement],
+    targets: &[Target],
+) -> Option<Vec<TargetAssignment>> {
+    let requirement_contexts = requirements
+        .iter()
+        .map(
+            |requirement| crate::decisions::context::TargetRequirementContext {
+                description: requirement.description.clone(),
+                legal_targets: requirement.legal_targets.clone(),
+                min_targets: requirement.min_targets,
+                max_targets: requirement.max_targets,
+            },
+        )
+        .collect::<Vec<_>>();
+    let ranges = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)?;
+    Some(
+        requirements
+            .iter()
+            .zip(ranges)
+            .map(|(requirement, range)| TargetAssignment {
+                spec: requirement.spec.clone(),
+                range,
+            })
+            .collect(),
+    )
+}
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
@@ -92,11 +120,78 @@ impl EffectExecutor for CastTaggedEffect {
                 };
             }
 
+            copy_obj.zone = Zone::Stack;
+            game.add_object(copy_obj);
+
+            let requirements = game
+                .object(copy_id)
+                .and_then(|obj| obj.spell_effect.as_ref())
+                .map(|program| {
+                    crate::game_loop::extract_target_requirements_from_program_with_modes(
+                        game,
+                        program,
+                        caster,
+                        Some(copy_id),
+                        None,
+                    )
+                })
+                .unwrap_or_default();
+            let requirement_contexts = requirements
+                .iter()
+                .map(
+                    |requirement| crate::decisions::context::TargetRequirementContext {
+                        description: requirement.description.clone(),
+                        legal_targets: requirement.legal_targets.clone(),
+                        min_targets: requirement.min_targets,
+                        max_targets: requirement.max_targets,
+                    },
+                )
+                .collect::<Vec<_>>();
+            let selected_targets = if requirement_contexts.is_empty() {
+                Vec::new()
+            } else {
+                let targets_ctx = crate::decisions::context::TargetsContext::new(
+                    caster,
+                    copy_id,
+                    card_name.clone(),
+                    requirement_contexts,
+                );
+                let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
+                if ctx.decision_maker.awaiting_choice() {
+                    game.remove_object(copy_id);
+                    return Ok(EffectOutcome::count(0));
+                }
+                let Some(normalized) = crate::targeting::normalize_targets_for_requirements(
+                    &targets_ctx.requirements,
+                    proposed,
+                ) else {
+                    game.remove_object(copy_id);
+                    return Ok(EffectOutcome::impossible());
+                };
+                normalized
+            };
+            let Some(target_assignments) =
+                build_target_assignments_for_cast_tagged_copy(&requirements, &selected_targets)
+            else {
+                game.remove_object(copy_id);
+                return Ok(EffectOutcome::impossible());
+            };
+
             if !self.without_paying_mana_cost
                 && let Some(cost) = mana_cost.as_ref()
             {
+                let Some(copy_obj) = game.object(copy_id) else {
+                    return Ok(EffectOutcome::target_invalid());
+                };
                 let mut effective_cost =
-                    crate::decision::calculate_effective_mana_cost(game, caster, &copy_obj, cost);
+                    crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                        game,
+                        caster,
+                        copy_obj,
+                        cost,
+                        &selected_targets,
+                        &CastingMethod::Normal,
+                    );
                 if let Some(reduction) = self.cost_reduction.as_ref() {
                     effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
                 }
@@ -107,17 +202,17 @@ impl EffectExecutor for CastTaggedEffect {
                     0,
                     crate::costs::PaymentReason::CastSpell,
                 ) {
+                    game.remove_object(copy_id);
                     return Ok(EffectOutcome::impossible());
                 }
             }
-
-            copy_obj.zone = Zone::Stack;
-            game.add_object(copy_obj);
 
             let mut stack_entry = StackEntry::new(copy_id, caster);
             stack_entry.x_value = x_value;
             stack_entry.source_stable_id = Some(stable_id);
             stack_entry.source_name = Some(card_name);
+            stack_entry.targets = selected_targets;
+            stack_entry.target_assignments = target_assignments;
             game.push_to_stack(stack_entry);
             return Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![copy_id]),

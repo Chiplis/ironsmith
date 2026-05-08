@@ -122,7 +122,8 @@ registerPortedMageTests({
           "power": 3,
           "toughness": 3
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_DontUse_Manual",
@@ -243,7 +244,8 @@ registerPortedMageTests({
           "power": 1,
           "toughness": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_Multikicker_UseOnce",
@@ -511,8 +513,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },
@@ -608,8 +609,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },
@@ -1762,9 +1762,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         }
       ]
     },
@@ -2437,9 +2436,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertHandCount",

@@ -35,6 +35,8 @@ pub struct EnterBattlefieldEvent {
     pub added_abilities: Vec<Ability>,
     /// Base power/toughness set as the object enters.
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// If set, the object enters under this player's control.
+    pub controller_override: Option<PlayerId>,
 }
 
 impl EnterBattlefieldEvent {
@@ -50,6 +52,7 @@ impl EnterBattlefieldEvent {
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
+            controller_override: None,
         }
     }
 
@@ -65,6 +68,7 @@ impl EnterBattlefieldEvent {
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
+            controller_override: None,
         }
     }
 
@@ -147,6 +151,13 @@ impl EnterBattlefieldEvent {
     pub fn with_base_power_toughness(&self, power: i32, toughness: i32) -> Self {
         Self {
             set_base_power_toughness: Some((power, toughness)),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_controller_override(&self, controller: PlayerId) -> Self {
+        Self {
+            controller_override: Some(controller),
             ..self.clone()
         }
     }

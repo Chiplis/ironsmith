@@ -140,7 +140,8 @@ registerPortedMageTests({
           "player": 0,
           "life": 25
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

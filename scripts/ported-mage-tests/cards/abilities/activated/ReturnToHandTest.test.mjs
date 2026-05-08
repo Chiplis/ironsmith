@@ -304,7 +304,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },

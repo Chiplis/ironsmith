@@ -212,7 +212,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().startsWith(\"Missing CHOICE def\")) { Assert.fail(\"Unexpected exception \" + e.getMessage()); } }"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testBoth_ChooseTwo",
@@ -289,8 +290,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "assertHandCount",
@@ -409,7 +409,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().startsWith(\"Missing CHOICE def\")) { Assert.fail(\"Unexpected exception \" + e.getMessage()); } }"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "test_Brownscale_triggers",

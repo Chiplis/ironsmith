@@ -68,6 +68,14 @@ pub(crate) fn parse_attach_object_phrase(
         }
     }
 
+    if object_words.len() >= 2
+        && object_words
+            .iter()
+            .all(|word| word.chars().all(|ch| ch.is_ascii_alphanumeric()))
+    {
+        return Ok(TargetAst::Source(object_span));
+    }
+
     parse_target_phrase(tokens)
 }
 
@@ -240,6 +248,11 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         .or(parse_equal_to_aggregate_filter_value(tokens))
         .or(parse_devotion_value_from_add_clause(tokens)?)
         .or(parse_equal_to_number_of_filter_value(tokens))
+        .or_else(|| {
+            let tail_words = crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]);
+            (tail_words.as_slice() == ["the", "result"])
+                .then_some(Value::EventValue(EventValueSpec::Amount))
+        })
         .or(parse_dynamic_cost_modifier_value(tokens)?)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(

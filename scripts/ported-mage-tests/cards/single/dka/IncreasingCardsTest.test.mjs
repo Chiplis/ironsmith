@@ -72,18 +72,15 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Increasing Ambition",
           "count": 1
         }
@@ -145,20 +142,17 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Increasing Confusion",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 9
+          "player": 1,
+          "count": 9
         }
       ]
     },
@@ -214,8 +208,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
@@ -225,7 +218,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Increasing Devotion",
           "count": 1
         }
@@ -290,8 +282,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -302,7 +293,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Increasing Savagery",
           "count": 1
         }
@@ -384,12 +374,10 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Increasing Vengeance",
           "count": 1
         }

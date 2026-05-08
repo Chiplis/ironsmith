@@ -33,6 +33,14 @@ fn candidate_creatures(game: &GameState, source: ObjectId, controller: PlayerId)
         .collect()
 }
 
+fn triggering_entered_object(ctx: &ExecutionContext<'_>) -> Option<ObjectId> {
+    let event = ctx.triggering_event.as_ref()?;
+    event
+        .downcast::<crate::events::EnterBattlefieldEvent>()
+        .map(|event| event.object)
+        .or_else(|| event.object_id())
+}
+
 impl EffectExecutor for SoulbondPairEffect {
     fn execute(
         &self,
@@ -44,7 +52,12 @@ impl EffectExecutor for SoulbondPairEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let candidates = candidate_creatures(game, source, ctx.controller);
+        let mut candidates = candidate_creatures(game, source, ctx.controller);
+        if let Some(entered) = triggering_entered_object(ctx)
+            && entered != source
+        {
+            candidates.retain(|candidate| *candidate == entered);
+        }
         if candidates.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
@@ -147,6 +160,24 @@ mod tests {
         }
     }
 
+    struct ChooseNamed {
+        name: &'static str,
+    }
+
+    impl DecisionMaker for ChooseNamed {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.legal && option.description.contains(self.name))
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
     #[test]
     fn pairs_source_with_chosen_unpaired_creature() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -181,5 +212,41 @@ mod tests {
 
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
         assert_eq!(game.soulbond_partner(source), None);
+    }
+
+    #[test]
+    fn existing_soulbond_creature_can_only_pair_with_entering_trigger_object() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &creature(5, "Nearheath Pilgrim"),
+            alice,
+            Zone::Battlefield,
+        );
+        let bystander = game.create_object_from_card(
+            &creature(6, "Trusted Forcemage"),
+            alice,
+            Zone::Battlefield,
+        );
+        let entered =
+            game.create_object_from_card(&creature(7, "Geist Trappers"), alice, Zone::Battlefield);
+
+        let event = crate::events::RawEvent::new(
+            crate::events::EnterBattlefieldEvent::new(entered, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut decision_maker = ChooseNamed {
+            name: "Trusted Forcemage",
+        };
+        let mut ctx =
+            ExecutionContext::new(source, alice, &mut decision_maker).with_triggering_event(event);
+        let outcome = SoulbondPairEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("execute soulbond pairing");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.soulbond_partner(source), None);
+        assert_eq!(game.soulbond_partner(bystander), None);
+        assert_eq!(game.soulbond_partner(entered), None);
     }
 }

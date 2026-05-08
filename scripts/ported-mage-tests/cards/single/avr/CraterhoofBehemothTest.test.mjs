@@ -92,38 +92,48 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Craterhoof Behemoth"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Craterhoof Behemoth",
+          "power": 8,
+          "toughness": 8
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Elite Vanguard"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "power": 5,
+          "toughness": 4
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Grizzly Bears"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "POSTCOMBAT_MAIN",
+          "name": "Goblin Piker",
+          "power": 2,
+          "toughness": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Merfolk of the Pearl Trident",
           "power": 1,
-          "toughness": "Goblin Piker"
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 1,
-          "toughness": "Merfolk of the Pearl Trident"
+          "toughness": 1
         },
         {
           "op": "setStrictChooseMode",

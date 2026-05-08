@@ -140,7 +140,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertType(\"Enraging Licid\", CardType.CREATURE, true)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore: Test player can't activate special actions yet"
     },
     {
       "name": "EnchantedCreatureDiesTest",

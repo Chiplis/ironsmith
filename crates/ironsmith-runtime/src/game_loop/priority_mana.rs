@@ -2722,6 +2722,41 @@ pub(super) fn apply_sacrifice_target_response(
 
                     drain_pending_trigger_events(game, trigger_queue);
                 }
+                ActivationCardCostChoice::MoveChosenObjectToZone {
+                    cost,
+                    filter,
+                    source_zone,
+                    choice_tag,
+                    ..
+                } => {
+                    let legal_objects = get_legal_cost_choice_objects(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        &filter,
+                        source_zone,
+                    );
+                    if !legal_objects.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected object is not a legal move-to-zone cost choice".to_string(),
+                        ));
+                    }
+
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.provenance,
+                        target_id,
+                        Some(&choice_tag),
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
+
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
             }
 
             pending.remaining_cost_steps.remove(0);
@@ -3002,6 +3037,42 @@ pub(super) fn apply_card_cost_choice_response(
                         pending.provenance,
                         chosen_id,
                         choice_tag.as_ref(),
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
+
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+                ActivationCardCostChoice::MoveChosenObjectToZone {
+                    cost,
+                    filter,
+                    source_zone,
+                    choice_tag,
+                    ..
+                } => {
+                    let legal_objects = get_legal_cost_choice_objects(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        &filter,
+                        source_zone,
+                    );
+                    if !legal_objects.contains(&chosen_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected object is not a legal spell move-to-zone cost choice"
+                                .to_string(),
+                        ));
+                    }
+
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        crate::costs::PaymentReason::CastSpell,
+                        pending.provenance,
+                        chosen_id,
+                        Some(&choice_tag),
                         &mut pending.tagged_objects,
                         decision_maker,
                     )?;

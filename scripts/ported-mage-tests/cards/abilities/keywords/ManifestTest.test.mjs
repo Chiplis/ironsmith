@@ -559,7 +559,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
@@ -663,7 +662,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
@@ -757,7 +755,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
@@ -873,13 +870,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Gore Swine",
           "count": 1
         },

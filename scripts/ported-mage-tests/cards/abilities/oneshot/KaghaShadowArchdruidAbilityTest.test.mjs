@@ -62,8 +62,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertGraveyardCount",
@@ -222,8 +221,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 7
+          "count": 7
         },
         {
           "op": "assertGraveyardCount",
@@ -364,8 +362,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -524,8 +521,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 7
+          "count": 7
         },
         {
           "op": "assertGraveyardCount",

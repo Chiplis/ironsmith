@@ -131,13 +131,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pillarfield Ox",
           "count": 1
         }
@@ -224,19 +222,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Rally the Ancestors",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Pillarfield Ox",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         }

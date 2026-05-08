@@ -868,6 +868,14 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
                 "discarded_cost",
             )))));
         }
+        Some(["the", "total", "mana", "value", "of", "all", "cards", "revealed", "this", "way"])
+        | Some(["the", "total", "mana", "value", "of", "cards", "revealed", "this", "way"])
+        | Some(["total", "mana", "value", "of", "all", "cards", "revealed", "this", "way"])
+        | Some(["total", "mana", "value", "of", "cards", "revealed", "this", "way"]) => {
+            return Some(Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
+                "__public_revealed",
+            ))));
+        }
         _ => {}
     }
 
@@ -1915,13 +1923,13 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
     let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
     let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
-    let filter = parse_object_filter(&filter_tokens, false).ok()?;
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     let count_value = if etb_word_slice_contains_all(&filter_words, &["cards", "in", "your"])
         && etb_word_slice_contains_any(&filter_words, &["hand", "hands"])
     {
         Value::CardsInHand(PlayerFilter::You)
     } else {
+        let filter = parse_object_filter(&filter_tokens, false).ok()?;
         Value::Count(filter)
     };
 
@@ -2345,6 +2353,21 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
 pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.len() > 9
+        && clause_words[0] == "as"
+        && clause_words[1] == "long"
+        && clause_words[2] == "as"
+        && clause_words[3] == "this"
+        && clause_words[5] == "is"
+        && clause_words[6] == "in"
+        && clause_words[7] == "your"
+        && clause_words[8] == "graveyard"
+        && let Some(comma_idx) = tokens.iter().position(|token| token.is_comma())
+    {
+        return parse_enters_with_additional_counter_for_filter_line(&tokens[comma_idx + 1..]);
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let enter_word_idx = etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {

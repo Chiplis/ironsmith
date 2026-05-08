@@ -107,7 +107,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Rograkh, Son of Rohgahh",
           "count": 1
         }
@@ -174,7 +173,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Rograkh, Son of Rohgahh",
           "count": 1
         }

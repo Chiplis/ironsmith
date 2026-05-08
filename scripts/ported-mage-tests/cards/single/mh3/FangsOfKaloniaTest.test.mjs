@@ -41,10 +41,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Grizzly Bears"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "castSpell",
@@ -184,10 +186,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -276,10 +280,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "castSpell",
@@ -379,10 +385,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -472,10 +480,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -554,10 +564,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -637,10 +649,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Arcbound Lancer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "castSpell",

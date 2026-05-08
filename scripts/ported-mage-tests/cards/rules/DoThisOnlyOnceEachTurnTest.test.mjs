@@ -285,10 +285,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Nykthos Paragon"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Nykthos Paragon",
+          "power": 4,
+          "toughness": 6
         },
         {
           "op": "castSpell",

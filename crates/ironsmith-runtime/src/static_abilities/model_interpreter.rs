@@ -1032,6 +1032,18 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::AddCardTypes { filter, card_types } => {
                 StaticAbility::add_card_types(filter.clone(), card_types.clone())
             }
+            ironsmith_core::StaticAbilityPayload::RemoveCardTypes {
+                filter,
+                card_types,
+                condition,
+            } => {
+                let ability = StaticAbility::remove_card_types(filter.clone(), card_types.clone());
+                if let Some(condition) = condition {
+                    ability.with_condition(condition.clone()).unwrap_or(ability)
+                } else {
+                    ability
+                }
+            }
             ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types } => {
                 StaticAbility::set_card_types(filter.clone(), card_types.clone())
             }
@@ -1064,6 +1076,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbility::choose_player_as_enters(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
+                StaticAbility::choose_card_name_as_enters(display.clone())
             }
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbility::choose_creature_type_as_enters(display.clone())
@@ -1119,6 +1134,26 @@ impl StaticAbilityModelInterpreter {
                 target_player_filter.clone(),
                 target_object_filter.clone(),
                 *delta,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                display,
+            } => StaticAbility::double_damage_amount_replacement(
+                source_filter.clone(),
+                target_player_filter.clone(),
+                target_object_filter.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
+                filter,
+                counter_type,
+                display,
+            } => StaticAbility::double_counters_replacement(
+                filter.clone(),
+                *counter_type,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
@@ -1506,6 +1541,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(_)
         )
         .then_some(super::ChoosePlayerAsEntersSpec)
+    }
+
+    fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {
+        matches!(
+            self.payload(),
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(_)
+        )
+        .then_some(super::ChooseCardNameAsEntersSpec)
     }
 
     fn basic_land_type_choice_as_enters(&self) -> Option<super::ChooseBasicLandTypeAsEntersSpec> {

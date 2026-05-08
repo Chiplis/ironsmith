@@ -44,10 +44,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Vessel of the All-Consuming"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Vessel of the All-Consuming",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "attack",

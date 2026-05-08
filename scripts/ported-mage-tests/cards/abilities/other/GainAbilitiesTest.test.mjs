@@ -416,7 +416,8 @@ registerPortedMageTests({
           "player": 0,
           "life": 17
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "nextSpellCastHasConvoke",
@@ -659,7 +660,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

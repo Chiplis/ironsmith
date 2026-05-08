@@ -105,6 +105,9 @@ pub enum ReplacementAction {
     /// Enter untapped
     EnterUntapped,
 
+    /// Enter under the specified player's control.
+    EnterUnderControl(PlayerId),
+
     /// Enter as a copy of something
     EnterAsCopy {
         source: ObjectId,
@@ -123,6 +126,11 @@ pub enum ReplacementAction {
 
     /// Double the effect (e.g., double damage, double counters)
     Double,
+
+    /// Double counters of the matching type on counter-placement events.
+    DoubleCounters {
+        counter_type: Option<CounterType>,
+    },
 
     /// Add an additional effect
     Additionally(Vec<Effect>),

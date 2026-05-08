@@ -149,13 +149,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Nissa, Vastwood Seer",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Quest for the Gravelord",
           "count": 1
         },

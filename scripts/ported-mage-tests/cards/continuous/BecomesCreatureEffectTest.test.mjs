@@ -93,8 +93,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, dryadArbor, Collections.emptyList())"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "abilities": [
+            "Collections.emptyList()"
+          ]
         },
         {
           "op": "assertPowerToughness",

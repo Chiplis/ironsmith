@@ -11,6 +11,7 @@ use crate::effect::SearchSelectionMode;
 use crate::target::PlayerFilter;
 use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
+use ironsmith_core::Value;
 
 use super::super::activation_and_restrictions::{
     normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
@@ -25,8 +26,9 @@ use super::super::search_library_support::{
     apply_search_library_mana_constraint, extract_search_library_mana_constraint,
     is_same_name_that_reference_words, normalize_search_library_filter,
     parse_restriction_duration_lexed, parse_search_library_disjunction_filter,
-    split_search_library_count_value_clause_lexed, split_search_same_name_reference_filter,
-    word_slice_mentions_nth_from_top, word_slice_starts_with_any, zone_slice_contains,
+    split_search_different_name_reference_filter, split_search_library_count_value_clause_lexed,
+    split_search_same_name_reference_filter, word_slice_mentions_nth_from_top,
+    word_slice_starts_with_any, zone_slice_contains,
 };
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
@@ -1101,9 +1103,10 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
 
     let count_tokens = &search_tokens[for_idx + 1..filter_end];
     let count_prefix = parse_search_library_count_prefix_lexed(count_tokens);
-    let count = count_prefix.count;
+    let mut count = count_prefix.count;
     let search_mode = count_prefix.search_mode;
     let count_used = count_prefix.count_used;
+    let mut prefix_count_value = count_prefix.count_value;
 
     let filter_start = for_idx + 1 + count_used;
     if filter_start >= filter_end {
@@ -1113,20 +1116,32 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         )));
     }
 
-    let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
+    let mut raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]).to_vec();
+    if raw_filter_tokens.len() >= 2
+        && raw_filter_tokens[0].is_word("that")
+        && raw_filter_tokens[1].is_word("many")
+    {
+        prefix_count_value.get_or_insert(Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG))));
+        count = if search_mode == SearchSelectionMode::Optional {
+            ChoiceCount::up_to_dynamic_x()
+        } else {
+            ChoiceCount::dynamic_x()
+        };
+        raw_filter_tokens.drain(0..2);
+    }
     let (filter_tokens, count_value) = if let Some((base_filter_tokens, count_value)) =
         split_search_library_count_value_clause_lexed(&raw_filter_tokens)?
     {
         (base_filter_tokens, Some(count_value))
     } else {
-        (raw_filter_tokens.clone(), None)
+        (raw_filter_tokens, prefix_count_value)
     };
     let (filter_tokens, mana_constraint) = if let Some((base_filter_tokens, mana_constraint)) =
         extract_search_library_mana_constraint(&filter_tokens)
     {
         (base_filter_tokens, Some(mana_constraint))
     } else {
-        (filter_tokens.clone(), None)
+        (filter_tokens.to_vec(), None)
     };
     let (filter_tokens, distinct_names) =
         strip_search_library_different_names_clause_lexed(&filter_tokens);
@@ -1137,6 +1152,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     )?;
     let filter_tokens = same_name_split.filter_tokens;
     let same_name_reference = same_name_split.same_name_reference;
+    let same_name_relation = same_name_split.same_name_relation;
     let same_name_reference_requires_setup = matches!(
         same_name_reference,
         Some(SearchLibrarySameNameReference::Target(_))
@@ -1160,7 +1176,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: same_name_tag.clone(),
-            relation: TaggedOpbjectRelation::SameNameAsTagged,
+            relation: same_name_relation,
         });
     }
     if filter.owner.is_none()
@@ -1453,7 +1469,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             reveal,
             shuffle,
             count,
-            None,
+            count_value.clone(),
             battlefield_tapped,
         )]
     };
@@ -1525,16 +1541,27 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 effects.insert(0, EffectAst::subject_verb_target_only(target));
             }
             SearchLibrarySameNameReference::Choose { filter, tag } => {
-                effects.insert(
-                    0,
-                    EffectAst::ChooseObjects {
-                        filter,
-                        count: ChoiceCount::exactly(1),
-                        count_value: None,
-                        player,
-                        tag,
-                    },
-                );
+                if same_name_relation == TaggedOpbjectRelation::DifferentNameFromTagged {
+                    effects.insert(
+                        0,
+                        EffectAst::subject_verb_tag_matching_objects(
+                            filter,
+                            vec![Zone::Battlefield],
+                            tag,
+                        ),
+                    );
+                } else {
+                    effects.insert(
+                        0,
+                        EffectAst::ChooseObjects {
+                            filter,
+                            count: ChoiceCount::exactly(1),
+                            count_value: None,
+                            player,
+                            tag,
+                        },
+                    );
+                }
             }
         }
     }

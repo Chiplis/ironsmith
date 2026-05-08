@@ -3229,11 +3229,21 @@ impl<E> PreventAllDamageToTargetEffect<E> {
 pub struct PreventNextTimeDamageEffect {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
+    pub reflect_damage_to_source_controller: bool,
 }
 
 impl PreventNextTimeDamageEffect {
     pub fn new(source: PreventNextTimeDamageSource, target: PreventNextTimeDamageTarget) -> Self {
-        Self { source, target }
+        Self {
+            source,
+            target,
+            reflect_damage_to_source_controller: false,
+        }
+    }
+
+    pub fn reflecting_to_source_controller(mut self) -> Self {
+        self.reflect_damage_to_source_controller = true;
+        self
     }
 }
 
@@ -3338,6 +3348,20 @@ pub struct RegisterFutureZoneReplacementEffect {
     pub to_zone: Option<crate::zone::Zone>,
     pub replacement_zone: crate::zone::Zone,
     pub mode: ReplacementApplyMode,
+    pub cause_filter: Option<crate::cause_model::CauseFilter>,
+    pub require_cause_source_match: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterEnterUnderControlReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterEnterUnderControlReplacementEffect {
+    pub fn new(filter: crate::filter_model::ObjectFilter, mode: ReplacementApplyMode) -> Self {
+        Self { filter, mode }
+    }
 }
 
 impl RegisterFutureZoneReplacementEffect {
@@ -3354,7 +3378,19 @@ impl RegisterFutureZoneReplacementEffect {
             to_zone,
             replacement_zone,
             mode,
+            cause_filter: None,
+            require_cause_source_match: false,
         }
+    }
+
+    pub fn with_cause_filter(mut self, cause_filter: crate::cause_model::CauseFilter) -> Self {
+        self.cause_filter = Some(cause_filter);
+        self
+    }
+
+    pub fn requiring_cause_source_match(mut self) -> Self {
+        self.require_cause_source_match = true;
+        self
     }
 }
 
@@ -4903,6 +4939,17 @@ impl AttachToEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReconfigureEffect {
+    pub target: ChooseSpec,
+}
+
+impl ReconfigureEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AttachObjectsEffect {
     pub objects: ChooseSpec,
     pub target: ChooseSpec,
@@ -4931,14 +4978,49 @@ impl RevealTopEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReturnAsAuraOptions {
+    pub attachment_filter: ObjectFilter,
+    pub remove_all_abilities: bool,
+}
+
+impl ReturnAsAuraOptions {
+    pub fn new(attachment_filter: ObjectFilter) -> Self {
+        Self {
+            attachment_filter,
+            remove_all_abilities: false,
+        }
+    }
+
+    pub fn remove_all_abilities(mut self) -> Self {
+        self.remove_all_abilities = true;
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReturnFromGraveyardToBattlefieldEffect {
     pub target: ChooseSpec,
     pub tapped: bool,
+    pub as_aura: Option<ReturnAsAuraOptions>,
 }
 
 impl ReturnFromGraveyardToBattlefieldEffect {
     pub fn new(target: ChooseSpec, tapped: bool) -> Self {
-        Self { target, tapped }
+        Self {
+            target,
+            tapped,
+            as_aura: None,
+        }
+    }
+
+    pub fn as_aura(mut self, attachment_filter: ObjectFilter) -> Self {
+        self.as_aura = Some(ReturnAsAuraOptions::new(attachment_filter));
+        self
+    }
+
+    pub fn as_aura_removing_all_abilities(mut self, attachment_filter: ObjectFilter) -> Self {
+        self.as_aura = Some(ReturnAsAuraOptions::new(attachment_filter).remove_all_abilities());
+        self
     }
 
     pub fn creature() -> Self {

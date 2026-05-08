@@ -41,10 +41,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Memnite"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertAbility",
@@ -55,10 +57,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "Memnite is 3/3 turn 2",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertAbility",

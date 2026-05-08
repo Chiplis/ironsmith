@@ -117,8 +117,12 @@ registerPortedMageTests({
           "source": "assertType(\"Dryad Arbor\", CardType.LAND, true)"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Dryad Arbor\", new AbilitiesImpl<>(FlyingAbility.getInstance()))"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "abilities": [
+            "new AbilitiesImpl<>(FlyingAbility.getInstance())"
+          ]
         },
         {
           "op": "unsupported",
@@ -196,8 +200,12 @@ registerPortedMageTests({
           "source": "assertType(\"Dryad Arbor\", CardType.LAND, SubType.WALL)"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Dryad Arbor\", new AbilitiesImpl<>(DefenderAbility.getInstance()))"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "abilities": [
+            "new AbilitiesImpl<>(DefenderAbility.getInstance())"
+          ]
         },
         {
           "op": "unsupported",

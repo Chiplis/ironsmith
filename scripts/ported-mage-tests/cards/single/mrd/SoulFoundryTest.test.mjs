@@ -62,7 +62,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bloodline Keeper",
           "count": 1
         },

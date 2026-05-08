@@ -88,13 +88,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Counterspell",
           "count": 1
         }

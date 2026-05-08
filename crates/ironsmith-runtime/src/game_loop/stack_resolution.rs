@@ -194,6 +194,7 @@ pub(crate) fn execute_resolution_program(
             Vec<crate::game_state::TargetAssignment>,
         )> = None;
         for effect in &selected_effects {
+            let is_modal_effect = effect.modal_effect_spec().is_some();
             let effect_target_assignments = active_target_assignments_for_effect(
                 effect,
                 chosen_modes,
@@ -202,12 +203,16 @@ pub(crate) fn execute_resolution_program(
                 valid_target_assignments,
                 &mut assignment_cursor,
             );
-            if !effect_target_assignments.is_empty() {
+            if is_modal_effect {
+                active_scope = None;
+            } else if !effect_target_assignments.is_empty() {
                 let (effect_targets, effect_target_assignments) =
                     rebase_target_scope(&ctx.targets, &effect_target_assignments);
                 active_scope = Some((effect_targets, effect_target_assignments));
             }
-            let outcome = if let Some((effect_targets, effect_target_assignments)) = &active_scope {
+            let outcome = if !is_modal_effect
+                && let Some((effect_targets, effect_target_assignments)) = &active_scope
+            {
                 ctx.with_temp_targets(effect_targets.clone(), |ctx| {
                     ctx.with_temp_target_assignments(effect_target_assignments.clone(), |ctx| {
                         execute_effect(game, effect, ctx)
@@ -216,8 +221,15 @@ pub(crate) fn execute_resolution_program(
             } else {
                 execute_effect(game, effect, ctx)
             };
-            if let Ok(outcome) = outcome {
-                all_events.extend(outcome.events);
+            match outcome {
+                Ok(outcome) => {
+                    all_events.extend(outcome.events);
+                }
+                Err(crate::effects::ExecutionError::InvalidTarget) => {}
+                Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+            }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(all_events);
             }
         }
     }
@@ -306,6 +318,20 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }
+    if let Some(triggering_event) = entry.triggering_event.clone() {
+        if let Some(attacked) =
+            triggering_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+        {
+            if let Some(attacker) = game.object(attacked.attacker) {
+                ctx = ctx.with_attacking_player(game.controller_of(attacker));
+            }
+        } else if let Some(attacked) =
+            triggering_event.downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
+            && let Some(attacker) = game.object(attacked.attacker)
+        {
+            ctx = ctx.with_attacking_player(game.controller_of(attacker));
+        }
+    }
     if entry.chosen_player.is_some() {
         ctx = ctx.with_chosen_player(entry.chosen_player);
     }
@@ -370,7 +396,7 @@ pub(super) fn resolve_stack_entry_full(
                 entry.object_id,
                 Zone::Stack,
                 Zone::Graveyard,
-                crate::events::cause::EventCause::from_effect(entry.object_id, entry.controller),
+                crate::events::cause::EventCause::from_game_rule(),
                 &mut *decision_maker,
             );
         }
@@ -421,7 +447,6 @@ pub(super) fn resolve_stack_entry_full(
     } else {
         crate::resolution::ResolutionProgram::default()
     };
-
     // ETB replacement is resolved when the spell actually moves to the battlefield.
     let etb_replacement_result: Option<(bool, bool, Zone)> = None;
 
@@ -434,6 +459,9 @@ pub(super) fn resolve_stack_entry_full(
         entry.chosen_modes.as_deref(),
         &valid_target_assignments,
     )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     // Process events from effect outcomes for triggers
     if let Some(ref mut tq) = trigger_queue {
         for event in all_events {
@@ -444,6 +472,14 @@ pub(super) fn resolve_stack_entry_full(
     // Process pending primitive trigger events emitted by effects and zone changes.
     if let Some(ref mut tq) = trigger_queue {
         drain_pending_trigger_events(game, tq);
+    }
+
+    // Resolving an ability removes only that stack entry. The source object can
+    // itself be a spell on the stack, such as Lightning Storm, and must remain
+    // there until the spell entry resolves.
+    if entry.is_ability {
+        preserve_resolved_spell_ability_tags(game, execution_source, &ctx);
+        return Ok(());
     }
 
     // Move spell to appropriate zone after resolution
@@ -901,6 +937,48 @@ pub(super) fn get_effects_for_stack_entry(
     crate::resolution::ResolutionProgram::default()
 }
 
+fn preserve_resolved_spell_ability_tags(
+    game: &mut GameState,
+    source: ObjectId,
+    ctx: &ExecutionContext,
+) {
+    if ctx.tagged_objects.is_empty() {
+        return;
+    }
+    let source_is_pending_spell = game
+        .object(source)
+        .is_some_and(|object| object.zone == Zone::Stack);
+    if !source_is_pending_spell {
+        return;
+    }
+
+    if let Some(object) = game.object_mut(source) {
+        merge_tagged_objects(&mut object.cast_tagged_objects, &ctx.tagged_objects);
+    }
+    if let Some(entry) = game.stack.iter_mut().find(|entry| entry.object_id == source) {
+        merge_tagged_objects(&mut entry.tagged_objects, &ctx.tagged_objects);
+    }
+}
+
+fn merge_tagged_objects(
+    target: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    source: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    for (tag, snapshots) in source {
+        let entry = target.entry(tag.clone()).or_default();
+        for snapshot in snapshots {
+            if !entry.iter().any(|existing| {
+                existing.object_id == snapshot.object_id && existing.stable_id == snapshot.stable_id
+            }) {
+                entry.push(snapshot.clone());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1230,6 +1308,289 @@ mod tests {
             game.player(alice).expect("alice exists").life,
             alice_life_before - 19,
             "Backdraft should still deal half of Blasphemous Act's 39 damage after the player choice"
+        );
+    }
+
+    #[test]
+    fn stack_resolution_passes_full_target_scope_to_modal_effects() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(91_000), "Modal Test")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+        let bounced_card = CardBuilder::new(CardId::from_raw(91_001), "Bounced")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 4))
+            .build();
+        let bounced = game.create_object_from_card(&bounced_card, bob, Zone::Stack);
+        let damaged_card = CardBuilder::new(CardId::from_raw(91_002), "Damaged")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let damaged = game.create_object_from_card(&damaged_card, bob, Zone::Battlefield);
+
+        let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.any_of = vec![
+                crate::filter::ObjectFilter {
+                    zone: Some(Zone::Stack),
+                    ..Default::default()
+                },
+                crate::filter::ObjectFilter::creature(),
+            ];
+            filter
+        }));
+        let damage_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.zone = Some(Zone::Battlefield);
+            filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
+            filter
+        }));
+        let program = crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::ChooseModeEffect::choose_exactly(
+                2,
+                vec![
+                    crate::effect::EffectMode::new(
+                        "Return target spell or creature",
+                        vec![Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                            return_spec.clone(),
+                        ))],
+                    ),
+                    crate::effect::EffectMode::new(
+                        "Deal damage to target creature or planeswalker",
+                        vec![Effect::deal_damage(2, damage_spec.clone()).tag("damaged_0")],
+                    ),
+                ],
+            ),
+        )]);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::effects::ResolvedTarget::Object(bounced),
+                crate::effects::ResolvedTarget::Object(damaged),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: return_spec,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: damage_spec,
+                    range: 1..2,
+                },
+            ]);
+        let assignments = ctx.target_assignments.clone();
+
+        execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            source,
+            &program,
+            Some(&[0, 1]),
+            &assignments,
+        )
+        .expect("modal program should resolve");
+
+        assert_eq!(game.damage_on(damaged), 2);
+    }
+
+    #[test]
+    fn stack_entry_validation_preserves_modal_target_assignments() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(91_010), "Modal Test")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+        let bounced_card = CardBuilder::new(CardId::from_raw(91_011), "Bounced")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 4))
+            .build();
+        let bounced = game.create_object_from_card(&bounced_card, bob, Zone::Stack);
+        let damaged_card = CardBuilder::new(CardId::from_raw(91_012), "Damaged")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let damaged = game.create_object_from_card(&damaged_card, bob, Zone::Battlefield);
+
+        let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.any_of = vec![
+                crate::filter::ObjectFilter {
+                    zone: Some(Zone::Stack),
+                    ..Default::default()
+                },
+                crate::filter::ObjectFilter::creature(),
+            ];
+            filter
+        }));
+        let damage_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.zone = Some(Zone::Battlefield);
+            filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
+            filter
+        }));
+        let program = crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::ChooseModeEffect::choose_exactly(
+                2,
+                vec![
+                    crate::effect::EffectMode::new(
+                        "Return target spell or creature",
+                        vec![Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                            return_spec.clone(),
+                        ))],
+                    ),
+                    crate::effect::EffectMode::new(
+                        "Deal damage to target creature or planeswalker",
+                        vec![Effect::deal_damage(2, damage_spec.clone()).tag("damaged_0")],
+                    ),
+                ],
+            ),
+        )]);
+        game.object_mut(source).expect("source").spell_effect = Some(program);
+
+        let mut entry = StackEntry::new(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::game_state::Target::Object(bounced),
+                crate::game_state::Target::Object(damaged),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: return_spec,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: damage_spec,
+                    range: 1..2,
+                },
+            ]);
+        entry.provenance = game.provenance_graph_mut().alloc_root(
+            crate::provenance::ProvenanceNodeKind::EffectExecution {
+                source,
+                controller: alice,
+            },
+        );
+        game.push_to_stack(entry);
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        resolve_stack_entry_with(&mut game, &mut dm).expect("stack entry should resolve");
+
+        assert_eq!(game.damage_on(damaged), 2);
+    }
+
+    #[test]
+    fn modal_tagged_damage_then_replacement_exiles_dying_second_target() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(91_020), "Brutal Probe")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+        let bounced_card = CardBuilder::new(CardId::from_raw(91_021), "Bounced")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 4))
+            .build();
+        let bounced = game.create_object_from_card(&bounced_card, bob, Zone::Stack);
+        let damaged_card = CardBuilder::new(CardId::from_raw(91_022), "Damaged")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let damaged = game.create_object_from_card(&damaged_card, bob, Zone::Battlefield);
+
+        let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.any_of = vec![
+                crate::filter::ObjectFilter {
+                    zone: Some(Zone::Stack),
+                    ..Default::default()
+                },
+                crate::filter::ObjectFilter::creature(),
+            ];
+            filter
+        }));
+        let damage_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
+            let mut filter = crate::filter::ObjectFilter::default();
+            filter.zone = Some(Zone::Battlefield);
+            filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
+            filter
+        }));
+        let program = crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::ChooseModeEffect::choose_exactly(
+                2,
+                vec![
+                    crate::effect::EffectMode::new(
+                        "Return target spell or creature",
+                        vec![
+                            Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                                return_spec.clone(),
+                            ))
+                            .tag("returned_0"),
+                        ],
+                    ),
+                    crate::effect::EffectMode::new(
+                        "Deal damage and exile if it would die",
+                        vec![
+                            Effect::deal_damage(2, damage_spec.clone()).tag("damaged_0"),
+                            Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+                                crate::target::ChooseSpec::Tagged(crate::tag::TagKey::from(
+                                    "damaged_0",
+                                )),
+                                Some(Zone::Battlefield),
+                                Some(Zone::Graveyard),
+                                Zone::Exile,
+                                crate::effects::ReplacementApplyMode::OneShot,
+                            )),
+                        ],
+                    ),
+                ],
+            ),
+        )]);
+        game.object_mut(source).expect("source").spell_effect = Some(program);
+
+        let mut entry = StackEntry::new(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::game_state::Target::Object(bounced),
+                crate::game_state::Target::Object(damaged),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: return_spec,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: damage_spec,
+                    range: 1..2,
+                },
+            ]);
+        entry.provenance = game.provenance_graph_mut().alloc_root(
+            crate::provenance::ProvenanceNodeKind::EffectExecution {
+                source,
+                controller: alice,
+            },
+        );
+        game.push_to_stack(entry);
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        resolve_stack_entry_with(&mut game, &mut dm).expect("stack entry should resolve");
+
+        assert_eq!(game.damage_on(damaged), 2);
+        crate::rules::state_based::apply_state_based_actions(&mut game);
+        assert!(
+            game.exile
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|object| object.name == "Damaged")
         );
     }
 }

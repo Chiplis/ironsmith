@@ -19,6 +19,9 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     if let Some(rewritten) = rewrite_repeat_process_once(effects) {
         *effects = rewritten;
     }
+    if let Some(rewritten) = rewrite_return_as_aura(effects) {
+        *effects = rewritten;
+    }
     effects.retain(|effect| !is_noop_effect(effect));
 }
 
@@ -125,6 +128,83 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         continue_effect_index: effects.len() - 1,
         continue_predicate: crate::cards::builders::IfResultPredicate::Did,
     }])
+}
+
+fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
+    use crate::cards::builders::{
+        ReturnAsAuraAst, SubjectVerbActionAst, TargetAst, IT_TAG,
+    };
+
+    let mut rewritten = Vec::with_capacity(effects.len());
+    let mut index = 0;
+    let mut changed = false;
+    while index < effects.len() {
+        let Some(EffectAst::SubjectVerb(return_subject_verb)) = effects.get(index) else {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        };
+        let SubjectVerbActionAst::ReturnToBattlefield {
+            as_aura: None,
+            ..
+        } = &return_subject_verb.action
+        else {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        };
+        let Some(EffectAst::SubjectVerb(aura_subject_verb)) = effects.get(index + 1) else {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        };
+        let SubjectVerbActionAst::BecomeAuraEnchantment {
+            target,
+            attachment_filter,
+            ..
+        } = &aura_subject_verb.action
+        else {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        };
+        if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG) {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        }
+
+        let mut remove_all_abilities = false;
+        let mut consumed = 2;
+        if let Some(EffectAst::SubjectVerb(remove_subject_verb)) = effects.get(index + 2)
+            && let SubjectVerbActionAst::RemoveAbilitiesAll {
+                abilities,
+                duration,
+                ..
+            } = &remove_subject_verb.action
+            && abilities.is_empty()
+            && matches!(duration, crate::effect::Until::Forever)
+        {
+            remove_all_abilities = true;
+            consumed = 3;
+        }
+
+        let mut combined = effects[index].clone();
+        if let EffectAst::SubjectVerb(subject_verb) = &mut combined
+            && let SubjectVerbActionAst::ReturnToBattlefield { as_aura, .. } =
+                &mut subject_verb.action
+        {
+            *as_aura = Some(ReturnAsAuraAst {
+                attachment_filter: attachment_filter.clone(),
+                remove_all_abilities,
+            });
+        }
+        rewritten.push(combined);
+        index += consumed;
+        changed = true;
+    }
+
+    changed.then_some(rewritten)
 }
 
 fn is_noop_effect(effect: &EffectAst) -> bool {

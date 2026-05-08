@@ -87,19 +87,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Air Elemental",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Horned Turtle",
           "count": 4
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Altar of the Lost",
           "count": 1
         }
@@ -189,19 +186,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Air Elemental",
           "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Horned Turtle",
           "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Altar of the Lost",
           "count": 0
         }

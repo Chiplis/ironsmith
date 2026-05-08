@@ -343,6 +343,15 @@ pub(super) fn parse_object_filter_inner(
 
     let _ = try_apply_not_exactly_two_colors_clause(&mut filter, &mut all_words);
 
+    if all_words.len() >= 4
+        && matches!(all_words[0], "are" | "is")
+        && all_words[1] == "put"
+        && all_words[2] == "on"
+        && matches!(all_words[3], "it" | "them")
+    {
+        all_words.drain(0..3);
+    }
+
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
 
     let _ = try_apply_entered_since_your_last_turn_ended_clause(&mut filter, &mut all_words);

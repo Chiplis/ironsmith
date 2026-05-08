@@ -75,7 +75,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Snow-Covered Forest",
           "count": 1
         }
@@ -153,7 +152,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Forest",
           "count": 1
         }

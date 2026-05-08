@@ -58,10 +58,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 1,
-          "toughness": "Memnite"
+          "name": "Memnite",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "castSpell",

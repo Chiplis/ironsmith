@@ -143,6 +143,54 @@ fn process_event_direct(
         .map(|(effect, _)| effect)
         .collect();
 
+    // Multiple equivalent one-shot replacement effects from the same source are
+    // redundant for the current event. Regeneration can create this shape when
+    // a creature has more than one shield: choosing either shield has the same
+    // event outcome, and exactly one shield should be consumed.
+    if tied_replacements_are_duplicate_regeneration_shields(game, &at_highest) {
+        let chosen_effect = at_highest[0].clone();
+        let effect_id = chosen_effect.id;
+        let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
+        state.mark_applied(effect_id);
+        consume_one_shot_if_applied(game, effect_id, &result);
+        return match result {
+            TraitApplyResult::Modified(modified_event) => process_event_direct(
+                game,
+                modified_event,
+                state,
+                additional_effects,
+                event_source_snapshot,
+            ),
+            TraitApplyResult::Prevented => TraitEventResult::Prevented,
+            TraitApplyResult::Replaced(effects) => {
+                TraitEventResult::Replaced { effects, effect_id }
+            }
+            TraitApplyResult::Unchanged(event) => TraitEventResult::Proceed(event),
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx,
+                redirect_zone,
+                effect_id,
+                object_id,
+                filter,
+                destinations,
+            } => TraitEventResult::NeedsInteraction {
+                decision_ctx,
+                redirect_zone,
+                effect_id,
+                object_id,
+                event: Box::new(event),
+                filter,
+                life_cost: match &chosen_effect.replacement {
+                    ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost } => {
+                        Some(*life_cost)
+                    }
+                    _ => None,
+                },
+                destinations,
+            },
+        };
+    }
+
     // When multiple replacement effects are tied at the highest priority,
     // the affected player/controller chooses which one to apply next.
     if at_highest.len() > 1 {
@@ -202,6 +250,26 @@ fn process_event_direct(
             destinations,
         },
     }
+}
+
+fn tied_replacements_are_duplicate_regeneration_shields(
+    game: &GameState,
+    effects: &[ReplacementEffect],
+) -> bool {
+    let Some(first) = effects.first() else {
+        return false;
+    };
+    effects.len() > 1
+        && effects.iter().all(|effect| {
+            game.effect_store.replacement_effects.is_one_shot(effect.id)
+                && effect.source == first.source
+                && effect.controller == first.controller
+                && effect.priority_override == first.priority_override
+                && effect
+                    .matcher
+                    .as_ref()
+                    .is_some_and(|matcher| matcher.display() == "Regeneration shield")
+        })
 }
 
 fn consume_one_shot_if_applied(
@@ -1542,6 +1610,8 @@ pub struct EtbEventResult {
     pub added_abilities: Vec<crate::ability::Ability>,
     /// Base power/toughness set as the object enters.
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// If set, the controller to use as the object enters.
+    pub controller_override: Option<crate::ids::PlayerId>,
     /// An interactive replacement that requires player input.
     ///
     /// If present, the caller must:
@@ -2111,18 +2181,6 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         .collect::<Vec<_>>();
                     candidates.sort_by_key(|id| id.0);
 
-                    if spec.may {
-                        copy_choice_effects.push(
-                            ReplacementEffect::with_matcher(
-                                object,
-                                controller,
-                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                                ReplacementAction::Additionally(Vec::new()),
-                            )
-                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                        );
-                    }
-
                     for candidate in candidates {
                         copy_choice_effects.push(
                             ReplacementEffect::with_matcher(
@@ -2136,6 +2194,18 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                                     added_subtypes: spec.added_subtypes.clone(),
                                     added_abilities: spec.added_abilities.clone(),
                                 },
+                            )
+                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+                        );
+                    }
+
+                    if spec.may {
+                        copy_choice_effects.push(
+                            ReplacementEffect::with_matcher(
+                                object,
+                                controller,
+                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                                ReplacementAction::Additionally(Vec::new()),
                             )
                             .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
                         );
@@ -2164,6 +2234,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
+            controller_override: None,
         },
         etb_event_provenance,
     );
@@ -2214,6 +2285,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         added_subtypes: etb.added_subtypes.clone(),
                         added_abilities: etb.added_abilities.clone(),
                         set_base_power_toughness: etb.set_base_power_toughness,
+                        controller_override: etb.controller_override,
                         interactive_replacement: None,
                     };
                 }

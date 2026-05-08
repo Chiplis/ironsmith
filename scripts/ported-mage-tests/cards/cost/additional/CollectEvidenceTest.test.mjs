@@ -1143,7 +1143,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Gray Ogre",
           "count": 4
         },
@@ -1234,7 +1233,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Gray Ogre",
           "count": 2
         },

@@ -232,13 +232,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "bear",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "bear",
           "count": 1
         },

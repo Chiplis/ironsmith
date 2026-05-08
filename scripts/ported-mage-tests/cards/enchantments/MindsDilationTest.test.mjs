@@ -65,15 +65,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Divination",
           "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         }
       ]
     },
@@ -141,15 +139,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Divination",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         }
       ]
     }

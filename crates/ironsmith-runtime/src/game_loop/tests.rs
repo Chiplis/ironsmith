@@ -3965,6 +3965,151 @@ fn test_extract_target_specs_target_player_sacrifice_choice_has_target_requireme
 }
 
 #[test]
+fn joint_assault_target_requirement_allows_creature_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Joint Assault")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +2/+2 until end of turn. If it's paired with a creature, that creature also gets +2/+2 until end of turn.")
+        .expect("Joint Assault should parse");
+    let effects = def.spell_effect.as_ref().expect("expected spell effects");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let target = CardBuilder::new(CardId::new(), "Elite Vanguard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    game.create_object_from_card(&target, alice, Zone::Battlefield);
+
+    let requirements =
+        extract_target_requirements_from_program_with_modes(&game, effects, alice, None, None);
+
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Joint Assault should require one target creature, got {requirements:?}"
+    );
+    assert_eq!(requirements[0].legal_targets.len(), 1);
+}
+
+#[test]
+fn joint_assault_is_castable_with_creature_target_and_green_mana() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Joint Assault")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +2/+2 until end of turn. If it's paired with a creature, that creature also gets +2/+2 until end of turn.")
+        .expect("Joint Assault should parse");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let target = CardBuilder::new(CardId::new(), "Elite Vanguard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    game.create_object_from_card(&target, alice, Zone::Battlefield);
+    let forest = CardDefinitionBuilder::new(CardId::new(), "Forest")
+        .card_types(vec![CardType::Land])
+        .parse_text("{T}: Add {G}.")
+        .expect("Forest mana ability should parse");
+    game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+
+    let effects = game
+        .object(spell)
+        .and_then(|object| object.spell_effect.as_deref())
+        .expect("Joint Assault should have spell effects");
+    let requirements = extract_target_requirements(&game, effects, alice, Some(spell));
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Joint Assault should require one target creature with source id, got {requirements:?}"
+    );
+    assert_eq!(
+        requirements[0].legal_targets.len(),
+        1,
+        "Joint Assault should see Elite Vanguard as a legal target with source id, got {requirements:?}"
+    );
+    let spell_object = game.object(spell).expect("spell should exist");
+    let view = crate::derived_view::DerivedGameView::new(&game);
+    assert!(
+        crate::decision::has_valid_spell_timing_with_view(&game, alice, spell_object, spell, &view),
+        "Joint Assault should satisfy spell timing"
+    );
+    assert!(
+        crate::decision::spell_has_legal_targets_for_cast_with_view(
+            spell_object,
+            spell,
+            spell_object.spell_effect.as_deref(),
+            alice,
+            &view,
+        ),
+        "Joint Assault should satisfy cast-time target legality"
+    );
+    let potential = view.potential_mana(alice);
+    assert!(
+        potential.green >= 1,
+        "Forest should provide potential green mana, got {potential:?}"
+    );
+    assert!(
+        crate::decision::can_cast_spell(
+            &game,
+            alice,
+            spell_object,
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Joint Assault should pass direct cast legality"
+    );
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)),
+        "Joint Assault should be castable, actions: {actions:?}"
+    );
+}
+
+#[test]
+fn joint_assault_pumps_target_and_its_soulbond_partner() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Joint Assault")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +2/+2 until end of turn. If it's paired with a creature, that creature also gets +2/+2 until end of turn.")
+        .expect("Joint Assault should parse");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let target = CardBuilder::new(CardId::new(), "Elite Vanguard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let partner = CardBuilder::new(CardId::new(), "Trusted Forcemage")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let target_id = game.create_object_from_card(&target, alice, Zone::Battlefield);
+    let partner_id = game.create_object_from_card(&partner, alice, Zone::Battlefield);
+    game.set_soulbond_pair(target_id, partner_id);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                    crate::filter::ObjectFilter::creature(),
+                )),
+                range: 0..1,
+            }]),
+    );
+
+    super::resolve_stack_entry(&mut game).expect("Joint Assault should resolve");
+
+    assert_eq!(game.calculated_power(target_id), Some(4));
+    assert_eq!(game.calculated_toughness(target_id), Some(3));
+    assert_eq!(game.calculated_power(partner_id), Some(5));
+    assert_eq!(game.calculated_toughness(partner_id), Some(5));
+}
+
+#[test]
 fn test_extract_target_specs_necromentia_uses_one_target_opponent_requirement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Necromentia")
         .card_types(vec![CardType::Sorcery])
@@ -7171,6 +7316,51 @@ fn test_echo_upkeep_trigger_without_payment_sacrifices_source() {
     assert!(
         in_graveyard,
         "Mogg War Marshal should end up in graveyard after unpaid echo"
+    );
+}
+
+#[test]
+fn resolving_ability_from_spell_on_stack_does_not_move_source_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Stack Ability Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::gain_life(3)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    game.push_to_stack(StackEntry::ability(
+        spell_id,
+        alice,
+        vec![Effect::gain_life(2)],
+    ));
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("stack ability should resolve");
+
+    assert_eq!(game.player(alice).expect("Alice should exist").life, 22);
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|object| object.zone == Zone::Stack),
+        "source spell should remain on the stack after its ability resolves"
+    );
+    assert_eq!(game.stack.len(), 1);
+    assert!(!game.stack[0].is_ability);
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("spell should resolve");
+
+    assert_eq!(game.player(alice).expect("Alice should exist").life, 25);
+    assert!(
+        game.player(alice).is_some_and(|player| {
+            player.graveyard.iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.name == "Stack Ability Probe")
+            })
+        }),
+        "spell should move to its owner's graveyard after the spell entry resolves"
     );
 }
 
@@ -16515,6 +16705,132 @@ fn test_cipher_resolution_encodes_and_combat_damage_casts_a_copy() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_cipher_copy_cast_prompts_for_targets_before_resolving() {
+    struct CipherCopyDecisionMaker {
+        encode_creature: ObjectId,
+        copied_spell_target: ObjectId,
+    }
+
+    impl DecisionMaker for CipherCopyDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx
+                .description
+                .to_ascii_lowercase()
+                .contains("creature you control to encode")
+            {
+                return vec![self.encode_creature];
+            }
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            let target = Target::Object(self.copied_spell_target);
+            if ctx
+                .requirements
+                .iter()
+                .any(|requirement| requirement.legal_targets.contains(&target))
+            {
+                return vec![target];
+            }
+            crate::targeting::normalize_targets_for_requirements(&ctx.requirements, Vec::new())
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_def = CardDefinitionBuilder::new(CardId::new(), "Targeted Cipher Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Create a token that's a copy of target creature.\nCipher")
+        .expect("targeted cipher probe should parse");
+
+    let encoded_creature = create_creature(&mut game, "Encoded Creature", alice, 2, 2);
+    let copy_target = create_creature(&mut game, "Copy Target", bob, 3, 3);
+    let stack_id = game.create_object_from_definition(&spell_def, alice, Zone::Stack);
+    game.stack
+        .push(StackEntry::new(stack_id, alice).with_targets(vec![Target::Object(copy_target)]));
+
+    let mut dm = CipherCopyDecisionMaker {
+        encode_creature: encoded_creature,
+        copied_spell_target: copy_target,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("targeted cipher spell should resolve");
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|obj| obj.name == "Copy Target" && game.controller_of(obj) == alice)
+            .count(),
+        1,
+        "original targeted cipher spell should create one token copy"
+    );
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            encoded_creature,
+            crate::events::DamageTarget::Player(bob),
+            2,
+            true,
+            crate::events::cause::EventCause::combat_damage(encoded_creature),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("cipher trigger should go on stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("cipher trigger should resolve");
+
+    let copied_spell_entry = game
+        .stack
+        .last()
+        .expect("cipher trigger should cast copied targeted spell");
+    assert_eq!(
+        copied_spell_entry.targets,
+        vec![Target::Object(copy_target)],
+        "casting the encoded copy should ask for and store new targets"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("targeted cipher copy should resolve");
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|obj| obj.name == "Copy Target" && game.controller_of(obj) == alice)
+            .count(),
+        2,
+        "targeted cipher copy should resolve using its chosen target"
+    );
+}
+
 #[test]
 fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     use crate::ability::Ability;
@@ -17177,6 +17493,76 @@ fn test_force_of_will_alternative_cost_casting_flow() {
         .expect("Force of Will stack entry should keep the exiled-card tag");
     assert_eq!(exiled.len(), 1);
     assert_eq!(exiled[0].name, "Counterspell");
+}
+
+#[test]
+fn test_non_mana_only_flashback_does_not_require_printed_mana_cost() {
+    use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
+    use crate::decision::compute_legal_actions;
+    use crate::effect::ChoiceCount;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let flashback_spell = CardDefinitionBuilder::new(CardId::new(), "Non-Mana Flashback Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::return_from_graveyard_to_battlefield(
+            crate::target::ChooseSpec::Target(Box::new(crate::target::ChooseSpec::Object(
+                ObjectFilter::creature()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            ))),
+            false,
+        )])
+        .alternative_cast(AlternativeCastingMethod::Flashback {
+            total_cost: TotalCost::from_costs(vec![
+                Cost::validated_effect(Effect::choose_objects(
+                    ObjectFilter::creature().you_control(),
+                    ChoiceCount::exactly(3),
+                    PlayerFilter::You,
+                    "flashback_sacrifice_cost".to_string(),
+                )),
+                Cost::validated_effect(Effect::sacrifice(
+                    ObjectFilter::tagged("flashback_sacrifice_cost"),
+                    3,
+                )),
+            ]),
+        })
+        .build();
+    let spell_id = game.create_object_from_definition(&flashback_spell, alice, Zone::Graveyard);
+
+    let creature = CardBuilder::new(CardId::new(), "Cost Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(0)]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    for _ in 0..3 {
+        game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    }
+    game.create_object_from_card(&creature, alice, Zone::Graveyard);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::Alternative(0),
+            } if *id == spell_id
+        )),
+        "non-mana-only flashback should be legal without paying printed mana"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

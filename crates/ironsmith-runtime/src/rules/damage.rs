@@ -66,6 +66,27 @@ pub(crate) fn source_damage_keywords(
     source: ObjectId,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> SourceDamageKeywords {
+    if game
+        .object(source)
+        .is_some_and(|object| object.zone == crate::zone::Zone::Stack)
+    {
+        return SourceDamageKeywords {
+            has_deathtouch: game.object_has_static_ability_id(source, StaticAbilityId::Deathtouch),
+            has_infect: game.object_has_static_ability_id(source, StaticAbilityId::Infect),
+            has_wither: game.object_has_static_ability_id(source, StaticAbilityId::Wither),
+            has_lifelink: game.object_has_static_ability_id(source, StaticAbilityId::Lifelink),
+        };
+    }
+
+    if let Some(snapshot) = source_snapshot {
+        return SourceDamageKeywords {
+            has_deathtouch: snapshot.has_static_ability_id(StaticAbilityId::Deathtouch),
+            has_infect: snapshot.has_static_ability_id(StaticAbilityId::Infect),
+            has_wither: snapshot.has_static_ability_id(StaticAbilityId::Wither),
+            has_lifelink: snapshot.has_static_ability_id(StaticAbilityId::Lifelink),
+        };
+    }
+
     if game.object(source).is_some() {
         return SourceDamageKeywords {
             has_deathtouch: game.object_has_static_ability_id(source, StaticAbilityId::Deathtouch),
@@ -75,16 +96,7 @@ pub(crate) fn source_damage_keywords(
         };
     }
 
-    let Some(snapshot) = source_snapshot else {
-        return SourceDamageKeywords::default();
-    };
-
-    SourceDamageKeywords {
-        has_deathtouch: snapshot.has_static_ability_id(StaticAbilityId::Deathtouch),
-        has_infect: snapshot.has_static_ability_id(StaticAbilityId::Infect),
-        has_wither: snapshot.has_static_ability_id(StaticAbilityId::Wither),
-        has_lifelink: snapshot.has_static_ability_id(StaticAbilityId::Lifelink),
-    }
+    SourceDamageKeywords::default()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

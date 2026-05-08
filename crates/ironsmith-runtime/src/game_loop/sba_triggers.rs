@@ -355,6 +355,20 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }
+    if let Some(triggering_event) = entry.triggering_event.clone() {
+        if let Some(attacked) =
+            triggering_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+        {
+            if let Some(attacker) = game.object(attacked.attacker) {
+                ctx = ctx.with_attacking_player(game.controller_of(attacker));
+            }
+        } else if let Some(attacked) =
+            triggering_event.downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
+            && let Some(attacker) = game.object(attacked.attacker)
+        {
+            ctx = ctx.with_attacking_player(game.controller_of(attacker));
+        }
+    }
     if entry.chosen_player.is_some() {
         ctx = ctx.with_chosen_player(entry.chosen_player);
     }
@@ -681,6 +695,8 @@ fn target_requirements_from_explicit_choices(
         crate::tag::TagKey,
         Vec<crate::snapshot::ObjectSnapshot>,
     > = std::collections::HashMap::new();
+    tagged_objects.extend(trigger.tagged_objects.clone());
+    add_triggering_object_tag(game, &trigger.triggering_event, &mut tagged_objects);
     if !entry.crew_contributors.is_empty() {
         let snapshots = entry
             .crew_contributors
@@ -736,6 +752,27 @@ fn target_requirements_from_explicit_choices(
             }
         })
         .collect()
+}
+
+fn add_triggering_object_tag(
+    game: &GameState,
+    triggering_event: &TriggerEvent,
+    tagged_objects: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+) {
+    if let Some(object_id) = triggering_event.object_id()
+        && let Some(snapshot) = triggering_event.snapshot().cloned().or_else(|| {
+            game.object(object_id)
+                .map(|obj| ObjectSnapshot::from_object(obj, game))
+        })
+    {
+        tagged_objects
+            .entry(crate::tag::TagKey::from("triggering"))
+            .or_default()
+            .push(snapshot);
+    }
 }
 
 fn choose_trigger_targets(
@@ -815,14 +852,17 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     }
 
     let mut requirements = target_requirements_from_explicit_choices(game, trigger, &entry);
-    if let Some(ref chosen_modes) = entry.chosen_modes {
-        requirements.extend(extract_target_requirements_from_program_with_modes(
-            game,
-            &trigger.ability.effects,
-            trigger.controller,
-            Some(trigger.source),
-            Some(chosen_modes),
-        ));
+    let program_requirements = extract_target_requirements_from_program_with_modes(
+        game,
+        &trigger.ability.effects,
+        trigger.controller,
+        Some(trigger.source),
+        entry.chosen_modes.as_deref(),
+    );
+    for requirement in program_requirements {
+        if !target_requirement_reuses_existing(&requirement, &requirements) {
+            requirements.push(requirement);
+        }
     }
 
     let (chosen_targets, target_assignments) =
@@ -849,14 +889,16 @@ pub(super) fn triggered_to_stack_entry_with_effects(
 
     // Capture source LKI at trigger-to-stack time. If the source no longer exists,
     // fall back to snapshot data from the triggering event (e.g. dies triggers).
-    let source_snapshot = game
-        .object(trigger.source)
-        .map(|obj| {
-            ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                obj, game, effects,
-            )
+    let source_snapshot = trigger
+        .source_snapshot
+        .clone()
+        .or_else(|| {
+            game.object(trigger.source).map(|obj| {
+                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                    obj, game, effects,
+                )
+            })
         })
-        .or_else(|| trigger.source_snapshot.clone())
         .or_else(|| {
             trigger
                 .triggering_event
@@ -894,6 +936,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     if !trigger.tagged_objects.is_empty() {
         entry = entry.with_tagged_objects(trigger.tagged_objects.clone());
     }
+    add_triggering_object_tag(game, &trigger.triggering_event, &mut entry.tagged_objects);
     if let Some(snapshot) = source_snapshot {
         entry = entry.with_source_snapshot(snapshot);
     }

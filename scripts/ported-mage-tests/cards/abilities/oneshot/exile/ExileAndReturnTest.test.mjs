@@ -347,9 +347,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         }
       ]
     },

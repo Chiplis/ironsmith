@@ -557,6 +557,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::AttachToEffect>() {
             return Some(&payload.target);
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::ReconfigureEffect>() {
+            return Some(&payload.target);
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::AttachObjectsEffect>() {
             return Some(&payload.target);
         }

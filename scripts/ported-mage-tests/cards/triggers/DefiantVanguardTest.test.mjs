@@ -135,7 +135,8 @@ registerPortedMageTests({
           "name": "Bane Alley Blackguard",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

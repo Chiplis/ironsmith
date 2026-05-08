@@ -33,10 +33,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "UPKEEP",
-          "power": 0,
-          "toughness": "Champion's Drake"
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Champion's Drake",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "activateAbility",
@@ -51,10 +53,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Champion's Drake"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Champion's Drake",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "activateAbility",
@@ -69,10 +73,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_TURN",
-          "power": 0,
-          "toughness": "Champion's Drake"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Champion's Drake",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "activateAbility",
@@ -87,10 +93,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "3 level counters",
-          "name": 3,
-          "power": "BEGIN_COMBAT",
-          "toughness": 0
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Champion's Drake",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "activateAbility",
@@ -105,10 +113,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "4 level counters",
-          "name": 3,
-          "power": "END_TURN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Champion's Drake",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "setStrictChooseMode",

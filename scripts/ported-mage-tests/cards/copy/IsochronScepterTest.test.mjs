@@ -64,7 +64,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -144,7 +143,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -230,7 +228,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -409,7 +406,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Angel's Grace",
           "count": 1
         },
@@ -512,7 +508,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Silence",
           "count": 1
         },

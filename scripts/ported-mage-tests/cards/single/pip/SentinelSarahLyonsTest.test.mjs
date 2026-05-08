@@ -22,10 +22,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "UPKEEP",
-          "power": 0,
-          "toughness": "Sentinel Sarah Lyons"
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Sentinel Sarah Lyons",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "castSpell",
@@ -36,10 +38,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_TURN",
-          "power": 0,
-          "toughness": "Sentinel Sarah Lyons"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Sentinel Sarah Lyons",
+          "power": 6,
+          "toughness": 6
         },
         {
           "op": "setStrictChooseMode",

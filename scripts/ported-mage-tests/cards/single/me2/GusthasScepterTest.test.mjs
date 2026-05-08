@@ -58,7 +58,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "Silvercoat Lion",
           "count": 1
         }

@@ -371,8 +371,20 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::ControllerOf(
             ObjectRef::tagged(TagKey::from("triggering")),
         )),
-        TriggerSpec::SpellCast { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::SpellCopied { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::SpellCast { caster, .. } => {
+            if *caster == PlayerFilter::Any {
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                Some(caster.clone())
+            }
+        }
+        TriggerSpec::SpellCopied { copier, .. } => {
+            if *copier == PlayerFilter::Any {
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                Some(copier.clone())
+            }
+        }
         TriggerSpec::PlayerLosesLife(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),

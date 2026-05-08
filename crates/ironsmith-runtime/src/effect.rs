@@ -21,7 +21,7 @@
 
 use crate::color::ColorSet;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaSymbol;
@@ -825,6 +825,13 @@ impl RestrictionExt for Restriction {
         let ctx = game
             .filter_context_for_combat(controller, source, None, None)
             .with_iterated_player(iterated_player);
+        let player_matches_restriction_filter =
+            |player_id, filter: &crate::target::PlayerFilter| {
+                filter.matches_player(player_id, &ctx)
+                    || player_matches_filter_with_combat(
+                        player_id, filter, game, controller, combat,
+                    )
+            };
 
         match self {
             Restriction::AdditionalLandPlays(filter, count) => {
@@ -832,10 +839,7 @@ impl RestrictionExt for Restriction {
                     .players
                     .iter()
                     .filter(|player| {
-                        player.is_in_game()
-                            && player_matches_filter_with_combat(
-                                player.id, filter, game, controller, combat,
-                            )
+                        player.is_in_game() && player_matches_restriction_filter(player.id, filter)
                     })
                     .map(|player| player.id)
                     .collect();
@@ -848,44 +852,35 @@ impl RestrictionExt for Restriction {
             }
             Restriction::GainLife(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_gain_life.insert(player.id);
                     }
                 }
             }
             Restriction::SearchLibraries(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_search.insert(player.id);
                     }
                 }
             }
             Restriction::CastSpellsMatching(filter, spell_filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                    }
+                }
+            }
+            Restriction::CastSpellsOnlyAsSorcery(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cast_spells_only_as_sorcery.insert(player.id);
                     }
                 }
             }
             Restriction::ActivateNonManaAbilities(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_activate_non_mana_abilities.insert(player.id);
                     }
                 }
@@ -919,77 +914,49 @@ impl RestrictionExt for Restriction {
             }
             Restriction::CastMoreThanOneSpellEachTurn(filter, spell_filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.add_cast_limit_filter(player.id, spell_filter.clone());
                     }
                 }
             }
             Restriction::DrawCards(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_draw.insert(player.id);
                     }
                 }
             }
             Restriction::DrawExtraCards(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_draw_extra_cards.insert(player.id);
                     }
                 }
             }
             Restriction::ChangeLifeTotal(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.life_total_cant_change.insert(player.id);
                     }
                 }
             }
             Restriction::LoseGame(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_lose_game.insert(player.id);
                     }
                 }
             }
             Restriction::WinGame(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_win_game.insert(player.id);
                     }
                 }
             }
             Restriction::BecomeMonarch(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_become_monarch.insert(player.id);
                     }
                 }
@@ -1159,11 +1126,7 @@ impl RestrictionExt for Restriction {
             }
             Restriction::BeTargetedPlayer(filter) => {
                 for player in &game.players {
-                    if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id, filter, game, controller, combat,
-                        )
-                    {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_target_players.insert(player.id);
                     }
                 }
@@ -1171,13 +1134,7 @@ impl RestrictionExt for Restriction {
             Restriction::BeTargetedPlayerFrom(player_filter, source_filter) => {
                 for player in &game.players {
                     if player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id,
-                            player_filter,
-                            game,
-                            controller,
-                            combat,
-                        )
+                        && player_matches_restriction_filter(player.id, player_filter)
                     {
                         tracker.cant_target_players_from.push(
                             crate::game_state::PlayerCantBeTargetedFrom {

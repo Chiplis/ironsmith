@@ -57,10 +57,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "DECLARE_ATTACKERS",
-          "power": 0,
-          "toughness": "Runeclaw Bear"
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "name": "Runeclaw Bear",
+          "power": 4,
+          "toughness": 2
         },
         {
           "op": "activateAbility",
@@ -101,8 +103,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         }
       ]
     }

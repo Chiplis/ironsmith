@@ -46,24 +46,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -126,24 +122,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -206,24 +198,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -275,24 +263,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 1
+          "player": 1,
+          "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -355,24 +339,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 2
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }
@@ -426,24 +406,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 0
         }
@@ -502,24 +478,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 1
+          "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 0
         }
@@ -572,24 +544,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 3
+          "player": 1,
+          "count": 3
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "playerD",
           "count": 1
         }

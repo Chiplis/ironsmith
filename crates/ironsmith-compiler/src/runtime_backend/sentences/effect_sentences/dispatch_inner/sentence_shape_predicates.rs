@@ -606,6 +606,41 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
     effect_grammar::has_unsupported_negated_untap_clause_sentence_lexed(tokens)
 }
 
+fn parse_it_is_aura_enchantment_sentence(words: &[&str]) -> Option<Vec<EffectAst>> {
+    let tail = if words.starts_with(&["it's", "an"]) || words.starts_with(&["it’s", "an"]) {
+        &words[2..]
+    } else if words.starts_with(&["it", "is", "an"]) {
+        &words[3..]
+    } else {
+        return None;
+    };
+    if !tail.starts_with(&["aura", "enchantment", "with", "enchant", "creature"]) {
+        return None;
+    }
+
+    let attachment_filter = if tail.get(5..7) == Some(["you", "control"].as_slice()) {
+        ObjectFilter::creature().you_control()
+    } else {
+        ObjectFilter::creature()
+    };
+    let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment(
+        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic())),
+        attachment_filter,
+        Until::Forever,
+    )];
+
+    if contains_word_window(tail, &["loses", "all", "other", "abilities"])
+        || contains_word_window(tail, &["loses", "all", "abilities"])
+    {
+        effects.push(EffectAst::subject_verb_remove_abilities_all(
+            ObjectFilter::default(),
+            Vec::new(),
+            Until::Forever,
+        ));
+    }
+    Some(effects)
+}
+
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -660,6 +695,9 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(effects) = parse_it_is_aura_enchantment_sentence(sentence_words.as_slice()) {
+        return Ok(effects);
+    }
     if sentence_words.first() == Some(&"at")
         && sentence_words.get(1) == Some(&"this")
         && let Some(end_idx) =
@@ -1039,10 +1077,25 @@ fn parse_effect_sentence_with_where_x_lexed(
                     .iter()
                     .position(|token| token.is_word("as"))
                     .map(|token_idx| trim_edge_punctuation(&primary_where_tokens[..token_idx]));
-                let number_of_filter_value =
+                let specific_where_value =
+                    crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+                        primary_where_tokens,
+                    )
+                    .or_else(|| {
+                        crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
+                            primary_where_tokens,
+                        )
+                    })
+                    .or_else(|| {
+                        crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_different_powers_filter_value(
+                            primary_where_tokens,
+                        )
+                    });
+                let number_of_filter_value = specific_where_value.or_else(|| {
                     crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
                         primary_where_tokens,
                     )
+                })
                     .or_else(|| {
                         activation_time_trimmed.as_deref().and_then(
                             crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value,

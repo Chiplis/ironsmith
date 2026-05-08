@@ -1640,6 +1640,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    if let Some(rest) = normalized.strip_prefix("Whenever a Splinter enters, choose one or both") {
+        normalized = format!("When this creature enters, choose one or both{rest}");
+    }
     normalized = normalized.replace(
         "target opponent's nonland permanent",
         "target nonland permanent an opponent controls",
@@ -8205,6 +8208,12 @@ pub(super) fn describe_apply_continuous_clauses(
             crate::effects::continuous::RuntimeModification::RemoveAllAbilities => {
                 clauses.push("loses all abilities".to_string());
             }
+            crate::effects::continuous::RuntimeModification::RemoveThisAbility => {
+                clauses.push("loses this ability".to_string());
+            }
+            crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(_) => {
+                clauses.push("has enchant restriction".to_string());
+            }
         }
     }
 
@@ -9105,6 +9114,10 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "{} can't cast {}",
             describe_player_set_filter(filter),
             describe_cast_ban_spell_filter(spell_filter)
+        ),
+        crate::effect::Restriction::CastSpellsOnlyAsSorcery(filter) => format!(
+            "{} can cast spells only any time they could cast a sorcery",
+            describe_player_set_filter(filter)
         ),
         crate::effect::Restriction::ActivateNonManaAbilities(filter) => {
             format!(

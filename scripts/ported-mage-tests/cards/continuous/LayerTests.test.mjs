@@ -417,7 +417,8 @@ registerPortedMageTests({
           "power": 0,
           "toughness": 4
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testUrborgWithAnimateLandAndOvinize",
@@ -586,7 +587,8 @@ registerPortedMageTests({
           "power": 4,
           "toughness": 2
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "testExampleFromReddit2021",

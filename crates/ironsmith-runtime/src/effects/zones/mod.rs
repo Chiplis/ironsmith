@@ -363,7 +363,9 @@ pub use reorder_graveyard::ReorderGraveyardEffect;
 pub use reorder_library_top::ReorderLibraryTopEffect;
 pub use return_all_to_battlefield::ReturnAllToBattlefieldEffect;
 pub use return_from_graveyard_or_exile_to_battlefield::ReturnFromGraveyardOrExileToBattlefieldEffect;
-pub use return_from_graveyard_to_battlefield::ReturnFromGraveyardToBattlefieldEffect;
+pub use return_from_graveyard_to_battlefield::{
+    ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect,
+};
 pub use return_from_graveyard_to_hand::ReturnFromGraveyardToHandEffect;
 pub use return_to_hand::ReturnToHandEffect;
 pub use sacrifice::{

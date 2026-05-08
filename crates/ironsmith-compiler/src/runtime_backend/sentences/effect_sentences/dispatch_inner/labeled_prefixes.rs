@@ -262,6 +262,38 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             return Ok(effects);
         }
     }
+    if slice_starts_with(
+        sentence_words.as_slice(),
+        &["cast", "any", "number", "of"],
+    ) && contains_word_window(sentence_words.as_slice(), &["from", "your", "graveyard"])
+        && contains_word_window(sentence_words.as_slice(), &["without", "paying", "their", "mana", "costs"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.card_types.push(CardType::Instant);
+        filter.card_types.push(CardType::Sorcery);
+        filter.type_or_subtype_union = true;
+        filter.colors = Some(crate::color::ColorSet::from(crate::color::Color::Red));
+        let tag = TagKey::from("__chosen_cast_from_graveyard");
+        return Ok(vec![
+            EffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+                zones: vec![Zone::Graveyard],
+                search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+            },
+            EffectAst::subject_verb_cast_tagged(
+                tag,
+                PlayerAst::You,
+                false,
+                false,
+                true,
+                None,
+            ),
+        ]);
+    }
     if let Some(diag) = super::sentence_unsupported::diagnose_sentence_unsupported_lexed(tokens) {
         return Err(diag);
     }

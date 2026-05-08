@@ -33,6 +33,12 @@ impl EffectExecutor for RevealTopEffect {
         )?;
 
         let count = result.exposed_object_ids.len() as i32;
+        if !result.exposed_snapshots.is_empty() {
+            ctx.tag_objects(
+                crate::effects::PUBLIC_REVEALED_TAG,
+                result.exposed_snapshots.clone(),
+            );
+        }
         Ok(result.attach_to_outcome(EffectOutcome::count(count)))
     }
 }

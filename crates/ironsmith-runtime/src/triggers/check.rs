@@ -765,6 +765,45 @@ fn add_ring_designation_triggers(
     }
 }
 
+fn is_soulbond_pair_trigger(trigger_ability: &TriggeredAbility) -> bool {
+    trigger_ability
+        .effects
+        .all_effects()
+        .into_iter()
+        .any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::SoulbondPairEffect>()
+                .is_some()
+        })
+}
+
+fn soulbond_trigger_had_eligible_pair(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> bool {
+    let Some(source_obj) = game.object(source) else {
+        return false;
+    };
+    if source_obj.zone != Zone::Battlefield
+        || game.controller_of(source_obj) != controller
+        || !game.current_is_creature(source)
+        || game.is_soulbond_paired(source)
+    {
+        return false;
+    }
+
+    game.battlefield.iter().copied().any(|candidate| {
+        candidate != source
+            && !game.is_soulbond_paired(candidate)
+            && game.object(candidate).is_some_and(|object| {
+                object.zone == Zone::Battlefield
+                    && game.controller_of(object) == controller
+                    && game.current_is_creature(candidate)
+            })
+    })
+}
+
 /// Check all permanents for triggered abilities that match the given event.
 ///
 /// Returns a list of triggered abilities that should go on the stack.
@@ -814,6 +853,14 @@ fn tagged_objects_for_trigger_event(
     trigger_event: &TriggerEvent,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
     let mut tagged = HashMap::new();
+    if let Some(source) = trigger_event.source_snapshot().cloned().or_else(|| {
+        trigger_event.inner().source_object().and_then(|id| {
+            game.object(id)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+        })
+    }) {
+        tagged.insert(crate::tag::TagKey::from("triggering_source"), vec![source]);
+    }
     if let Some(revealed) = trigger_event.downcast::<crate::events::CardRevealedEvent>()
         && let Some(snapshot) = revealed.snapshot.clone()
     {
@@ -896,6 +943,11 @@ pub(crate) fn check_triggers_with_view(
             if trigger_ability.trigger.matches(trigger_event, &ctx) {
                 let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
                 if trigger_count == 0 {
+                    continue;
+                }
+                if is_soulbond_pair_trigger(trigger_ability)
+                    && !soulbond_trigger_had_eligible_pair(game, obj_id, game.controller_of(obj))
+                {
                     continue;
                 }
                 let event_value_amount = trigger_ability
@@ -1779,7 +1831,7 @@ mod tests {
     use crate::events::cause::EventCause;
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
     use crate::events::other::BecameMonstrousEvent;
-    use crate::events::spells::SpellCastEvent;
+    use crate::events::spells::{BecomesTargetedEvent, SpellCastEvent};
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
@@ -1796,6 +1848,80 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn make_battlefield_artifact(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    #[test]
+    fn soulbond_does_not_trigger_without_another_unpaired_creature_at_trigger_time() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        make_battlefield_artifact(&mut game, alice, "Angel's Tomb");
+
+        let soulbond = CardDefinitionBuilder::new(CardId::new(), "Trusted Forcemage")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .soulbond()
+            .build();
+        let source = game.create_object_from_definition(&soulbond, alice, Zone::Battlefield);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                crate::events::zones::ZoneChangeEvent::with_cause(
+                    source,
+                    Zone::Hand,
+                    Zone::Battlefield,
+                    EventCause::from_game_rule(),
+                    None,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert!(
+            triggered.is_empty(),
+            "soulbond should not trigger if no other unpaired creature existed at trigger time"
+        );
+    }
+
+    #[test]
+    fn soulbond_triggers_when_another_unpaired_creature_exists_at_trigger_time() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        make_battlefield_creature(&mut game, alice, "Elite Vanguard");
+
+        let soulbond = CardDefinitionBuilder::new(CardId::new(), "Trusted Forcemage")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .soulbond()
+            .build();
+        let source = game.create_object_from_definition(&soulbond, alice, Zone::Battlefield);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                crate::events::zones::ZoneChangeEvent::with_cause(
+                    source,
+                    Zone::Hand,
+                    Zone::Battlefield,
+                    EventCause::from_game_rule(),
+                    None,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1, "expected one soulbond trigger");
     }
 
     #[test]
@@ -1942,6 +2068,26 @@ mod tests {
 
         assert_eq!(other_attackers.len(), 1);
         assert_eq!(other_attackers[0].object_id, partner);
+    }
+
+    #[test]
+    fn becomes_targeted_event_captures_targeting_stack_object_tag() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let target = make_battlefield_creature(&mut game, alice, "Protected Creature");
+        let source = make_battlefield_creature(&mut game, alice, "Targeting Ability Source");
+
+        let trigger_event = TriggerEvent::new_with_provenance(
+            BecomesTargetedEvent::new(target, source, alice, true),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let tagged = tagged_objects_for_trigger_event(&game, &trigger_event);
+        let source_tag = tagged
+            .get(&crate::tag::TagKey::from("triggering_source"))
+            .expect("becomes-targeted events should expose the targeting source");
+
+        assert_eq!(source_tag.len(), 1);
+        assert_eq!(source_tag[0].object_id, source);
     }
 
     #[test]

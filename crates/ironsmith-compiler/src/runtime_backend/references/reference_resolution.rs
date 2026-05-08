@@ -389,6 +389,9 @@ fn advance_reference_frame_for_effect(
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::UntapAll { filter } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "untapped"));
+                    }
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::TapOrUntapAll {
@@ -772,6 +775,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::AddCardTypes { target, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { target, .. }
+                | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }
                 | SubjectVerbActionAst::BecomeBasicLandType { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "typed")?;
                 }
@@ -1658,6 +1662,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
             | SubjectVerbActionAst::MakeColorless { .. }
@@ -1744,7 +1749,8 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::PumpForEach { count, .. } => {
                 resolve_effect_result_value(count, state)?;
             }
-            SubjectVerbActionAst::Learn => {}
+            SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
@@ -2476,6 +2482,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
             | SubjectVerbActionAst::SetColors { target, .. }
             | SubjectVerbActionAst::MakeColorless { target, .. } => {
@@ -2551,6 +2558,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 replacements
             }
             SubjectVerbActionAst::AdditionalPhases { .. } => 0,
+            SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => 0,
             SubjectVerbActionAst::Learn => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
         },

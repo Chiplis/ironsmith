@@ -1,7 +1,7 @@
 use crate::effect::RestrictionExt as _;
 use crate::filter::ObjectFilterExt as _;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Range};
 use std::sync::Arc;
 
@@ -11,9 +11,10 @@ use rand::{SeedableRng, rngs::StdRng};
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::Card;
+use crate::cards::CardRegistry;
 use crate::continuous::{
-    CalculatedCharacteristics, ContinuousEffect, ContinuousEffectManager, EffectTarget,
-    Modification,
+    CalculatedCharacteristics, ContinuousEffect, ContinuousEffectId, ContinuousEffectManager,
+    EffectTarget, Modification,
 };
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
@@ -264,6 +265,7 @@ pub struct ChoiceStore {
 struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
+    forced_die_rolls: RefCell<VecDeque<u32>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
     continuous_state_turn_number: Cell<u32>,
@@ -279,6 +281,7 @@ impl Clone for RuntimeCacheState {
         Self {
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
+            forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
@@ -298,6 +301,7 @@ impl RuntimeCacheState {
         Self {
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
+            forced_die_rolls: RefCell::new(VecDeque::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
@@ -459,6 +463,9 @@ pub struct CantEffectTracker {
     /// - default filter => "can't cast spells"
     /// - creature filter => "can't cast creature spells"
     pub cant_cast_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
+
+    /// Players who can cast spells only any time they could cast a sorcery.
+    pub cast_spells_only_as_sorcery: HashSet<PlayerId>,
 
     /// Players who can't activate non-mana abilities.
     /// Example: Split second while a split-second spell is on the stack.
@@ -727,6 +734,8 @@ impl CantEffectTracker {
                 self.add_cant_cast_filter(player, filter);
             }
         }
+        self.cast_spells_only_as_sorcery
+            .extend(other.cast_spells_only_as_sorcery);
         self.cant_activate_non_mana_abilities
             .extend(other.cant_activate_non_mana_abilities);
         self.cant_activate_abilities_of
@@ -778,6 +787,7 @@ impl CantEffectTracker {
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
         self.cant_cast_filters.clear();
+        self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();
         self.cant_activate_abilities_of.clear();
         self.cant_activate_tap_abilities_of.clear();
@@ -1869,6 +1879,10 @@ pub struct GameState {
     /// This powers "cards exiled with <this object>" style references.
     pub exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
 
+    /// Sources whose linked exiled cards return immediately when the source
+    /// leaves the battlefield.
+    pub return_exiled_when_source_leaves: HashSet<ObjectId>,
+
     /// Linked exile groups keyed by generated runtime ID.
     pub linked_exile_groups: HashMap<u64, LinkedExileGroup>,
 
@@ -1878,6 +1892,9 @@ pub struct GameState {
     /// Component-card identity for battlefield melded permanents, keyed by the
     /// melded permanent's stable ID.
     pub melded_permanents: HashMap<StableId, MeldedPermanentState>,
+    /// Whether required single-object choices with exactly one legal candidate
+    /// may be resolved by the generic decision layer without surfacing a prompt.
+    auto_choose_single_object_decisions: bool,
     runtime_cache: RuntimeCacheState,
 }
 
@@ -1966,11 +1983,21 @@ impl GameState {
             declined_commander_command_zone_moves: HashSet::new(),
             imprinted_cards: HashMap::new(),
             exiled_with_source: HashMap::new(),
+            return_exiled_when_source_leaves: HashSet::new(),
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
             melded_permanents: HashMap::new(),
+            auto_choose_single_object_decisions: true,
             runtime_cache: RuntimeCacheState::new(active_player),
         }
+    }
+
+    pub fn auto_choose_single_object_decisions(&self) -> bool {
+        self.auto_choose_single_object_decisions
+    }
+
+    pub fn set_auto_choose_single_object_decisions(&mut self, enabled: bool) {
+        self.auto_choose_single_object_decisions = enabled;
     }
 
     /// Creates a new game state after explicitly resetting runtime player/object IDs.
@@ -2052,6 +2079,19 @@ impl GameState {
     /// Return the count of irreversible random gameplay operations that have occurred.
     pub fn irreversible_random_count(&self) -> u64 {
         self.runtime_cache.irreversible_random_count.get()
+    }
+
+    /// Queue a deterministic die result for test harnesses that mirror external fixtures.
+    pub fn force_next_die_roll(&mut self, result: u32) {
+        self.runtime_cache
+            .forced_die_rolls
+            .borrow_mut()
+            .push_back(result);
+    }
+
+    /// Consume a queued die result, if one was supplied by a test harness.
+    pub fn take_forced_die_roll(&self) -> Option<u32> {
+        self.runtime_cache.forced_die_rolls.borrow_mut().pop_front()
     }
 
     fn record_irreversible_random(&self) {
@@ -3355,6 +3395,9 @@ impl GameState {
 
         // Proceed with normal battlefield entry
         let new_id = self.move_object(old_id, Zone::Battlefield, cause)?;
+        if let Some(controller) = result.controller_override {
+            self.set_current_controller(new_id, controller);
+        }
 
         // Apply "enters as copy" before tapped/counter modifications.
         if let Some(copy_source_id) = result.enters_as_copy_of {
@@ -3557,6 +3600,30 @@ impl GameState {
                             self.set_chosen_player(new_id, options[chosen_idx]);
                         }
                     }
+                    if static_ability.card_name_choice_as_enters().is_some() {
+                        let choice_ctx = crate::decisions::context::TextInputContext::new(
+                            controller,
+                            Some(new_id),
+                            "Choose a card name",
+                        )
+                        .with_placeholder("Enter a card name")
+                        .require_known_value(true);
+                        let chosen_name = decision_maker.decide_text(self, &choice_ctx);
+                        if decision_maker.awaiting_choice() {
+                            continue;
+                        }
+                        let chosen_name = chosen_name.trim();
+                        if chosen_name.is_empty() {
+                            continue;
+                        }
+                        let mut registry = CardRegistry::new();
+                        registry.ensure_cards_loaded([chosen_name]);
+                        let canonical_name = registry
+                            .get(chosen_name)
+                            .map(|definition| definition.name().to_string())
+                            .unwrap_or_else(|| chosen_name.to_string());
+                        self.set_chosen_named_option(new_id, canonical_name);
+                    }
                     if let Some(spec) = static_ability.named_option_choice_as_enters() {
                         if spec.options.is_empty() {
                             continue;
@@ -3590,7 +3657,7 @@ impl GameState {
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
         if choose_aura_attachment
-            && old_zone != Zone::Stack
+            && (old_zone != Zone::Stack || result.enters_as_copy_of.is_some())
             && let Some(obj) = self.object(new_id)
             && obj.subtypes.contains(&Subtype::Aura)
             && obj.attached_to.is_none()
@@ -4486,6 +4553,7 @@ impl GameState {
                                 .filter_map(|grant| grant.materialize()),
                         )
                         .collect(),
+                    aura_attach_filter: object.aura_attach_filter.clone(),
                     controller: self.controller_of(object),
                 });
 
@@ -4517,6 +4585,14 @@ impl GameState {
 
     /// Return the object's current controller in its zone.
     pub fn current_controller(&self, id: ObjectId) -> Option<PlayerId> {
+        self.current_controller_excluding_change_effect(id, None)
+    }
+
+    pub(crate) fn current_controller_excluding_change_effect(
+        &self,
+        id: ObjectId,
+        skipped_effect: Option<ContinuousEffectId>,
+    ) -> Option<PlayerId> {
         let object = self.object(id)?;
         let mut controller = object.owner;
         for effect in self
@@ -4526,6 +4602,25 @@ impl GameState {
             .into_iter()
             .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
         {
+            if skipped_effect == Some(effect.id) {
+                continue;
+            }
+            let can_apply = match &effect.applies_to {
+                EffectTarget::Specific(target) => *target == id,
+                EffectTarget::Source => effect.source == id,
+                EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
+                EffectTarget::AttachedTo(source) => {
+                    self.object(*source)
+                        .and_then(|source| source.attached_to)
+                        .and_then(|target| target.object_id())
+                        == Some(id)
+                }
+                EffectTarget::AllCreatures | EffectTarget::Filter(_) => true,
+            };
+            if !can_apply {
+                continue;
+            }
+
             if !crate::continuous::continuous_effect_duration_and_condition_are_active(effect, self)
             {
                 continue;
@@ -7107,6 +7202,29 @@ impl GameState {
             .then_some(partner)
     }
 
+    pub(crate) fn soulbond_partner_for_shared_bonus(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<ObjectId> {
+        let partner = self.soulbond_pairs.get(&object_id).copied()?;
+        if self
+            .soulbond_pairs
+            .get(&partner)
+            .is_none_or(|paired_back| *paired_back != object_id)
+        {
+            return None;
+        }
+        let left_obj = self.object(object_id)?;
+        let right_obj = self.object(partner)?;
+        if left_obj.zone != Zone::Battlefield || right_obj.zone != Zone::Battlefield {
+            return None;
+        }
+        if self.controller_of(left_obj) != self.controller_of(right_obj) {
+            return None;
+        }
+        Some(partner)
+    }
+
     pub fn is_soulbond_paired(&self, object_id: ObjectId) -> bool {
         self.soulbond_partner(object_id).is_some()
     }
@@ -7294,6 +7412,28 @@ impl GameState {
         let entry = self.exiled_with_source.entry(source_id).or_default();
         if !entry.contains(&exiled_card_id) {
             entry.push(exiled_card_id);
+        }
+    }
+
+    pub fn mark_return_exiled_when_source_leaves(&mut self, source_id: ObjectId) {
+        self.return_exiled_when_source_leaves.insert(source_id);
+    }
+
+    pub fn return_exiled_for_source_leave(&mut self, source_id: ObjectId) {
+        if !self.return_exiled_when_source_leaves.remove(&source_id) {
+            return;
+        }
+        let linked = self
+            .exiled_with_source
+            .remove(&source_id)
+            .unwrap_or_default();
+        for object_id in linked {
+            if self
+                .object(object_id)
+                .is_some_and(|object| object.zone == Zone::Exile)
+            {
+                self.move_object_by_effect(object_id, Zone::Battlefield);
+            }
         }
     }
 
@@ -7877,5 +8017,56 @@ mod tests {
         assert!(!game.can_spend_mana_as_any_color(alice, Some(alice_artifact)));
         assert!(!game.can_spend_mana_as_any_color(alice, Some(bob_creature)));
         assert!(!game.can_spend_mana_as_any_color(bob, Some(bob_creature)));
+    }
+
+    #[test]
+    fn current_controller_skips_unrelated_stop_controlling_effects_before_duration_check() {
+        use crate::card::{CardBuilder, PowerToughness};
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(400), "Control Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let target_card = CardBuilder::new(CardId::from_raw(401), "Control Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let target_id = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::gain_control(source_id, alice, target_id, alice)
+                .until(Until::YouStopControllingThis),
+        );
+
+        assert_eq!(game.current_controller(source_id), Some(alice));
+        assert_eq!(game.current_controller(target_id), Some(alice));
+    }
+
+    #[test]
+    fn stop_controlling_duration_does_not_self_justify_control_effect() {
+        use crate::card::{CardBuilder, PowerToughness};
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(402), "Self Referencing Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, bob, Zone::Battlefield);
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::gain_control(source_id, alice, source_id, alice)
+                .until(Until::YouStopControllingThis),
+        );
+
+        assert_eq!(game.current_controller(source_id), Some(bob));
     }
 }

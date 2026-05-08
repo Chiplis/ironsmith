@@ -1469,6 +1469,32 @@ fn rewrite_structure_state_triggered_clause_parser_splits_when_condition() {
 }
 
 #[test]
+fn rewrite_structure_state_triggered_clause_parser_splits_state_with_gate() {
+    let tokens = lex_line(
+        "When an opponent controls a creature with power 4 or greater, if this permanent is an enchantment, it becomes a 4/4 Beast creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify Hidden Predators state-trigger line");
+    let spec = super::grammar::structure::split_state_triggered_clause_lexed(&tokens, 1, 18)
+        .expect("structure helper should detect gated state-trigger clause");
+
+    assert_eq!(
+        spec.effects_tokens
+            .iter()
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>(),
+        vec!["it", "becomes", "a", "4/4", "Beast", "creature", "."]
+    );
+    let predicate_debug = format!("{:?}", spec.predicate);
+    assert!(
+        predicate_debug.contains("PlayerControls")
+            && predicate_debug.contains("SourceMatches")
+            && predicate_debug.contains("Enchantment"),
+        "expected opponent-control state and enchantment gate, got {predicate_debug}"
+    );
+}
+
+#[test]
 fn rewrite_modal_header_parser_tracks_unchosen_turn_scope() {
     let text = "Whenever another creature you control enters, choose one that hasn't been chosen this turn —";
     let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
@@ -2762,6 +2788,45 @@ fn rewrite_if_you_do_attach_it_uses_prior_returned_object_reference() {
     assert!(
         debug.contains("Attach"),
         "expected lowered definition to contain attach effect, got {debug}"
+    );
+}
+
+#[test]
+fn return_it_as_aura_enchantment_lowers_to_atomic_aura_return() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Returned Aura Variant")
+        .parse_text(
+            "When this creature dies, return it to the battlefield. It's an Aura enchantment with enchant creature you control and it loses all other abilities.",
+        )
+        .expect("return-as-aura clause should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("as_aura: Some")
+            && debug.contains("remove_all_abilities: true")
+            && debug.contains("controller: Some")
+            && debug.contains("You")
+            && !debug.contains("BecomeAuraEnchantment"),
+        "expected return-as-aura wording to lower to atomic aura return, got {debug}"
+    );
+}
+
+#[test]
+fn graveyard_static_enters_with_additional_counter_for_filter_lowers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Graveyard Counter Variant")
+        .parse_text(
+            "As long as this creature is in your graveyard, each Human creature you control enters with an additional +1/+1 counter on it.",
+        )
+        .expect("graveyard ETB counter replacement should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("EnterWithCountersForFilter")
+            && debug.contains("functional_zones")
+            && debug.contains("Graveyard")
+            && debug.contains("Human")
+            && debug.contains("PlusOnePlusOne"),
+        "expected graveyard functional ETB counter replacement, got {debug}"
     );
 }
 
@@ -4405,6 +4470,22 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
 }
 
 #[test]
+fn flashback_keyword_accepts_non_mana_total_cost() {
+    let flashback_tokens = lex_line("Flashback--Sacrifice three creatures", 0)
+        .expect("rewrite lexer should classify non-mana flashback keyword line");
+
+    let parsed = super::front_end::shared::util::parse_flashback_line_lexed(&flashback_tokens)
+        .expect("non-mana flashback should parse")
+        .expect("flashback line should be recognized");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("Flashback"), "{debug}");
+    assert!(debug.contains("Sacrifice"), "{debug}");
+    assert!(debug.contains("count: 3"), "{debug}");
+    assert!(!debug.contains("Mana("), "{debug}");
+}
+
+#[test]
 fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_grammar_entrypoint() {
     let text = "{T}: The next noncreature spell you cast this turn costs {2} less to cast.";
     let builder = CardDefinitionBuilder::new(CardId::new(), "Cost Reducer")
@@ -4468,6 +4549,44 @@ fn rewrite_anthem_static_condition_normalizes_apostrophe_shapes() {
         .expect("static-condition clause should parse");
 
     assert!(matches!(parsed, crate::ConditionExpr::SourceIsEnchanted));
+}
+
+#[test]
+fn rewrite_static_condition_parses_multicolor_devotion_comparison() {
+    let tokens = lex_line("Your devotion to blue and red is less than seven", 0)
+        .expect("rewrite lexer should classify devotion condition clause");
+
+    let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+        .expect("devotion condition clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("LessThan"), "{debug}");
+    assert!(
+        debug.contains("Devotion { player: You, color: Blue }"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("Devotion { player: You, color: Red }"),
+        "{debug}"
+    );
+    assert!(debug.contains("Fixed(7)"), "{debug}");
+}
+
+#[test]
+fn rewrite_anthem_subject_parses_enchanted_player_controls() {
+    let tokens = lex_line("Creatures enchanted player controls", 0)
+        .expect("rewrite lexer should classify enchanted-player-controls subject");
+
+    let parsed = super::keyword_static::parse_anthem_subject(&tokens)
+        .expect("enchanted-player-controls subject should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("card_types: [Creature]"), "{debug}");
+    assert!(
+        debug.contains("controller: Some(TaggedPlayer(TagKey(\"enchanted\")))"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -5516,6 +5635,52 @@ fn rewrite_search_library_helper_parsers_track_mana_and_same_name_suffixes() {
             .expect("same-name helper should split reference suffix");
     assert_eq!(token_word_refs(&base_filter), vec!["creature", "card"]);
     assert_eq!(token_word_refs(&reference_tokens), vec!["that", "card"]);
+
+    let different_name_tokens = lex_line(
+        "Curse card that doesn't have the same name as a Curse attached to enchanted player",
+        0,
+    )
+    .expect("rewrite lexer should classify negated same-name helper input");
+    let (base_filter, reference_tokens) =
+        super::split_search_different_name_reference_filter(&different_name_tokens)
+            .expect("different-name helper should split reference suffix");
+    assert_eq!(token_word_refs(&base_filter), vec!["Curse", "card"]);
+    assert_eq!(
+        token_word_refs(&reference_tokens),
+        vec!["a", "Curse", "attached", "to", "enchanted", "player"]
+    );
+}
+
+#[test]
+fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
+    let text = "Enchant player\nAt the beginning of enchanted player's upkeep, you may search your library for a Curse card that doesn't have the same name as a Curse attached to enchanted player, put it onto the battlefield attached to that player, then shuffle.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Curse of Misfortunes")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Curse])
+        .parse_text(text)
+        .expect("Curse of Misfortunes should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("TagMatchingObjectsEffect"), "{debug}");
+    assert!(debug.contains("DifferentNameFromTagged"), "{debug}");
+    assert!(debug.contains("attached_to_player: Some"), "{debug}");
+    assert!(debug.contains("\"enchanted\""), "{debug}");
+}
+
+#[test]
+fn cruel_reality_fallback_life_loss_targets_that_player() {
+    let text = "Enchant player\nAt the beginning of enchanted player's upkeep, that player sacrifices a creature or planeswalker of their choice. If the player can't, they lose 5 life.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cruel Reality")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Curse])
+        .parse_text(text)
+        .expect("Cruel Reality should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("IfEffect"), "{debug}");
+    assert!(debug.contains("DidNotHappen"), "{debug}");
+    assert!(debug.contains("LoseLifeEffect"), "{debug}");
+    assert!(debug.contains("player: IteratedPlayer"), "{debug}");
 }
 
 #[test]
@@ -10156,6 +10321,18 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
         }] if filter_text == "a creature you control"
     ));
 
+    let processor_tokens = lex_line(
+        "Put a card an opponent owns from exile into that player's graveyard",
+        0,
+    )
+    .expect("lexer should classify processor activation cost");
+    let processor_cst = parse_activation_cost_tokens_rewrite(&processor_tokens)
+        .expect("token activation-cost parser should parse processor costs");
+    assert!(matches!(
+        processor_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard]
+    ));
+
     let remove_tokens = lex_line(
         "Remove any number of charge counters from among artifacts you control",
         0,
@@ -11184,5 +11361,61 @@ fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
         debug.contains("intervening_if: Some")
             || debug.contains("Conditional { predicate: PlayerHasNoOpponentWithMoreLifeThan"),
         "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_attack_with_trigger_preserves_that_attacking_player_may() {
+    let text = "Whenever a player attacks enchanted player with one or more creatures, that attacking player may create a tapped 2/2 black Zombie creature token.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify Curse of Shallow Graves trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Curse of Shallow Graves trigger should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("AttacksOneOrMore"), "{debug}");
+    assert!(debug.contains("MayByPlayer"), "{debug}");
+    assert!(debug.contains("player: Attacking"), "{debug}");
+    assert!(debug.contains("CreateToken"), "{debug}");
+}
+
+#[test]
+fn witchbane_orb_player_hexproof_and_attached_curse_destroy_parse() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Witchbane Orb Variant")
+        .parse_text(
+            "You have hexproof.\nWhen this artifact enters, destroy all Curses attached to you.",
+        )
+        .expect("Witchbane Orb text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeTargetedPlayerFrom")
+            && debug.contains("Opponent")
+            && debug.contains("DestroyEffect")
+            && debug.contains("attached_to_player: Some(You)")
+            && debug.contains("Curse"),
+        "expected player hexproof restriction and attached-curse destroy effect, got {debug}"
+    );
+}
+
+#[test]
+fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Maddening Hex Variant")
+        .parse_text(
+            "Enchant player\nWhenever enchanted player casts a noncreature spell, roll a d6. Maddening Hex deals damage to that player equal to the result. Then attach Maddening Hex to another one of your opponents chosen at random.",
+        )
+        .expect("Maddening Hex trigger should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("RollDieEffect")
+            && debug.contains("WithIdEffect")
+            && debug.contains("EffectValue")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("TaggedPlayer(TagKey(\"enchanted\"))"),
+        "expected damage amount to reference the prior die roll result and target the enchanted player, got {debug}"
+    );
+    assert!(
+        !debug.contains("target: Player(IteratedPlayer)"),
+        "that player in this non-loop trigger must not lower to an unbound iterated player, got {debug}"
     );
 }

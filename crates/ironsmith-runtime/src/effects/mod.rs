@@ -151,8 +151,8 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
-    RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect, SuspectEffect, TapEffect,
-    TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
+    ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
+    SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,
@@ -171,8 +171,8 @@ pub use player::{
     VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
-    ApplyReplacementEffect, RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect,
-    ReplacementApplyMode,
+    ApplyReplacementEffect, RegisterEnterUnderControlReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub use stack::{
@@ -188,7 +188,8 @@ pub use zones::{
     ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
     MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToLibraryTopOrBottomChoiceEffect,
     MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
-    ReturnAllToBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
+    ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
+    ReturnFromGraveyardOrExileToBattlefieldEffect,
     ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
     SacrificeEffect, SacrificeTargetEffect, ShuffleObjectsIntoLibraryEffect,
 };

@@ -51,10 +51,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "token",
-          "name": 2,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Spirit Token",
+          "power": 3,
+          "toughness": 2
         },
         {
           "op": "unsupported",

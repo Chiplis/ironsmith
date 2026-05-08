@@ -978,6 +978,11 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     };
     let equal_idx = _before_equal.len();
 
+    let power_ref_words = token_word_refs(&rest[equal_idx + 2..]);
+    let Some(power_ref_len) = parse_power_reference_word_count(&power_ref_words) else {
+        return Ok(None);
+    };
+
     let source_words = token_word_refs(&source_tokens);
     let source = if matches!(
         source_words.as_slice(),
@@ -993,11 +998,6 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             clause_words.join(" ")
         )));
     }
-
-    let power_ref_words = token_word_refs(&rest[equal_idx + 2..]);
-    let Some(power_ref_len) = parse_power_reference_word_count(&power_ref_words) else {
-        return Ok(None);
-    };
 
     let tail_after_power = trim_commas(&rest[equal_idx + 2 + power_ref_len..]);
     let pre_equal_words = token_word_refs(&rest[..equal_idx]);

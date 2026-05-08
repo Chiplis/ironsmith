@@ -136,6 +136,11 @@ impl WasmGame {
         }
     }
 
+    #[wasm_bindgen(js_name = setAutoChooseSingleObjectDecisions)]
+    pub fn set_auto_choose_single_object_decisions(&mut self, enabled: bool) {
+        self.game.set_auto_choose_single_object_decisions(enabled);
+    }
+
     /// Reset game with custom player names and starting life.
     #[wasm_bindgen(js_name = reset)]
     pub fn reset_from_js(
@@ -485,6 +490,24 @@ impl WasmGame {
         Ok(())
     }
 
+    /// Queue a forced die result for deterministic test harness scenarios.
+    #[wasm_bindgen(js_name = forceNextDieRoll)]
+    pub fn force_next_die_roll(&mut self, result: u32) {
+        self.game.force_next_die_roll(result);
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() {
+            checkpoint.game.force_next_die_roll(result);
+        }
+        if let Some(action) = self.pending_replay_action.as_mut() {
+            action.checkpoint.game.force_next_die_roll(result);
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() {
+            checkpoint.game.force_next_die_roll(result);
+        }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            continuation.checkpoint.game.force_next_die_roll(result);
+        }
+    }
+
     /// Draw one card for a player.
     #[wasm_bindgen(js_name = drawCard)]
     pub fn draw_card(&mut self, player_index: u8) -> Result<usize, JsValue> {
@@ -536,6 +559,22 @@ impl WasmGame {
         dm: &mut impl DecisionMaker,
     ) -> Result<u64, String> {
         if skip_triggers {
+            if zone == Zone::Battlefield {
+                self.game
+                    .register_linked_face_family_from_catalog(definition, &self.registry);
+                let temp_id = self
+                    .game
+                    .create_object_from_definition(definition, player_id, Zone::Command);
+                let Some(result) = self
+                    .game
+                    .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
+                else {
+                    self.game.remove_object(temp_id);
+                    return Err("battlefield entry was prevented by replacement effect".to_string());
+                };
+                self.game.take_pending_trigger_events();
+                return Ok(result.new_id.0);
+            }
             let object_id = self
                 .game
                 .create_object_from_catalog_definition(definition, &self.registry, player_id, zone);

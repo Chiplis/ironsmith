@@ -593,7 +593,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     }
   ]
 });

@@ -85,7 +85,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Nether Void",
           "count": 1
         }
@@ -173,7 +172,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Nether Void",
           "count": 1
         }
@@ -297,7 +295,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Concordant Crossroads",
           "count": 0
         },
@@ -321,19 +318,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Oblivion Ring",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Concordant Crossroads",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Anarchy",
           "count": 1
         }
@@ -421,7 +415,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Concordant Crossroads",
           "count": 0
         },
@@ -439,7 +432,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Concordant Crossroads",
           "count": 1
         }

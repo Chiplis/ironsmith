@@ -28,6 +28,7 @@ mod ninjutsu;
 mod phase_in;
 mod phase_out;
 mod put_sticker;
+mod reconfigure;
 mod regenerate;
 mod renown;
 mod saddle;
@@ -58,7 +59,11 @@ pub(crate) fn attachment_can_attach_to_target(
 
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
-        let Some(filter) = attachment.aura_attach_filter.clone() else {
+        let Some(filter) = game
+            .current_characteristics(attachment_id)
+            .and_then(|chars| chars.aura_attach_filter)
+            .or_else(|| attachment.aura_attach_filter.clone())
+        else {
             return false;
         };
         let filter_ctx =
@@ -67,7 +72,9 @@ pub(crate) fn attachment_can_attach_to_target(
     }
 
     if subtypes.contains(&Subtype::Equipment) {
-        if attachment.card_types.contains(&CardType::Creature) {
+        if attachment.card_types.contains(&CardType::Creature)
+            && !attachment_has_reconfigure_ability(attachment)
+        {
             return false;
         }
         return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Creature));
@@ -81,6 +88,12 @@ pub(crate) fn attachment_can_attach_to_target(
     }
 
     false
+}
+
+fn attachment_has_reconfigure_ability(attachment: &crate::object::Object) -> bool {
+    attachment.abilities.iter().any(|ability| {
+        crate::compiled_text::ability_surface_text(ability).starts_with("Reconfigure ")
+    })
 }
 
 pub(crate) fn attach_battlefield_object_to_target(
@@ -128,6 +141,7 @@ pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect};
 pub use phase_in::PhaseInEffect;
 pub use phase_out::PhaseOutEffect;
 pub use put_sticker::PutStickerEffect;
+pub use reconfigure::ReconfigureEffect;
 pub use regenerate::RegenerateEffect;
 pub use renown::RenownEffect;
 pub use saddle::{BecomeSaddledUntilEotEffect, SaddleCostEffect};

@@ -4,7 +4,9 @@
 //! - "The next time a source of your choice would deal damage to you this turn, prevent that damage."
 //! - "The next time a red source would deal damage to any target this turn, prevent that damage."
 
-use crate::effect::EffectOutcome;
+use crate::Value;
+use crate::effect::{Effect, EffectOutcome, EventValueSpec};
+use crate::effects::DealDamageEffect;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
@@ -12,7 +14,7 @@ use crate::events::damage::matchers::{
 };
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
-use crate::target::ObjectFilter;
+use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 
 /// How to constrain which source's damage is prevented.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,11 +41,21 @@ pub enum PreventNextTimeDamageTarget {
 pub struct PreventNextTimeDamageEffect {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
+    pub reflect_damage_to_source_controller: bool,
 }
 
 impl PreventNextTimeDamageEffect {
     pub fn new(source: PreventNextTimeDamageSource, target: PreventNextTimeDamageTarget) -> Self {
-        Self { source, target }
+        Self {
+            source,
+            target,
+            reflect_damage_to_source_controller: false,
+        }
+    }
+
+    pub fn reflecting_to_source_controller(mut self) -> Self {
+        self.reflect_damage_to_source_controller = true;
+        self
     }
 }
 
@@ -58,6 +70,7 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
         };
 
+        let mut chosen_source = None;
         let source_constraint = match &self.source {
             PreventNextTimeDamageSource::Filter(filter) => {
                 DamageSourceConstraint::Filter(filter.clone())
@@ -100,6 +113,7 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     .into_iter()
                     .next()
                     .unwrap_or(candidates[0]);
+                chosen_source = Some(chosen);
                 DamageSourceConstraint::Specific(chosen)
             }
         };
@@ -108,11 +122,21 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             source: source_constraint,
             target: target_constraint,
         };
+        let replacement_action = if self.reflect_damage_to_source_controller
+            && let Some(source) = chosen_source
+        {
+            ReplacementAction::Instead(vec![Effect::new(DealDamageEffect::new(
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::Player(PlayerFilter::ControllerOf(ObjectRef::Specific(source))),
+            ))])
+        } else {
+            ReplacementAction::Prevent
+        };
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
             matcher,
-            ReplacementAction::Prevent,
+            replacement_action,
         );
 
         game.effect_store

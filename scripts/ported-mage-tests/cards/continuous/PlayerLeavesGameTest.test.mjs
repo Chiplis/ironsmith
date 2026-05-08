@@ -193,31 +193,39 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": "playerD",
-          "toughness": "Balduvian Bears"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": "playerD",
-          "toughness": "Balduvian Bears"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "END_TURN",
-          "power": "playerD",
-          "toughness": "Balduvian Bears"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPowerToughness",
-          "player": "turn 2",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": "playerD"
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",

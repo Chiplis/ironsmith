@@ -139,19 +139,16 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Storm Crow",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Wall of Air",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Wind Drake",
           "count": 0
         }

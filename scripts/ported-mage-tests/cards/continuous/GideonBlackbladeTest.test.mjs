@@ -29,10 +29,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Gideon Blackblade"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "castSpell",
@@ -44,10 +46,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Gideon Blackblade"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "unsupported",
@@ -55,9 +59,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "turn 2 before",
-          "name": 2,
-          "power": "PRECOMBAT_MAIN",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "power": 0,
           "toughness": 0
         },
         {
@@ -70,9 +76,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "turn 2 after",
-          "name": 2,
-          "power": "POSTCOMBAT_MAIN",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "power": 0,
           "toughness": 0
         },
         {

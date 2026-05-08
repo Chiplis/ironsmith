@@ -651,6 +651,7 @@ impl WasmGame {
                 }
             }
             (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
+                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()

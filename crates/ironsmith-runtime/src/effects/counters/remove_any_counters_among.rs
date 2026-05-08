@@ -161,15 +161,26 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             if max_count < self.min_count {
                 return Ok(EffectOutcome::impossible());
             }
-            make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                NumberSpec::range(ctx.source, self.min_count, max_count, "counters to remove"),
-                FallbackStrategy::Maximum,
-            )
-            .clamp(self.min_count, max_count)
+            ctx.x_value
+                .map_or_else(
+                    || {
+                        make_decision_with_fallback(
+                            game,
+                            &mut ctx.decision_maker,
+                            ctx.controller,
+                            Some(ctx.source),
+                            NumberSpec::range(
+                                ctx.source,
+                                self.min_count,
+                                max_count,
+                                "counters to remove",
+                            ),
+                            FallbackStrategy::Maximum,
+                        )
+                    },
+                    |x| x,
+                )
+                .clamp(self.min_count, max_count)
         } else {
             self.count
         };

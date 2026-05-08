@@ -61,7 +61,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Hellspark Elemental",
           "count": 1
         }
@@ -125,7 +124,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Undead Leotau",
           "count": 1
         }
@@ -190,7 +188,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Dregscape Zombie",
           "count": 0
         },

@@ -1316,7 +1316,8 @@ fn activation_card_cost_choice_cost(
         | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
         | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone { cost, .. } => cost,
     }
 }
 
@@ -1860,6 +1861,39 @@ fn pay_activation_card_choice_without_execution_context(
                 cost,
                 target_id,
                 choice_tag.as_ref(),
+                cost_ctx,
+            )
+        }
+        crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone {
+            cost,
+            filter,
+            source_zone,
+            destination_zone,
+            description,
+            choice_tag,
+        } => {
+            let candidates = legal_cost_choice_objects(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                filter,
+                *source_zone,
+            );
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose an object to move to {destination_zone}: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::Other(
+                    "no legal object for move-to-zone cost".to_string(),
+                ));
+            };
+            pay_selected_cost_without_execution_context(
+                game,
+                cost,
+                target_id,
+                Some(choice_tag),
                 cost_ctx,
             )
         }
@@ -2621,11 +2655,7 @@ fn legal_cost_choice_objects(
     filter: &ObjectFilter,
     zone: Zone,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
-        you: Some(payer),
-        source: Some(source),
-        ..Default::default()
-    };
+    let ctx = game.filter_context_for(payer, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
         Zone::Battlefield => game.battlefield.iter().copied().collect(),

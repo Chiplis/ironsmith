@@ -77,31 +77,26 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bronze Sable",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Wall of Roots",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Sigiled Starfish",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 0
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Kalitas, Traitor of Ghet",
           "count": 0
         },
@@ -340,7 +335,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Giant Spider",
           "count": 1
         }

@@ -603,7 +603,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Geistflame",
           "count": 1
         },
@@ -781,21 +780,18 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Yawgmoth's Will",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Mind's Desire",
           "count": 1
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 8
+          "count": 8
         }
       ]
     }

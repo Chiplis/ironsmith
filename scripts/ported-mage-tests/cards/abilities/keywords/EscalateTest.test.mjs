@@ -338,7 +338,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Collective Defiance",
           "count": 1
         },

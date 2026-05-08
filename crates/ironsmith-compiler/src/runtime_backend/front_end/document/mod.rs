@@ -345,7 +345,10 @@ fn probe_triggered_split(
 
     let trigger_error = parse_trigger_clause_lexed(trigger_tokens).err();
     let effect_error = parse_effect_sentences_lexed(effect_candidate_tokens).err();
-    if trigger_error.is_none() && effect_error.is_none() {
+    if trigger_error.is_none()
+        && (effect_error.is_none()
+            || triggered_effect_tokens_have_trailing_static_sentences(effect_candidate_tokens))
+    {
         TriggeredSplitProbe::Supported(candidate)
     } else {
         TriggeredSplitProbe::Unsupported {
@@ -354,6 +357,67 @@ fn probe_triggered_split(
             effect_error,
         }
     }
+}
+
+fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() < 2 {
+        return false;
+    }
+
+    let Some(first_static_idx) = sentences
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, sentence)| sentence_is_static_after_trigger_effect(sentence).then_some(idx))
+    else {
+        return false;
+    };
+
+    if !sentences[first_static_idx..]
+        .iter()
+        .all(|sentence| sentence_is_static_after_trigger_effect(sentence))
+    {
+        return false;
+    }
+
+    sentences[..first_static_idx]
+        .iter()
+        .all(|sentence| parse_effect_sentences_lexed(sentence).is_ok())
+}
+
+fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
+    looks_like_self_enters_with_x_counters_static_sentence(tokens)
+        || matches!(parse_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
+}
+
+fn looks_like_self_enters_with_x_counters_static_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        [
+            "this" | "it",
+            "creature" | "permanent" | "spell",
+            "enters",
+            "with",
+            "x",
+            "+1/+1",
+            "counters",
+            "on",
+            "it",
+            ..
+        ] | [
+            "it",
+            "enters",
+            "with",
+            "x",
+            "+1/+1",
+            "counters",
+            "on",
+            "it",
+            ..
+        ]
+    )
 }
 
 fn token_words_match(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
@@ -837,6 +901,7 @@ fn normalize_named_source_sentence_for_builder(
         for name_lower in &names {
             rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
         }
+        rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
         if rewritten != lower {
             return Some(rewritten);
         }
@@ -949,13 +1014,13 @@ fn normalize_named_source_trigger_head_for_builder(
         for name_lower in &names {
             rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
         }
+        rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
         if rewritten != trimmed {
             return Some(rewritten);
         }
     }
 
-    let (_, rest) = str_split_once(trimmed, " enters ")?;
-    Some(format!("{subject} enters {rest}"))
+    None
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -986,6 +1051,15 @@ fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> S
     rewritten
 }
 
+fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
+    let singular = format!("{subject} enter");
+    let plural = format!("{subject} enters");
+    if text.ends_with(&singular) {
+        return format!("{}{}", &text[..text.len() - singular.len()], plural);
+    }
+    text.replace(&format!("{singular} "), &format!("{plural} "))
+}
+
 fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<String> {
     let name = builder.card_builder.name_ref().trim();
     if name.is_empty() {
@@ -996,7 +1070,15 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
     let mut push_alias = |alias: &str| {
         let alias = alias.trim().to_ascii_lowercase();
         if !alias.is_empty() && !aliases.contains(&alias) {
+            let ampersandless = alias.replace(" & ", " ");
+            let and_alias = alias.replace(" & ", " and ");
             aliases.push(alias);
+            if !ampersandless.is_empty() && !aliases.contains(&ampersandless) {
+                aliases.push(ampersandless);
+            }
+            if !and_alias.is_empty() && !aliases.contains(&and_alias) {
+                aliases.push(and_alias);
+            }
         }
     };
 
@@ -1016,6 +1098,12 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
         push_alias(full_name);
         if let Some((short_name, _)) = full_name.split_once(',') {
             push_alias(short_name);
+            for part in short_name
+                .split(" & ")
+                .flat_map(|piece| piece.split(" and "))
+            {
+                push_alias(part);
+            }
             if let Some(stripped) = strip_leading_digital_variant_marker(short_name) {
                 push_alias(stripped);
             }
@@ -2305,6 +2393,24 @@ fn try_parse_labeled_line_dispatch(
         .is_some_and(|(_, _, cost_text, _)| looks_like_activation_cost_prefix(cost_text.as_str()));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
+        if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
+            &preprocessed.builder,
+            line,
+            body_line.info.normalized.normalized.as_str(),
+        )? {
+            if preserve_as_choice_label {
+                triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+            }
+            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+                triggered.presentation_label = Some(label.trim().to_string());
+            }
+            let (triggered, next_idx) =
+                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Triggered(triggered),
+                next_idx,
+            )));
+        }
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());

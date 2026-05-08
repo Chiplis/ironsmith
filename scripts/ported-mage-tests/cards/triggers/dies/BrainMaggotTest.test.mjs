@@ -55,7 +55,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bloodflow Connoisseur",
           "count": 1
         }
@@ -179,7 +178,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bloodflow Connoisseur",
           "count": 0
         }
@@ -271,7 +269,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bloodflow Connoisseur",
           "count": 0
         }

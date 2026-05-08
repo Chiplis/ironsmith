@@ -97,8 +97,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilities(playerA, \"Balduvian Bears\", Arrays.asList(FlyingAbility.getInstance(), LifelinkAbility.getInstance(), HasteAbility.getInstance()))"
+          "op": "assertAbilities",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "abilities": [
+            "Arrays.asList(FlyingAbility.getInstance(), LifelinkAbility.getInstance(), HasteAbility.getInstance())"
+          ]
         }
       ]
     }

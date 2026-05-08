@@ -1410,10 +1410,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Blitz Automaton"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -2174,10 +2176,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 0,
-          "toughness": "Drizzt Do'Urden"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Drizzt Do'Urden",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",

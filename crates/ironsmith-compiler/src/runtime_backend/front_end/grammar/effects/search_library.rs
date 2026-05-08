@@ -1,4 +1,5 @@
 use super::*;
+use ironsmith_core::Value;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
@@ -110,6 +111,7 @@ pub(crate) struct SearchLibraryCountPrefix {
     pub(crate) count: ChoiceCount,
     pub(crate) search_mode: SearchSelectionMode,
     pub(crate) count_used: usize,
+    pub(crate) count_value: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +125,7 @@ pub(crate) enum SearchLibrarySameNameReference {
 pub(crate) struct SearchLibrarySameNameSplit {
     pub(crate) filter_tokens: Vec<OwnedLexToken>,
     pub(crate) same_name_reference: Option<SearchLibrarySameNameReference>,
+    pub(crate) same_name_relation: TaggedOpbjectRelation,
 }
 
 #[derive(Debug, Clone)]
@@ -940,6 +943,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     let mut count = ChoiceCount::exactly(1);
     let mut search_mode = SearchSelectionMode::Exact;
     let mut count_used = 0usize;
+    let mut count_value = None;
 
     if count_tokens.len() >= 2
         && count_tokens[0].is_word("any")
@@ -961,7 +965,10 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         && count_tokens[0].is_word("that")
         && count_tokens[1].is_word("many")
     {
-        count = ChoiceCount::any_number();
+        count = ChoiceCount::dynamic_x();
+        count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
+            crate::cards::builders::IT_TAG,
+        )));
         count_used = 2;
     } else if count_tokens
         .first()
@@ -978,6 +985,16 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
             count = ChoiceCount::up_to_dynamic_x();
             search_mode = SearchSelectionMode::Optional;
             count_used = 3;
+        } else if count_tokens.len() >= 4
+            && count_tokens[2].is_word("that")
+            && count_tokens[3].is_word("many")
+        {
+            count = ChoiceCount::up_to_dynamic_x();
+            search_mode = SearchSelectionMode::Optional;
+            count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
+                crate::cards::builders::IT_TAG,
+            )));
+            count_used = 4;
         } else if let Some((value, used)) = parse_number(&count_tokens[2..]) {
             count = ChoiceCount::up_to(value as usize);
             search_mode = SearchSelectionMode::Optional;
@@ -1007,6 +1024,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         count,
         search_mode,
         count_used,
+        count_value,
     }
 }
 
@@ -1016,6 +1034,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
     words_all: &[&str],
 ) -> Result<SearchLibrarySameNameSplit, CardTextError> {
     let mut same_name_reference: Option<SearchLibrarySameNameReference> = None;
+    let mut same_name_relation = TaggedOpbjectRelation::SameNameAsTagged;
     if let Some(base_tokens) =
         strip_search_library_suffix_lexed(raw_filter_tokens, search_library_with_that_name_suffix)
     {
@@ -1038,8 +1057,26 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
         same_name_reference = Some(SearchLibrarySameNameReference::Tagged(TagKey::from(
             CHOSEN_NAME_TAG,
         )));
-    } else if let Some((base_filter_tokens, reference_tokens)) =
+    } else if let Some((base_filter_tokens, reference_tokens, relation)) =
         split_search_same_name_reference_filter(raw_filter_tokens)
+            .map(|(base_filter_tokens, reference_tokens)| {
+                (
+                    base_filter_tokens,
+                    reference_tokens,
+                    TaggedOpbjectRelation::SameNameAsTagged,
+                )
+            })
+            .or_else(|| {
+                split_search_different_name_reference_filter(raw_filter_tokens).map(
+                    |(base_filter_tokens, reference_tokens)| {
+                        (
+                            base_filter_tokens,
+                            reference_tokens,
+                            TaggedOpbjectRelation::DifferentNameFromTagged,
+                        )
+                    },
+                )
+            })
     {
         if base_filter_tokens.is_empty() || reference_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1048,6 +1085,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
             )));
         }
         filter_tokens = base_filter_tokens;
+        same_name_relation = relation;
         let reference_words = token_word_refs(&reference_tokens);
         same_name_reference = if is_same_name_that_reference_words(&reference_words) {
             Some(SearchLibrarySameNameReference::Tagged(TagKey::from(IT_TAG)))
@@ -1086,6 +1124,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
     Ok(SearchLibrarySameNameSplit {
         filter_tokens,
         same_name_reference,
+        same_name_relation,
     })
 }
 

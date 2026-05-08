@@ -490,6 +490,12 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    /// Set the attacking player.
+    pub fn with_attacking_player(mut self, player: PlayerId) -> Self {
+        self.combat.attacking_player = Some(player);
+        self
+    }
+
     /// Set the X value.
     pub fn with_x(mut self, x: u32) -> Self {
         self.x_value = Some(x);

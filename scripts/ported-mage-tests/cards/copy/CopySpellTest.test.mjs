@@ -675,7 +675,8 @@ registerPortedMageTests({
           "name": "Wolf Token",
           "count": 1
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "ZadaHedronGrinderBoostWithCharm",
@@ -769,8 +770,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 4
+          "count": 4
         }
       ]
     },
@@ -855,8 +855,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0,
-          "name": 3
+          "count": 3
         }
       ]
     },

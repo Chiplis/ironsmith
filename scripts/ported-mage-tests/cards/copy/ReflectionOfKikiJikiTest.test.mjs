@@ -84,9 +84,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1,
-          "name": 5
+          "player": 1,
+          "count": 5
         },
         {
           "op": "assertGraveyardCount",

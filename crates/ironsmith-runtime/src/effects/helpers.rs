@@ -58,6 +58,16 @@ pub(crate) fn resolve_tagged_object_id(
     game.find_object_by_stable_id(snapshot.stable_id)
 }
 
+fn resolve_tagged_players_from_context(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    tag: &crate::tag::TagKey,
+) -> Option<Vec<PlayerId>> {
+    ctx.get_tagged_players(tag.as_str())
+        .cloned()
+        .or_else(|| ctx.filter_context(game).tagged_players.get(tag).cloned())
+}
+
 // ============================================================================
 // Value Resolution
 // ============================================================================
@@ -1904,8 +1914,7 @@ pub fn resolve_player_filter(
                     "ChosenPlayer requires a previously chosen player".to_string(),
                 )
             }),
-        PlayerFilter::TaggedPlayer(tag) => ctx
-            .get_tagged_players(tag.as_str())
+        PlayerFilter::TaggedPlayer(tag) => resolve_tagged_players_from_context(game, ctx, tag)
             .and_then(|players| players.first().copied())
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue(format!(
@@ -2324,6 +2333,7 @@ pub fn resolve_objects_for_effect(
         if !ctx.targets.is_empty()
             && matches!(spec.base(), ChooseSpec::Object(_))
             && !matches!(spec, ChooseSpec::WithCount(_, _))
+            && filter.tagged_constraints.is_empty()
         {
             if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)
                 && !objects.is_empty()
@@ -3067,9 +3077,7 @@ pub(crate) fn resolve_player_filter_to_list(
                     "ChosenPlayer requires a previously chosen player".to_string(),
                 )
             }),
-        PlayerFilter::TaggedPlayer(tag) => ctx
-            .get_tagged_players(tag.as_str())
-            .cloned()
+        PlayerFilter::TaggedPlayer(tag) => resolve_tagged_players_from_context(game, ctx, tag)
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue(format!(
                     "TaggedPlayer requires a tagged player for '{tag}'"

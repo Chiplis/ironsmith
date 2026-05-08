@@ -1,4 +1,5 @@
 use super::*;
+use crate::filter::PlayerFilterExt;
 use crate::target::PlayerFilter;
 
 fn resolve_modal_count_value_for_source(
@@ -333,7 +334,19 @@ pub(super) fn apply_keyword_payment_tags_for_resolution(
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
     let pending_events = game.take_pending_trigger_events();
     for event in pending_events {
+        let source_leave = event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+            .and_then(|zone_change| {
+                (zone_change.from == crate::zone::Zone::Battlefield
+                    && zone_change.to != crate::zone::Zone::Battlefield)
+                    .then(|| zone_change.objects.clone())
+            });
         queue_triggers_from_event(game, trigger_queue, event, true);
+        if let Some(source_ids) = source_leave {
+            for source_id in source_ids {
+                game.return_exiled_for_source_leave(source_id);
+            }
+        }
     }
 }
 
@@ -402,6 +415,9 @@ fn target_spec_reuses_declared_target(candidate: &ChooseSpec, declared: &ChooseS
     if candidate == declared || candidate.base() == declared.base() {
         return true;
     }
+    if target_spec_references_previous_target_tag(candidate) {
+        return true;
+    }
 
     match (candidate.base(), declared.base()) {
         (ChooseSpec::Player(candidate), ChooseSpec::Player(declared)) => {
@@ -413,6 +429,15 @@ fn target_spec_reuses_declared_target(candidate: &ChooseSpec, declared: &ChooseS
         ) => player_filter_reuses_declared_target(candidate, declared),
         _ => false,
     }
+}
+
+pub(super) fn target_requirement_reuses_existing(
+    candidate: &TargetRequirement,
+    existing: &[TargetRequirement],
+) -> bool {
+    existing
+        .iter()
+        .any(|existing| target_spec_reuses_declared_target(&candidate.spec, &existing.spec))
 }
 
 fn profile_reuses_declared_target(
@@ -669,6 +694,19 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
 ) {
+    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        extract_for_players_target_requirements(
+            game,
+            for_players,
+            caster,
+            source_id,
+            consumed_modal_selection,
+            declared_targets,
+            requirements,
+        );
+        return;
+    }
+
     if let Some(modal) = effect.modal_effect_spec() {
         let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
@@ -719,6 +757,226 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 max_targets,
             });
         }
+    }
+}
+
+fn extract_for_players_target_requirements(
+    game: &GameState,
+    for_players: &crate::effects::ForPlayersEffect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
+    requirements: &mut Vec<TargetRequirement>,
+) {
+    let mut filter_ctx = crate::filter::FilterContext::new(caster)
+        .with_active_player(game.turn.active_player)
+        .with_opponents(
+            game.turn_store
+                .turn_order
+                .iter()
+                .copied()
+                .filter(|player_id| *player_id != caster)
+                .collect(),
+        );
+    if let Some(source_id) = source_id {
+        filter_ctx = filter_ctx.with_source(source_id);
+    }
+    let players = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .filter(|player| for_players.filter.matches_player(player.id, &filter_ctx))
+        .map(|player| player.id)
+        .collect::<Vec<_>>();
+
+    for player in players {
+        for inner in &for_players.effects {
+            extract_target_requirements_from_iterated_effect(
+                game,
+                inner,
+                caster,
+                source_id,
+                player,
+                consumed_modal_selection,
+                declared_targets,
+                requirements,
+            );
+        }
+    }
+}
+
+fn extract_target_requirements_from_iterated_effect(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    iterated_player: PlayerId,
+    consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
+    requirements: &mut Vec<TargetRequirement>,
+) {
+    if let Some(extracted) = extract_target_spec(effect)
+        && requires_target_selection(extracted.spec)
+    {
+        let spec = specialize_iterated_player_choose_spec(extracted.spec, iterated_player);
+        let profile = ExtractedTarget {
+            spec: &spec,
+            description: extracted.description,
+            min_targets: extracted.min_targets,
+            max_targets: extracted.max_targets,
+            count_value: extracted.count_value,
+            reuse_policy: extracted.reuse_policy,
+        };
+        if profile_reuses_declared_target(&profile, declared_targets) {
+            return;
+        }
+        declare_target(&profile, declared_targets);
+        let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+        let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
+        let has_enough_targets = min_targets == 0 || legal_targets.len() >= min_targets;
+        if has_enough_targets {
+            requirements.push(TargetRequirement {
+                spec,
+                legal_targets,
+                description: extracted.description.to_string(),
+                min_targets,
+                max_targets,
+            });
+        }
+        return;
+    }
+
+    extract_target_requirements_from_effect_internal(
+        game,
+        effect,
+        caster,
+        source_id,
+        None,
+        consumed_modal_selection,
+        declared_targets,
+        requirements,
+    );
+}
+
+fn specialize_iterated_player_choose_spec(spec: &ChooseSpec, player: PlayerId) -> ChooseSpec {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(specialize_iterated_player_choose_spec(spec, player)),
+            hints: hints.clone(),
+        },
+        ChooseSpec::Target(inner) => {
+            ChooseSpec::Target(Box::new(specialize_iterated_player_choose_spec(inner, player)))
+        }
+        ChooseSpec::Player(filter) => {
+            ChooseSpec::Player(specialize_iterated_player_filter(filter, player))
+        }
+        ChooseSpec::Object(filter) => {
+            ChooseSpec::Object(specialize_iterated_player_object_filter(filter, player))
+        }
+        ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            ChooseSpec::PlayerOrPlaneswalker(specialize_iterated_player_filter(filter, player))
+        }
+        ChooseSpec::EachPlayer(filter) => {
+            ChooseSpec::EachPlayer(specialize_iterated_player_filter(filter, player))
+        }
+        ChooseSpec::All(filter) => {
+            ChooseSpec::All(specialize_iterated_player_object_filter(filter, player))
+        }
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
+            Box::new(specialize_iterated_player_choose_spec(inner, player)),
+            count.clone(),
+        ),
+        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
+            Box::new(specialize_iterated_player_choose_spec(inner, player)),
+            count.clone(),
+            value.clone(),
+        ),
+        _ => spec.clone(),
+    }
+}
+
+fn specialize_iterated_player_object_filter(
+    filter: &crate::filter::ObjectFilter,
+    player: PlayerId,
+) -> crate::filter::ObjectFilter {
+    let mut filter = filter.clone();
+    filter.controller = filter
+        .controller
+        .as_ref()
+        .map(|controller| specialize_iterated_player_filter(controller, player));
+    filter.owner = filter
+        .owner
+        .as_ref()
+        .map(|owner| specialize_iterated_player_filter(owner, player));
+    filter.cast_by = filter
+        .cast_by
+        .as_ref()
+        .map(|cast_by| specialize_iterated_player_filter(cast_by, player));
+    filter.targets_player = filter
+        .targets_player
+        .as_ref()
+        .map(|targets_player| specialize_iterated_player_filter(targets_player, player));
+    filter.targets_only_player = filter
+        .targets_only_player
+        .as_ref()
+        .map(|targets_only_player| specialize_iterated_player_filter(targets_only_player, player));
+    filter.attacking_player_or_planeswalker_controlled_by = filter
+        .attacking_player_or_planeswalker_controlled_by
+        .as_ref()
+        .map(|attacking_player| specialize_iterated_player_filter(attacking_player, player));
+    filter.attached_to_player = filter
+        .attached_to_player
+        .as_ref()
+        .map(|attached_to_player| specialize_iterated_player_filter(attached_to_player, player));
+    filter.entered_battlefield_controller = filter
+        .entered_battlefield_controller
+        .as_ref()
+        .map(|controller| specialize_iterated_player_filter(controller, player));
+    if let Some(targets_object) = filter.targets_object.as_ref() {
+        filter.targets_object = Some(Box::new(specialize_iterated_player_object_filter(
+            targets_object,
+            player,
+        )));
+    }
+    if let Some(targets_only_object) = filter.targets_only_object.as_ref() {
+        filter.targets_only_object = Some(Box::new(specialize_iterated_player_object_filter(
+            targets_only_object,
+            player,
+        )));
+    }
+    filter.any_of = filter
+        .any_of
+        .iter()
+        .map(|inner| specialize_iterated_player_object_filter(inner, player))
+        .collect();
+    filter
+}
+
+fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) -> PlayerFilter {
+    match filter {
+        PlayerFilter::IteratedPlayer => PlayerFilter::Specific(player),
+        PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
+            specialize_iterated_player_filter(inner, player),
+        )),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            PlayerFilter::CardsInHandAtLeastMoreThanYou {
+                base: Box::new(specialize_iterated_player_filter(base, player)),
+                count: *count,
+            }
+        }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => PlayerFilter::MaxSpeed {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+            has_max_speed: *has_max_speed,
+        },
+        PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+            excluded: Box::new(specialize_iterated_player_filter(excluded, player)),
+        },
+        _ => filter.clone(),
     }
 }
 
@@ -904,10 +1162,10 @@ fn target_spec_references_previous_target_tag(spec: &ChooseSpec) -> bool {
 
 fn object_filter_references_previous_target_tag(filter: &crate::filter::ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
-        matches!(
+        !matches!(
             constraint.relation,
-            crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        ) && constraint.tag.as_str().starts_with("targeted")
+            crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        )
     })
 }
 
@@ -1393,7 +1651,9 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {
-                if legal_targets.contains(target) {
+                if legal_targets.contains(target)
+                    || target_still_exists_for_broad_target(game, &assignment.spec, target)
+                {
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),
                         Target::Player(id) => ResolvedTarget::Player(*id),
@@ -1437,6 +1697,9 @@ pub(super) fn validate_stack_entry_targets_with_view(
             legal_target_sets
                 .iter()
                 .any(|legal_targets| legal_targets.contains(target))
+                || validation_specs
+                    .iter()
+                    .any(|spec| target_still_exists_for_broad_target(game, spec, target))
         } else {
             match target {
                 Target::Object(obj_id) => game
@@ -1461,4 +1724,28 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
     let all_invalid = invalid_count == entry.targets.len();
     (valid_targets, Vec::new(), all_invalid)
+}
+
+fn target_still_exists_for_broad_target(
+    game: &GameState,
+    spec: &crate::target::ChooseSpec,
+    target: &Target,
+) -> bool {
+    if !matches!(
+        spec.base(),
+        crate::target::ChooseSpec::AnyTarget | crate::target::ChooseSpec::AnyOtherTarget
+    ) {
+        return false;
+    }
+
+    match target {
+        Target::Player(player_id) => game
+            .player(*player_id)
+            .is_some_and(|player| player.is_in_game()),
+        Target::Object(object_id) => game.object(*object_id).is_some_and(|object| {
+            object.zone == Zone::Battlefield
+                && (game.object_has_card_type(*object_id, CardType::Creature)
+                    || game.object_has_card_type(*object_id, CardType::Planeswalker))
+        }),
+    }
 }

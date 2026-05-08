@@ -34,6 +34,7 @@ pub(super) enum KeywordDispatchHint {
     Cycling,
     Reinforce,
     Equip,
+    Reconfigure,
     Kicker,
     Flashback,
     Harmonize,
@@ -111,6 +112,12 @@ mod activated_keywords {
             hints: &[KeywordDispatchHint::Equip],
             matches: registry::matches_equip,
             lower: registry::lower_equip,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Reconfigure,
+            hints: &[KeywordDispatchHint::Reconfigure],
+            matches: registry::matches_reconfigure,
+            lower: registry::lower_reconfigure,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Morph,
@@ -296,6 +303,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 )),
                 grammar::kw("squad").value(KeywordDispatchHint::Squad),
                 grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
+                grammar::kw("reconfigure").value(KeywordDispatchHint::Reconfigure),
                 grammar::phrase(&["cast", "this", "spell", "only"])
                     .value(KeywordDispatchHint::CastThisSpellOnly),
             )),

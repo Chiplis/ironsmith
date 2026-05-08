@@ -64,6 +64,7 @@ pub(crate) trait TaggedConstraintSubject {
     fn subject_colors(&self) -> ColorSet;
     fn subject_mana_value(&self) -> i32;
     fn subject_attached_to(&self) -> Option<ObjectId>;
+    fn subject_attached_to_player(&self) -> Option<PlayerId>;
 }
 
 pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
@@ -120,6 +121,10 @@ impl TaggedConstraintSubject for Object {
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
         self.attached_to.and_then(|target| target.object_id())
+    }
+
+    fn subject_attached_to_player(&self) -> Option<PlayerId> {
+        self.attached_to.and_then(|target| target.player_id())
     }
 }
 
@@ -204,6 +209,10 @@ impl TaggedConstraintSubject for ObjectSnapshot {
     fn subject_attached_to(&self) -> Option<ObjectId> {
         self.attached_to.and_then(|target| target.object_id())
     }
+
+    fn subject_attached_to_player(&self) -> Option<PlayerId> {
+        self.attached_to.and_then(|target| target.player_id())
+    }
 }
 
 impl TailMatchSubject for ObjectSnapshot {
@@ -254,6 +263,7 @@ fn tagged_constraint_matches_subject(
     subject: &impl TaggedConstraintSubject,
     tagged_snapshots: &[ObjectSnapshot],
     relation: TaggedOpbjectRelation,
+    game: &GameState,
 ) -> bool {
     match relation {
         TaggedOpbjectRelation::IsTaggedObject => tagged_snapshots
@@ -291,6 +301,9 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots
             .iter()
             .any(|snapshot| names_match(&snapshot.name, subject.subject_name())),
+        TaggedOpbjectRelation::DifferentNameFromTagged => tagged_snapshots
+            .iter()
+            .all(|snapshot| !names_match(&snapshot.name, subject.subject_name())),
         TaggedOpbjectRelation::SameControllerAsTagged => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.controller == subject.subject_controller()),
@@ -318,6 +331,9 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::AttachedToTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| subject.subject_attached_to() == Some(snapshot.object_id)),
+        TaggedOpbjectRelation::SoulbondPartnerOfTagged => tagged_snapshots.iter().any(|snapshot| {
+            game.soulbond_partner(snapshot.object_id) == Some(subject.subject_object_id())
+        }),
         TaggedOpbjectRelation::IsNotTaggedObject => tagged_snapshots
             .iter()
             .all(|snapshot| snapshot.object_id != subject.subject_object_id()),
@@ -1146,10 +1162,20 @@ impl ObjectFilterExt for ObjectFilter {
         stack_entry: Option<&crate::game_state::StackEntry>,
     ) -> bool {
         // Name check
-        if let Some(required_name) = &self.name
-            && !names_match(subject.tail_name(), required_name)
-        {
-            return false;
+        if let Some(required_name) = &self.name {
+            if required_name == "{chosen name}" {
+                let Some(source) = ctx.source else {
+                    return false;
+                };
+                let Some(chosen_name) = game.chosen_named_option(source) else {
+                    return false;
+                };
+                if !names_match(subject.tail_name(), chosen_name) {
+                    return false;
+                }
+            } else if !names_match(subject.tail_name(), required_name) {
+                return false;
+            }
         }
         if let Some(excluded_name) = &self.excluded_name
             && names_match(subject.tail_name(), excluded_name)
@@ -1252,7 +1278,21 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 continue;
             };
-            if !tagged_constraint_matches_subject(subject, tagged_snapshots, constraint.relation) {
+            if !tagged_constraint_matches_subject(
+                subject,
+                tagged_snapshots,
+                constraint.relation,
+                game,
+            ) {
+                return false;
+            }
+        }
+
+        if let Some(player_filter) = &self.attached_to_player {
+            let Some(attached_player) = subject.subject_attached_to_player() else {
+                return false;
+            };
+            if !player_filter.matches_player(attached_player, ctx) {
                 return false;
             }
         }
@@ -1830,8 +1870,17 @@ impl ObjectFilterExt for ObjectFilter {
 
         // "Other" check (not the source)
         if self.other
+            && ctx.target_objects.is_empty()
             && let Some(source_id) = ctx.source
             && object.id == source_id
+        {
+            return false;
+        }
+        if self.other
+            && ctx
+                .target_objects
+                .iter()
+                .any(|target| target.object_id == object.id || target.stable_id == object.stable_id)
         {
             return false;
         }
@@ -2123,7 +2172,11 @@ impl ObjectFilterExt for ObjectFilter {
     }
 
     fn tagged_constraint_requires_existing_tag(relation: TaggedOpbjectRelation) -> bool {
-        !matches!(relation, TaggedOpbjectRelation::IsNotTaggedObject)
+        !matches!(
+            relation,
+            TaggedOpbjectRelation::IsNotTaggedObject
+                | TaggedOpbjectRelation::DifferentNameFromTagged
+        )
     }
 
     /// Check if a snapshot matches this filter.
@@ -2387,6 +2440,7 @@ impl ObjectFilterExt for ObjectFilter {
 
         // "Other" check (not the source)
         if self.other
+            && ctx.target_objects.is_empty()
             && let Some(source_id) = ctx.source
         {
             if snapshot.object_id == source_id {
@@ -2397,6 +2451,13 @@ impl ObjectFilterExt for ObjectFilter {
             {
                 return false;
             }
+        }
+        if self.other
+            && ctx.target_objects.iter().any(|target| {
+                target.object_id == snapshot.object_id || target.stable_id == snapshot.stable_id
+            })
+        {
+            return false;
         }
 
         if self.tapped && !snapshot.tapped {
@@ -2847,6 +2908,10 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::SameNameAsTagged => {
                     post_noun_qualifiers.push("with the same name as that object".to_string());
                 }
+                TaggedOpbjectRelation::DifferentNameFromTagged => {
+                    post_noun_qualifiers
+                        .push("with a different name from those objects".to_string());
+                }
                 TaggedOpbjectRelation::SameControllerAsTagged => {
                     post_noun_qualifiers.push("controlled by that object's controller".to_string());
                 }
@@ -2906,6 +2971,9 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
                     post_noun_qualifiers.push("attached to that object".to_string());
+                }
+                TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
+                    post_noun_qualifiers.push("paired with that object".to_string());
                 }
                 TaggedOpbjectRelation::SameStableId => {}
             }
@@ -4915,6 +4983,107 @@ mod tests {
         assert!(
             !filter.matches(creature, &ctx, &game),
             "Aura controlled by opponent should not make creature modified"
+        );
+    }
+
+    #[test]
+    fn test_filter_matches_permanent_attached_to_player() {
+        let mut game = setup_modified_filter_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let aura_id = create_modified_test_aura(&mut game, bob);
+
+        game.object_mut(aura_id).expect("aura exists").attached_to =
+            Some(crate::object::AttachmentTarget::Player(alice));
+
+        let mut filter = ObjectFilter::permanent().with_subtype(Subtype::Aura);
+        filter.attached_to_player = Some(PlayerFilter::You);
+
+        let aura = game.object(aura_id).expect("aura exists");
+        assert!(
+            filter.matches(aura, &FilterContext::new(alice), &game),
+            "Aura attached to Alice should match attached_to_player=You from Alice's context"
+        );
+        assert!(
+            !filter.matches(aura, &FilterContext::new(bob), &game),
+            "Aura attached to Alice should not match attached_to_player=You from Bob's context"
+        );
+    }
+
+    #[test]
+    fn different_name_from_tagged_excludes_all_tagged_names() {
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::snapshot::ObjectSnapshot;
+
+        let mut game = setup_modified_filter_game();
+        let alice = PlayerId::from_index(0);
+        let tag = TagKey::from("attached_curses");
+
+        let attached_misfortunes = CardBuilder::new(CardId::from_raw(10), "Curse of Misfortunes")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura, Subtype::Curse])
+            .build();
+        let attached_thirst = CardBuilder::new(CardId::from_raw(11), "Curse of Thirst")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura, Subtype::Curse])
+            .build();
+        let candidate_same = CardBuilder::new(CardId::from_raw(12), "Curse of Misfortunes")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura, Subtype::Curse])
+            .build();
+        let candidate_different = CardBuilder::new(CardId::from_raw(13), "Curse of Death's Hold")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura, Subtype::Curse])
+            .build();
+
+        let attached_misfortunes_id =
+            game.create_object_from_card(&attached_misfortunes, alice, Zone::Battlefield);
+        let attached_thirst_id =
+            game.create_object_from_card(&attached_thirst, alice, Zone::Battlefield);
+        let candidate_same_id = game.create_object_from_card(&candidate_same, alice, Zone::Library);
+        let candidate_different_id =
+            game.create_object_from_card(&candidate_different, alice, Zone::Library);
+
+        let mut ctx = FilterContext::new(alice);
+        ctx.tagged_objects.insert(
+            tag.clone(),
+            vec![
+                ObjectSnapshot::from_object(
+                    game.object(attached_misfortunes_id)
+                        .expect("attached object"),
+                    &game,
+                ),
+                ObjectSnapshot::from_object(
+                    game.object(attached_thirst_id).expect("attached object"),
+                    &game,
+                ),
+            ],
+        );
+
+        let mut filter = ObjectFilter::default().with_subtype(Subtype::Curse);
+        filter.zone = Some(Zone::Library);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::DifferentNameFromTagged,
+        });
+
+        assert!(
+            !filter.matches(
+                game.object(candidate_same_id).expect("same-name candidate"),
+                &ctx,
+                &game
+            ),
+            "candidate sharing any tagged Curse name should not match"
+        );
+        assert!(
+            filter.matches(
+                game.object(candidate_different_id)
+                    .expect("different-name candidate"),
+                &ctx,
+                &game
+            ),
+            "candidate with a name different from every tagged Curse should match"
         );
     }
 

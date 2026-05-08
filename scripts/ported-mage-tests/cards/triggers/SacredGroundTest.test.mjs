@@ -330,7 +330,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Caves of Koilos",
           "count": 1
         },

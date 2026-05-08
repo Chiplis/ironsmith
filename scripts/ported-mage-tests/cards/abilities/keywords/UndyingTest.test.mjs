@@ -392,7 +392,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Butcher Ghoul",
           "count": 1
         }
@@ -478,7 +477,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Butcher Ghoul",
           "count": 1
         }

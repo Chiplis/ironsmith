@@ -67,7 +67,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Phyrexian Devourer",
           "count": 1
         },

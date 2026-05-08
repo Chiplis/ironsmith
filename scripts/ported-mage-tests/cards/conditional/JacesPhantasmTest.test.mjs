@@ -106,9 +106,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1,
-          "name": 21
+          "player": 1,
+          "count": 21
         },
         {
           "op": "assertPowerToughness",

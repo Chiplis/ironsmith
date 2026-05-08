@@ -243,7 +243,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Arcbound Worker",
           "count": 1
         }
@@ -344,7 +343,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Deathmist Raptor",
           "count": 1
         }

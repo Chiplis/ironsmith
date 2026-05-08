@@ -56,10 +56,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Ruthless Cullblade"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Ruthless Cullblade",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "setChoice",
@@ -68,10 +70,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "opp at 20",
-          "name": 3,
-          "power": "PRECOMBAT_MAIN",
-          "toughness": 0
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ruthless Cullblade",
+          "power": 2,
+          "toughness": 1
         },
         {
           "op": "unsupported",
@@ -96,10 +100,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": "opp at 10",
-          "name": 5,
-          "power": "POSTCOMBAT_MAIN",
-          "toughness": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Ruthless Cullblade",
+          "power": 4,
+          "toughness": 2
         },
         {
           "op": "unsupported",
@@ -164,10 +170,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Angel of Vitality"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Angel of Vitality",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",

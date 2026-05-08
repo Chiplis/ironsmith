@@ -128,10 +128,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 1,
-          "toughness": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "castSpell",
@@ -143,10 +145,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "power": 0,
-          "toughness": "Grizzly Bears"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "setStopAt",
@@ -203,10 +207,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 1,
-          "name": "BEGIN_COMBAT",
-          "power": 1,
-          "toughness": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "attack",

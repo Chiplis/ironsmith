@@ -57,9 +57,10 @@ use super::{
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
-    TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
+    PreventNextTimeDamageTargetAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TokenCopyFollowup, Verb,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
@@ -588,6 +589,23 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
     }
 
     if str_contains(&normalized, "the next time")
+        && str_contains(&normalized, "source of your choice")
+        && str_contains(&normalized, "would deal damage to you this turn")
+        && str_contains(&normalized, "prevent that damage")
+        && str_contains(&normalized, "damage is prevented this way")
+        && str_contains(&normalized, "deals that much damage to that source")
+        && str_contains(&normalized, "controller")
+    {
+        return Some(
+            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
+                PreventNextTimeDamageSourceAst::Choice,
+                PreventNextTimeDamageTargetAst::You,
+                true,
+            ),
+        );
+    }
+
+    if str_contains(&normalized, "the next time")
         && str_contains(&normalized, "cast an instant or sorcery spell")
         && str_contains(&normalized, "from your hand")
         && str_contains(&normalized, "this turn")
@@ -599,6 +617,18 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Hand,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if str_contains(&normalized, "would enter the battlefield under an opponent")
+        && str_contains(&normalized, "this turn")
+        && str_contains(&normalized, "enters under your control instead")
+    {
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::Opponent);
+        return Some(EffectAst::subject_verb_register_enter_under_control_replacement(
+            filter,
             ZoneReplacementDurationAst::OneShot,
         ));
     }
@@ -918,6 +948,17 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        let normalized_sentence_text =
+            crate::runtime_backend::token_word_refs(&sentence_tokens).join(" ");
+        if let Some(replacement) = future_zone_replacement_from_sentence_text(
+            normalized_sentence_text.as_str(),
+        ) {
+            effects.push(replacement);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         let mut parse_plan = {
             let mut state = SentenceDispatchState {
                 effects: &mut effects,
@@ -1142,6 +1183,10 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
 fn parse_effect_sentences_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = reflected_prevent_next_damage_from_tokens(tokens) {
+        return Ok(vec![effect]);
+    }
+
     if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
         apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
@@ -1161,6 +1206,29 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let joined = crate::runtime_backend::token_word_refs(tokens)
+        .join(" ")
+        .to_ascii_lowercase();
+    if str_contains(&joined, "the next time")
+        && str_contains(&joined, "source of your choice")
+        && str_contains(&joined, "would deal damage to you this turn")
+        && str_contains(&joined, "prevent that damage")
+        && str_contains(&joined, "damage is prevented this way")
+        && str_contains(&joined, "deals that much damage to that source")
+        && str_contains(&joined, "controller")
+    {
+        return Some(
+            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
+                PreventNextTimeDamageSourceAst::Choice,
+                PreventNextTimeDamageTargetAst::You,
+                true,
+            ),
+        );
+    }
+    None
 }
 
 fn is_copy_reference_effect(effect: &EffectAst) -> bool {
@@ -2359,6 +2427,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
             | SubjectVerbActionAst::MakeColorless { .. }
@@ -2403,7 +2472,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     replace_value(toughness, replacement, clause)?;
                 }
             }
-            SubjectVerbActionAst::Learn => {}
+            SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {

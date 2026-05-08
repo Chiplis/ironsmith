@@ -61,7 +61,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Bitterblossom",
           "count": 1
         },

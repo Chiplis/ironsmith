@@ -267,7 +267,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Venom Sliver",
           "count": 1
         }

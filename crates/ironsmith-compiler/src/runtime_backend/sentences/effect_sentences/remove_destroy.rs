@@ -315,6 +315,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             });
             let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
                 .is_some()
+                || target_words == ["you"]
                 || target_words == ["it"]
                 || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
                     .is_some();

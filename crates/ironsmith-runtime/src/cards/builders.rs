@@ -842,6 +842,7 @@ impl TextSpan {
 pub(crate) enum GrantedAbilityAst {
     KeywordAction(KeywordAction),
     StaticAbility(StaticAbility),
+    ThisAbility,
     MustAttack,
     MustBlock,
     CanAttackAsThoughNoDefender,

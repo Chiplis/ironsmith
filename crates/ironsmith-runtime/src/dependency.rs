@@ -1127,6 +1127,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         Modification::RemoveAllCreatureTypes => {
             chars.subtypes.retain(|t| !t.is_creature_type());
         }
+        Modification::SetAuraAttachmentFilter(_) => {}
         Modification::AddColors(colors) => {
             chars.colors = chars.colors.union(*colors);
         }
@@ -1215,6 +1216,12 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 }
             });
             chars.static_abilities.retain(|sa| sa != ability);
+        }
+        Modification::RemoveAbilityGeneric(ability) => {
+            chars.abilities.retain(|a| a != ability);
+            if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
+                chars.static_abilities.retain(|sa| sa != static_ability);
+            }
         }
         Modification::RemoveAllAbilities => {
             chars.abilities.clear();
@@ -2240,6 +2247,7 @@ mod tests {
                 colors: object.colors(),
                 abilities: object.abilities.clone(),
                 static_abilities: Vec::new(),
+                aura_attach_filter: object.aura_attach_filter.clone(),
                 controller: object.owner,
             },
         )]);
@@ -2288,6 +2296,7 @@ mod tests {
                 colors: land.colors(),
                 abilities: land.abilities.clone(),
                 static_abilities: Vec::new(),
+                aura_attach_filter: land.aura_attach_filter.clone(),
                 controller: land.owner,
             },
         )]);
@@ -2396,6 +2405,7 @@ mod tests {
                 colors: land.colors(),
                 abilities: land.abilities.clone(),
                 static_abilities: Vec::new(),
+                aura_attach_filter: land.aura_attach_filter.clone(),
                 controller: land.owner,
             },
         )]);

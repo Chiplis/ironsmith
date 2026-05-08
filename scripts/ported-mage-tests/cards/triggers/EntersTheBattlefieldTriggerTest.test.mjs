@@ -164,7 +164,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },

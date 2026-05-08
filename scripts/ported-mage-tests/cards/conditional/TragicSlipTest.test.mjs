@@ -364,7 +364,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Tragic Slip",
           "count": 1
         },

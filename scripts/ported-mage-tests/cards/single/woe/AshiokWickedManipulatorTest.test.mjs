@@ -36,14 +36,12 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 10
+          "count": 10
         },
         {
           "op": "assertLibraryCount",
@@ -134,14 +132,12 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 7
+          "count": 7
         }
       ]
     },
@@ -204,14 +200,12 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 18
+          "count": 18
         },
         {
           "op": "activateAbility",
@@ -236,14 +230,12 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 18
+          "count": 18
         },
         {
           "op": "activateAbility",
@@ -268,14 +260,12 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 0
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 0,
-          "name": 18
+          "count": 18
         }
       ]
     },
@@ -343,8 +333,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": 2
+          "count": 2
         }
       ]
     },
@@ -549,9 +538,8 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 1,
-          "name": 8
+          "player": 1,
+          "count": 8
         }
       ]
     }

@@ -777,6 +777,44 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItMatches(filter));
     }
 
+    if filtered.len() >= 3 && filtered[0] == "opponent" && filtered[1] == "controls" {
+        let control_tokens = filtered[2..]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let other = control_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+        if let Ok(mut filter) = parse_object_filter(&control_tokens, other) {
+            filter.controller = Some(PlayerFilter::Opponent);
+            return Ok(PredicateAst::PlayerControls {
+                player: PlayerAst::Opponent,
+                filter,
+            });
+        }
+    }
+
+    if raw_words.len() >= 4
+        && raw_words[0] == "an"
+        && raw_words[1] == "opponent"
+        && raw_words[2] == "controls"
+    {
+        let control_tokens = raw_words[3..]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let other = control_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+        if let Ok(mut filter) = parse_object_filter(&control_tokens, other) {
+            filter.controller = Some(PlayerFilter::Opponent);
+            return Ok(PredicateAst::PlayerControls {
+                player: PlayerAst::Opponent,
+                filter,
+            });
+        }
+    }
+
     if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
         && gets_idx > 0
         && filtered[gets_idx + 1..] == ["more", "votes"]
@@ -1030,6 +1068,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 || !filter.subtypes.is_empty()
                 || !filter.supertypes.is_empty()
                 || filter.colors.is_some()
+                || filter.token
+                || filter.nontoken
                 || !filter.excluded_card_types.is_empty()
                 || !filter.excluded_subtypes.is_empty();
             has_identity.then_some((filter, negative))

@@ -66,6 +66,10 @@ export class WasmGame {
      */
     exportSyncCheckpoint(): any;
     /**
+     * Queue a forced die result for deterministic test harness scenarios.
+     */
+    forceNextDieRoll(result: number): void;
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      */
     getCardSemanticScore(card_name: string): number;
@@ -125,6 +129,7 @@ export class WasmGame {
      */
     reset(player_names: any, starting_life: number): void;
     sampleLoadedDeckSeed(player_index: number): any;
+    setAutoChooseSingleObjectDecisions(enabled: boolean): void;
     /**
      * Toggle automatic cleanup discard (random cards).
      */
@@ -173,6 +178,7 @@ export interface InitOutput {
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly wasm_start: () => void;
     readonly wasmgame_new: () => number;
+    readonly wasmgame_setAutoChooseSingleObjectDecisions: (a: number, b: number) => void;
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_validateMatchConfig: (a: number, b: any) => [number, number, number];
@@ -190,6 +196,7 @@ export interface InitOutput {
     readonly wasmgame_isKnownCardName: (a: number, b: number, c: number) => number;
     readonly wasmgame_setLife: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
+    readonly wasmgame_forceNextDieRoll: (a: number, b: number) => void;
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];
     readonly wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];

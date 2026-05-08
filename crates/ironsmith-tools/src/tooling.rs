@@ -29,7 +29,14 @@ pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tag
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
 const DB_SCHEMA_VERSION: i64 = 10;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
-const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
+const SUPPORTED_PAPER_FORMATS: &[&str] = &[
+    "commander",
+    "standard",
+    "modern",
+    "pioneer",
+    "legacy",
+    "vintage",
+];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
 query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
   tagBySlug(slug: $slug, type: $type) {
@@ -305,6 +312,42 @@ pub fn load_registry_cards(
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
     Ok(load_registry_cards_from_values(cards.into_iter()))
+}
+
+pub fn load_registry_cards_with_explicit_includes(
+    path: &str,
+    included_names: &BTreeSet<String>,
+) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
+    load_registry_cards_with_explicit_includes_and_cards(path, included_names, Vec::new())
+}
+
+pub fn load_registry_cards_with_explicit_includes_and_cards(
+    path: &str,
+    included_names: &BTreeSet<String>,
+    extra_cards: Vec<Value>,
+) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
+    let raw = fs::read_to_string(path)?;
+    let mut cards: Vec<Value> = serde_json::from_str(&raw)?;
+    let mut included_names = included_names
+        .iter()
+        .map(|name| normalize_lookup_name(name))
+        .collect::<BTreeSet<_>>();
+    for card in extra_cards {
+        if let Some(name) = supplemental_card_name(&card) {
+            included_names.insert(name);
+        }
+        cards.push(card);
+    }
+    Ok(load_registry_cards_from_values_with_explicit_includes(
+        cards.into_iter(),
+        &included_names,
+    ))
+}
+
+fn supplemental_card_name(card: &Value) -> Option<String> {
+    let face = get_first_face(card);
+    let name = normalize_lookup_name(&pick_field(card, face, "name")?);
+    (!name.is_empty()).then_some(name)
 }
 
 pub fn load_card_by_name(path: &str, name: &str) -> Result<Option<CardPayload>, Box<dyn Error>> {
@@ -1865,9 +1908,20 @@ fn load_registry_cards_from_values<I>(cards: I) -> BTreeMap<String, RegistryCard
 where
     I: IntoIterator<Item = Value>,
 {
+    load_registry_cards_from_values_with_explicit_includes(cards, &BTreeSet::new())
+}
+
+fn load_registry_cards_from_values_with_explicit_includes<I>(
+    cards: I,
+    included_names: &BTreeSet<String>,
+) -> BTreeMap<String, RegistryCardRecord>
+where
+    I: IntoIterator<Item = Value>,
+{
     let mut out = BTreeMap::new();
     for card in cards {
-        let Some(record) = build_registry_card_record(&card) else {
+        let Some(record) = build_registry_card_record_with_explicit_includes(&card, included_names)
+        else {
             continue;
         };
         out.entry(record.payload.name.clone()).or_insert(record);
@@ -1886,7 +1940,10 @@ where
         .collect()
 }
 
-fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
+fn build_registry_card_record_with_explicit_includes(
+    card: &Value,
+    included_names: &BTreeSet<String>,
+) -> Option<RegistryCardRecord> {
     if card
         .get("digital")
         .and_then(Value::as_bool)
@@ -1894,13 +1951,12 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
     {
         return None;
     }
-    if !card_is_legal_in_supported_paper_format(card) {
-        return None;
-    }
-
     let face = get_first_face(card);
     let name = normalize_lookup_name(&pick_field(card, face, "name")?);
     if name.is_empty() {
+        return None;
+    }
+    if !card_is_legal_in_supported_paper_format(card) && !included_names.contains(&name) {
         return None;
     }
     let parse_name = face

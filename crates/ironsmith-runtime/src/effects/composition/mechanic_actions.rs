@@ -724,28 +724,23 @@ impl EffectExecutor for CipherEffect {
             return Ok(EffectOutcome::declined());
         }
 
-        let chosen_creature = if candidates.len() == 1 {
-            candidates[0]
-        } else {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose a creature you control to encode",
-                candidates.clone(),
-                1,
-                Some(1),
-            );
-            let selection: Vec<ObjectId> = make_decision(
-                game,
-                ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-            );
-            let normalized = normalize_object_selection(selection, &candidates, 1);
-            let Some(chosen) = normalized.first().copied() else {
-                return Ok(EffectOutcome::declined());
-            };
-            chosen
+        let spec = ChooseObjectsSpec::new(
+            ctx.source,
+            "Choose a creature you control to encode",
+            candidates.clone(),
+            1,
+            Some(1),
+        );
+        let selection: Vec<ObjectId> = make_decision(
+            game,
+            ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            spec,
+        );
+        let normalized = normalize_object_selection(selection, &candidates, 1);
+        let Some(chosen_creature) = normalized.first().copied() else {
+            return Ok(EffectOutcome::declined());
         };
 
         let exiled_id = match apply_zone_change(

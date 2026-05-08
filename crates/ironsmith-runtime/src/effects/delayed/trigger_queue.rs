@@ -172,11 +172,17 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         .ability_source
         .and_then(|source_id| {
             game.object(source_id).map(|object| {
-                (
-                    object.stable_id,
-                    object.name.clone(),
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game),
-                )
+                let mut snapshot =
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+                if game.object_has_static_ability_id(
+                    source_id,
+                    crate::static_abilities::StaticAbilityId::Lifelink,
+                ) && !snapshot
+                    .has_static_ability_id(crate::static_abilities::StaticAbilityId::Lifelink)
+                {
+                    snapshot.abilities.push(crate::ability::lifelink());
+                }
+                (object.stable_id, object.name.clone(), snapshot)
             })
         })
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))

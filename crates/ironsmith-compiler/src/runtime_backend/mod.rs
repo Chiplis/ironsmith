@@ -175,7 +175,7 @@ pub(crate) use rule_engine::{LexClauseView, RULE_SHAPE_HAS_COMMA, RULE_SHAPE_STA
 #[cfg(test)]
 pub(crate) use search_library_support::{
     SearchLibraryManaConstraint, extract_search_library_mana_constraint,
-    split_search_same_name_reference_filter,
+    split_search_different_name_reference_filter, split_search_same_name_reference_filter,
 };
 pub(crate) use shared_types::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,

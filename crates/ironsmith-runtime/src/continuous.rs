@@ -321,6 +321,9 @@ pub enum Modification {
     /// Set subtypes (replacing existing)
     SetSubtypes(Vec<Subtype>),
 
+    /// Set an Aura attachment restriction for legality checks.
+    SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
+
     /// Add supertypes
     AddSupertypes(Vec<Supertype>),
 
@@ -383,6 +386,9 @@ pub enum Modification {
 
     /// Remove an ability
     RemoveAbility(StaticAbility),
+
+    /// Remove a specific object ability.
+    RemoveAbilityGeneric(Ability),
 
     /// Remove all abilities
     RemoveAllAbilities,
@@ -500,6 +506,7 @@ impl Modification {
             | Modification::RemoveSubtypes(_)
             | Modification::RemoveAllSubtypesOfFamily(_)
             | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
             | Modification::AddSupertypes(_)
             | Modification::RemoveSupertypes(_)
             | Modification::RemoveAllCreatureTypes => Layer::Type,
@@ -516,6 +523,7 @@ impl Modification {
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::CantBeBlocked
@@ -998,6 +1006,7 @@ pub struct CalculatedCharacteristics {
     pub abilities: Vec<Ability>,
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: Vec<StaticAbility>,
+    pub aura_attach_filter: Option<crate::object::AuraAttachmentFilter>,
     pub controller: PlayerId,
 }
 
@@ -1100,7 +1109,36 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         colors: object.colors(),
         abilities: object.abilities.clone(),
         static_abilities: extract_static_abilities(&object.abilities),
+        aura_attach_filter: object.aura_attach_filter.clone(),
         controller: object.owner,
+    }
+}
+
+fn object_has_reconfigure_ability(object: &Object) -> bool {
+    object.abilities.iter().any(|ability| {
+        if crate::compiled_text::ability_surface_text(ability).starts_with("Reconfigure ") {
+            return true;
+        }
+        matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Activated(activated)
+                if activated
+                    .effects
+                    .iter()
+                    .any(|effect| effect.downcast_ref::<crate::effects::ReconfigureEffect>().is_some())
+        )
+    })
+}
+
+fn apply_reconfigure_attached_type_rule(object: &Object, chars: &mut CalculatedCharacteristics) {
+    if object.attached_to.is_some()
+        && chars.subtypes.contains(&Subtype::Equipment)
+        && (object.card_types.contains(&CardType::Creature)
+            || object_has_reconfigure_ability(object))
+    {
+        chars
+            .card_types
+            .retain(|card_type| *card_type != CardType::Creature);
     }
 }
 
@@ -1462,7 +1500,13 @@ fn calculate_with_layers_direct_internal(
     for layer in layers_1_to_6 {
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
-            None => continue,
+            None => {
+                if layer == Layer::Type {
+                    apply_reconfigure_attached_type_rule(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
+                continue;
+            }
         };
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
@@ -1688,6 +1732,9 @@ fn calculate_with_layers_direct_internal(
             calc_guard.update(&chars);
         }
     }
+
+    apply_reconfigure_attached_type_rule(object, &mut chars);
+    calc_guard.update(&chars);
 
     // Apply counter modifications for Layer 7c (after other 7c effects by timestamp)
     apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
@@ -2110,7 +2157,7 @@ fn continuous_effect_duration_is_active(
         Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
                 && game
-                    .current_controller(effect.source)
+                    .current_controller_excluding_change_effect(effect.source, Some(effect.id))
                     .is_some_and(|controller| controller == effect.controller)
         }),
         _ => true,
@@ -2353,6 +2400,9 @@ fn apply_modification_to_chars(
             chars.subtypes = non_land_subtypes;
             chars.subtypes.extend(subtypes.iter().cloned());
         }
+        Modification::SetAuraAttachmentFilter(filter) => {
+            chars.aura_attach_filter = Some(filter.clone());
+        }
         Modification::AddSupertypes(supertypes) => {
             for st in supertypes {
                 if !chars.supertypes.contains(st) {
@@ -2546,6 +2596,12 @@ fn apply_modification_to_chars(
                 }
             });
             chars.static_abilities.retain(|sa| sa != ability);
+        }
+        Modification::RemoveAbilityGeneric(ability) => {
+            chars.abilities.retain(|a| a != ability);
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                chars.static_abilities.retain(|sa| sa != static_ability);
+            }
         }
         Modification::RemoveAllAbilities => {
             chars.abilities.clear();
@@ -2774,7 +2830,13 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
     for layer in layers {
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
-            None => continue,
+            None => {
+                if layer == Layer::Type {
+                    apply_reconfigure_attached_type_rule(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
+                continue;
+            }
         };
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter().copied(), layer);
@@ -2975,6 +3037,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
 
                     chars.subtypes = new_subtypes;
                 }
+                Modification::SetAuraAttachmentFilter(filter) => {
+                    chars.aura_attach_filter = Some(filter.clone());
+                }
                 Modification::AddSupertypes(types) => {
                     for t in types {
                         if !chars.supertypes.contains(t) {
@@ -3168,6 +3233,12 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 Modification::RemoveAbility(ability) => {
                     chars.static_abilities.retain(|a| a != ability);
                 }
+                Modification::RemoveAbilityGeneric(ability) => {
+                    chars.abilities.retain(|a| a != ability);
+                    if let AbilityKind::Static(static_ability) = &ability.kind {
+                        chars.static_abilities.retain(|sa| sa != static_ability);
+                    }
+                }
                 Modification::RemoveAllAbilities => {
                     chars.abilities.clear();
                     chars.static_abilities.clear();
@@ -3203,6 +3274,11 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 | Modification::SwitchPowerToughness => {}
             }
 
+            calc_guard.update(&chars);
+        }
+
+        if layer == Layer::Type {
+            apply_reconfigure_attached_type_rule(object, &mut chars);
             calc_guard.update(&chars);
         }
     }
@@ -3470,6 +3546,7 @@ fn apply_layer_7_effects(
             | Modification::RemoveSubtypes(_)
             | Modification::RemoveAllSubtypesOfFamily(_)
             | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
             | Modification::AddSupertypes(_)
             | Modification::RemoveSupertypes(_)
             | Modification::RemoveAllCreatureTypes
@@ -3484,6 +3561,7 @@ fn apply_layer_7_effects(
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::CantBeBlocked
@@ -4181,6 +4259,7 @@ fn effect_can_change_static_ability_presence(effect: &ContinuousEffect) -> bool 
         Modification::CopyOf { .. }
             | Modification::SetTextBox(_)
             | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
             | Modification::RemoveAllAbilities
@@ -4578,6 +4657,7 @@ mod tests {
             colors: creature.colors(),
             abilities: creature.abilities.clone(),
             static_abilities: extract_static_abilities(&creature.abilities),
+            aura_attach_filter: creature.aura_attach_filter.clone(),
             controller: creature.owner,
         };
 
@@ -4624,6 +4704,7 @@ mod tests {
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: Vec::new(),
+            aura_attach_filter: creature.aura_attach_filter.clone(),
             controller: creature.owner,
         };
 
@@ -4680,6 +4761,7 @@ mod tests {
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: vec![StaticAbility::flying()], // Already has flying
+            aura_attach_filter: creature.aura_attach_filter.clone(),
             controller: creature.owner,
         };
 

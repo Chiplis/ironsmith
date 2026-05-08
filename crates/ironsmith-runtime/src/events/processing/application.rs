@@ -37,6 +37,14 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::DoubleCounters { counter_type } => {
+            let modified = apply_trait_double_counters(&event, *counter_type);
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
         ReplacementAction::ChangeDestination(new_zone) => {
             let modified = apply_trait_change_destination(&event, *new_zone);
             match modified {
@@ -55,6 +63,14 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::EnterUntapped => {
             let modified = apply_trait_enter_untapped(&event);
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
+        ReplacementAction::EnterUnderControl(controller) => {
+            let modified = apply_trait_enter_under_control(&event, *controller);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -306,6 +322,29 @@ pub(super) fn apply_trait_replacement(
     }
 }
 
+fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {
+    use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+
+    match event.kind() {
+        EventKind::EnterBattlefield => {
+            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            Some(event.rewrap(etb.with_controller_override(controller)))
+        }
+        EventKind::ZoneChange => {
+            let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
+            if zone_change.to == Zone::Battlefield {
+                Some(event.rewrap(
+                    EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
+                        .with_controller_override(controller),
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 fn indefinite_article(text: &str) -> &'static str {
     let first = text
         .chars()
@@ -471,6 +510,34 @@ fn apply_trait_double(event: &Event) -> Option<Event> {
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
             Some(event.rewrap(draw.doubled()))
+        }
+        _ => None,
+    }
+}
+
+fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>) -> Option<Event> {
+    use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
+
+    match event.kind() {
+        EventKind::PutCounters => {
+            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+            if counter_type.is_none_or(|ct| ct == put_counters.counter_type) {
+                Some(event.rewrap(put_counters.doubled()))
+            } else {
+                None
+            }
+        }
+        EventKind::EnterBattlefield => {
+            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            let mut doubled = etb.clone();
+            let mut changed = false;
+            for (existing_type, count) in &mut doubled.enters_with_counters {
+                if counter_type.is_none_or(|ct| ct == *existing_type) {
+                    *count = count.saturating_mul(2);
+                    changed = true;
+                }
+            }
+            changed.then(|| event.rewrap(doubled))
         }
         _ => None,
     }

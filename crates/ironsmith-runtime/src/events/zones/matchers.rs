@@ -1,5 +1,6 @@
 //! Zone change replacement effect matchers.
 
+use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
 use crate::events::context::EventContext;
 use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
@@ -247,6 +248,8 @@ pub struct WouldChangeZoneMatcher {
     pub filter: ObjectFilter,
     pub from_zone: Option<Zone>,
     pub to_zone: Option<Zone>,
+    pub cause_filter: Option<CauseFilter>,
+    pub require_cause_source_match: bool,
 }
 
 impl WouldChangeZoneMatcher {
@@ -255,7 +258,19 @@ impl WouldChangeZoneMatcher {
             filter,
             from_zone,
             to_zone,
+            cause_filter: None,
+            require_cause_source_match: false,
         }
+    }
+
+    pub fn with_cause_filter(mut self, cause_filter: CauseFilter) -> Self {
+        self.cause_filter = Some(cause_filter);
+        self
+    }
+
+    pub fn requiring_cause_source_match(mut self) -> Self {
+        self.require_cause_source_match = true;
+        self
     }
 }
 
@@ -273,6 +288,19 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             return false;
         }
         if self.to_zone.is_some_and(|zone| zone_change.to != zone) {
+            return false;
+        }
+        if let Some(cause_filter) = &self.cause_filter
+            && !cause_filter.matches(&zone_change.cause, ctx.game, ctx.controller)
+        {
+            return false;
+        }
+        if self.require_cause_source_match
+            && !zone_change
+                .cause
+                .source
+                .is_some_and(|source| zone_change.objects.contains(&source))
+        {
             return false;
         }
 

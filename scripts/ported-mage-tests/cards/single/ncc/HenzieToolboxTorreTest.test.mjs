@@ -143,7 +143,8 @@ registerPortedMageTests({
           "op": "unsupported",
           "source": "assertBlitzed(aerathiBerserker, true)"
         }
-      ]
+      ],
+      "skip": "upstream @Ignore"
     },
     {
       "name": "exileCastBlitz",

@@ -77,7 +77,6 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Falkenrath Reaver",
           "count": 1
         },
