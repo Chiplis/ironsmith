@@ -918,6 +918,9 @@ pub(crate) fn run_choose_objects(
 
         let candidates = collect_candidates(effect, game, ctx, chooser_id)?;
         if candidates.is_empty() {
+            if effect.replace_tagged_objects || matches!(effect.tag.as_str(), "__it__" | "it") {
+                ctx.clear_object_tag(effect.tag.as_str());
+            }
             let outcome = EffectOutcome::count(0);
             return Ok(if let Some(search_event) = search_event.clone() {
                 outcome.with_event(search_event)
@@ -1031,6 +1034,9 @@ pub(crate) fn run_choose_objects(
             if allow_hidden_partial {
                 spec = spec.allow_partial_completion();
             }
+            if has_hidden_search_zones {
+                spec = spec.require_explicit_choice();
+            }
             make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
         };
         if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
@@ -1107,7 +1113,14 @@ pub(crate) fn run_choose_objects(
 
         let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
         if !snapshots.is_empty() {
-            if effect.replace_tagged_objects {
+            let replaces_stack_implicit_tag = matches!(effect.tag.as_str(), "__it__" | "it")
+                && ctx.get_tagged_all(&effect.tag).is_some_and(|existing| {
+                    existing.iter().any(|snapshot| {
+                        game.object(snapshot.object_id)
+                            .is_some_and(|object| object.zone == Zone::Stack)
+                    })
+                });
+            if effect.replace_tagged_objects || replaces_stack_implicit_tag {
                 ctx.set_tagged_objects(effect.tag.clone(), snapshots);
             } else {
                 ctx.tag_objects(effect.tag.clone(), snapshots);

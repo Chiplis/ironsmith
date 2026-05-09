@@ -14,19 +14,23 @@ use super::{
 pub(crate) fn compile_statement_effects(
     effects: &[EffectAst],
 ) -> Result<Vec<Effect>, CardTextError> {
-    Ok(
-        compile_statement_effects_with_imports(effects, &ReferenceImports::default())?
-            .effects
-            .to_vec(),
-    )
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+        Ok(
+            compile_statement_effects_with_imports(effects, &ReferenceImports::default())?
+                .effects
+                .to_vec(),
+        )
+    })
 }
 
 pub(crate) fn compile_statement_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
-    materialize_prepared_statement_effects(&prepared)
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+        let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
+        materialize_prepared_statement_effects(&prepared)
+    })
 }
 
 pub(crate) fn materialize_prepared_statement_effects(

@@ -2848,14 +2848,18 @@ fn compile_subject_verb_effect(
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            granted_abilities,
         } => {
-            let token = token_definition_for(name.as_str())
+            let mut token = token_definition_for(name.as_str())
                 .or_else(|| {
                     dynamic_power_toughness
                         .as_ref()
                         .and_then(|_| token_definition_for(format!("0/0 {name}").as_str()))
                 })
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
+            token
+                .abilities
+                .extend(lower_granted_abilities_ast_to_object_abilities(granted_abilities)?);
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();

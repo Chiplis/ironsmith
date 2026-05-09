@@ -6,6 +6,7 @@ use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, StableId};
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -17,6 +18,16 @@ pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
 /// Exile objects with an associated duration.
 pub type ExileUntilEffect = ironsmith_core::ExileUntilEffect;
 
+fn source_known_and_not_on_battlefield(game: &GameState, source: ObjectId) -> bool {
+    if let Some(source) = game.object(source) {
+        return source.zone != Zone::Battlefield;
+    }
+
+    game.find_object_by_stable_id(StableId::from(source))
+        .and_then(|current_id| game.object(current_id))
+        .is_some_and(|source| source.zone != Zone::Battlefield)
+}
+
 impl EffectExecutor for ExileUntilEffect {
     fn execute(
         &self,
@@ -24,9 +35,7 @@ impl EffectExecutor for ExileUntilEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if self.duration == ExileUntilDuration::SourceLeavesBattlefield
-            && !game
-                .object(ctx.source)
-                .is_some_and(|source| source.zone == Zone::Battlefield)
+            && source_known_and_not_on_battlefield(game, ctx.source)
         {
             return Ok(EffectOutcome::count(0));
         }

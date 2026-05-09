@@ -176,6 +176,9 @@ pub struct ExecutionContext<'a> {
     pub controller: PlayerId,
     /// Resolved targets for the effect.
     pub targets: Vec<ResolvedTarget>,
+    /// True when `targets` carries preselected cost-payment choices rather than
+    /// spell or ability targets.
+    pub targets_are_cost_choices: bool,
     /// Active target requirement assignments for the current execution scope.
     pub target_assignments: Vec<TargetAssignment>,
     /// X value (for spells with X in cost).
@@ -251,6 +254,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("source", &self.source)
             .field("controller", &self.controller)
             .field("targets", &self.targets)
+            .field("targets_are_cost_choices", &self.targets_are_cost_choices)
             .field("target_assignments", &self.target_assignments)
             .field("x_value", &self.x_value)
             .field("effect_outcomes", &self.effect_outcomes)
@@ -296,6 +300,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             controller,
             targets: Vec::new(),
+            targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
@@ -339,6 +344,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             controller,
             targets: Vec::new(),
+            targets_are_cost_choices: false,
             target_assignments: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
@@ -372,6 +378,7 @@ impl<'a> ExecutionContext<'a> {
             source: self.source,
             controller: self.controller,
             targets: self.targets,
+            targets_are_cost_choices: self.targets_are_cost_choices,
             target_assignments: self.target_assignments,
             x_value: self.x_value,
             effect_outcomes: self.effect_outcomes,
@@ -521,6 +528,20 @@ impl<'a> ExecutionContext<'a> {
     /// Set resolved targets.
     pub fn with_targets(mut self, targets: Vec<ResolvedTarget>) -> Self {
         self.targets = targets;
+        self.targets_are_cost_choices = false;
+        self.target_assignments.clear();
+        self
+    }
+
+    /// Set object choices made during cost payment.
+    ///
+    /// Cost choices are still consumed through `targets` by generic move and
+    /// sacrifice effects, but they should not become "target objects" in filter
+    /// context. In particular, filters like "another creature" should compare
+    /// against the source object, not against the object chosen to pay the cost.
+    pub fn with_cost_choice_targets(mut self, targets: Vec<ResolvedTarget>) -> Self {
+        self.targets = targets;
+        self.targets_are_cost_choices = true;
         self.target_assignments.clear();
         self
     }
@@ -912,27 +933,33 @@ impl<'a> ExecutionContext<'a> {
 
     /// Build a filter context for evaluating filters.
     pub fn filter_context(&self, game: &GameState) -> FilterContext {
-        let target_players = self
-            .targets
-            .iter()
-            .filter_map(|target| match target {
-                ResolvedTarget::Player(id) => Some(*id),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let target_objects = self
-            .targets
-            .iter()
-            .filter_map(|target| match target {
-                ResolvedTarget::Object(id) => game
-                    .object(*id)
-                    .map(|obj| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                    })
-                    .or_else(|| self.target_snapshots.get(id).cloned()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+        let target_players = if self.targets_are_cost_choices {
+            Vec::new()
+        } else {
+            self.targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Player(id) => Some(*id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let target_objects = if self.targets_are_cost_choices {
+            Vec::new()
+        } else {
+            self.targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Object(id) => game
+                        .object(*id)
+                        .map(|obj| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                        })
+                        .or_else(|| self.target_snapshots.get(id).cloned()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
         let mut tagged_objects = self.tagged_objects.clone();
         let mut tagged_players = self.tagged_players.clone();
         let source_exiled = game
@@ -949,6 +976,9 @@ impl<'a> ExecutionContext<'a> {
         }
         let mut target_objects = target_objects;
         if let Some(triggering_event) = &self.triggering_event
+            && triggering_event
+                .downcast::<crate::events::DamageEvent>()
+                .is_none()
             && let Some(object_id) = triggering_event.object_id()
             && let Some(snapshot) = triggering_event.snapshot().cloned().or_else(|| {
                 game.object(object_id)
@@ -960,22 +990,34 @@ impl<'a> ExecutionContext<'a> {
                 .entry(TagKey::from("triggering"))
                 .or_default()
                 .push(snapshot);
+            if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id) {
+                target_objects.extend(entry.targets.iter().filter_map(|target| match target {
+                    crate::game_state::Target::Object(target_id) => {
+                        game.object(*target_id).map(|object| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            )
+                        })
+                    }
+                    crate::game_state::Target::Player(_) => None,
+                }));
+            }
         }
-        if let Some(combat_damage) = self.combat_damage_event_context(game) {
-            if let Some(snapshot) = combat_damage.source_snapshot {
+        if let Some(damage) = self.damage_event_context(game) {
+            if let Some(snapshot) = damage.source_snapshot {
                 tagged_objects
                     .entry(TagKey::from("damage_source"))
                     .or_default()
                     .push(snapshot);
             }
-            if let Some(snapshot) = combat_damage.damaged_object {
+            if let Some(snapshot) = damage.damaged_object {
                 target_objects.push(snapshot.clone());
                 tagged_objects
                     .entry(TagKey::from("damaged"))
                     .or_default()
                     .push(snapshot);
             }
-            if let Some(player) = combat_damage.damaged_player {
+            if let Some(player) = damage.damaged_player {
                 tagged_players
                     .entry(TagKey::from("damaged_player"))
                     .or_default()
@@ -1030,11 +1072,16 @@ impl<'a> ExecutionContext<'a> {
         &self,
         game: &GameState,
     ) -> Option<CombatDamageEventContext> {
-        let triggering_event = self.triggering_event.as_ref()?;
-        let damage = triggering_event.downcast::<crate::events::DamageEvent>()?;
-        if !damage.is_combat {
+        let context = self.damage_event_context(game)?;
+        if !context.is_combat {
             return None;
         }
+        Some(context)
+    }
+
+    fn damage_event_context(&self, game: &GameState) -> Option<CombatDamageEventContext> {
+        let triggering_event = self.triggering_event.as_ref()?;
+        let damage = triggering_event.downcast::<crate::events::DamageEvent>()?;
         let source_snapshot = triggering_event.source_snapshot().cloned().or_else(|| {
             game.object(damage.source)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))

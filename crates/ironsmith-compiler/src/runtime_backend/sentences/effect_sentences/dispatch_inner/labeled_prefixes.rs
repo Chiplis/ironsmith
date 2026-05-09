@@ -308,6 +308,15 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    let sacrifice_counted_prefix = matches!(
+        sentence_words.as_slice(),
+        ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
+    );
+    if sentence_words.first() == Some(&"sacrifice") && !sacrifice_counted_prefix {
+        let mut effects = parse_effect_chain_lexed(tokens)?;
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -745,7 +754,9 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
 
     let enters_tapped_and_attacking = matches!(
         filtered.as_slice(),
-        ["token", "enters", "tapped", "and", "attacking"]
+        ["it", "enters", "tapped", "and", "attacking"]
+            | ["they", "enter", "tapped", "and", "attacking"]
+            | ["token", "enters", "tapped", "and", "attacking"]
             | ["tokens", "enter", "tapped", "and", "attacking"]
             | [
                 "token",

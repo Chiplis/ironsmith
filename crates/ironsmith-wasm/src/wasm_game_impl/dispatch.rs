@@ -558,6 +558,12 @@ impl WasmGame {
         skip_triggers: bool,
         dm: &mut impl DecisionMaker,
     ) -> Result<u64, String> {
+        fn align_manual_add_stable_id(game: &mut GameState, object_id: ObjectId) {
+            if let Some(object) = game.object_mut(object_id) {
+                object.stable_id = StableId::from(object_id);
+            }
+        }
+
         if skip_triggers {
             if zone == Zone::Battlefield {
                 self.game
@@ -572,6 +578,7 @@ impl WasmGame {
                     self.game.remove_object(temp_id);
                     return Err("battlefield entry was prevented by replacement effect".to_string());
                 };
+                align_manual_add_stable_id(&mut self.game, result.new_id);
                 self.game.take_pending_trigger_events();
                 return Ok(result.new_id.0);
             }
@@ -598,6 +605,7 @@ impl WasmGame {
             };
 
             let entered_id = result.new_id;
+            align_manual_add_stable_id(&mut self.game, entered_id);
             let entered_tapped = result.enters_tapped;
             let entered_battlefield = self
                 .game
@@ -640,6 +648,7 @@ impl WasmGame {
                 .move_object_by_effect(temp_id, zone)
                 .unwrap_or(temp_id)
         };
+        align_manual_add_stable_id(&mut self.game, object_id);
         ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
         Ok(object_id.0)
     }

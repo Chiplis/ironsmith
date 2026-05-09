@@ -339,7 +339,14 @@ pub(crate) fn parse_cant_cast_restriction_words(
     use crate::effect::Restriction;
 
     if let Some((player, used)) = parse_cant_cast_subject(words) {
-        let tail = &words[used..];
+        let mut tail = &words[used..];
+        match tail {
+            [rest @ .., "during", "that", "players", "next", "turn"]
+            | [rest @ .., "during", "that", "player", "s", "next", "turn"] => {
+                tail = rest;
+            }
+            _ => {}
+        }
 
         if let Some(spell_filter) = parse_cast_additional_limit_filter(tail) {
             return Some(restriction_from_cast_limit_filter(player, spell_filter));
@@ -597,6 +604,20 @@ pub(crate) fn strip_static_restriction_condition(
         return Ok(Some((
             crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn),
             remainder,
+        )));
+    }
+
+    if slice_starts_with(&normalized, &["if"]) {
+        let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
+            return Ok(None);
+        };
+        let condition_tokens = trim_commas(&tokens[1..comma_idx]);
+        let Ok(condition) = parse_static_condition_clause(&condition_tokens) else {
+            return Ok(None);
+        };
+        return Ok(Some((
+            condition,
+            trim_commas(&tokens[comma_idx + 1..]).to_vec(),
         )));
     }
 
@@ -1337,12 +1358,23 @@ pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usi
         let Some(word) = word_view.get(word_idx) else {
             continue;
         };
-        if matches!(word, "cant" | "cannot") {
+        if matches!(word, "cant" | "can't" | "cannot") {
             let start = word_view.token_index_for_word_index(word_idx)?;
             let end = word_view.token_index_after_words(word_idx + 1)?;
             return Some((start, end));
         }
+        if word == "can" && word_view.get(word_idx + 1) == Some("t") {
+            let start = word_view.token_index_for_word_index(word_idx)?;
+            let end = word_view.token_index_after_words(word_idx + 2)?;
+            return Some((start, end));
+        }
         if matches!(word, "doesnt" | "dont") {
+            if word_idx >= 2
+                && word_view.get(word_idx - 2) == Some("if")
+                && word_view.get(word_idx - 1) == Some("you")
+            {
+                continue;
+            }
             let next_word = word_view.get(word_idx + 1);
             if matches!(next_word, Some("control" | "controls" | "own" | "owns")) {
                 continue;
@@ -1352,6 +1384,12 @@ pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usi
             return Some((start, end));
         }
         if matches!(word, "does" | "do" | "can") && word_view.get(word_idx + 1) == Some("not") {
+            if word_idx >= 2
+                && word_view.get(word_idx - 2) == Some("if")
+                && word_view.get(word_idx - 1) == Some("you")
+            {
+                continue;
+            }
             if matches!(word, "does" | "do")
                 && matches!(
                     word_view.get(word_idx + 2),

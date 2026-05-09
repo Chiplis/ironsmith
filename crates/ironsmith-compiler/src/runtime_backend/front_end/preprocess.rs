@@ -413,8 +413,25 @@ fn replace_names_with_map(
                 .get(idx + len + 1)
                 .is_some_and(|byte| matches!(*byte, b's' | b'S'));
 
+        if prev.is_some_and(|word| word == b"as") {
+            return false;
+        }
+
         apostrophe_s
-            || prev.is_some_and(|word| matches!(word, b"of" | b"to" | b"on"))
+            || prev.is_some_and(|word| {
+                matches!(
+                    word,
+                    b"attach"
+                        | b"destroy"
+                        | b"regenerate"
+                        | b"return"
+                        | b"tap"
+                        | b"untap"
+                        | b"of"
+                        | b"to"
+                        | b"on"
+                )
+            })
             || next.is_some_and(|word| {
                 matches!(
                     word,
@@ -1221,7 +1238,7 @@ pub(crate) fn preprocess_document(
     let full_lower = normalize_card_name_for_self_reference(front_face_name.as_str());
     let short_lower = normalize_card_name_for_self_reference(short_name.as_str());
     let source_surface_name_is_lexable = lex_line(full_lower.as_str(), 0).is_ok()
-        && (short_lower == full_lower || lex_line(short_lower.as_str(), 0).is_ok());
+        || (short_lower != full_lower && lex_line(short_lower.as_str(), 0).is_ok());
     let mut annotations = ParseAnnotations::default();
     let mut items = Vec::new();
 

@@ -520,6 +520,19 @@ fn condition_filter_context(
         .entry(crate::tag::TagKey::from("triggering"))
         .or_default()
         .push(snapshot);
+    if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id) {
+        ctx.target_objects
+            .extend(entry.targets.iter().filter_map(|target| {
+                match target {
+            crate::game_state::Target::Object(target_id) => game.object(*target_id).map(|object| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    object, game,
+                )
+            }),
+            crate::game_state::Target::Player(_) => None,
+        }
+            }));
+    }
     ctx
 }
 

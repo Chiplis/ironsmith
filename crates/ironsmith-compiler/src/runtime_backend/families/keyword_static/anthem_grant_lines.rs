@@ -1825,6 +1825,11 @@ pub(crate) fn parse_static_condition_clause(
             right: crate::effect::Value::Fixed(4),
         });
     }
+    if let ["x", "is", _, "or", "more"] = clause_words.as_slice()
+        && let Some((amount, _)) = parse_number(tokens.get(2..3).unwrap_or_default())
+    {
+        return Ok(crate::ConditionExpr::XValueAtLeast(amount as u32));
+    }
     if clause_words == ["youve", "completed", "a", "dungeon"]
         || clause_words == ["you", "have", "completed", "a", "dungeon"]
     {
@@ -5321,7 +5326,7 @@ pub(crate) fn parse_anthem_line(
     let Some(modifier_word) = tokens.get(modifier_idx).and_then(OwnedLexToken::as_word) else {
         return Ok(None);
     };
-    if parse_pt_modifier(modifier_word).is_err() {
+    if parse_pt_modifier_values(modifier_word).is_err() {
         return Ok(None);
     }
     let clause = parse_anthem_clause(tokens, get_idx, tokens.len())?;

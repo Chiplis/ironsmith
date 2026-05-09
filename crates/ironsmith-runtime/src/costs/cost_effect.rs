@@ -209,7 +209,7 @@ impl CostPayer for CostEffect {
         let mut exec_ctx = ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
             .with_cause(EventCause::from_cost(ctx.source, ctx.payer))
             .with_tagged_objects(existing_tags)
-            .with_targets(chosen_targets)
+            .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
         if let Some(x) = ctx.x_value {
             exec_ctx = exec_ctx.with_x(x);

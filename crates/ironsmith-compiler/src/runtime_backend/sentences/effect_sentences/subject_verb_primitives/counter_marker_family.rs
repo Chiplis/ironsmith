@@ -693,7 +693,10 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     }
 
     let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "counter") {
+    if descriptor_tokens.is_empty()
+        || (!grammar::contains_word(&descriptor_tokens, "counter")
+            && !grammar::contains_word(&descriptor_tokens, "counters"))
+    {
         return Ok(None);
     }
 

@@ -84,7 +84,8 @@ use super::reference_model::{
 };
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::{
-    decayed_triggered_ability, lower_granted_abilities_ast, persist_triggered_ability,
+    decayed_triggered_ability, lower_granted_abilities_ast,
+    lower_granted_abilities_ast_to_object_abilities, persist_triggered_ability,
     undying_triggered_ability,
 };
 use super::util::{
@@ -3293,7 +3294,10 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         let is_creature_token = card_types.contains(&CardType::Creature);
 
-        let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
+        let (power, toughness) = words
+            .iter()
+            .find_map(|word| parse_token_pt(word))
+            .unwrap_or((0, 0));
 
         let mut subtypes = Vec::new();
         let subtype_scan_end = find_index(words.as_slice(), |word| parse_card_type(word).is_some())

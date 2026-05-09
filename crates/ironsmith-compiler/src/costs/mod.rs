@@ -72,6 +72,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     if let Some(tagged) = effect.downcast_ref::<effects::TaggedEffect>() {
         return is_payment_effect(&tagged.effect);
     }
+    if let Some(sequence) = effect.downcast_ref::<effects::SequenceEffect>() {
+        return sequence.effects.iter().all(is_payment_effect);
+    }
     if let Some(with_id) = effect.downcast_ref::<effects::WithIdEffect>() {
         return is_payment_effect(&with_id.effect);
     }

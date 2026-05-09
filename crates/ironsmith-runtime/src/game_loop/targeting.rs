@@ -1651,9 +1651,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {
-                if legal_targets.contains(target)
-                    || target_still_exists_for_broad_target(game, &assignment.spec, target)
-                {
+                if legal_targets.contains(target) {
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),
                         Target::Player(id) => ResolvedTarget::Player(*id),
@@ -1697,9 +1695,6 @@ pub(super) fn validate_stack_entry_targets_with_view(
             legal_target_sets
                 .iter()
                 .any(|legal_targets| legal_targets.contains(target))
-                || validation_specs
-                    .iter()
-                    .any(|spec| target_still_exists_for_broad_target(game, spec, target))
         } else {
             match target {
                 Target::Object(obj_id) => game
@@ -1724,28 +1719,4 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
     let all_invalid = invalid_count == entry.targets.len();
     (valid_targets, Vec::new(), all_invalid)
-}
-
-fn target_still_exists_for_broad_target(
-    game: &GameState,
-    spec: &crate::target::ChooseSpec,
-    target: &Target,
-) -> bool {
-    if !matches!(
-        spec.base(),
-        crate::target::ChooseSpec::AnyTarget | crate::target::ChooseSpec::AnyOtherTarget
-    ) {
-        return false;
-    }
-
-    match target {
-        Target::Player(player_id) => game
-            .player(*player_id)
-            .is_some_and(|player| player.is_in_game()),
-        Target::Object(object_id) => game.object(*object_id).is_some_and(|object| {
-            object.zone == Zone::Battlefield
-                && (game.object_has_card_type(*object_id, CardType::Creature)
-                    || game.object_has_card_type(*object_id, CardType::Planeswalker))
-        }),
-    }
 }

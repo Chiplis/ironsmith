@@ -44,7 +44,6 @@ fn try_pay_interactively(
         if !can_pay_now && mana_abilities.is_empty() {
             return false;
         }
-
         let mut choices = Vec::new();
         let mut options = Vec::new();
 
@@ -83,6 +82,15 @@ fn try_pay_interactively(
             return false;
         }
         let Some(selected_idx) = selected.first().copied() else {
+            if can_pay_now {
+                return game.try_pay_mana_cost_with_reason(
+                    player_id,
+                    Some(ctx.source),
+                    &adjusted_cost,
+                    0,
+                    crate::costs::PaymentReason::Effect,
+                );
+            }
             return false;
         };
         let Some(choice) = choices.get(selected_idx).copied() else {

@@ -23,9 +23,6 @@ pub(super) fn parse_statement_line_cst(
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
-    if matches!(line_family, Some(structure::StatementLineFamily::ArtRating)) {
-        return Ok(None);
-    }
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
         || matches!(
             line_family,
@@ -34,6 +31,18 @@ pub(super) fn parse_statement_line_cst(
                     | structure::StatementLineFamily::ExilePlayCostsMore
             )
         )
+        || (token_words_have_sequence(&line.tokens, &["chooses", "two", "of", "those", "cards"])
+            && token_words_have_sequence(&line.tokens, &["shuffle", "the", "chosen", "cards"])
+            && token_words_have_sequence(
+                &line.tokens,
+                &["put", "the", "rest", "onto", "the", "battlefield"],
+            ))
+        || (token_words_have_sequence(
+            &line.tokens,
+            &[
+                "for", "as", "long", "as", "that", "card", "remains", "exiled",
+            ],
+        ) && token_words_have_sequence(&line.tokens, &["more", "to", "cast"]))
         || (token_words_have_any_prefix(&line.tokens, &[&["if"]])
             && token_words_have_sequence(&line.tokens, &["instead"]))
         || (token_words_have_any_prefix(&line.tokens, &[&["each"], &["all"]])
@@ -52,7 +61,9 @@ pub(super) fn parse_statement_line_cst(
             info: line.info.clone(),
             text: normalized.to_string(),
             parse_tokens: line.tokens.clone(),
-            parse_groups: Vec::new(),
+            parse_groups: vec![join_statement_parse_sentence_group(
+                &normalize_statement_parse_sentences_lexed(&line.tokens),
+            )],
         }));
     }
     if matches!(
@@ -66,7 +77,9 @@ pub(super) fn parse_statement_line_cst(
             info: line.info.clone(),
             text: normalized.to_string(),
             parse_tokens: line.tokens.clone(),
-            parse_groups: Vec::new(),
+            parse_groups: vec![join_statement_parse_sentence_group(
+                &normalize_statement_parse_sentences_lexed(&line.tokens),
+            )],
         }));
     }
     if matches!(

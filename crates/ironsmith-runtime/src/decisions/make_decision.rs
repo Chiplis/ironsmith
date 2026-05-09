@@ -90,6 +90,7 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 && ctx.min == 1
                 && ctx.max == Some(1)
                 && !ctx.allow_partial_completion
+                && !ctx.require_explicit_choice
             {
                 let mut legal = ctx.candidates.iter().filter(|candidate| candidate.legal);
                 if let Some(candidate) = legal.next()

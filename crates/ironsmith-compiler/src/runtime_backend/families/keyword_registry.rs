@@ -143,14 +143,38 @@ pub(super) fn lower_additional_cost(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let effect_tokens = additional_cost_tail_tokens(tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "rewrite keyword lowering could not find additional cost tail '{}'",
-            line.info.raw_line
-        ))
-    })?;
+    let text_tail_tokens = additional_cost_tail_tokens_from_text(line.info.raw_line.as_str())?
+        .or(additional_cost_tail_tokens_from_text(line.text.as_str())?);
+    let effect_tokens = if let Some(tokens) = text_tail_tokens.as_deref() {
+        tokens
+    } else {
+        additional_cost_tail_tokens(tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "rewrite keyword lowering could not find additional cost tail '{}'",
+                line.info.raw_line
+            ))
+        })?
+    };
     let effects = parse_effect_sentences_lexed(effect_tokens)?;
     Ok(LineAst::AdditionalCost { effects })
+}
+
+fn additional_cost_tail_tokens_from_text(
+    text: &str,
+) -> Result<Option<Vec<OwnedLexToken>>, CardTextError> {
+    let Some((_, tail)) = text.split_once(',') else {
+        return Ok(None);
+    };
+    let tail = tail.trim();
+    if tail.is_empty() {
+        return Ok(None);
+    }
+    lex_line(tail, 0).map(Some).map_err(|err| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not lex additional cost tail '{}': {err}",
+            tail
+        ))
+    })
 }
 
 pub(super) fn lower_additional_cost_choice(

@@ -260,6 +260,7 @@ fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Opti
                 sacrifice_at_end_of_combat: false,
                 sacrifice_at_next_end_step: false,
                 exile_at_next_end_step: false,
+                granted_abilities: Vec::new(),
             },
         ),
         EffectAst::subject_verb(

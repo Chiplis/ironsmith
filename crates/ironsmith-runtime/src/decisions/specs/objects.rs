@@ -113,6 +113,8 @@ pub struct ChooseObjectsSpec {
     pub max: Option<usize>,
     /// Whether the chooser may submit fewer than `min`.
     pub allow_partial_completion: bool,
+    /// Whether the decision must be offered even when one required candidate exists.
+    pub require_explicit_choice: bool,
 }
 
 impl ChooseObjectsSpec {
@@ -131,11 +133,17 @@ impl ChooseObjectsSpec {
             min,
             max,
             allow_partial_completion: false,
+            require_explicit_choice: false,
         }
     }
 
     pub fn allow_partial_completion(mut self) -> Self {
         self.allow_partial_completion = true;
+        self
+    }
+
+    pub fn require_explicit_choice(mut self) -> Self {
+        self.require_explicit_choice = true;
         self
     }
 }
@@ -189,6 +197,11 @@ impl DecisionSpec for ChooseObjectsSpec {
         );
         let ctx = if self.allow_partial_completion {
             ctx.allow_partial_completion()
+        } else {
+            ctx
+        };
+        let ctx = if self.require_explicit_choice {
+            ctx.require_explicit_choice()
         } else {
             ctx
         };

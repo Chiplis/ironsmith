@@ -32,6 +32,18 @@ pub(crate) fn parse_cant_clauses(
     if is_mana_retention_cant_clause(&normalized_words) {
         return Ok(None);
     }
+    if let Some((_, remainder)) = parse_restriction_duration(tokens)?
+        && remainder.len() < tokens.len()
+    {
+        let remainder_words_storage = normalize_cant_words(&remainder);
+        let remainder_words = remainder_words_storage
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if is_mana_retention_cant_clause(&remainder_words) {
+            return Ok(None);
+        }
+    }
     if matches!(
         normalized_words.as_slice(),
         [
@@ -218,6 +230,12 @@ pub(crate) fn parse_cant_clause(
             let conditioned = ability.clone().with_condition(condition.clone());
             return Ok(conditioned);
         }
+    }
+    if let Some((_, remainder)) = parse_restriction_duration(tokens)?
+        && !remainder.is_empty()
+        && remainder.len() < tokens.len()
+    {
+        return Ok(None);
     }
 
     let normalized_storage = normalize_cant_words(tokens);
@@ -539,7 +557,17 @@ pub(crate) fn parse_cant_clause(
     ) || slice_ends_with(
         &normalized,
         &[
+            "unless", "you", "ve", "cast", "a", "creature", "spell", "this", "turn",
+        ],
+    ) || slice_ends_with(
+        &normalized,
+        &[
             "unless", "youve", "cast", "creature", "spell", "this", "turn",
+        ],
+    ) || slice_ends_with(
+        &normalized,
+        &[
+            "unless", "you", "ve", "cast", "creature", "spell", "this", "turn",
         ],
     );
     let cant_attack_unless_cast_noncreature_spell_tail = slice_ends_with(
@@ -558,7 +586,32 @@ pub(crate) fn parse_cant_clause(
         &normalized,
         &[
             "unless",
+            "you",
+            "ve",
+            "cast",
+            "a",
+            "noncreature",
+            "spell",
+            "this",
+            "turn",
+        ],
+    ) || slice_ends_with(
+        &normalized,
+        &[
+            "unless",
             "youve",
+            "cast",
+            "noncreature",
+            "spell",
+            "this",
+            "turn",
+        ],
+    ) || slice_ends_with(
+        &normalized,
+        &[
+            "unless",
+            "you",
+            "ve",
             "cast",
             "noncreature",
             "spell",

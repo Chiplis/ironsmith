@@ -2198,6 +2198,18 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         .collect::<Vec<_>>();
                     candidates.sort_by_key(|id| id.0);
 
+                    if spec.may {
+                        copy_choice_effects.push(
+                            ReplacementEffect::with_matcher(
+                                object,
+                                controller,
+                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                                ReplacementAction::Additionally(Vec::new()),
+                            )
+                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+                        );
+                    }
+
                     for candidate in candidates {
                         copy_choice_effects.push(
                             ReplacementEffect::with_matcher(
@@ -2211,18 +2223,6 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                                     added_subtypes: spec.added_subtypes.clone(),
                                     added_abilities: spec.added_abilities.clone(),
                                 },
-                            )
-                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                        );
-                    }
-
-                    if spec.may {
-                        copy_choice_effects.push(
-                            ReplacementEffect::with_matcher(
-                                object,
-                                controller,
-                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                                ReplacementAction::Additionally(Vec::new()),
                             )
                             .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
                         );

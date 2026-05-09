@@ -3274,12 +3274,33 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct GrantObjectAbilityForFilter<T, E, C, Cond> {
     pub filter: ObjectFilter,
     pub ability: AbilityModel<T, E, C, Cond>,
     pub display: String,
     pub condition: Option<Condition>,
+}
+
+impl<T, E, C, Cond> std::fmt::Debug for GrantObjectAbilityForFilter<T, E, C, Cond>
+where
+    T: std::fmt::Debug,
+    E: std::fmt::Debug,
+    C: std::fmt::Debug,
+    Cond: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrantObjectAbilityForFilter")
+            .field("filter", &self.filter)
+            .field("ability", &self.ability)
+            .field(
+                "generated_modification",
+                &format!("AddAbilityGeneric({:?})", self.ability),
+            )
+            .field("display", &self.display)
+            .field("condition", &self.condition)
+            .finish()
+    }
 }
 
 impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {

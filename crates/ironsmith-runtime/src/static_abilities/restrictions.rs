@@ -76,6 +76,11 @@ impl StaticAbilityKind for DamageCantBePrevented {
         "Damage can't be prevented".to_string()
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        StaticAbility::restriction(Restriction::prevent_damage(), self.display())
+            .with_condition(condition)
+    }
+
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::prevent_damage().apply(game, &mut tracker, _controller, None, None);
@@ -466,6 +471,14 @@ impl StaticAbilityKind for CantBeCountered {
         "This spell can't be countered".to_string()
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        StaticAbility::restriction(
+            Restriction::be_countered(ObjectFilter::source()),
+            self.display(),
+        )
+        .with_condition(condition)
+    }
+
     fn cant_be_countered(&self) -> bool {
         true
     }
@@ -508,6 +521,7 @@ fn display_rule_restriction_condition(condition: &crate::ConditionExpr) -> Optio
         crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::DuringCombat) => {
             Some("During combat".to_string())
         }
+        crate::ConditionExpr::XValueAtLeast(amount) => Some(format!("if X is {amount} or more")),
         _ => {
             let described = super::describe_static_condition(condition);
             if described.contains("ConditionExpr") || described.contains("ValueComparison") {

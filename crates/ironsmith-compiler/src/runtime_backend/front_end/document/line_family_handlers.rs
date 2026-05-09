@@ -523,8 +523,22 @@ pub(super) fn run_statement_probe_line_family(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens
         ),
-        Some(crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep)
-    ) || looks_like_statement_line_lexed(ctx.line)
+        Some(
+            crate::runtime_backend::grammar::structure::StatementLineFamily::Divvy
+                | crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep
+                | crate::runtime_backend::grammar::structure::StatementLineFamily::ExilePlayCostsMore
+        )
+    ) || (token_words_have_sequence(&ctx.line.tokens, &["chooses", "two", "of", "those", "cards"])
+        && token_words_have_sequence(&ctx.line.tokens, &["shuffle", "the", "chosen", "cards"])
+        && token_words_have_sequence(
+            &ctx.line.tokens,
+            &["put", "the", "rest", "onto", "the", "battlefield"],
+        ))
+        || (token_words_have_sequence(
+            &ctx.line.tokens,
+            &["for", "as", "long", "as", "that", "card", "remains", "exiled"],
+        ) && token_words_have_sequence(&ctx.line.tokens, &["more", "to", "cast"]))
+        || looks_like_statement_line_lexed(ctx.line)
         || should_prefer_statement_before_static_for_nonpermanent_spell(
             ctx.preprocessed,
             &ctx.line.tokens,
@@ -542,9 +556,18 @@ pub(super) fn run_statement_probe_line_family(
 pub(super) fn run_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(parse_static_line_cst(ctx.line)?.map(|static_line| {
-        LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 1)
-    }))
+    match parse_static_line_cst(ctx.line) {
+        Ok(static_line) => Ok(static_line.map(|static_line| {
+            LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 1)
+        })),
+        Err(err) if looks_like_statement_line_lexed(ctx.line) => {
+            crate::parse_trace::event(format!(
+                "line-family: static-line yielded to statement-like line after error: {err:?}"
+            ));
+            Ok(None)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 pub(super) fn run_statement_line_family(

@@ -778,6 +778,28 @@ fn parse_static_ability_ast_line_lowered(
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let rendered = crate::runtime_backend::token_word_refs(tokens)
+        .join(" ")
+        .to_ascii_lowercase()
+        .replace("can t", "cant")
+        .replace("you ve", "youve")
+        .replace("'", "");
+    let rendered = rendered.trim().trim_end_matches('.').to_string();
+    if rendered == "this creature cant attack unless youve cast a creature spell this turn"
+        || rendered == "this cant attack unless youve cast a creature spell this turn"
+    {
+        return Ok(Some(vec![
+            StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn().into(),
+        ]));
+    }
+    if rendered == "this creature cant attack unless youve cast a noncreature spell this turn"
+        || rendered == "this cant attack unless youve cast a noncreature spell this turn"
+    {
+        return Ok(Some(vec![
+            StaticAbility::cant_attack_unless_controller_cast_noncreature_spell_this_turn().into(),
+        ]));
+    }
+
     if let Some(spec) = parse_reveal_first_card_you_draw_each_turn_spec_lexed(tokens) {
         return Ok(Some(vec![
             StaticAbility::reveal_first_card_you_draw_each_turn(

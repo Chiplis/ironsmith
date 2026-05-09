@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
 };
+use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::try_build_unless;
 
 fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     for (idx, token) in tokens.iter().enumerate() {
@@ -54,6 +55,19 @@ pub(crate) fn parse_sacrifice(
             tokens = &tokens[..cut_idx];
             normalized_words = &normalized_words[..unless_idx];
         } else {
+            let Some(unless_token_idx) =
+                find_index(tokens, |token: &OwnedLexToken| token.is_word("unless"))
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported sacrifice-unless clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            let sacrifice_tokens = trim_commas(&tokens[..unless_token_idx]);
+            let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
+            if let Some(unless_effect) = try_build_unless(vec![base], tokens, unless_token_idx)? {
+                return Ok(unless_effect);
+            }
             return Err(CardTextError::ParseError(format!(
                 "unsupported sacrifice-unless clause (clause: '{}')",
                 clause_words.join(" ")

@@ -21,6 +21,31 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 pub use ironsmith_core::{ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect};
 
+fn resolve_graveyard_return_targets(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    target: &ChooseSpec,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let ChooseSpec::Tagged(tag) = target.base() else {
+        return resolve_objects_for_effect(game, ctx, target);
+    };
+    let Some(tagged) = ctx.get_tagged_all(tag) else {
+        return Ok(Vec::new());
+    };
+
+    let mut ids = Vec::with_capacity(tagged.len());
+    for snapshot in tagged {
+        let Some(object) = game.object(snapshot.object_id) else {
+            return Err(ExecutionError::InvalidTarget);
+        };
+        if object.stable_id != snapshot.stable_id || object.zone != Zone::Graveyard {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        ids.push(snapshot.object_id);
+    }
+    Ok(ids)
+}
+
 fn choose_aura_attachment_target(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -122,7 +147,7 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let target_ids = resolve_graveyard_return_targets(game, ctx, &self.target)?;
         if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }

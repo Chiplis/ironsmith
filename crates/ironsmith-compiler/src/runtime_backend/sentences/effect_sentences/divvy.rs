@@ -1,5 +1,5 @@
 use super::super::grammar::primitives::TokenWordView;
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -68,6 +68,82 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         .iter()
         .map(|sentence| TokenWordView::new(sentence.lowered()))
         .collect::<Vec<_>>();
+
+    if sentences.len() == 1 {
+        let words = TokenWordView::new(sentences[0].lowered());
+        if words.has_phrase(&["chooses", "two", "of", "those", "cards"])
+            && words.has_phrase(&["shuffle", "the", "chosen", "cards"])
+            && words.has_phrase(&["put", "the", "rest", "onto", "the", "battlefield"])
+            && words.starts_with(&[
+                "search",
+                "your",
+                "library",
+                "and",
+                "graveyard",
+                "for",
+                "up",
+                "to",
+                "four",
+                "creature",
+                "cards",
+            ])
+        {
+            let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| sentences[0].lowered());
+            let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
+            effects.extend(vec![
+                EffectAst::subject_verb_tag_matching_objects(
+                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    vec![Zone::Library, Zone::Graveyard],
+                    TagKey::from("divvy_source"),
+                ),
+                EffectAst::ChooseObjectsAcrossZones {
+                    filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                    count: ChoiceCount::exactly(2),
+                    count_value: None,
+                    player: PlayerAst::Opponent,
+                    tag: TagKey::from("divvy_chosen"),
+                    zones: vec![Zone::Library, Zone::Graveyard],
+                    search_mode: None,
+                },
+                EffectAst::ForEachTagged {
+                    tag: TagKey::from("divvy_source"),
+                    effects: vec![EffectAst::Conditional {
+                        predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                        if_true: Vec::new(),
+                        if_false: vec![EffectAst::subject_verb_move_to_zone(
+                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            Zone::Battlefield,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )],
+                    }],
+                },
+                EffectAst::ForEachTagged {
+                    tag: TagKey::from("divvy_chosen"),
+                    effects: vec![EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        Zone::Library,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                },
+                EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                ),
+                EffectAst::subject_verb_exile(TargetAst::Source(None), false),
+            ]);
+            return Ok(Some(effects));
+        }
+    }
 
     if matches_sentence_sequence(
         &sentence_words,
@@ -595,7 +671,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         &sentence_words,
         &["the", "other", "into", "your", "graveyard"],
     ) {
-        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| sentences[0].lowered());
+        let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
                 ObjectFilter::tagged(TagKey::from(IT_TAG)),
@@ -714,7 +794,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             ],
         ],
     ) {
-        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| sentences[0].lowered());
+        let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
                 ObjectFilter::tagged(TagKey::from(IT_TAG)),
@@ -771,34 +855,30 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             "four",
             "creature",
             "cards",
-            "with",
-            "different",
-            "names",
-            "that",
-            "each",
-            "have",
-            "mana",
-            "value",
-            "x",
-            "or",
-            "less",
-            "and",
-            "reveal",
-            "them",
         ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["an", "opponent", "chooses", "two", "of", "those", "cards"],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &[
-            "shuffle", "the", "chosen", "cards", "into", "your", "library",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["put", "the", "rest", "onto", "the", "battlefield"],
-    ) {
-        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+    ) && sentence_has_phrase(&sentence_words, &["different", "names"])
+        && sentence_has_phrase(&sentence_words, &["mana", "value", "x", "or", "less"])
+        && sentence_has_phrase(&sentence_words, &["reveal", "them"])
+        && sentence_has_phrase(
+            &sentence_words,
+            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
+        )
+        && sentence_has_phrase(
+            &sentence_words,
+            &[
+                "shuffle", "the", "chosen", "cards", "into", "your", "library",
+            ],
+        )
+        && sentence_has_phrase(
+            &sentence_words,
+            &["put", "the", "rest", "onto", "the", "battlefield"],
+        )
+    {
+        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| sentences[0].lowered());
+        let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
                 ObjectFilter::tagged(TagKey::from(IT_TAG)),

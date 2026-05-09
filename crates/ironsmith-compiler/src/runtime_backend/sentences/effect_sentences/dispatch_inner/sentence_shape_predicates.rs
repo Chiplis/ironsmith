@@ -698,6 +698,35 @@ fn parse_effect_sentence_lexed_inner(
     if let Some(effects) = parse_it_is_aura_enchantment_sentence(sentence_words.as_slice()) {
         return Ok(effects);
     }
+    let sacrifice_counted_prefix = matches!(
+        sentence_words.as_slice(),
+        ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
+    );
+    let sacrifice_delayed_lifecycle = find_dispatch_inner_phrase_start(
+        sentence_words.as_slice(),
+        &["at", "the", "beginning", "of", "the", "next", "end", "step"],
+    )
+    .is_some()
+        || find_dispatch_inner_phrase_start(
+            sentence_words.as_slice(),
+            &["at", "the", "beginning", "of", "next", "end", "step"],
+        )
+        .is_some()
+        || find_dispatch_inner_phrase_start(sentence_words.as_slice(), &["at", "end", "of", "combat"])
+            .is_some()
+        || find_dispatch_inner_phrase_start(
+            sentence_words.as_slice(),
+            &["at", "the", "end", "of", "combat"],
+        )
+        .is_some();
+    if sentence_words.first() == Some(&"sacrifice")
+        && !sacrifice_counted_prefix
+        && !sacrifice_delayed_lifecycle
+    {
+        let mut effects = super::parse_effect_chain_inner_lexed(tokens)?;
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if sentence_words.first() == Some(&"at")
         && sentence_words.get(1) == Some(&"this")
         && let Some(end_idx) =
@@ -972,6 +1001,11 @@ fn parse_effect_sentence_with_where_x_lexed(
             Some(["this", "creatures", "mana", "value"]) => {
                 Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source))
             }
+            Some(["that", "spell", "mana", "value"])
+            | Some(["that", "spell's", "mana", "value"])
+            | Some(["that", "spells", "mana", "value"]) => Value::ManaValueOf(Box::new(
+                crate::target::ChooseSpec::Tagged(TagKey::from("triggering")),
+            )),
             Some(["that", "creatures", "power"]) => {
                 Value::PowerOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
                     crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(

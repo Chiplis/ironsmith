@@ -52,17 +52,34 @@ pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
 }
 
 pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
-    ActivationRestrictionCompatWords::new(tokens)
-        .to_word_refs()
-        .into_iter()
-        .map(|word| {
-            if word == "cannot" {
-                "cant".to_string()
-            } else {
-                word.to_string()
+    let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
+    let mut normalized = Vec::with_capacity(words.len());
+    let mut idx = 0;
+    while idx < words.len() {
+        match words[idx] {
+            "cannot" | "can't" => {
+                normalized.push("cant".to_string());
+                idx += 1;
             }
-        })
-        .collect()
+            "can" if words.get(idx + 1) == Some(&"t") => {
+                normalized.push("cant".to_string());
+                idx += 2;
+            }
+            "you've" => {
+                normalized.push("youve".to_string());
+                idx += 1;
+            }
+            "you" if words.get(idx + 1) == Some(&"ve") => {
+                normalized.push("youve".to_string());
+                idx += 2;
+            }
+            word => {
+                normalized.push(word.to_string());
+                idx += 1;
+            }
+        }
+    }
+    normalized
 }
 
 pub(crate) fn keyword_title(keyword: &str) -> String {

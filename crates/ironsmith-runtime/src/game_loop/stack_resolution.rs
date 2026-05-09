@@ -77,6 +77,127 @@ fn apply_self_replacement_tag_prelude(
     Ok(())
 }
 
+fn apply_self_replacement_declared_target_tags(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    chosen_modes: Option<&[usize]>,
+    valid_target_assignments: &[crate::game_state::TargetAssignment],
+    assignment_cursor: usize,
+) {
+    let mut temp_cursor = assignment_cursor;
+    let mut temp_consumed_modal_selection = false;
+    let mut temp_declared_targets = Vec::new();
+
+    for effect in effects {
+        let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+            let _ = active_target_assignments_for_effect(
+                effect,
+                chosen_modes,
+                &mut temp_consumed_modal_selection,
+                &mut temp_declared_targets,
+                valid_target_assignments,
+                &mut temp_cursor,
+            );
+            continue;
+        };
+
+        let assignments = active_target_assignments_for_effect(
+            effect,
+            chosen_modes,
+            &mut temp_consumed_modal_selection,
+            &mut temp_declared_targets,
+            valid_target_assignments,
+            &mut temp_cursor,
+        );
+        let mut snapshots = assignments
+            .iter()
+            .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
+            .filter_map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, game,
+                    )
+                }),
+                crate::effects::ResolvedTarget::Player(_) => None,
+            })
+            .collect::<Vec<_>>();
+        if snapshots.is_empty()
+            && effect.target_selection_profile().is_some()
+            && let Some(snapshot) = ctx.targets.iter().find_map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, game,
+                    )
+                }),
+                crate::effects::ResolvedTarget::Player(_) => None,
+            })
+        {
+            snapshots.push(snapshot);
+        }
+        if snapshots.is_empty() {
+            continue;
+        }
+        ctx.tag_objects(tagged.tag.clone(), snapshots.clone());
+        if tagged.tag.as_str() != "__it__" && tagged.tag.as_str() != "__copied_stack_object__" {
+            ctx.tag_objects(crate::tag::TagKey::from("__it__"), snapshots);
+        }
+    }
+}
+
+fn collect_tagged_constraints_from_spec(
+    spec: &crate::target::ChooseSpec,
+    out: &mut Vec<crate::tag::TagKey>,
+) {
+    match spec {
+        crate::target::ChooseSpec::SurfaceHinted { spec, .. }
+        | crate::target::ChooseSpec::Target(spec)
+        | crate::target::ChooseSpec::WithCount(spec, _)
+        | crate::target::ChooseSpec::WithCountValue(spec, _, _) => {
+            collect_tagged_constraints_from_spec(spec, out);
+        }
+        _ => {
+            if let crate::target::ChooseSpec::Object(filter) = spec.base() {
+                for constraint in &filter.tagged_constraints {
+                    if !out.contains(&constraint.tag) {
+                        out.push(constraint.tag.clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn apply_self_replacement_referenced_target_tags(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+) {
+    let Some(snapshot) = ctx.targets.iter().find_map(|target| match target {
+        crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        }),
+        crate::effects::ResolvedTarget::Player(_) => None,
+    }) else {
+        return;
+    };
+
+    let mut tags = Vec::new();
+    for effect in effects {
+        if let Some(profile) = effect.target_selection_profile() {
+            collect_tagged_constraints_from_spec(profile.spec, &mut tags);
+        }
+    }
+
+    for tag in tags {
+        if !ctx.tagged_objects.contains_key(&tag) {
+            ctx.tag_object(tag, snapshot.clone());
+        }
+    }
+}
+
 fn evaluate_self_replacement_branch(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -186,6 +307,15 @@ pub(crate) fn execute_resolution_program(
         };
 
         if selected_self_replacement {
+            apply_self_replacement_declared_target_tags(
+                game,
+                ctx,
+                &segment.default_effects,
+                chosen_modes,
+                valid_target_assignments,
+                assignment_cursor,
+            );
+            apply_self_replacement_referenced_target_tags(game, ctx, &selected_effects);
             apply_self_replacement_tag_prelude(game, ctx, &segment.default_effects)?;
         }
 

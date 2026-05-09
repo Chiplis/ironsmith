@@ -2229,10 +2229,26 @@ pub fn validate_target(
             validate_target(game, target, inner, ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
+            let filter_ctx_for_candidate = || {
+                let mut candidate_ctx = filter_ctx.clone();
+                candidate_ctx
+                    .target_objects
+                    .retain(|snapshot| snapshot.object_id != *id);
+                if let Some(object) = game.object(*id) {
+                    candidate_ctx
+                        .target_objects
+                        .retain(|snapshot| snapshot.stable_id != object.stable_id);
+                } else if let Some(snapshot) = ctx.target_snapshots.get(id) {
+                    candidate_ctx
+                        .target_objects
+                        .retain(|target| target.stable_id != snapshot.stable_id);
+                }
+                candidate_ctx
+            };
             if let Some(obj) = game.object(*id) {
-                filter.matches(obj, &filter_ctx, game)
+                filter.matches(obj, &filter_ctx_for_candidate(), game)
             } else if let Some(snapshot) = ctx.target_snapshots.get(id) {
-                filter.matches_snapshot(snapshot, &filter_ctx, game)
+                filter.matches_snapshot(snapshot, &filter_ctx_for_candidate(), game)
             } else {
                 false
             }

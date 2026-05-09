@@ -2083,6 +2083,9 @@ fn describe_source_owner_shuffle_then_reveal_named_to_battlefield(
         if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
             return unwrap_effect(&tag_all.effect);
         }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap_effect(&with_id.effect);
+        }
         effect
     }
 
@@ -23772,6 +23775,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if for_players.filter == PlayerFilter::Any
             && for_players.effects.len() == 1
+            && let Some(cant) = for_players.effects[0].downcast_ref::<crate::effects::CantEffect>()
+            && matches!(
+                cant.restriction,
+                crate::effect::Restriction::CastMoreThanOneSpellEachTurn(PlayerFilter::Any, _)
+            )
+        {
+            let restriction_text = describe_restriction(&cant.restriction);
+            if let Some(rest) = restriction_text
+                .strip_prefix("players can't")
+                .or_else(|| restriction_text.strip_prefix("Players can't"))
+            {
+                return format!("Each player can't{rest}");
+            }
+        }
+        if for_players.filter == PlayerFilter::Any
+            && for_players.effects.len() == 1
             && let Some(return_to_battlefield) =
                 for_players.effects[0]
                     .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
@@ -27122,7 +27141,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("{subject} must be blocked this turn if able");
         }
         if cant.duration == Until::EndOfTurn {
-            return format!("{} this turn", describe_restriction(&cant.restriction));
+            let restriction_text = describe_restriction(&cant.restriction);
+            if restriction_text.to_ascii_lowercase().contains(" each turn") {
+                return restriction_text;
+            }
+            return format!("{restriction_text} this turn");
         }
         return format!(
             "{} {}",

@@ -77,6 +77,12 @@ pub(crate) fn source_reference_surface_for_span(
     SOURCE_REFERENCE_CONTEXT.with(|context| context.borrow().surfaces_by_span.get(&span).cloned())
 }
 
+pub(crate) fn revealed_cards_total_mana_value_x_value(normalized: &str) -> Option<Value> {
+    (normalized.contains("where x is the total mana value of all cards revealed this way")
+        || normalized.contains("where x is the total mana value of cards revealed this way"))
+    .then(|| Value::TotalManaValue(ObjectFilter::tagged(TagKey::from("__public_revealed"))))
+}
+
 fn record_source_reference_surface(span: Option<TextSpan>, surface: SourceReferenceSurface) {
     let Some(span) = span else {
         return;
@@ -1780,8 +1786,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
 
     if let Some(used) = matching_prefix_len(&[
         &["that", "spell", "mana", "value"],
+        &["that", "spell's", "mana", "value"],
         &["that", "spells", "mana", "value"],
+    ]) {
+        return Some((
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("triggering")))),
+            used,
+        ));
+    }
+
+    if let Some(used) = matching_prefix_len(&[
         &["that", "card", "mana", "value"],
+        &["that", "card's", "mana", "value"],
         &["that", "cards", "mana", "value"],
         &["the", "revealed", "card", "mana", "value"],
         &["the", "revealed", "cards", "mana", "value"],

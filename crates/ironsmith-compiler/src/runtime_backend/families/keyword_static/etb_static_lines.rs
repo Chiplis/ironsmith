@@ -967,11 +967,22 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
             | Some(["the", "exiled", "card", "mana", "value"])
             | Some(["the", "exiled", "cards", "mana", "value"])
             | Some(["that", "spell", "mana", "value"])
+            | Some(["that", "spell's", "mana", "value"])
             | Some(["that", "spells", "mana", "value"])
     ) {
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from(IT_TAG),
-        ))));
+        let tag = if matches!(
+            words.get(3..),
+            Some(["that", "spell", "mana", "value"])
+                | Some(["that", "spell's", "mana", "value"])
+                | Some(["that", "spells", "mana", "value"])
+        ) {
+            "triggering"
+        } else {
+            IT_TAG
+        };
+        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+            tag,
+        )))));
     }
 
     // where X is the number of cards in your hand
@@ -1109,8 +1120,14 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
             Some(Value::ToughnessOf(Box::new(tagged_it.clone())))
         }
         Some(["that", "spell", "mana", "value"])
-        | Some(["that", "spells", "mana", "value"])
+        | Some(["that", "spell's", "mana", "value"])
+        | Some(["that", "spells", "mana", "value"]) => {
+            Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                "triggering",
+            )))))
+        }
         | Some(["that", "card", "mana", "value"])
+        | Some(["that", "card's", "mana", "value"])
         | Some(["that", "cards", "mana", "value"])
         | Some(["the", "sacrificed", "creature", "mana", "value"])
         | Some(["the", "sacrificed", "creatures", "mana", "value"])

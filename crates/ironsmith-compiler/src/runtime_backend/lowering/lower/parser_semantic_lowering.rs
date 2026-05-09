@@ -1,5 +1,8 @@
 use super::*;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
+use crate::runtime_backend::grammar::structure::{
+    StatementLineFamily, classify_statement_line_family_lexed,
+};
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -163,9 +166,27 @@ fn lower_rewrite_statement_to_chunks_impl(
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
     if !parse_groups.is_empty() {
+        if parse_groups.len() > 1
+            && sentences_have_token_creation_followup_after_first(parse_groups)
+        {
+            let group_tokens = join_sentences_with_period(parse_groups);
+            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            return Ok(vec![LineAst::Statement { effects }]);
+        }
+        if parse_groups.len() > 1
+            && sentences_have_temporary_static_followup_after_first(parse_groups)
+        {
+            let group_tokens = join_sentences_with_period(parse_groups);
+            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            return Ok(vec![LineAst::Statement { effects }]);
+        }
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
-            if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens) {
+            if statement_group_should_parse_as_effects_first(group_tokens) {
+                let effects = parse_effect_sentences_lexed(group_tokens)?;
+                chunks.push(LineAst::Statement { effects });
+            } else if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens)
+            {
                 chunks.push(chunk);
             } else if let Some(abilities) = parse_static_ability_ast_line_lexed(group_tokens)? {
                 chunks.push(LineAst::StaticAbilities(abilities));
@@ -178,7 +199,16 @@ fn lower_rewrite_statement_to_chunks_impl(
     }
     if !parse_tokens.is_empty() {
         let sentence_tokens = rewrite_statement_parse_sentences_for_lowering_lexed(parse_tokens);
-        if sentence_tokens.len() > 1
+        let keep_linked_statement_grouped = linked_statement_should_stay_grouped(parse_tokens);
+        if keep_linked_statement_grouped {
+            let group_tokens = join_sentences_with_period(&sentence_tokens);
+            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            return Ok(vec![LineAst::Statement { effects }]);
+        }
+        if !keep_linked_statement_grouped
+            && sentence_tokens.len() > 1
+            && !sentences_have_token_creation_followup_after_first(&sentence_tokens)
+            && !sentences_have_temporary_static_followup_after_first(&sentence_tokens)
             && sentence_tokens.iter().any(|sentence| {
                 parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
                     || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
@@ -202,7 +232,12 @@ fn lower_rewrite_statement_to_chunks_impl(
         if !grouped_tokens.is_empty() {
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
-                if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&group_tokens) {
+                if statement_group_should_parse_as_effects_first(&group_tokens) {
+                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
+                    chunks.push(LineAst::Statement { effects });
+                } else if let Some(chunk) =
+                    parse_self_enters_with_x_counters_static_chunk(&group_tokens)
+                {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)?
                 {
@@ -221,6 +256,140 @@ fn lower_rewrite_statement_to_chunks_impl(
     )))
 }
 
+fn sentences_have_token_copy_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences.iter().skip(1).any(|sentence| {
+        crate::runtime_backend::sentences::effect_sentences::parse_token_copy_followup_sentence_lexed(
+            sentence.as_ref(),
+        )
+        .is_some()
+    })
+}
+
+fn sentences_have_token_granted_ability_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences.iter().skip(1).any(|sentence| {
+        matches!(
+            crate::runtime_backend::sentences::effect_sentences::parse_token_granted_ability_followup_sentence_lexed(sentence.as_ref()),
+            Ok(Some(_))
+        )
+    })
+}
+
+fn sentences_have_token_creation_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences_have_token_copy_followup_after_first(sentences)
+        || sentences_have_token_granted_ability_followup_after_first(sentences)
+        || sentences.iter().skip(1).any(|sentence| {
+            let words = token_word_refs(sentence.as_ref());
+            matches!(
+                words.as_slice(),
+                ["its", "power", "is", "equal", ..] | ["their", "power", "is", "equal", ..]
+            ) && words.contains(&"toughness")
+        })
+}
+
+fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences.iter().skip(1).any(|sentence| {
+        let sentence = sentence.as_ref();
+        let words = token_word_refs(sentence);
+        word_refs_contain_sequence(&words, &["this", "turn"])
+            && (matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
+                || words.contains(&"cant")
+                || words.contains(&"can't")
+                || words.contains(&"dont")
+                || words.contains(&"don't")
+                || words.contains(&"doesnt")
+                || words.contains(&"doesn't"))
+    })
+}
+
+fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
+    let line_family = classify_statement_line_family_lexed(tokens);
+    if matches!(
+        line_family,
+        Some(
+            StatementLineFamily::Divvy
+                | StatementLineFamily::PactNextUpkeep
+                | StatementLineFamily::ExilePlayCostsMore
+        )
+    ) {
+        return true;
+    }
+
+    let words = token_word_refs(tokens);
+    let contains_sequence = |needle: &[&str]| -> bool {
+        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
+    };
+
+    contains_sequence(&[
+        "for", "as", "long", "as", "that", "card", "remains", "exiled",
+    ]) && contains_sequence(&["more", "to", "cast"])
+        || contains_sequence(&["chooses", "two", "of", "those", "cards"])
+            && contains_sequence(&["shuffle", "the", "chosen", "cards"])
+            && contains_sequence(&["put", "the", "rest", "onto", "the", "battlefield"])
+}
+
+fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
+    if linked_statement_should_stay_grouped(tokens) {
+        return true;
+    }
+
+    let words = token_word_refs(tokens);
+    if words
+        .first()
+        .is_some_and(|word| statement_leading_effect_verb(word))
+    {
+        return true;
+    }
+    let contains_sequence = |needle: &[&str]| -> bool {
+        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
+    };
+    contains_sequence(&["if"]) && contains_sequence(&["instead"])
+        || ((contains_sequence(&["cant", "cast"]) || contains_sequence(&["can't", "cast"]))
+            && contains_sequence(&["next", "turn"]))
+        || (contains_sequence(&["until", "end", "of", "turn"])
+            && (words.contains(&"cant")
+                || words.contains(&"can't")
+                || words.contains(&"dont")
+                || words.contains(&"don't")
+                || words.contains(&"doesnt")
+                || words.contains(&"doesn't")))
+}
+
+fn statement_leading_effect_verb(word: &str) -> bool {
+    matches!(
+        word,
+        "add"
+            | "choose"
+            | "counter"
+            | "create"
+            | "deal"
+            | "destroy"
+            | "discard"
+            | "draw"
+            | "exchange"
+            | "exile"
+            | "gain"
+            | "look"
+            | "mill"
+            | "put"
+            | "return"
+            | "reveal"
+            | "sacrifice"
+            | "search"
+            | "shuffle"
+            | "surveil"
+            | "tap"
+            | "untap"
+    )
+}
+
 fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens).to_ascii_lowercase();
     let normalized = rendered
@@ -237,16 +406,11 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         return None;
     }
 
-    let count = if normalized
-        .contains("where x is the total mana value of all cards revealed this way")
-        || normalized.contains("where x is the total mana value of cards revealed this way")
-    {
-        crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
-            "__public_revealed",
-        )))
-    } else {
-        crate::effect::Value::X
-    };
+    let count =
+        crate::runtime_backend::front_end::shared::util::revealed_cards_total_mana_value_x_value(
+            &normalized,
+        )
+        .unwrap_or(crate::effect::Value::X);
 
     Some(LineAst::StaticAbilities(vec![
         crate::cards::builders::StaticAbilityAst::Static(
@@ -356,7 +520,13 @@ fn lower_rewrite_triggered_to_chunk_impl(
     }
 
     let full_sentences = split_lexed_sentences(full_parse_tokens);
+    let has_token_creation_followup_after_first =
+        sentences_have_token_creation_followup_after_first(&full_sentences);
+    let has_temporary_static_followup_after_first =
+        sentences_have_temporary_static_followup_after_first(&full_sentences);
     if full_sentences.len() > 1
+        && !has_token_creation_followup_after_first
+        && !has_temporary_static_followup_after_first
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
     {
         let mut chunks = Vec::with_capacity(full_sentences.len());
@@ -388,7 +558,13 @@ fn lower_rewrite_triggered_to_chunk_impl(
     }
 
     let effect_sentences = split_lexed_sentences(effect_parse_tokens);
+    let effect_has_token_creation_followup_after_first =
+        sentences_have_token_creation_followup_after_first(&effect_sentences);
+    let effect_has_temporary_static_followup_after_first =
+        sentences_have_temporary_static_followup_after_first(&effect_sentences);
     if effect_sentences.len() > 1
+        && !effect_has_token_creation_followup_after_first
+        && !effect_has_temporary_static_followup_after_first
         && let Some(first_static_idx) =
             effect_sentences
                 .iter()
@@ -1472,6 +1648,7 @@ fn standard_gift_create_token_effect(name: &str, tapped: bool) -> EffectAst {
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            granted_abilities: Vec::new(),
         },
     )
 }

@@ -893,7 +893,11 @@ fn normalize_named_source_sentence_for_builder(
     let name = builder.card_builder.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
-        if let Some(remainder) = str_strip_prefix(lower.as_str(), &(name_lower + " ")) {
+        let name_prefix = format!("{name_lower} ");
+        if let Some(remainder) = str_strip_prefix(lower.as_str(), name_prefix.as_str()) {
+            if source_alias_prefix_looks_like_effect_verb(name_lower.as_str(), remainder) {
+                return None;
+            }
             return Some(format!("{subject} {remainder}"));
         }
     }
@@ -929,8 +933,11 @@ fn normalize_named_source_trigger_for_builder(
             let subject = named_source_subject_for_builder(builder);
             for name_lower in &names {
                 if rewritten_body.contains(&format!("control of {name_lower}")) {
-                    rewritten_body =
-                        replace_named_source_aliases(&rewritten_body, name_lower, subject);
+                    rewritten_body = replace_named_source_aliases_for_trigger_normalization(
+                        &rewritten_body,
+                        name_lower,
+                        subject,
+                    );
                 }
             }
         }
@@ -1015,7 +1022,9 @@ fn normalize_named_source_trigger_head_for_builder(
     if !names.is_empty() && !trimmed.contains(" named ") {
         let mut rewritten = trimmed.to_string();
         for name_lower in &names {
-            rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
+            rewritten = replace_named_source_aliases_for_trigger_normalization(
+                &rewritten, name_lower, subject,
+            );
         }
         rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
         if rewritten != trimmed {
@@ -1026,7 +1035,96 @@ fn normalize_named_source_trigger_head_for_builder(
     None
 }
 
+fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> bool {
+    if alias.split_whitespace().count() != 1 || !is_effect_verb_word(alias) {
+        return false;
+    }
+    let Some(next_word) = remainder
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
+        .find(|word| !word.is_empty())
+    else {
+        return false;
+    };
+    !matches!(
+        next_word,
+        "gets"
+            | "get"
+            | "has"
+            | "have"
+            | "is"
+            | "are"
+            | "enters"
+            | "attacks"
+            | "blocks"
+            | "becomes"
+            | "become"
+            | "can't"
+            | "cant"
+            | "can"
+            | "does"
+            | "doesn't"
+            | "doesnt"
+    )
+}
+
+fn is_effect_verb_word(word: &str) -> bool {
+    matches!(
+        word,
+        "add"
+            | "attach"
+            | "become"
+            | "convert"
+            | "counter"
+            | "create"
+            | "deal"
+            | "destroy"
+            | "detain"
+            | "discard"
+            | "draw"
+            | "exchange"
+            | "exile"
+            | "get"
+            | "goad"
+            | "incubate"
+            | "investigate"
+            | "look"
+            | "mill"
+            | "move"
+            | "pay"
+            | "proliferate"
+            | "regenerate"
+            | "remove"
+            | "return"
+            | "sacrifice"
+            | "scry"
+            | "shuffle"
+            | "skip"
+            | "surveil"
+            | "suspect"
+            | "tap"
+            | "transform"
+            | "untap"
+    )
+}
+
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
+    replace_named_source_aliases_with_options(text, alias, replacement, true)
+}
+
+fn replace_named_source_aliases_for_trigger_normalization(
+    text: &str,
+    alias: &str,
+    replacement: &str,
+) -> String {
+    replace_named_source_aliases_with_options(text, alias, replacement, false)
+}
+
+fn replace_named_source_aliases_with_options(
+    text: &str,
+    alias: &str,
+    replacement: &str,
+    preserve_surface_hints: bool,
+) -> String {
     if alias.is_empty() {
         return text.to_string();
     }
@@ -1041,7 +1139,9 @@ fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> S
         let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
         let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
         let is_token_name_suffix = lower[end..].starts_with(" twin");
-        if before_is_boundary && after_is_boundary && !is_token_name_suffix {
+        let preserve_surface = preserve_surface_hints
+            && source_alias_occurrence_should_preserve_surface(lower.as_bytes(), start, end);
+        if before_is_boundary && after_is_boundary && !is_token_name_suffix && !preserve_surface {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
             cursor = end;
@@ -1052,6 +1152,71 @@ fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> S
     }
     rewritten.push_str(&lower[cursor..]);
     rewritten
+}
+
+fn source_alias_occurrence_should_preserve_surface(bytes: &[u8], start: usize, end: usize) -> bool {
+    fn previous_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
+        while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        let end = idx;
+        while idx > 0 && bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        (idx < end).then_some(&bytes[idx..end])
+    }
+
+    fn next_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
+        while idx < bytes.len() && !bytes[idx].is_ascii_alphanumeric() {
+            idx += 1;
+        }
+        let start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_alphanumeric() {
+            idx += 1;
+        }
+        (start < idx).then_some(&bytes[start..idx])
+    }
+
+    let apostrophe_s = matches!(bytes.get(end).copied(), Some(b'\''))
+        && bytes
+            .get(end + 1)
+            .is_some_and(|byte| matches!(*byte, b's' | b'S'));
+
+    if previous_word(bytes, start).is_some_and(|word| word == b"as") {
+        return false;
+    }
+
+    apostrophe_s
+        || previous_word(bytes, start).is_some_and(|word| {
+            matches!(
+                word,
+                b"attach"
+                    | b"destroy"
+                    | b"regenerate"
+                    | b"return"
+                    | b"tap"
+                    | b"untap"
+                    | b"of"
+                    | b"to"
+                    | b"on"
+            )
+        })
+        || next_word(bytes, end).is_some_and(|word| {
+            matches!(
+                word,
+                b"attack"
+                    | b"attacks"
+                    | b"become"
+                    | b"becomes"
+                    | b"becoming"
+                    | b"deal"
+                    | b"deals"
+                    | b"enter"
+                    | b"enters"
+                    | b"power"
+                    | b"toughness"
+            )
+        })
 }
 
 fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
@@ -3008,11 +3173,17 @@ pub(crate) fn parse_document_cst(
                     line.info.normalized.normalized.as_str(),
                 ) {
                     let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
-                    if let Some(static_line) = parse_static_line_cst(&rewritten_line)? {
-                        let cst = RewriteLineCst::Static(static_line);
-                        trace_cst_line(&cst);
-                        lines.push(cst);
-                        idx += 1;
+                    if let Ok(dispatch) = dispatch_standard_line_cst(
+                        preprocessed,
+                        idx,
+                        &rewritten_line,
+                        allow_unsupported,
+                    ) {
+                        for cst in &dispatch.lines {
+                            trace_cst_line(cst);
+                        }
+                        lines.extend(dispatch.lines);
+                        idx = dispatch.next_idx;
                         continue;
                     }
                 }

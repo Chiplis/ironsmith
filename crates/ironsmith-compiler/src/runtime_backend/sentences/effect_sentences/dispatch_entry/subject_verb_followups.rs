@@ -580,6 +580,16 @@ fn pre_rule_token_followups(
             route: None,
         }));
     }
+    if let Some(abilities) = parse_token_granted_ability_followup_sentence_lexed(sentence_tokens)? {
+        if try_apply_token_granted_ability_followup(state.effects, &abilities)? {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+                route: Some(
+                    "subject-verb verb=Grant subject=implicit recognizer=created-token-ability-followup",
+                ),
+            }));
+        }
+    }
     if let Some(followup) = parse_token_copy_followup_sentence(sentence_tokens) {
         if try_apply_token_copy_followup(state.effects, followup)? {
             return Ok(Some(PreParseFollowupResult::Handled {

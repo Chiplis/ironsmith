@@ -317,6 +317,8 @@ pub struct SelectObjectsContext {
     /// submit any number from 0 to `max`, even if the effect text asks for an
     /// exact count.
     pub allow_partial_completion: bool,
+    /// Whether engine auto-selection of a single required object should be skipped.
+    pub require_explicit_choice: bool,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
 }
@@ -339,12 +341,18 @@ impl SelectObjectsContext {
             min,
             max,
             allow_partial_completion: false,
+            require_explicit_choice: false,
             ui_hints: DecisionUiHints::default(),
         }
     }
 
     pub fn allow_partial_completion(mut self) -> Self {
         self.allow_partial_completion = true;
+        self
+    }
+
+    pub fn require_explicit_choice(mut self) -> Self {
+        self.require_explicit_choice = true;
         self
     }
 

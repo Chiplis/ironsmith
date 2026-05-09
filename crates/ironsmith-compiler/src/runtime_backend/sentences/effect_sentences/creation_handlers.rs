@@ -1109,6 +1109,7 @@ pub(crate) fn parse_create(
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            granted_abilities: Vec::new(),
         },
     );
     Ok(wrap_for_each_player_condition(wrap_delayed_create(

@@ -1005,6 +1005,16 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                         .any(|word| *word == "counter" || *word == "counters")
                     && (grammar::words_find_phrase(after_then, &["on", "it"]).is_some()
                         || grammar::words_find_phrase(after_then, &["on", "them"]).is_some());
+                let allow_put_battlefield_with_counter_followup =
+                    !starts_with_for_each_player_or_opponent
+                        && has_back_ref
+                        && grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
+                        && grammar::contains_word(after_then, "battlefield")
+                        && after_words
+                            .iter()
+                            .any(|word| *word == "counter" || *word == "counters")
+                        && (grammar::words_find_phrase(after_then, &["on", "it"]).is_some()
+                            || grammar::words_find_phrase(after_then, &["on", "them"]).is_some());
                 let allow_put_into_hand_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "into")
@@ -1023,6 +1033,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || has_effect_head && allow_deal_damage_equal_total_mana_value_followup
                     || has_effect_head && allow_for_each_damage_followup
                     || has_effect_head && allow_return_with_counter_followup
+                    || has_effect_head && allow_put_battlefield_with_counter_followup
                     || has_effect_head && allow_put_into_hand_followup
                     || has_effect_head && allow_put_back_in_any_order_followup
                 {

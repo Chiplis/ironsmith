@@ -177,7 +177,16 @@ impl EffectExecutor for ExploreEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_ids =
+        let target_ids = if let ChooseSpec::Tagged(tag) = self.target.base() {
+            ctx.get_tagged_all(tag)
+                .map(|snapshots| {
+                    snapshots
+                        .iter()
+                        .map(|snapshot| snapshot.object_id)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        } else {
             match crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(ids) => ids,
                 Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
@@ -185,7 +194,8 @@ impl EffectExecutor for ExploreEffect {
                 }
                 Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::count(0)),
                 Err(err) => return Err(err),
-            };
+            }
+        };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }

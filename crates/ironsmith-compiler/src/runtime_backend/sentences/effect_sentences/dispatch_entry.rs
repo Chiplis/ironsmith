@@ -20,6 +20,7 @@ use super::super::effect_ast_traversal::{
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
+use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -579,6 +580,16 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         && str_contains(&normalized, "this turn")
         && str_contains(&normalized, "exile")
     {
+        if str_contains(&normalized, "your graveyard")
+            && str_contains(&normalized, "exile that card instead")
+        {
+            crate::parse_trace::event(
+                "effect-route: subject-verb verb=Exile subject=implicit recognizer=instead-replacement",
+            );
+            return Some(
+                EffectAst::subject_verb_exile_instead_of_graveyard_this_turn(PlayerAst::You),
+            );
+        }
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target,
             None,
@@ -885,6 +896,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if is_outside_game_art_rating_sentence(sentence) {
+            sentence_idx += 1;
+            continue;
+        }
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
@@ -1103,6 +1118,15 @@ fn parse_effect_sentences_from_sentence_inputs(
         parser_trace("parse_effect_sentences:done", last_sentence.lowered());
     }
     Ok(effects)
+}
+
+fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let has_phrase = |needle: &[&str]| -> bool {
+        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
+    };
+    has_phrase(&["ask", "a", "person", "outside", "the", "game", "to", "rate"])
+        || has_phrase(&["when", "they", "rate", "the", "art"])
 }
 
 pub(crate) fn parse_effect_sentences_lexed(
@@ -2982,6 +3006,45 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
         })
 }
 
+pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    let words = TokenWordView::new(tokens);
+    let prefix_len = if word_view_has_prefix(&words, &["it", "has"])
+        || word_view_has_prefix(&words, &["that", "token", "has"])
+        || word_view_has_prefix(&words, &["the", "token", "has"])
+    {
+        if word_view_has_prefix(&words, &["it", "has"]) {
+            2
+        } else {
+            3
+        }
+    } else if word_view_has_prefix(&words, &["they", "have"])
+        || word_view_has_prefix(&words, &["those", "tokens", "have"])
+        || word_view_has_prefix(&words, &["the", "tokens", "have"])
+    {
+        if word_view_has_prefix(&words, &["they", "have"]) {
+            2
+        } else {
+            3
+        }
+    } else {
+        return Ok(None);
+    };
+
+    let Some(ability_start) = words.token_index_after_words(prefix_len) else {
+        return Ok(None);
+    };
+    let ability_tokens = trim_edge_punctuation(&tokens[ability_start..]);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(ability) =
+        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![ability]))
+}
+
 fn apply_unapplied_token_copy_followup(
     sentence: &[OwnedLexToken],
     _sentence_tokens: &[OwnedLexToken],
@@ -3038,6 +3101,51 @@ fn apply_unapplied_token_copy_followup(
         }],
     };
     Ok(effects)
+}
+
+pub(crate) fn try_apply_token_granted_ability_followup(
+    effects: &mut [EffectAst],
+    abilities: &[GrantedAbilityAst],
+) -> Result<bool, CardTextError> {
+    let Some(last) = effects.last_mut() else {
+        return Ok(false);
+    };
+
+    match last {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    granted_abilities, ..
+                },
+            ..
+        }) => {
+            granted_abilities.extend(abilities.iter().cloned());
+            Ok(true)
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            if try_apply_token_granted_ability_followup(if_true.as_mut_slice(), abilities)? {
+                return Ok(true);
+            }
+            if try_apply_token_granted_ability_followup(if_false.as_mut_slice(), abilities)? {
+                return Ok(true);
+            }
+            Ok(false)
+        }
+        _ => {
+            let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
+                return Ok(false);
+            };
+            if nested_effects.is_empty() {
+                return Ok(false);
+            }
+            try_apply_token_granted_ability_followup(nested_effects.as_mut_slice(), abilities)
+        }
+    }
 }
 
 pub(crate) fn try_apply_token_copy_followup(

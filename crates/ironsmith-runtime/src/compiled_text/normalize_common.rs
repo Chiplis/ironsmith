@@ -7448,6 +7448,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             // For implicit off-battlefield references, oracle text usually prefers
             // "that card's mana value" over "its mana value".
             if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == "triggering"
+            {
+                "that spell's mana value".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && (tag.as_str().starts_with("revealed_")
                     || tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
                     || tag.as_str().starts_with("searched_")

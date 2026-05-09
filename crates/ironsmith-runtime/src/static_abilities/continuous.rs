@@ -836,6 +836,38 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             };
             format!("as long as {subject} {verb} {count_text} or fewer cards in hand")
         }
+        crate::ConditionExpr::PlayerControlsAtLeast {
+            player,
+            filter,
+            count,
+        } => {
+            let subject = match player {
+                crate::target::PlayerFilter::You => "you",
+                crate::target::PlayerFilter::Opponent => "an opponent",
+                crate::target::PlayerFilter::Any => "a player",
+                crate::target::PlayerFilter::NotYou => "another player",
+                crate::target::PlayerFilter::Teammate => "a teammate",
+                crate::target::PlayerFilter::Active => "the active player",
+                crate::target::PlayerFilter::Defending => "the defending player",
+                crate::target::PlayerFilter::Attacking => "the attacking player",
+                crate::target::PlayerFilter::DamagedPlayer => "the damaged player",
+                _ => "that player",
+            };
+            let count_text = number_word_u32(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            let mut described_filter = filter.clone();
+            if described_filter.controller.as_ref() == Some(player) {
+                described_filter.controller = None;
+            }
+            let object_text = pluralized_subject_text(&described_filter);
+            let verb = if matches!(player, crate::target::PlayerFilter::You) {
+                "control"
+            } else {
+                "controls"
+            };
+            format!("as long as {subject} {verb} {count_text} or more {object_text}")
+        }
         crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             let subject = match player {
                 crate::target::PlayerFilter::You => "your".to_string(),
@@ -3624,12 +3656,27 @@ impl StaticAbilityKind for SetChosenColorForFilter {
 }
 
 /// Permanents matching a filter have an activated or triggered ability.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct GrantObjectAbilityForFilter {
     pub filter: ObjectFilter,
     pub ability: Ability,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
+}
+
+impl std::fmt::Debug for GrantObjectAbilityForFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrantObjectAbilityForFilter")
+            .field("filter", &self.filter)
+            .field("ability", &self.ability)
+            .field(
+                "generated_modification",
+                &Modification::AddAbilityGeneric(self.ability.clone()),
+            )
+            .field("display", &self.display)
+            .field("condition", &self.condition)
+            .finish()
+    }
 }
 
 impl GrantObjectAbilityForFilter {

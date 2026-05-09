@@ -87,6 +87,11 @@ pub(crate) fn find_cant_sentence_negation_span_lexed(
             || token.is_word("don't")
             || token.is_word("dont")
         {
+            if cursor >= 2 && tokens[cursor - 2].is_word("if") && tokens[cursor - 1].is_word("you")
+            {
+                cursor += 1;
+                continue;
+            }
             if matches!(
                 tokens.get(cursor + 1).map(|next| next.parser_text.as_str()),
                 Some("control" | "controls" | "own" | "owns")
@@ -101,6 +106,11 @@ pub(crate) fn find_cant_sentence_negation_span_lexed(
                 .get(cursor + 1)
                 .is_some_and(|next| next.is_word("not"))
         {
+            if cursor >= 2 && tokens[cursor - 2].is_word("if") && tokens[cursor - 1].is_word("you")
+            {
+                cursor += 2;
+                continue;
+            }
             if (token.is_word("does") || token.is_word("do"))
                 && matches!(
                     tokens.get(cursor + 2).map(|next| next.parser_text.as_str()),

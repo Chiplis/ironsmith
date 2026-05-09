@@ -228,6 +228,11 @@ fn capture_effect_target_snapshot(
     ctx: &ExecutionContext,
 ) -> Option<ObjectSnapshot> {
     let spec = effect.0.get_target_spec()?;
+    if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
+        return ctx
+            .get_tagged_all(tag)
+            .and_then(|snapshots| snapshots.first().cloned());
+    }
     let object_id = resolve_objects_from_spec(game, spec, ctx)
         .ok()?
         .into_iter()
