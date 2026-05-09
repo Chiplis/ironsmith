@@ -3,6 +3,7 @@
 //! This module contains effects that modify the state of permanents on the battlefield,
 //! such as tapping, untapping, monstrosity, regeneration, and transformation.
 
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::object::{AttachmentTarget, AuraAttachmentFilterRuntimeExt};
@@ -77,6 +78,17 @@ pub(crate) fn attachment_can_attach_to_target(
         {
             return false;
         }
+        if let Some(crate::object::AuraAttachmentFilter::Object(filter)) = game
+            .current_characteristics(attachment_id)
+            .and_then(|chars| chars.aura_attach_filter)
+            .or_else(|| attachment.aura_attach_filter.clone())
+        {
+            let filter_ctx =
+                game.filter_context_for(game.controller_of(attachment), Some(attachment_id));
+            return matches!(target, AttachmentTarget::Object(target_id) if game
+                .object(target_id)
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game)));
+        }
         return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Creature));
     }
 
@@ -120,6 +132,68 @@ pub(crate) fn attach_battlefield_object_to_target(
         .continuous_effects
         .record_attachment(attachment_id);
     true
+}
+
+pub(crate) fn choose_color_as_becomes_attached(
+    game: &mut GameState,
+    ctx: &mut crate::effects::ExecutionContext<'_>,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+) {
+    let has_choice_ability = game
+        .current_characteristics(attachment_id)
+        .map(|chars| chars.static_abilities)
+        .unwrap_or_else(|| {
+            game.object(attachment_id)
+                .map(|object| crate::ability::extract_static_abilities(&object.abilities))
+                .unwrap_or_default()
+        })
+        .into_iter()
+        .any(|ability| ability.color_choice_as_becomes_attached().is_some());
+    if !has_choice_ability {
+        return;
+    }
+
+    let Some(chooser) = game.controller_of_id(attachment_id) else {
+        return;
+    };
+    let options = [
+        (crate::color::Color::White, "White"),
+        (crate::color::Color::Blue, "Blue"),
+        (crate::color::Color::Black, "Black"),
+        (crate::color::Color::Red, "Red"),
+        (crate::color::Color::Green, "Green"),
+    ];
+    let selectable = options
+        .iter()
+        .enumerate()
+        .map(|(idx, (_, label))| crate::decisions::SelectableOption::new(idx, *label))
+        .collect();
+    let choice_ctx = crate::decisions::SelectOptionsContext::new(
+        chooser,
+        Some(attachment_id),
+        "Choose a color",
+        selectable,
+        1,
+        1,
+    );
+    let chosen = ctx
+        .decision_maker
+        .decide_options(game, &choice_ctx)
+        .into_iter()
+        .next();
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    let Some(chosen_idx) = chosen.filter(|idx| *idx < options.len()) else {
+        return;
+    };
+
+    let (color, _) = options[chosen_idx];
+    game.set_chosen_color(attachment_id, color);
+    if let AttachmentTarget::Object(target_id) = target {
+        game.set_chosen_color(target_id, color);
+    }
 }
 
 pub use attach_objects::AttachObjectsEffect;

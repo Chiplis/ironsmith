@@ -74,6 +74,7 @@ pub enum ProtectionFrom {
     CardType(CardType),
     Permanents(ObjectFilter),
     ChosenPlayer,
+    ChosenColor,
     Everything,
 }
 

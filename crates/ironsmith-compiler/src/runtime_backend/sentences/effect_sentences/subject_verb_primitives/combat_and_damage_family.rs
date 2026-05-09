@@ -664,7 +664,9 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             let filter = parse_object_filter(&segment[1..], false)?;
             if is_battlefield {
                 effects.push(EffectAst::subject_verb_return_all_to_battlefield(
-                    filter, tapped,
+                    filter,
+                    tapped,
+                    ReturnControllerAst::Owner,
                 ));
             } else {
                 effects.push(EffectAst::subject_verb_return_all_to_hand(filter));

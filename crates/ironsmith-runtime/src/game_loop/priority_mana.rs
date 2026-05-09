@@ -3318,8 +3318,17 @@ pub(super) fn propose_spell_cast(
                 obj.apply_definition_face(&other_def);
             }
 
-            if let crate::alternative_cast::AlternativeCastingMethod::Overload { effects, .. } =
-                method
+            if let crate::alternative_cast::AlternativeCastingMethod::Overload {
+                ref effects, ..
+            } = method
+            {
+                obj.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(
+                    effects.clone(),
+                ));
+            }
+            if let crate::alternative_cast::AlternativeCastingMethod::Awaken {
+                ref effects, ..
+            } = method
             {
                 obj.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(
                     effects.clone(),

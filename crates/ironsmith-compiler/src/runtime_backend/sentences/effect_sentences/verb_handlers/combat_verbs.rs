@@ -67,6 +67,9 @@ pub(crate) fn parse_attach_object_phrase(
             return parse_target_phrase(&head_tokens);
         }
     }
+    if tokens.first().is_some_and(|token| token.is_word("target")) {
+        return parse_target_phrase(tokens);
+    }
 
     if object_words.len() >= 2
         && object_words
@@ -165,7 +168,10 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         && grammar::contains_word(tokens, "hand")
     {
         return Ok(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(Value::CardsInHand(PlayerFilter::IteratedPlayer), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                Value::CardsInHand(PlayerFilter::IteratedPlayer),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         });
     }
     let is_divided_as_you_choose_clause = grammar::contains_word(tokens, "divided")
@@ -205,7 +211,10 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
     {
         let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
         return Ok(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(value, TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                value,
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         });
     }
 
@@ -249,7 +258,8 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         .or(parse_devotion_value_from_add_clause(tokens)?)
         .or(parse_equal_to_number_of_filter_value(tokens))
         .or_else(|| {
-            let tail_words = crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]);
+            let tail_words =
+                crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]);
             (tail_words.as_slice() == ["the", "result"])
                 .then_some(Value::EventValue(EventValueSpec::Amount))
         })
@@ -265,7 +275,10 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         || target_words.as_slice() == ["each", "players"]
     {
         return Ok(Some(EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         }));
     }
     if target_words.as_slice() == ["each", "opponent"]
@@ -274,7 +287,10 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         || target_words.as_slice() == ["each", "other", "players"]
     {
         return Ok(Some(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         }));
     }
     if matches!(target_words.first(), Some(&"each") | Some(&"all")) {
@@ -384,7 +400,10 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     .is_some()
     {
         return Ok(Some(EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         }));
     }
     if grammar::words_match_any_prefix(
@@ -399,10 +418,16 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     .is_some()
     {
         return Ok(Some(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         }));
     }
-    if matches!(crate::runtime_backend::token_word_refs(normalized_target_tokens).first(), Some(&"each") | Some(&"all")) {
+    if matches!(
+        crate::runtime_backend::token_word_refs(normalized_target_tokens).first(),
+        Some(&"each") | Some(&"all")
+    ) {
         if normalized_target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -637,7 +662,10 @@ pub(crate) fn parse_deal_damage_with_amount(
     if target_words.as_slice() == ["the", "player"] {
         return Ok(EffectAst::subject_verb_damage(
             amount,
-            TargetAst::Player(PlayerFilter::IteratedPlayer, span_from_tokens(target_tokens)),
+            TargetAst::Player(
+                PlayerFilter::IteratedPlayer,
+                span_from_tokens(target_tokens),
+            ),
         ));
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
@@ -663,7 +691,10 @@ pub(crate) fn parse_deal_damage_with_amount(
         || target_words.as_slice() == ["each", "players"]
     {
         return Ok(EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         });
     }
     let normalized_target_words =
@@ -699,7 +730,10 @@ pub(crate) fn parse_deal_damage_with_amount(
         || target_words.as_slice() == ["each", "opponents"]
     {
         return Ok(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
         });
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_WHO_PREFIXES).is_some()
@@ -707,7 +741,10 @@ pub(crate) fn parse_deal_damage_with_amount(
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachOpponentDid {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
             predicate,
         });
     }
@@ -716,7 +753,10 @@ pub(crate) fn parse_deal_damage_with_amount(
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachPlayerDid {
-            effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
             predicate,
         });
     }
@@ -735,7 +775,10 @@ pub(crate) fn parse_deal_damage_with_amount(
         }
         return Ok(EffectAst::ForEachPlayer {
             effects: vec![
-                EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),),
+                EffectAst::subject_verb_damage(
+                    amount.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                ),
                 EffectAst::subject_verb_damage_each(amount.clone(), filter),
             ],
         });
@@ -752,7 +795,10 @@ pub(crate) fn parse_deal_damage_with_amount(
         filter.controller = Some(PlayerFilter::IteratedPlayer);
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![
-                EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),),
+                EffectAst::subject_verb_damage(
+                    amount.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                ),
                 EffectAst::subject_verb_damage_each(amount.clone(), filter),
             ],
         });
@@ -770,8 +816,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
 
     if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word("at")) {
-        let timing_words =
-            crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]);
+        let timing_words = crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]);
         let matches_end_of_combat = timing_words.as_slice() == ["at", "end", "of", "combat"]
             || timing_words.as_slice() == ["at", "the", "end", "of", "combat"];
         if matches_end_of_combat && at_idx >= 1 {

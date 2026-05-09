@@ -713,6 +713,7 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) counters: Vec<CounterSnapshot>,
     pub(super) compiled_text: Vec<String>,
     pub(super) abilities: Vec<String>,
+    pub(super) chosen_color: Option<String>,
     pub(super) raw_compilation: String,
     pub(super) semantic_score: Option<f32>,
 }
@@ -1220,6 +1221,9 @@ pub(super) fn build_object_details_snapshot(
         counters,
         compiled_text,
         abilities,
+        chosen_color: game
+            .chosen_color(obj.id)
+            .map(|color| color.name().to_string()),
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
         semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })

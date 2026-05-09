@@ -898,6 +898,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if subject_words.first() == Some(&"if") {
+        return Ok(None);
+    }
 
     let (mut filter, mut target, ability_scope) =
         if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {

@@ -769,6 +769,10 @@ fn add_triggering_object_tag(
         })
     {
         tagged_objects
+            .entry(crate::tag::TagKey::from("__it__"))
+            .or_default()
+            .push(snapshot.clone());
+        tagged_objects
             .entry(crate::tag::TagKey::from("triggering"))
             .or_default()
             .push(snapshot);
@@ -1033,12 +1037,40 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             }
         }
     }
+    if trigger.triggering_event.kind() == EventKind::Damage
+        && let Some(damage) = trigger
+            .triggering_event
+            .downcast::<crate::events::DamageEvent>()
+        && damage.is_combat
+        && let Some(defending_player) = combat_damage_defending_player(game, damage)
+    {
+        entry = entry.with_defending_player(defending_player);
+    }
 
     if trigger.ability.trigger.saga_chapters().is_some() {
         entry = entry.with_chapter_ability_source(trigger.source);
     }
 
     entry
+}
+
+fn combat_damage_defending_player(
+    game: &GameState,
+    damage: &crate::events::DamageEvent,
+) -> Option<PlayerId> {
+    match damage.target {
+        crate::events::DamageTarget::Player(player) => Some(player),
+        crate::events::DamageTarget::Object(_) => {
+            let combat = game.combat.as_ref()?;
+            let attack_target = get_attack_target(combat, damage.source)?;
+            match attack_target {
+                AttackTarget::Player(player) => Some(*player),
+                AttackTarget::Planeswalker(planeswalker) => game
+                    .object(*planeswalker)
+                    .map(|object| game.controller_of(object)),
+            }
+        }
+    }
 }
 
 #[cfg(test)]

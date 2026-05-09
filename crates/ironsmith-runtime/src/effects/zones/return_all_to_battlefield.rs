@@ -4,6 +4,7 @@ use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effects::BattlefieldController;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -30,12 +31,14 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
             let memory =
                 OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(obj, game));
 
-            let outcome = move_to_battlefield_with_options(
-                game,
-                ctx,
-                object_id,
-                BattlefieldEntryOptions::owner(self.tapped),
-            );
+            let options = match self.battlefield_controller {
+                BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(self.tapped),
+                BattlefieldController::Owner => BattlefieldEntryOptions::owner(self.tapped),
+                BattlefieldController::You => {
+                    BattlefieldEntryOptions::specific(ctx.controller, self.tapped)
+                }
+            };
+            let outcome = move_to_battlefield_with_options(game, ctx, object_id, options);
 
             if matches!(outcome, BattlefieldEntryOutcome::Moved(_)) {
                 returned_count += 1;

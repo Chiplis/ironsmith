@@ -1,7 +1,7 @@
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, LineInfo, ParseAnnotations,
-    PlayerAst, TriggerSpec,
+    PlayerAst, StaticAbilityAst, TriggerSpec,
 };
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
@@ -667,7 +667,7 @@ fn lower_static_ability_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let LineChunkLoweringInput {
-        builder,
+        mut builder,
         parsed,
         info,
         allow_unsupported,
@@ -676,6 +676,12 @@ fn lower_static_ability_chunk(
     let NormalizedLineChunk::StaticAbility(ability) = parsed else {
         unreachable!("static-ability lowerer received mismatched chunk");
     };
+
+    if let StaticAbilityAst::AttachmentRestriction { filter, display } = ability {
+        builder.aura_attach_filter = Some(filter);
+        let _ = display;
+        return Ok(builder);
+    }
 
     let ability = match super::rewrite_lower_static_ability_ast(ability) {
         Ok(ability) => ability,
@@ -705,7 +711,19 @@ fn lower_static_abilities_chunk(
         unreachable!("static-abilities lowerer received mismatched chunk");
     };
 
-    let abilities = match super::rewrite_lower_static_abilities_ast(abilities) {
+    let mut lowered_abilities = Vec::new();
+    let mut regular_abilities = Vec::new();
+    for ability in abilities {
+        match ability {
+            StaticAbilityAst::AttachmentRestriction { filter, display } => {
+                builder.aura_attach_filter = Some(filter);
+                let _ = display;
+            }
+            other => regular_abilities.push(other),
+        }
+    }
+
+    let abilities = match super::rewrite_lower_static_abilities_ast(regular_abilities) {
         Ok(abilities) => abilities,
         Err(err) if allow_unsupported => {
             return Ok(super::push_unsupported_marker(
@@ -716,7 +734,8 @@ fn lower_static_abilities_chunk(
         }
         Err(err) => return Err(err),
     };
-    for ability in abilities {
+    lowered_abilities.extend(abilities);
+    for ability in lowered_abilities {
         builder = builder.with_ability(compile_static_ability_with_zones(ability, info));
     }
     Ok(builder)

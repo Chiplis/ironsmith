@@ -427,47 +427,51 @@ function buildZoneMoveVisualEffects(previews, previousCardRects) {
   const inspectorRevealPreview = previews.find((preview) => preview?.inspectorShaderReveal);
   const exilePreviews = previews.filter((preview) => preview?.fromZone === "battlefield" && preview?.toZone === "exile");
   if (exilePreviews.length === 0) return [];
+  if (!inspectorRevealPreview) return [];
 
-  const sourceBurnEffects = exilePreviews
-    .map((preview) => {
-      const sourceRect = rectFromTransitionPreview(preview, previousCardRects);
-      if (!sourceRect) return null;
+  const targetToken = inspectorRevealPreview.token;
+  const groupId = `exile-group:${targetToken}`;
+  const effects = [];
 
-      return {
-        id: `exile-source:${preview.token}`,
-        kind: "angelic-exile",
-        rect: sourceRect,
-        travelsToInspector: false,
-        includeSourceClone: true,
-        sourceCloneHtml: sourceRect.sourceCloneHtml || null,
-        sourceImageUrl: sourceRect.sourceImageUrl || null,
-        card: preview.card,
-        objectId: preview.fromObjectId ?? preview.objectId ?? null,
-        targetToken: null,
-      };
-    })
-    .filter(Boolean);
+  for (const preview of exilePreviews) {
+    const sourceRect = rectFromTransitionPreview(preview, previousCardRects);
+    if (!sourceRect) continue;
 
-  if (!inspectorRevealPreview) return sourceBurnEffects;
-
-  const sharedSourceRect = rectFromTransitionPreview(inspectorRevealPreview, previousCardRects);
-  if (!sharedSourceRect) return sourceBurnEffects;
-
-  return [
-    ...sourceBurnEffects,
-    {
-      id: `exile-travel:${inspectorRevealPreview.token}`,
+    // Phase 1: in-place dissolve. Renders immediately so the card can be seen
+    // dissolving while the inspector's forefront-image rect is being resolved.
+    effects.push({
+      id: `exile-source:${preview.token}`,
       kind: "angelic-exile",
-      rect: sharedSourceRect,
+      rect: sourceRect,
+      travelsToInspector: false,
+      includeSourceClone: true,
+      sourceCloneHtml: sourceRect.sourceCloneHtml || null,
+      sourceImageUrl: sourceRect.sourceImageUrl || null,
+      card: preview.card,
+      objectId: preview.fromObjectId ?? preview.objectId ?? null,
+      targetToken: null,
+      groupId,
+    });
+
+    // Phase 2: every card flies to the *same* forefront-image container.
+    // Cards farther from the target travel a longer path in the same time, so
+    // they appear to move faster and all arrive simultaneously.
+    effects.push({
+      id: `exile-flight:${preview.token}`,
+      kind: "angelic-exile",
+      rect: sourceRect,
       travelsToInspector: true,
       includeSourceClone: false,
       sourceCloneHtml: null,
-      sourceImageUrl: sharedSourceRect.sourceImageUrl || null,
-      card: inspectorRevealPreview.card,
-      objectId: inspectorRevealPreview.fromObjectId ?? inspectorRevealPreview.objectId ?? null,
-      targetToken: inspectorRevealPreview.token,
-    },
-  ];
+      sourceImageUrl: sourceRect.sourceImageUrl || null,
+      card: preview.card,
+      objectId: preview.fromObjectId ?? preview.objectId ?? null,
+      targetToken,
+      groupId,
+    });
+  }
+
+  return effects;
 }
 
 function buildZoneTransitionPreviews(previousSnapshot, currentSnapshot, playerKey) {

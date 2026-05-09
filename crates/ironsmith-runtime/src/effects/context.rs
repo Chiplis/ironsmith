@@ -644,6 +644,15 @@ impl<'a> ExecutionContext<'a> {
     /// needs to reference it (e.g., "sacrifice the chosen creature").
     pub fn with_tagged_objects(mut self, tags: HashMap<TagKey, Vec<ObjectSnapshot>>) -> Self {
         self.tagged_objects = tags;
+        if !self.tagged_objects.contains_key(&TagKey::from("__it__"))
+            && let Some(triggering) = self
+                .tagged_objects
+                .get(&TagKey::from("triggering"))
+                .cloned()
+        {
+            self.tagged_objects
+                .insert(TagKey::from("__it__"), triggering);
+        }
         self
     }
 
@@ -662,7 +671,8 @@ impl<'a> ExecutionContext<'a> {
         if let Some(snapshot) = event.snapshot() {
             let snapshots = vec![snapshot.clone()];
             self.set_tagged_objects("triggering", snapshots.clone());
-            self.set_tagged_objects("it", snapshots);
+            self.set_tagged_objects("it", snapshots.clone());
+            self.set_tagged_objects("__it__", snapshots);
         }
         if self.iteration.iterated_player.is_none() {
             self.iteration.iterated_player = event.trigger_player();

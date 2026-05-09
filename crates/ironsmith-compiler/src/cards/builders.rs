@@ -270,6 +270,7 @@ impl CardDefinitionBuilder {
         match action {
             KeywordAction::Flying => self.flying(),
             KeywordAction::Defender => self.defender(),
+            KeywordAction::Decayed => self.decayed(),
             KeywordAction::Vigilance => self.vigilance(),
             KeywordAction::Prowess => self.prowess(),
             KeywordAction::Trample => self.trample(),
@@ -311,6 +312,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Foretell(cost) => self.foretell(cost),
             KeywordAction::Unleash => self.unleash(),
             KeywordAction::Ward(amount) => self.ward_generic(amount),
+            KeywordAction::Afflict(amount) => self.afflict(amount),
             KeywordAction::Undying => self.undying(),
             KeywordAction::Persist => self.persist(),
             KeywordAction::Renown(amount) => self.renown(amount),
@@ -319,12 +321,15 @@ impl CardDefinitionBuilder {
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Overload(cost) => self.overload(cost),
+            KeywordAction::Awaken { amount, cost } => self.awaken(amount, cost),
             KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
             KeywordAction::CumulativeUpkeep { total_cost, .. } => {
                 self.cumulative_upkeep(total_cost)
             }
             KeywordAction::Casualty(amount) => self.casualty(amount),
             KeywordAction::Conspire => self.conspire(),
+            KeywordAction::Amplify(amount) => self.amplify(amount),
+            KeywordAction::AuraSwap(cost) => self.aura_swap(cost),
             KeywordAction::Ravenous => self.ravenous(),
             KeywordAction::Ascend => self.ascend(),
             KeywordAction::Daybound => self.daybound(),
@@ -386,6 +391,14 @@ impl CardDefinitionBuilder {
                     ),
                 ))
             }
+            KeywordAction::ProtectionFromChosenColor => {
+                self.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::protection(
+                        crate::ability::ProtectionFrom::ChosenColor,
+                    ),
+                ))
+            }
+            KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -507,6 +520,13 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn decayed(self) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::cant_block(),
+        ))
+        .with_ability(crate::runtime_backend::static_ability_helpers::decayed_triggered_ability())
+    }
+
     pub fn vigilance(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::vigilance(),
@@ -593,6 +613,23 @@ impl CardDefinitionBuilder {
     pub fn double_strike(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::double_strike(),
+        ))
+    }
+
+    pub fn afflict(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_becomes_blocked(),
+            vec![crate::effect::Effect::lose_life_player(
+                amount as i32,
+                crate::target::PlayerFilter::Defending,
+            )],
+        ))
+    }
+
+    pub fn amplify(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![crate::effect::Effect::amplify(amount)],
         ))
     }
 
@@ -940,6 +977,15 @@ impl CardDefinitionBuilder {
         )
     }
 
+    pub fn aura_swap(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
+
+        self.with_ability(crate::ability::Ability::activated(
+            total_cost,
+            vec![crate::effect::Effect::aura_swap()],
+        ))
+    }
+
     pub fn ninjutsu(self, cost: ManaCost) -> Self {
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
@@ -1094,6 +1140,27 @@ impl CardDefinitionBuilder {
                 effects: Vec::new(),
             },
         );
+        self
+    }
+
+    pub fn awaken(mut self, amount: u32, cost: ManaCost) -> Self {
+        let mut effects = self
+            .spell_effect
+            .as_ref()
+            .map(|program| program.all_effects_owned())
+            .unwrap_or_default();
+        let spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+            ObjectFilter::land().you_control(),
+        ));
+        effects.push(crate::effect::Effect::new(
+            crate::effects::EarthbendEffect::new(spec, amount),
+        ));
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Awaken {
+                amount,
+                cost,
+                effects,
+            });
         self
     }
 
@@ -1854,6 +1921,13 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::static_ability(protection))
     }
 
+    pub fn protection_from_filter(self, filter: ObjectFilter) -> Self {
+        let protection = crate::static_abilities::StaticAbility::protection(
+            crate::ability::ProtectionFrom::Permanents(filter),
+        );
+        self.with_ability(crate::ability::Ability::static_ability(protection))
+    }
+
     pub fn protection_from_subtype(self, subtype: Subtype) -> Self {
         let protection = crate::static_abilities::StaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(
@@ -1921,16 +1995,16 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::this_dies(),
                 effects: vec![
                     crate::effect::Effect::tag_triggering_object(trigger_tag),
-                    crate::effect::Effect::choose_objects(
-                        filter,
-                        1,
-                        crate::target::PlayerFilter::You,
-                        return_tag,
-                    ),
-                    crate::effect::Effect::move_to_zone(
-                        crate::target::ChooseSpec::Tagged(return_tag.into()),
-                        crate::zone::Zone::Battlefield,
-                        true,
+                    crate::effect::Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                        filter, return_tag,
+                    )),
+                    crate::effect::Effect::new(
+                        crate::effects::MoveToZoneEffect::new(
+                            crate::target::ChooseSpec::Tagged(return_tag.into()),
+                            crate::zone::Zone::Battlefield,
+                            true,
+                        )
+                        .under_owner_control(),
                     )
                     .tag(returned_tag),
                     crate::effect::Effect::for_each_tagged(
@@ -1970,16 +2044,16 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::this_dies(),
                 effects: vec![
                     crate::effect::Effect::tag_triggering_object(trigger_tag),
-                    crate::effect::Effect::choose_objects(
-                        filter,
-                        1,
-                        crate::target::PlayerFilter::You,
-                        return_tag,
-                    ),
-                    crate::effect::Effect::move_to_zone(
-                        crate::target::ChooseSpec::Tagged(return_tag.into()),
-                        crate::zone::Zone::Battlefield,
-                        true,
+                    crate::effect::Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                        filter, return_tag,
+                    )),
+                    crate::effect::Effect::new(
+                        crate::effects::MoveToZoneEffect::new(
+                            crate::target::ChooseSpec::Tagged(return_tag.into()),
+                            crate::zone::Zone::Battlefield,
+                            true,
+                        )
+                        .under_owner_control(),
                     )
                     .tag(returned_tag),
                     crate::effect::Effect::for_each_tagged(

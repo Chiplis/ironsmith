@@ -602,6 +602,19 @@ pub(crate) fn parse_reveal(
         )));
     }
 
+    if words.starts_with(&["that", "many", "cards", "from", "the", "top", "of"])
+        || words.starts_with(&["that", "many", "cards", "from", "top", "of"])
+    {
+        return Ok(EffectAst::subject_verb_reveal_top_cards(
+            player,
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            },
+            TagKey::from(IT_TAG),
+        ));
+    }
+
     let top_prefix_len = if words.starts_with(&["the", "top"]) {
         Some(2usize)
     } else if words.starts_with(&["top"]) {
@@ -755,8 +768,7 @@ pub(crate) fn parse_life_equal_to_value(
         ] | [
             "equal", "to", "life", "that", "player", "lost", "this", "turn"
         ] | [
-            "equal", "to", "the", "amount", "of", "life", "that", "player", "lost", "this",
-            "turn"
+            "equal", "to", "the", "amount", "of", "life", "that", "player", "lost", "this", "turn"
         ] | [
             "equal", "to", "amount", "of", "life", "that", "player", "lost", "this", "turn"
         ]

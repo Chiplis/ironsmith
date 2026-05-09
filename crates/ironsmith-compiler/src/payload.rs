@@ -24,12 +24,14 @@ pub enum KeywordAction {
     Trample,
     Reach,
     Defender,
+    Decayed,
     Flash,
     Phasing,
     Indestructible,
     Shroud,
     Ward(u32),
     Wither,
+    Afflict(u32),
     Afterlife(u32),
     Fabricate(u32),
     Infect,
@@ -73,6 +75,10 @@ pub enum KeywordAction {
     },
     Disturb(ManaCost),
     Overload(ManaCost),
+    Awaken {
+        amount: u32,
+        cost: ManaCost,
+    },
     Spectacle(ManaCost),
     Foretell(ManaCost),
     Echo {
@@ -85,6 +91,8 @@ pub enum KeywordAction {
     },
     Casualty(u32),
     Conspire,
+    Amplify(u32),
+    AuraSwap(ManaCost),
     Devour(u32),
     Ravenous,
     Ascend,
@@ -121,6 +129,8 @@ pub enum KeywordAction {
     ProtectionFromColorless,
     ProtectionFromEverything,
     ProtectionFromChosenPlayer,
+    ProtectionFromChosenColor,
+    ProtectionFromFilter(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -162,6 +172,7 @@ impl KeywordAction {
                 | Self::Trample
                 | Self::Reach
                 | Self::Defender
+                | Self::Decayed
                 | Self::Flash
                 | Self::Phasing
                 | Self::Indestructible
@@ -222,6 +233,8 @@ impl KeywordAction {
                 | Self::ProtectionFromColorless
                 | Self::ProtectionFromEverything
                 | Self::ProtectionFromChosenPlayer
+                | Self::ProtectionFromChosenColor
+                | Self::ProtectionFromFilter(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -269,12 +282,14 @@ impl KeywordAction {
             Self::Trample => "Trample".to_string(),
             Self::Reach => "Reach".to_string(),
             Self::Defender => "Defender".to_string(),
+            Self::Decayed => "Decayed".to_string(),
             Self::Flash => "Flash".to_string(),
             Self::Phasing => "Phasing".to_string(),
             Self::Indestructible => "Indestructible".to_string(),
             Self::Shroud => "Shroud".to_string(),
             Self::Ward(amount) => format!("Ward {{{amount}}}"),
             Self::Wither => "Wither".to_string(),
+            Self::Afflict(amount) => format!("Afflict {amount}"),
             Self::Afterlife(amount) => format!("Afterlife {amount}"),
             Self::Fabricate(amount) => format!("Fabricate {amount}"),
             Self::Infect => "Infect".to_string(),
@@ -315,12 +330,15 @@ impl KeywordAction {
             Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),
+            Self::Awaken { amount, cost } => format!("Awaken {amount}—{}", cost.to_oracle()),
             Self::Spectacle(cost) => format!("Spectacle {}", cost.to_oracle()),
             Self::Foretell(cost) => format!("Foretell {}", cost.to_oracle()),
             Self::Echo { text, .. } => text.clone(),
             Self::CumulativeUpkeep { text, .. } => text.clone(),
             Self::Casualty(amount) => format!("Casualty {amount}"),
             Self::Conspire => "Conspire".to_string(),
+            Self::Amplify(amount) => format!("Amplify {amount}"),
+            Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
             Self::Devour(amount) => format!("Devour {amount}"),
             Self::Ravenous => "Ravenous".to_string(),
             Self::Ascend => "Ascend".to_string(),
@@ -367,6 +385,10 @@ impl KeywordAction {
             Self::ProtectionFromColorless => "Protection from colorless".to_string(),
             Self::ProtectionFromEverything => "Protection from everything".to_string(),
             Self::ProtectionFromChosenPlayer => "Protection from the chosen player".to_string(),
+            Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
+            Self::ProtectionFromFilter(filter) => {
+                format!("Protection from {}", filter.description())
+            }
             Self::ProtectionFromCardType(card_type) => {
                 format!(
                     "Protection from {}",

@@ -365,11 +365,14 @@ fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToke
         return false;
     }
 
-    let Some(first_static_idx) = sentences
-        .iter()
-        .enumerate()
-        .skip(1)
-        .find_map(|(idx, sentence)| sentence_is_static_after_trigger_effect(sentence).then_some(idx))
+    let Some(first_static_idx) =
+        sentences
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(idx, sentence)| {
+                sentence_is_static_after_trigger_effect(sentence).then_some(idx)
+            })
     else {
         return false;
     };

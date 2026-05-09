@@ -49,6 +49,11 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         cost: ManaCost,
         effects: Vec<E>,
     },
+    Awaken {
+        amount: u32,
+        cost: ManaCost,
+        effects: Vec<E>,
+    },
     Flashback {
         total_cost: TotalCost<C>,
     },
@@ -119,6 +124,7 @@ where
             Self::Miracle { .. }
             | Self::FlashWithAdditionalCost { .. }
             | Self::Overload { .. }
+            | Self::Awaken { .. }
             | Self::Composed { .. }
             | Self::Trap { .. }
             | Self::Bestow { .. } => Zone::Hand,
@@ -150,6 +156,7 @@ where
             Self::Suspend { cost, .. } => Some(cost),
             Self::Disturb { cost } => Some(cost),
             Self::Overload { cost, .. } => Some(cost),
+            Self::Awaken { cost, .. } => Some(cost),
             Self::Flashback { total_cost } => total_cost.mana_cost(),
             Self::Harmonize { total_cost } => total_cost.mana_cost(),
             Self::Retrace { total_cost } => total_cost.mana_cost(),
@@ -241,6 +248,7 @@ where
             Self::Suspend { .. } => "Suspend",
             Self::Disturb { .. } => "Disturb",
             Self::Overload { .. } => "Overload",
+            Self::Awaken { .. } => "Awaken",
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
             Self::Retrace { .. } => "Retrace",
@@ -370,6 +378,13 @@ where
         }
     }
 
+    pub fn awaken_effects(&self) -> Option<&[E]> {
+        match self {
+            Self::Awaken { effects, .. } => Some(effects.as_slice()),
+            _ => None,
+        }
+    }
+
     pub fn miracle_cost(&self) -> Option<&ManaCost> {
         match self {
             Self::Miracle { cost } => Some(cost),
@@ -425,6 +440,21 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },
             Self::Disturb { cost } => AlternativeCastingMethod::Disturb { cost },
             Self::Overload { cost, effects } => AlternativeCastingMethod::Overload {
+                cost,
+                effects: {
+                    let mut mapped = Vec::with_capacity(effects.len());
+                    for effect in effects {
+                        mapped.push(map_effect(effect)?);
+                    }
+                    mapped
+                },
+            },
+            Self::Awaken {
+                amount,
+                cost,
+                effects,
+            } => AlternativeCastingMethod::Awaken {
+                amount,
                 cost,
                 effects: {
                     let mut mapped = Vec::with_capacity(effects.len());

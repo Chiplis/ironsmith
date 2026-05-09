@@ -229,6 +229,9 @@ pub(crate) fn has_protection_from_source_with_view(
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
                     .is_some_and(|chosen| game.controller_of(source) == chosen),
+                crate::ability::ProtectionFrom::ChosenColor => game
+                    .chosen_color(target_id)
+                    .is_some_and(|chosen| view.object_colors(source_id).contains(chosen)),
                 _ => source_matches_protection_with_view(source, protection_from, game, view),
             };
             if matches {
@@ -262,6 +265,9 @@ fn has_protection_from_source_snapshot_with_view(
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
                     .is_some_and(|chosen| source_snapshot.controller == chosen),
+                crate::ability::ProtectionFrom::ChosenColor => game
+                    .chosen_color(target_id)
+                    .is_some_and(|chosen| source_snapshot.colors.contains(chosen)),
                 _ => source_snapshot_matches_protection(source_snapshot, protection_from, game),
             };
             if matches {
@@ -306,6 +312,7 @@ pub(crate) fn source_matches_protection_with_view(
         ProtectionFrom::Creatures => view.object_has_card_type(source.id, CardType::Creature),
         // Protection from the chosen player is target-specific and handled by the caller.
         ProtectionFrom::ChosenPlayer => false,
+        ProtectionFrom::ChosenColor => false,
         // Protection from a card type
         ProtectionFrom::CardType(card_type) => view.object_has_card_type(source.id, *card_type),
         // Protection from permanents matching a filter
@@ -333,6 +340,7 @@ fn source_snapshot_matches_protection(
         ProtectionFrom::AllColors => !source.colors.is_empty(),
         ProtectionFrom::Creatures => source.card_types.contains(&CardType::Creature),
         ProtectionFrom::ChosenPlayer => false,
+        ProtectionFrom::ChosenColor => false,
         ProtectionFrom::CardType(card_type) => source.card_types.contains(card_type),
         ProtectionFrom::Permanents(filter) => {
             let filter_ctx = game.filter_context_for(game.turn.active_player, None);

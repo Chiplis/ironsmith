@@ -613,6 +613,14 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if is_exact_negated_result("you") || is_negated_this_way_result("you") {
         return Some(IfResultPredicate::DidNot);
     }
+    if (words.len() == 2 && words[0] == "you" && matches!(words[1], "dont" | "didnt" | "cant"))
+        || (words.len() == 3
+            && words[0] == "you"
+            && matches!(words[1], "do" | "did" | "can")
+            && words[2] == "not")
+    {
+        return Some(IfResultPredicate::DidNot);
+    }
     if words.len() >= 3
         && words[0] == "you"
         && matches!(words[1], "lose" | "lost")

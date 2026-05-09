@@ -332,6 +332,7 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "-0/-2" => Some(CounterType::MinusZeroMinusTwo),
         "-2/-2" => Some(CounterType::MinusTwoMinusTwo),
         "deathtouch" => Some(CounterType::Deathtouch),
+        "decayed" => Some(CounterType::Decayed),
         "flying" => Some(CounterType::Flying),
         "haste" => Some(CounterType::Haste),
         "hexproof" => Some(CounterType::Hexproof),

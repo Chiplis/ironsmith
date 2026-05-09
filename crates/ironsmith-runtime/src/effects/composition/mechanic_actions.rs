@@ -25,6 +25,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
 pub use ironsmith_core::{BolsterEffect, CipherEffect};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -961,6 +962,148 @@ impl EffectExecutor for DevourEffect {
         )
         .execute(game, ctx)?;
         counters.events.extend(sacrifice_events);
+        Ok(counters)
+    }
+}
+
+impl EffectExecutor for AmplifyEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if !game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield)
+        {
+            return Ok(EffectOutcome::resolved());
+        }
+
+        let source_creature_types = game
+            .calculated_subtypes(ctx.source)
+            .into_iter()
+            .filter(|subtype| subtype.is_creature_type())
+            .collect::<Vec<_>>();
+        if source_creature_types.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let candidates = game
+            .player(ctx.controller)
+            .map(|player| player.hand.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|&id| {
+                game.object(id).is_some_and(|obj| {
+                    obj.zone == Zone::Hand
+                        && obj.has_card_type(crate::types::CardType::Creature)
+                        && source_creature_types
+                            .iter()
+                            .any(|&subtype| obj.has_subtype(subtype))
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let chosen = if candidates.is_empty() {
+            Vec::new()
+        } else {
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
+                candidates.clone(),
+                0,
+                Some(candidates.len()),
+            );
+            let selection: Vec<ObjectId> = make_decision(
+                game,
+                ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+            );
+            selection
+                .into_iter()
+                .filter(|id| candidates.contains(id))
+                .fold(Vec::new(), |mut chosen, id| {
+                    if !chosen.contains(&id) {
+                        chosen.push(id);
+                    }
+                    chosen
+                })
+        };
+
+        if chosen.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        for viewer_idx in 0..game.players.len() {
+            let viewer = PlayerId::from_index(viewer_idx as u8);
+            let view_ctx = crate::decisions::context::ViewCardsContext::new(
+                viewer,
+                ctx.controller,
+                Some(ctx.source),
+                Zone::Hand,
+                "Reveal cards from hand for amplify",
+            )
+            .with_public(true);
+            ctx.decision_maker
+                .view_cards(game, viewer, &chosen, &view_ctx);
+        }
+
+        let revealed_snapshots = chosen
+            .iter()
+            .filter_map(|&id| {
+                game.object(id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+            })
+            .collect::<Vec<_>>();
+        if !revealed_snapshots.is_empty() {
+            let entry = ctx
+                .tagged_objects
+                .entry(crate::tag::TagKey::from(
+                    crate::effects::PUBLIC_REVEALED_TAG,
+                ))
+                .or_default();
+            for snapshot in revealed_snapshots {
+                if !entry
+                    .iter()
+                    .any(|existing| existing.object_id == snapshot.object_id)
+                {
+                    entry.push(snapshot);
+                }
+            }
+        }
+
+        let reveal_events = chosen
+            .iter()
+            .filter_map(|&id| {
+                let snapshot = game
+                    .object(id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))?;
+                Some(TriggerEvent::new_with_provenance(
+                    CardRevealedEvent::new(
+                        ctx.controller,
+                        id,
+                        Zone::Hand,
+                        Some(ctx.source),
+                        Some(snapshot),
+                    ),
+                    ctx.provenance,
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        let mut counters = crate::effects::PutCountersEffect::new(
+            CounterType::PlusOnePlusOne,
+            (chosen.len() as i32).saturating_mul(self.amount as i32),
+            ChooseSpec::Source,
+        )
+        .execute(game, ctx)?;
+        counters.events.extend(reveal_events);
         Ok(counters)
     }
 }

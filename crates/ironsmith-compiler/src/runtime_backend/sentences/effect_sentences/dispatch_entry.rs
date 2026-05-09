@@ -627,10 +627,12 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
     {
         let mut filter = ObjectFilter::creature();
         filter.controller = Some(PlayerFilter::Opponent);
-        return Some(EffectAst::subject_verb_register_enter_under_control_replacement(
-            filter,
-            ZoneReplacementDurationAst::OneShot,
-        ));
+        return Some(
+            EffectAst::subject_verb_register_enter_under_control_replacement(
+                filter,
+                ZoneReplacementDurationAst::OneShot,
+            ),
+        );
     }
 
     None
@@ -950,9 +952,9 @@ fn parse_effect_sentences_from_sentence_inputs(
 
         let normalized_sentence_text =
             crate::runtime_backend::token_word_refs(&sentence_tokens).join(" ");
-        if let Some(replacement) = future_zone_replacement_from_sentence_text(
-            normalized_sentence_text.as_str(),
-        ) {
+        if let Some(replacement) =
+            future_zone_replacement_from_sentence_text(normalized_sentence_text.as_str())
+        {
             effects.push(replacement);
             carried_context = None;
             sentence_idx += 1;

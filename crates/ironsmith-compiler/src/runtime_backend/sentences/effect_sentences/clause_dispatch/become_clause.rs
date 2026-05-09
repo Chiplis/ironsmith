@@ -150,7 +150,7 @@ pub(crate) fn parse_become_clause(
         }
     }
 
-    let target = if target_subject_words.is_empty()
+    let mut target = if target_subject_words.is_empty()
         || target_subject_words == ["it"]
         || target_subject_words == ["they"]
         || target_subject_words == ["them"]
@@ -236,10 +236,14 @@ pub(crate) fn parse_become_clause(
         become_words,
         &["aura", "enchantment", "with", "enchant", "creature"],
     ) {
-        let attachment_filter = if word_slice_starts_with(
-            &become_words[5..],
-            &["you", "control"],
-        ) {
+        if matches!(
+            target_subject_words.as_slice(),
+            ["it"] | ["this"] | ["this", "creature"]
+        ) || matches!(&target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+        {
+            target = TargetAst::Source(span_from_tokens(subject_tokens));
+        }
+        let attachment_filter = if word_slice_starts_with(&become_words[5..], &["you", "control"]) {
             ObjectFilter::creature().you_control()
         } else {
             ObjectFilter::creature()

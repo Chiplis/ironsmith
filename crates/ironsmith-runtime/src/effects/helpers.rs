@@ -847,9 +847,12 @@ pub fn resolve_value(
                     .object(snapshot.object_id)
                     .is_none_or(|object| object.zone != snapshot.zone)
             {
-                snapshot.power.ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("Target had no power".to_string())
-                })
+                latest_tagged_lki_snapshot(game, snapshot)
+                    .unwrap_or(snapshot)
+                    .power
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no power".to_string())
+                    })
             } else if let Some(obj) = game.object(target_id) {
                 game.calculated_power(target_id)
                     .or_else(|| obj.power())
@@ -889,9 +892,12 @@ pub fn resolve_value(
                     .object(snapshot.object_id)
                     .is_none_or(|object| object.zone != snapshot.zone)
             {
-                snapshot.toughness.ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("Target had no toughness".to_string())
-                })
+                latest_tagged_lki_snapshot(game, snapshot)
+                    .unwrap_or(snapshot)
+                    .toughness
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no toughness".to_string())
+                    })
             } else if let Some(obj) = game.object(target_id) {
                 game.calculated_toughness(target_id)
                     .or_else(|| obj.toughness())
@@ -1524,6 +1530,25 @@ fn object_lki_snapshot<'a>(
         .as_ref()
         .filter(|snapshot| snapshot.object_id == object_id)
         .or_else(|| ctx.target_snapshots.get(&object_id))
+}
+
+fn latest_tagged_lki_snapshot<'a>(
+    game: &'a GameState,
+    tagged_snapshot: &ObjectSnapshot,
+) -> Option<&'a ObjectSnapshot> {
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .rev()
+        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+        .filter_map(|event| event.snapshot.as_ref())
+        .find(|snapshot| {
+            snapshot.zone == tagged_snapshot.zone
+                && (snapshot.object_id == tagged_snapshot.object_id
+                    || snapshot.stable_id == tagged_snapshot.stable_id)
+        })
 }
 
 fn source_lki_for_moved_current_object<'a>(
@@ -2579,8 +2604,10 @@ pub fn resolve_objects_from_spec(
                     let tagged = ctx
                         .get_tagged_all(tag)
                         .ok_or_else(|| ExecutionError::TagNotFound(tag.to_string()))?;
-                    let objects: Vec<ObjectId> =
-                        tagged.iter().map(|snapshot| snapshot.object_id).collect();
+                    let objects: Vec<ObjectId> = tagged
+                        .iter()
+                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                        .collect();
                     if objects.is_empty() {
                         return Err(ExecutionError::InvalidTarget);
                     }
@@ -2812,7 +2839,10 @@ pub fn resolve_objects_from_spec(
             let Some(tagged) = ctx.get_tagged_all(tag) else {
                 return Ok(Vec::new());
             };
-            Ok(tagged.iter().map(|snapshot| snapshot.object_id).collect())
+            Ok(tagged
+                .iter()
+                .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                .collect())
         }
 
         // Iterated object (ForEach loops)

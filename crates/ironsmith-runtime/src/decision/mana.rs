@@ -1548,11 +1548,14 @@ pub(crate) fn can_cast_with_alternative_with_context(
         _ => None,
     };
     let spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
-    let effects_override = method.overload_effects().or_else(|| {
-        disturbed_view
-            .as_ref()
-            .and_then(|view| view.spell_effect.as_deref())
-    });
+    let effects_override = method
+        .overload_effects()
+        .or_else(|| method.awaken_effects())
+        .or_else(|| {
+            disturbed_view
+                .as_ref()
+                .and_then(|view| view.spell_effect.as_deref())
+        });
     let free_plot_cost = crate::mana::ManaCost::new();
     if let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
@@ -1631,9 +1634,7 @@ fn tagged_dependency_satisfied_by_prior_cost(
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
     {
         &sacrifice.filter.tagged_constraints
-    } else if let Some(sacrifice) =
-        effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
-    {
+    } else if let Some(sacrifice) = effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
         &sacrifice.filter.tagged_constraints
     } else {
         return false;

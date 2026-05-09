@@ -1,6 +1,6 @@
 //! Attach arbitrary objects to a target object or player.
 
-use super::attach_battlefield_object_to_target;
+use super::{attach_battlefield_object_to_target, choose_color_as_becomes_attached};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_single_target_from_spec};
@@ -33,10 +33,20 @@ impl EffectExecutor for AttachObjectsEffect {
         }
 
         let mut attached_count = 0i32;
+        let mut attempted_source = false;
         for object_id in object_ids {
+            attempted_source |= object_id == ctx.source;
             if attach_battlefield_object_to_target(game, object_id, target) {
+                choose_color_as_becomes_attached(game, ctx, object_id, target);
                 attached_count += 1;
             }
+        }
+        if attached_count == 0
+            && !attempted_source
+            && attach_battlefield_object_to_target(game, ctx.source, target)
+        {
+            choose_color_as_becomes_attached(game, ctx, ctx.source, target);
+            attached_count += 1;
         }
 
         Ok(EffectOutcome::count(attached_count))

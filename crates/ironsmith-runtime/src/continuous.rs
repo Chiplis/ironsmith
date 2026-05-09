@@ -4358,6 +4358,29 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
             continue;
         }
 
+        if counter_type == CounterType::Decayed {
+            if !chars
+                .static_abilities
+                .iter()
+                .any(|a| a.id() == StaticAbilityId::CantBlock)
+            {
+                chars.static_abilities.push(StaticAbility::cant_block());
+            }
+            chars.abilities.push(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_attacks(),
+                crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                        crate::triggers::Trigger::end_of_combat(),
+                        vec![crate::effect::Effect::sacrifice_source()],
+                        true,
+                        Vec::new(),
+                        crate::target::PlayerFilter::You,
+                    )),
+                ]),
+            ));
+            continue;
+        }
+
         // Check if this counter grants an ability
         if let Some(ability_id) = counter_type.granted_ability() {
             // Check if we already have this ability (avoid duplicates)

@@ -95,6 +95,14 @@ pub(super) fn parse_statement_line_cst(
     for group_tokens in &parse_groups {
         let effects = match parse_effect_sentences_lexed(group_tokens) {
             Ok(effects) => effects,
+            Err(_)
+                if matches!(
+                    parse_static_ability_ast_line_lexed(group_tokens),
+                    Ok(Some(_))
+                ) =>
+            {
+                continue;
+            }
             Err(err)
                 if looks_like_statement_line_lexed(line)
                     || token_words_have_any_prefix(
@@ -232,6 +240,32 @@ fn sentence_rewrite_contains_instead_split(tokens: &[OwnedLexToken]) -> bool {
     lexed_tokens_contain_non_prefix_instead(tokens)
 }
 
+fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {
+    let first_static_idx =
+        sentence_tokens
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(idx, sentence)| {
+                matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))).then_some(idx)
+            })?;
+
+    if !sentence_tokens[..first_static_idx]
+        .iter()
+        .all(|sentence| parse_effect_sentences_lexed(sentence).is_ok())
+    {
+        return None;
+    }
+    if !sentence_tokens[first_static_idx..]
+        .iter()
+        .all(|sentence| matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+    {
+        return None;
+    }
+
+    Some(first_static_idx)
+}
+
 fn normalize_statement_parse_groups_from_sentences_lexed(
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
     fallback_tokens: &[OwnedLexToken],
@@ -262,6 +296,8 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
         .find_map(|(idx, sentence)| {
             sentence_rewrite_contains_instead_split(sentence).then_some(idx)
         });
+
+    let split_idx = split_idx.or_else(|| first_trailing_static_sentence_idx(&sentence_tokens));
 
     let Some(split_idx) = split_idx else {
         return vec![join_statement_parse_sentence_group(&sentence_tokens)];

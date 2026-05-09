@@ -1064,6 +1064,7 @@ pub(crate) fn parse_put_into_hand(
             return Ok(EffectAst::subject_verb_return_all_to_battlefield(
                 filter,
                 battlefield_tapped,
+                battlefield_controller,
             ));
         }
 

@@ -125,6 +125,10 @@ fn first_word_choose_or_each(sentences: &[SentenceInput], sentence_idx: usize) -
     sentence_head_word_in(sentences, sentence_idx, &["choose", "each"])
 }
 
+fn first_word_each(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "each")
+}
+
 fn first_word_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "target")
 }
@@ -389,6 +393,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_target,
         parser: generic_subject_verb_sequences::parse_parameterized_flashback_grant_sequence,
+    },
+    SequenceRuleDef {
+        name: "each-player-shuffle-reveal-put-revealed-types-rest-bottom",
+        feature_tag: Some("mass-reveal-battlefield-bottom"),
+        priority: 243,
+        consumed_sentences: 2,
+        predicate: first_word_each,
+        parser: generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom,
     },
     SequenceRuleDef {
         name: "copy-for-each-target-each-copy-different",

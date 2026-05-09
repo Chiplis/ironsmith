@@ -3,14 +3,14 @@
 use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
+use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+use crate::decisions::make_decision;
+use crate::decisions::specs::objects::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::permanents::attach_battlefield_object_to_target;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
-use crate::decisions::make_decision;
-use crate::decisions::specs::objects::ChooseObjectsSpec;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;

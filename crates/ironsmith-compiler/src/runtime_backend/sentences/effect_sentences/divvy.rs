@@ -264,7 +264,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
                 false,
             ),
-            EffectAst::subject_verb_return_all_to_battlefield(rest_filter, false),
+            EffectAst::subject_verb_return_all_to_battlefield(
+                rest_filter,
+                false,
+                ReturnControllerAst::You,
+            ),
         ]));
     }
 

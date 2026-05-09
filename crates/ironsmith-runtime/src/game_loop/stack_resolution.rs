@@ -955,7 +955,11 @@ fn preserve_resolved_spell_ability_tags(
     if let Some(object) = game.object_mut(source) {
         merge_tagged_objects(&mut object.cast_tagged_objects, &ctx.tagged_objects);
     }
-    if let Some(entry) = game.stack.iter_mut().find(|entry| entry.object_id == source) {
+    if let Some(entry) = game
+        .stack
+        .iter_mut()
+        .find(|entry| entry.object_id == source)
+    {
         merge_tagged_objects(&mut entry.tagged_objects, &ctx.tagged_objects);
     }
 }

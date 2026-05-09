@@ -1112,10 +1112,10 @@ where
     {
         return Ok(converted);
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterEnterUnderControlReplacementEffect>(
-            &effect,
-        )
+    if let Some(converted) = clone_direct_effect::<
+        M,
+        crate::effects::RegisterEnterUnderControlReplacementEffect,
+    >(&effect)
     {
         return Ok(converted);
     }
@@ -1436,6 +1436,8 @@ where
 
     clone_direct!(
         crate::effects::AmassEffect,
+        crate::effects::AmplifyEffect,
+        crate::effects::AuraSwapEffect,
         crate::effects::IncubateEffect,
         crate::effects::LearnEffect,
         crate::effects::BecomeBasicLandTypeChoiceEffect,

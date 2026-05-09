@@ -204,7 +204,8 @@ fn lower_rewrite_statement_to_chunks_impl(
             for group_tokens in grouped_tokens {
                 if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&group_tokens) {
                     chunks.push(chunk);
-                } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)? {
+                } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)?
+                {
                     chunks.push(LineAst::StaticAbilities(abilities));
                 } else {
                     let effects = parse_effect_sentences_lexed(&group_tokens)?;
@@ -236,7 +237,8 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         return None;
     }
 
-    let count = if normalized.contains("where x is the total mana value of all cards revealed this way")
+    let count = if normalized
+        .contains("where x is the total mana value of all cards revealed this way")
         || normalized.contains("where x is the total mana value of cards revealed this way")
     {
         crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
@@ -388,11 +390,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
     let effect_sentences = split_lexed_sentences(effect_parse_tokens);
     if effect_sentences.len() > 1
         && let Some(first_static_idx) =
-            effect_sentences.iter().enumerate().skip(1).find_map(|(idx, sentence)| {
-                (parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
-                    || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
-                .then_some(idx)
-            })
+            effect_sentences
+                .iter()
+                .enumerate()
+                .skip(1)
+                .find_map(|(idx, sentence)| {
+                    (parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
+                        || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+                    .then_some(idx)
+                })
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
         let trigger_effect_sentences = effect_sentences[..first_static_idx]
@@ -913,6 +919,12 @@ fn lower_rewrite_static_to_chunk_impl(
         let display = capitalize_first_equip_cost_alternative_display(&line.text);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::first_equip_cost_alternative(display).into()),
+            chosen_option_label,
+        );
+    }
+    if line.text == "you may activate equip abilities any time you could cast an instant." {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::equip_abilities_any_time().into()),
             chosen_option_label,
         );
     }

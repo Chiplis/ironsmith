@@ -759,6 +759,7 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Trample => Some(StaticAbility::trample()),
         KeywordAction::Reach => Some(StaticAbility::reach()),
         KeywordAction::Defender => Some(StaticAbility::defender()),
+        KeywordAction::Decayed => Some(StaticAbility::cant_block()),
         KeywordAction::Flash => Some(StaticAbility::flash()),
         KeywordAction::Phasing => Some(StaticAbility::phasing()),
         KeywordAction::Indestructible => Some(StaticAbility::indestructible()),
@@ -769,6 +770,8 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
             ])))
         }),
         KeywordAction::Wither => Some(StaticAbility::wither()),
+        KeywordAction::Afflict(_) => None,
+        KeywordAction::Amplify(_) => None,
         KeywordAction::Afterlife(amount) => {
             Some(StaticAbility::keyword_marker(format!("afterlife {amount}")))
         }
@@ -880,6 +883,12 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::ProtectionFromChosenPlayer => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::ChosenPlayer,
         )),
+        KeywordAction::ProtectionFromChosenColor => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::ChosenColor,
+        )),
+        KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Permanents(filter),
+        )),
         KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),
         )),
@@ -906,9 +915,8 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
 }
 
 fn supported_keyword_marker_text(text: &str) -> bool {
-    text.trim_start()
-        .to_ascii_lowercase()
-        .starts_with("prototype ")
+    let text = text.trim_start().to_ascii_lowercase();
+    text.starts_with("prototype ") || text.starts_with("splice onto ")
 }
 
 fn rewrite_lower_keyword_action_or_err(
@@ -1084,6 +1092,9 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
+        StaticAbilityAst::AttachmentRestriction { .. } => Err(CardTextError::InvariantViolation(
+            "attachment restrictions must be lowered through card definition state".to_string(),
+        )),
     }
 }
 

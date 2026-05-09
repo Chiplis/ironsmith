@@ -1625,6 +1625,9 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Overload { cost, .. } => {
             format!("Overload {}", cost.to_oracle())
         }
+        AlternativeCastingMethod::Awaken { amount, cost, .. } => {
+            format!("Awaken {amount}—{}", cost.to_oracle())
+        }
         AlternativeCastingMethod::Flashback { total_cost } => {
             let costs = method.non_mana_costs();
             let mana_cost = total_cost

@@ -32,7 +32,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
 use crate::turn_history::TurnHistory;
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 /// Pending replacement effect choice when multiple effects apply to the same event.
@@ -3031,6 +3031,32 @@ impl GameState {
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
                 if entry.is_ability
+                    && entry
+                        .triggering_event
+                        .as_ref()
+                        .and_then(|event| event.object_id())
+                        .is_some_and(|object_id| object_id == old_id)
+                {
+                    entry.tagged_objects.insert(
+                        crate::tag::TagKey::from("triggering"),
+                        vec![snapshot.clone()],
+                    );
+                    entry
+                        .tagged_objects
+                        .entry(crate::tag::TagKey::from("__it__"))
+                        .or_insert_with(|| vec![snapshot.clone()]);
+                }
+                for tagged_snapshots in entry.tagged_objects.values_mut() {
+                    for tagged_snapshot in tagged_snapshots {
+                        if (tagged_snapshot.object_id == old_id
+                            || tagged_snapshot.stable_id == snapshot.stable_id)
+                            && tagged_snapshot.zone == snapshot.zone
+                        {
+                            *tagged_snapshot = snapshot.clone();
+                        }
+                    }
+                }
+                if entry.is_ability
                     && (entry.object_id == old_id
                         || entry
                             .source_stable_id
@@ -3156,6 +3182,19 @@ impl GameState {
         }
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
+        }
+
+        if old_zone != Zone::Stack
+            && new_zone == Zone::Battlefield
+            && new_object.card_types.contains(&CardType::Land)
+            && new_object.card_types.len() == 1
+            && let Some(front_def) = self.linked_face_definition_by_name_or_id(
+                new_object.other_face_name.as_deref(),
+                new_object.other_face,
+            )
+            && !front_def.card.card_types.contains(&CardType::Land)
+        {
+            new_object.apply_definition_face(&front_def);
         }
 
         // Set battlefield state for new permanents

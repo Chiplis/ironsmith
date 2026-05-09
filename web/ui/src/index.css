@@ -3549,6 +3549,17 @@
   contain: strict;
 }
 
+/* Suppress hover-driven UI side effects (card highlights, hover-spawned
+ * inspectors, drop-target reveals) while the exile animation plays. The
+ * overlay layer itself is already pointer-events: none, so this only blocks
+ * the underlying battlefield/inspector chrome for the duration of the flight. */
+body.ironsmith-exile-animating .game-card,
+body.ironsmith-exile-animating .game-card *,
+body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage,
+body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
+  pointer-events: none !important;
+}
+
 .zone-move-effects-canvas {
   position: absolute;
   inset: 0;
@@ -3561,7 +3572,7 @@
 .zone-exile-effect {
   position: fixed;
   transform-origin: 50% 50%;
-  animation: zone-exile-rise 1900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: zone-exile-rise 1900ms cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity, filter;
 }
 
@@ -3694,7 +3705,12 @@
   filter:
     drop-shadow(0 0 8px rgba(255, 246, 213, 0.86))
     drop-shadow(0 0 20px rgba(142, 205, 255, 0.34));
-  animation: zone-exile-wing-flap-left 520ms ease-in-out 2 alternate;
+  animation:
+    zone-exile-wing-flap-left
+    var(--exile-wing-flap-duration, 520ms)
+    ease-in-out
+    var(--exile-wing-flap-phase-left, 0ms)
+    infinite alternate;
 }
 
 .zone-exile-wing--left {
@@ -3706,6 +3722,7 @@
   transform-origin: 0% 58%;
   transform: scaleX(-1);
   animation-name: zone-exile-wing-flap-right;
+  animation-delay: var(--exile-wing-flap-phase-right, 0ms);
 }
 
 .zone-exile-wing span {
@@ -3935,59 +3952,67 @@
 .zone-exile-effect--to-inspector {
   animation-name: zone-exile-rise-to-inspector;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--source-only {
-  animation: zone-exile-source-only-root 900ms ease-out forwards;
+  animation: zone-exile-source-only-root 1120ms ease-out both;
+  z-index: 1;
 }
 
 .zone-exile-effect--source-only .zone-exile-halo {
   animation-name: zone-exile-source-only-halo;
-  animation-duration: 900ms;
+  animation-duration: 1120ms;
 }
 
 .zone-exile-effect--source-only .zone-exile-card-proxy {
   animation-name: zone-exile-source-only-card-proxy;
-  animation-duration: 900ms;
+  animation-duration: 1120ms;
 }
 
 .zone-exile-effect--source-only .zone-exile-source-clone,
 .zone-exile-effect--source-only .zone-exile-card-proxy img {
-  animation: zone-exile-source-only-art 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: zone-exile-source-only-art 1120ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zone-exile-effect--source-only .zone-exile-card-whiteout {
   animation-name: zone-exile-source-only-whiteout;
-  animation-duration: 900ms;
+  animation-duration: 1120ms;
 }
 
 .zone-exile-effect--to-inspector .zone-exile-card-proxy {
   animation-name: zone-exile-card-proxy-source-only;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-card-proxy img {
-  animation: zone-exile-source-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: zone-exile-source-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-halo {
   animation-name: zone-exile-halo-to-inspector;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-wings {
   animation-name: zone-exile-wings-to-inspector;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-card-whiteout {
   animation-name: zone-exile-whiteout-to-inspector;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-final-spark {
   animation-name: zone-exile-final-spark-to-inspector;
   animation-duration: 2400ms;
+  animation-delay: var(--exile-start-delay, 0ms);
 }
 
 .hover-art-stage--shader-reveal {
@@ -4008,8 +4033,7 @@
   z-index: 4;
   pointer-events: none;
   background:
-    radial-gradient(74% 82% at 28% 38%, rgba(255, 255, 255, 0.98), rgba(255, 247, 214, 0.78) 24%, rgba(180, 224, 255, 0.24) 54%, transparent 76%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 239, 180, 0.52) 48%, rgba(255, 255, 255, 0));
+    radial-gradient(82% 82% at 50% 50%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.34) 58%, transparent 92%);
   mix-blend-mode: screen;
   animation: inspector-shader-white-fill 2400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
@@ -4018,7 +4042,7 @@
 .hover-art-stage--shader-reveal .hover-art-full-art-crop::before {
   content: "";
   position: absolute;
-  inset: -12%;
+  inset: 0;
   z-index: 5;
   pointer-events: none;
   opacity: 0;
@@ -4028,8 +4052,7 @@
     radial-gradient(circle at 42% 72%, rgba(188,226,255,0.84) 0 1.6px, transparent 3.2px),
     radial-gradient(circle at 56% 44%, rgba(255,255,255,0.92) 0 2px, transparent 4px),
     radial-gradient(circle at 72% 22%, rgba(255,232,152,0.72) 0 1.3px, transparent 3px),
-    radial-gradient(circle at 84% 66%, rgba(190,226,255,0.78) 0 1.8px, transparent 3.4px),
-    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.42), transparent 62%);
+    radial-gradient(circle at 84% 66%, rgba(190,226,255,0.78) 0 1.8px, transparent 3.4px);
   mix-blend-mode: screen;
   filter: blur(0.2px) saturate(1.18);
   animation: inspector-shader-particle-dissolve 2400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -4072,7 +4095,7 @@
     filter: brightness(1.45) saturate(0.96);
   }
   62% {
-    opacity: 1;
+    opacity: 0.78;
     transform:
       translate3d(
         calc(var(--exile-target-x) * 0.94),
@@ -4080,34 +4103,54 @@
         0
       )
       rotate(calc(var(--exile-tilt) * -0.28));
-    filter: brightness(1.85) saturate(0.75) blur(0.15px);
+    filter: brightness(1.55) saturate(0.75) blur(0.2px);
   }
   72% {
-    opacity: 1;
+    opacity: 0.32;
     transform:
       translate3d(var(--exile-target-x), var(--exile-target-y), 0)
       rotate(0deg);
-    filter: brightness(2.8) saturate(0.42) blur(0.35px);
+    filter: brightness(1.65) saturate(0.42) blur(0.6px);
+  }
+  84% {
+    opacity: 0.08;
+    transform:
+      translate3d(var(--exile-target-x), var(--exile-target-y), 0)
+      rotate(0deg);
+    filter: brightness(1.3) saturate(0.2) blur(1.2px);
   }
   100% {
     opacity: 0;
     transform:
       translate3d(var(--exile-target-x), var(--exile-target-y), 0)
       rotate(0deg);
-    filter: brightness(4.6) saturate(0) blur(2px);
+    filter: brightness(1) saturate(0) blur(1.6px);
   }
 }
 
 @keyframes zone-exile-source-only-root {
   0%,
-  62% {
+  44% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) scale(1);
     filter: brightness(1.08) saturate(1.08);
+  }
+  72% {
+    opacity: 0.92;
+    transform: translate3d(
+      calc(var(--exile-converge-x, 0px) * 0.55),
+      calc(var(--exile-converge-y, 0px) * 0.55),
+      0
+    ) scale(0.74);
+    filter: brightness(2.6) saturate(0.5) blur(0.4px);
   }
   100% {
     opacity: 0;
-    transform: translate3d(0, -5%, 0) scale(0.94);
+    transform: translate3d(
+      var(--exile-converge-x, 0px),
+      var(--exile-converge-y, 0px),
+      0
+    ) scale(0.18);
     filter: brightness(4.8) saturate(0) blur(2px);
   }
 }
@@ -4119,15 +4162,19 @@
   }
   34% {
     opacity: 1;
-    transform: scale(1.03) rotateX(0deg);
+    transform: scale(1.01) rotateX(0deg);
   }
-  72% {
-    opacity: 0.24;
+  62% {
+    opacity: 0.48;
     transform: scale(0.96) rotateX(0deg);
+  }
+  82% {
+    opacity: 0.14;
+    transform: scale(0.86) rotateX(0deg);
   }
   100% {
     opacity: 0;
-    transform: scale(0.86) rotateX(0deg);
+    transform: scale(0.62) rotateX(0deg);
   }
 }
 
@@ -4136,17 +4183,17 @@
     opacity: 1;
     filter: saturate(1.12) contrast(1.06) brightness(1);
   }
-  26% {
+  34% {
     opacity: 1;
     filter: saturate(0.58) contrast(1.24) brightness(2.3);
   }
-  56% {
-    opacity: 0.48;
-    filter: saturate(0) contrast(1.5) brightness(4.4) blur(0.9px);
+  62% {
+    opacity: 0.28;
+    filter: saturate(0) contrast(1.55) brightness(4.8) blur(1.5px);
   }
   100% {
     opacity: 0;
-    filter: saturate(0) contrast(1.7) brightness(5) blur(2.4px);
+    filter: saturate(0) contrast(1.7) brightness(5) blur(3px);
   }
 }
 
@@ -4155,17 +4202,17 @@
     opacity: 0;
     transform: scale(0.5);
   }
-  32% {
+  42% {
     opacity: 1;
     transform: scale(1.08);
   }
-  72% {
-    opacity: 0.7;
-    transform: scale(1.26);
+  70% {
+    opacity: 0.38;
+    transform: scale(1.18);
   }
   100% {
     opacity: 0;
-    transform: scale(1.44);
+    transform: scale(1.34);
   }
 }
 
@@ -4174,7 +4221,7 @@
     opacity: 0;
     transform: scale(0.62) rotate(0deg);
   }
-  28% {
+  38% {
     opacity: 0.86;
     transform: scale(1.08) rotate(14deg);
   }
@@ -4240,9 +4287,13 @@
     opacity: 0.58;
     transform: scale(1) rotate(42deg);
   }
+  82% {
+    opacity: 0.16;
+    transform: scale(1.18) rotate(72deg);
+  }
   100% {
     opacity: 0;
-    transform: scale(2.2) rotate(118deg);
+    transform: scale(1.36) rotate(96deg);
   }
 }
 
@@ -4257,16 +4308,20 @@
     transform: scale(0.88) translateY(2%);
   }
   54% {
-    opacity: 0.94;
-    transform: scale(1) translateY(-4%);
+    opacity: 0.86;
+    transform: scale(0.96) translateY(-4%);
   }
-  74% {
-    opacity: 0.34;
-    transform: scale(1.12) translateY(-8%);
+  68% {
+    opacity: 0.18;
+    transform: scale(1) translateY(-6%);
+  }
+  82% {
+    opacity: 0;
+    transform: scale(1.04) translateY(-4%);
   }
   100% {
     opacity: 0;
-    transform: scale(1.28) translateY(0);
+    transform: scale(1.06) translateY(0);
   }
 }
 
@@ -4296,59 +4351,46 @@
     transform: scale(0.2);
   }
   22% {
-    opacity: 0.9;
-    transform: scale(1.1);
+    opacity: 0.7;
+    transform: scale(1.05);
   }
   34%,
-  58% {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-  68% {
-    opacity: 1;
-    transform: scale(1.9);
-  }
   100% {
     opacity: 0;
-    transform: scale(4.2);
+    transform: scale(0.2);
   }
 }
 
 @keyframes inspector-shader-white-fill {
   0%,
-  48% {
+  56% {
     opacity: 0;
     transform: scale(0.08);
   }
-  62% {
-    opacity: 1;
-    transform: scale(1.08);
+  68% {
+    opacity: 0.18;
+    transform: scale(0.96);
   }
-  72% {
-    opacity: 0.96;
-    transform: scale(1.18);
+  78% {
+    opacity: 0.12;
+    transform: scale(1.02);
   }
   100% {
     opacity: 0;
-    transform: scale(1.32);
+    transform: scale(1.08);
   }
 }
 
 @keyframes inspector-shader-art-fade-in {
   0%,
-  68% {
+  60% {
     opacity: 0;
-    filter: brightness(4) saturate(0) blur(3px);
-    transform: scale(1.055);
   }
-  80% {
-    opacity: 0.42;
-    filter: brightness(2.35) saturate(0.58) blur(1.2px);
+  74% {
+    opacity: 1;
   }
   100% {
     opacity: 1;
-    filter: brightness(1) saturate(1) blur(0);
-    transform: scale(1);
   }
 }
 
@@ -4356,15 +4398,15 @@
   0%,
   64% {
     opacity: 0;
-    transform: translate3d(-3%, 2%, 0) scale(0.82);
+    transform: translate3d(-1%, 0.5%, 0) scale(0.92);
   }
   72% {
-    opacity: 1;
+    opacity: 0.86;
     transform: translate3d(0, 0, 0) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate3d(6%, -10%, 0) scale(1.42);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -5271,7 +5313,12 @@
 }
 
 .hover-art-slice-in {
-  animation: hover-art-slice-in 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  /* Base slide-in animation removed: when an `--shader-reveal` modifier
+   * applies its own animation as an override and is later detached (consume
+   * timer flips inspectorShaderReveal back to false), the base animation
+   * would re-trigger from its 0% keyframe (clip-path: inset(0 0 100% 0) +
+   * opacity 0), briefly clipping the just-revealed image. The parent
+   * .hover-art-drop-in already handles the mount slide. */
   transform-origin: top center;
   will-change: transform, opacity, clip-path;
 }

@@ -1313,7 +1313,7 @@ fn process_zone_change_inner(
         })
     });
 
-    let event = Event::zone_change(object, from, requested_to, cause, snapshot.clone());
+    let event = Event::zone_change(object, from, requested_to, cause.clone(), snapshot.clone());
     let mut additional_effects = additional_effects.to_vec();
     assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
     let result =
@@ -1329,9 +1329,26 @@ fn process_zone_change_inner(
             }
         }
         TraitEventResult::Replaced { effects, effect_id } => {
+            let replacement_effect = game
+                .effect_store
+                .replacement_effects
+                .get_effect(effect_id)
+                .cloned();
             game.effect_store
                 .replacement_effects
                 .mark_effect_used(effect_id);
+            if let Some(effect) = replacement_effect.as_ref()
+                && matches!(
+                    effect.replacement,
+                    crate::replacement::ReplacementAction::ExileWithSourceLink
+                )
+            {
+                if let Some(new_id) = game.move_object(object, Zone::Exile, cause.clone()) {
+                    game.add_exiled_with_source_link(effect.source, new_id);
+                    game.record_zone_change_results(object, vec![new_id]);
+                }
+                return EventOutcome::Replaced;
+            }
             let controller = game
                 .object(object)
                 .map(|obj| game.controller_of(obj))

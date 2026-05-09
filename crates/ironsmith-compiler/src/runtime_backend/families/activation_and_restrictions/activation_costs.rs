@@ -26,6 +26,9 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if normalized_words.first().copied() == Some("if") {
+        return Ok(None);
+    }
     if is_mana_retention_cant_clause(&normalized_words) {
         return Ok(None);
     }

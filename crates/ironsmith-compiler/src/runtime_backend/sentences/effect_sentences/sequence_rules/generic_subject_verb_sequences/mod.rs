@@ -4,19 +4,38 @@ pub(crate) mod pairs;
 pub(crate) mod quads;
 pub(crate) mod triples;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey,
-    TargetAst,
+    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, OwnedLexToken, PlayerAst,
+    PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::grammar::primitives as grammar;
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::token_index_for_word_index;
 use crate::runtime_backend::token_primitives::{find_index, slice_contains, slice_starts_with};
 use crate::runtime_backend::util::{is_article, mana_pips_from_token, trim_commas};
+use crate::target::PlayerFilter;
 use crate::zone::Zone;
+
+fn sequence_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::runtime_backend::token_word_refs(tokens)
+}
+
+fn find_word_sequence(words: &[&str], pattern: &[&str]) -> Option<usize> {
+    if pattern.is_empty() {
+        return Some(0);
+    }
+    words
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+}
+
+fn contains_word_sequence(words: &[&str], pattern: &[&str]) -> bool {
+    find_word_sequence(words, pattern).is_some()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericSequenceVerb {
@@ -241,6 +260,128 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
         ],
         continue_effect_index: 1,
         continue_predicate: IfResultPredicate::WasDeclined,
+    }]))
+}
+
+pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first_words = sequence_words(&first_tokens);
+    if !first_words.starts_with(&["each", "player", "shuffles", "all"])
+        || !contains_word_sequence(&first_words, &["they", "own", "into", "their", "library"])
+        || !contains_word_sequence(
+            &first_words,
+            &[
+                "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their",
+                "library",
+            ],
+        )
+    {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = sequence_words(&second_tokens);
+    if !second_words.starts_with(&["each", "player", "puts", "all"])
+        || !contains_word_sequence(
+            &second_words,
+            &["revealed", "this", "way", "onto", "the", "battlefield"],
+        )
+        || !contains_word_sequence(&second_words, &["then", "does", "the", "same", "for"])
+        || !contains_word_sequence(
+            &second_words,
+            &["on", "the", "bottom", "of", "their", "library"],
+        )
+    {
+        return Ok(None);
+    }
+
+    let Some(revealed_idx) = find_word_sequence(&second_words, &["revealed", "this", "way"]) else {
+        return Ok(None);
+    };
+    let Some(filter_start) = token_index_for_word_index(&second_tokens, 3) else {
+        return Ok(None);
+    };
+    let Some(filter_end) = token_index_for_word_index(&second_tokens, revealed_idx) else {
+        return Ok(None);
+    };
+    let mut battlefield_filter =
+        parse_object_filter_lexed(&second_tokens[filter_start..filter_end], false)?;
+    battlefield_filter.zone = None;
+
+    if let Some(same_for_idx) = find_word_sequence(&second_words, &["same", "for"]) {
+        let extra_start_word = same_for_idx + 2;
+        let extra_end_word = find_word_sequence(&second_words[extra_start_word..], &["then"])
+            .map(|offset| extra_start_word + offset)
+            .unwrap_or(second_words.len());
+        if extra_end_word > extra_start_word
+            && let Some(extra_start) = token_index_for_word_index(&second_tokens, extra_start_word)
+            && let Some(extra_end) = token_index_for_word_index(&second_tokens, extra_end_word)
+        {
+            let extra_filter =
+                parse_object_filter_lexed(&second_tokens[extra_start..extra_end], false)?;
+            for card_type in extra_filter.card_types {
+                if !battlefield_filter.card_types.contains(&card_type) {
+                    battlefield_filter.card_types.push(card_type);
+                }
+            }
+            for subtype in extra_filter.subtypes {
+                if !battlefield_filter.subtypes.contains(&subtype) {
+                    battlefield_filter.subtypes.push(subtype);
+                }
+            }
+        }
+    }
+
+    if battlefield_filter.card_types.is_empty() && battlefield_filter.subtypes.is_empty() {
+        return Ok(None);
+    }
+
+    let revealed_tag = TagKey::from("__each_player_revealed_this_way");
+    let mut shuffled_filter = ObjectFilter::permanent_card();
+    shuffled_filter.zone = Some(Zone::Battlefield);
+    shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
+    let iterated = TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+
+    Ok(Some(vec![EffectAst::ForEachPlayer {
+        effects: vec![
+            EffectAst::subject_verb_shuffle_objects_into_library(
+                PlayerAst::That,
+                TargetAst::Object(shuffled_filter, None, None),
+            ),
+            EffectAst::subject_verb_reveal_top_cards(
+                PlayerAst::That,
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                },
+                revealed_tag.clone(),
+            ),
+            EffectAst::ForEachTagged {
+                tag: revealed_tag,
+                effects: vec![EffectAst::Conditional {
+                    predicate: PredicateAst::ItMatches(battlefield_filter),
+                    if_true: vec![EffectAst::subject_verb_move_to_zone(
+                        iterated.clone(),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Owner,
+                        false,
+                        None,
+                    )],
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        iterated,
+                        Zone::Library,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                }],
+            },
+        ],
     }]))
 }
 

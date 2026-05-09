@@ -146,6 +146,10 @@ impl WasmGame {
             DecisionContext::Number(_) | DecisionContext::Targets(_) => {
                 !self.decision_has_direct_priority_response(ctx)
             }
+            DecisionContext::SelectOptions(options) => {
+                !self.select_options_uses_live_priority_response(options)
+                    && replay_decision_requires_root_reexecution(ctx)
+            }
             _ => {
                 replay_decision_requires_root_reexecution(ctx)
                     || matches!(ctx, DecisionContext::SelectObjects(_))

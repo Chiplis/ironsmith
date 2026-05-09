@@ -479,6 +479,7 @@ function InspectorArtImageLayers({
             className="h-full w-full object-contain drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
             loading="eager"
             decoding="async"
+            crossOrigin="anonymous"
             referrerPolicy="no-referrer"
             onError={() => {
               if (typeof onError === "function") {
@@ -499,6 +500,7 @@ function InspectorArtImageLayers({
           className="hover-art-backdrop-image"
           loading="eager"
           decoding="async"
+          crossOrigin="anonymous"
           referrerPolicy="no-referrer"
           onError={() => {
             if (typeof onError === "function") {
@@ -515,6 +517,7 @@ function InspectorArtImageLayers({
               className="hover-art-foreground-edge-blur"
               loading="eager"
               decoding="async"
+              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
             />
             <img
@@ -523,6 +526,7 @@ function InspectorArtImageLayers({
               className="hover-art-foreground-image"
               loading="eager"
               decoding="async"
+              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
               onError={() => {
                 if (typeof onError === "function") {

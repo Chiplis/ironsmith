@@ -77,6 +77,7 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
             Some(StaticAbilityId::BoastTwiceEachTurn) => Self::boast_twice_each_turn(),
+            Some(StaticAbilityId::EquipAbilitiesAnyTime) => Self::equip_abilities_any_time(),
             Some(StaticAbilityId::VoteAdditionalTimeWhileVoting) => {
                 Self::vote_additional_time_while_voting()
             }
@@ -151,6 +152,9 @@ impl StaticAbility {
             Some(StaticAbilityId::Delve) => Self::delve(),
             Some(StaticAbilityId::Convoke) => Self::convoke(),
             Some(StaticAbilityId::Improvise) => Self::improvise(),
+            Some(StaticAbilityId::ChooseColorAsBecomesAttached) => {
+                Self::choose_color_as_becomes_attached(label)
+            }
             Some(StaticAbilityId::NoMaximumHandSize) => Self::no_maximum_hand_size(),
             Some(StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger) => {
                 Self::creatures_entering_dont_cause_abilities_to_trigger()
@@ -162,6 +166,9 @@ impl StaticAbility {
                 Self::draw_replacement_exile_top_face_down()
             }
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
+            Some(StaticAbilityId::ExileWouldDieInstead) => {
+                Self::exile_would_die_instead(crate::target::ObjectFilter::creature())
+            }
             Some(StaticAbilityId::LookAtTopCardOfLibrary) => Self::look_at_top_card_of_library(),
             Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries) => {
                 Self::all_players_look_at_top_cards_of_libraries()

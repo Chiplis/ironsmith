@@ -583,6 +583,7 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         "trample" => Some(KeywordAction::Trample),
         "reach" => Some(KeywordAction::Reach),
         "defender" => Some(KeywordAction::Defender),
+        "decayed" => Some(KeywordAction::Decayed),
         "flash" => Some(KeywordAction::Flash),
         "phasing" => Some(KeywordAction::Phasing),
         "indestructible" => Some(KeywordAction::Indestructible),
@@ -740,6 +741,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     {
         return Some(action);
     }
+    if let Some(action) = parse_numeric_keyword_action(&words, "afflict", KeywordAction::Afflict) {
+        return Some(action);
+    }
     if let Some(action) = parse_numeric_keyword_action(&words, "backup", KeywordAction::Backup) {
         return Some(action);
     }
@@ -860,6 +864,23 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
     {
         return Some(action);
+    }
+
+    if words.first().copied() == Some("aura")
+        && words.get(1).copied() == Some("swap")
+        && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
+        && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+    {
+        return Some(KeywordAction::AuraSwap(cost));
+    }
+
+    if head == "awaken"
+        && let Some(amount_word) = words.get(1)
+        && let Ok(amount) = amount_word.parse::<u32>()
+        && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
+        && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+    {
+        return Some(KeywordAction::Awaken { amount, cost });
     }
 
     if let Some(action) = parse_cost_keyword_action(
@@ -1158,6 +1179,19 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(KeywordAction::Conspire);
     }
 
+    // Amplify N - "as this enters, reveal any number of matching creature-type cards..."
+    if head == "amplify" {
+        if words.len() == 2 {
+            if let Ok(amount) = words[1].parse::<u32>() {
+                return Some(KeywordAction::Amplify(amount));
+            }
+        }
+        if words.len() == 1 {
+            return Some(KeywordAction::Amplify(1));
+        }
+        return None;
+    }
+
     // Devour N - "as this enters, you may sacrifice any number of creatures..."
     if head == "devour" {
         if words.len() == 2 {
@@ -1276,6 +1310,26 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         ["protection", "from", "all", "color"] => KeywordAction::ProtectionFromAllColors,
         ["protection", "from", "colorless"] => KeywordAction::ProtectionFromColorless,
         ["protection", "from", "everything"] => KeywordAction::ProtectionFromEverything,
+        [
+            "protection",
+            "from",
+            "spells",
+            "that",
+            "are",
+            "one",
+            "or",
+            "more",
+            "colors",
+        ] => {
+            let all_colors = crate::color::ColorSet::WHITE
+                .union(crate::color::ColorSet::BLUE)
+                .union(crate::color::ColorSet::BLACK)
+                .union(crate::color::ColorSet::RED)
+                .union(crate::color::ColorSet::GREEN);
+            let mut filter = ObjectFilter::spell();
+            filter.colors = Some(all_colors);
+            KeywordAction::ProtectionFromFilter(filter)
+        }
         ["protection", "from", value] => {
             if let Some(color) = parse_color(value) {
                 KeywordAction::ProtectionFrom(color)

@@ -301,7 +301,11 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     {
         let filter = parse_object_filter(target_tokens, false)?;
         let effect = if is_battlefield {
-            EffectAst::subject_verb_return_all_to_battlefield(filter, tapped)
+            EffectAst::subject_verb_return_all_to_battlefield(
+                filter,
+                tapped,
+                ReturnControllerAst::Owner,
+            )
         } else if is_graveyard {
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Object(filter, None, None),
@@ -447,7 +451,11 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             };
         }
         let effect = if is_battlefield {
-            EffectAst::subject_verb_return_all_to_battlefield(filter, tapped)
+            EffectAst::subject_verb_return_all_to_battlefield(
+                filter,
+                tapped,
+                ReturnControllerAst::Owner,
+            )
         } else if is_graveyard {
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Object(filter, None, None),

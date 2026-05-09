@@ -139,6 +139,7 @@ pub enum StaticAbilityId {
     MinimumSpellTotalMana,
     CantPayLifeOrSacrificeNonlandForCastOrActivate,
     ChooseColorAsEnters,
+    ChooseColorAsBecomesAttached,
     ChoosePlayerAsEnters,
     ChooseCardNameAsEnters,
     ChooseBasicLandTypeAsEnters,
@@ -146,6 +147,7 @@ pub enum StaticAbilityId {
     ChooseNamedOptionAsEnters,
     BoastTwiceEachTurn,
     FirstEquipCostAlternative,
+    EquipAbilitiesAnyTime,
     VoteAdditionalTimeWhileVoting,
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
@@ -197,6 +199,7 @@ pub enum StaticAbilityId {
     DrawReplacementExileTopFaceDown,
     DrawReplacementDouble,
     ExileToCounteredExileInsteadOfGraveyard,
+    ExileWouldDieInstead,
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
@@ -359,6 +362,7 @@ impl StaticAbilityId {
             | MinimumSpellTotalMana
             | CantPayLifeOrSacrificeNonlandForCastOrActivate
             | ChooseColorAsEnters
+            | ChooseColorAsBecomesAttached
             | ChoosePlayerAsEnters
             | ChooseCardNameAsEnters
             | ChooseBasicLandTypeAsEnters
@@ -366,6 +370,7 @@ impl StaticAbilityId {
             | ChooseNamedOptionAsEnters
             | BoastTwiceEachTurn
             | FirstEquipCostAlternative
+            | EquipAbilitiesAnyTime
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType
@@ -417,6 +422,7 @@ impl StaticAbilityId {
             | DrawReplacementExileTopFaceDown
             | DrawReplacementDouble
             | ExileToCounteredExileInsteadOfGraveyard
+            | ExileWouldDieInstead
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

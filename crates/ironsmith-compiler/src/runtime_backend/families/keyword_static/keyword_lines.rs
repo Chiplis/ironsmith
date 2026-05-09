@@ -94,6 +94,19 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
+            "the"
+                if words.get(idx + 2).copied() == Some("chosen")
+                    && words.get(idx + 3).copied() == Some("color") =>
+            {
+                Some(KeywordAction::ProtectionFromChosenColor)
+            }
+            "the"
+                if words.get(idx + 2).copied() == Some("last")
+                    && words.get(idx + 3).copied() == Some("chosen")
+                    && words.get(idx + 4).copied() == Some("color") =>
+            {
+                Some(KeywordAction::ProtectionFromChosenColor)
+            }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
             "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {

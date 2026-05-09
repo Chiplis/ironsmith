@@ -27,18 +27,14 @@ fn anthem_token_offset(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-        predicate(token)
-    })
+    crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| predicate(token))
 }
 
 fn anthem_last_token_offset(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    crate::runtime_backend::grammar::primitives::rfind_token_index(tokens, |token| {
-        predicate(token)
-    })
+    crate::runtime_backend::grammar::primitives::rfind_token_index(tokens, |token| predicate(token))
 }
 
 fn anthem_find_word_sequence_index(words: &[&str], sequence: &[&str]) -> Option<usize> {
@@ -89,22 +85,16 @@ fn triggered_grant_effects_and_condition(
     {
         let mut imports = ReferenceImports::default();
         imports.last_player_filter =
-            crate::runtime_backend::compile_support::inferred_trigger_player_filter(
-                trigger,
-            );
-        let reference_env =
-            crate::runtime_backend::reference_model::ReferenceEnv::from_imports(
-                &imports,
-                false,
-                false,
-                false,
+            crate::runtime_backend::compile_support::inferred_trigger_player_filter(trigger);
+        let reference_env = crate::runtime_backend::reference_model::ReferenceEnv::from_imports(
+            &imports, false, false, false, None,
+        );
+        let condition =
+            crate::runtime_backend::compile_support::compile_condition_from_predicate_ast_with_env(
+                predicate,
+                &reference_env,
                 None,
-            );
-        let condition = crate::runtime_backend::compile_support::compile_condition_from_predicate_ast_with_env(
-            predicate,
-            &reference_env,
-            None,
-        )?;
+            )?;
         return Ok((if_true.clone(), Some(condition)));
     }
 
@@ -632,9 +622,7 @@ pub(crate) fn parse_granted_keyword_static_line(
     let mut tail_tokens = tail_tokens;
     let mut trailing_clause_tokens: Vec<OwnedLexToken> = Vec::new();
     let tail_sentences =
-        crate::runtime_backend::grammar::primitives::split_lexed_slices_on_period(
-            &tail_tokens,
-        );
+        crate::runtime_backend::grammar::primitives::split_lexed_slices_on_period(&tail_tokens);
     if tail_sentences.len() > 1 {
         let leading = trim_edge_punctuation(tail_sentences[0]);
         let trailing = tail_sentences[1..]
@@ -1241,10 +1229,7 @@ pub(crate) struct StaticAnimationBundleAst {
 }
 
 pub(crate) fn words_start_with(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    anthem_word_slice_starts_with(
-        &crate::runtime_backend::token_word_refs(tokens),
-        expected,
-    )
+    anthem_word_slice_starts_with(&crate::runtime_backend::token_word_refs(tokens), expected)
 }
 
 pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -2239,9 +2224,13 @@ fn parse_devotion_static_condition(
             crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             rest,
         ),
-        ["greater", "than", rest @ ..] => (crate::effect::ValueComparisonOperator::GreaterThan, rest),
+        ["greater", "than", rest @ ..] => {
+            (crate::effect::ValueComparisonOperator::GreaterThan, rest)
+        }
         ["equal", "to", rest @ ..] => (crate::effect::ValueComparisonOperator::Equal, rest),
-        ["not", "equal", "to", rest @ ..] => (crate::effect::ValueComparisonOperator::NotEqual, rest),
+        ["not", "equal", "to", rest @ ..] => {
+            (crate::effect::ValueComparisonOperator::NotEqual, rest)
+        }
         _ => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported devotion comparison in static condition (clause: '{}')",
@@ -2614,9 +2603,8 @@ pub(crate) fn parse_anthem_clause(
         (None, None) => None,
     };
 
-    let has_dynamic_component =
-        matches!(raw_power, Value::X | Value::XTimes(_))
-            || matches!(raw_toughness, Value::X | Value::XTimes(_));
+    let has_dynamic_component = matches!(raw_power, Value::X | Value::XTimes(_))
+        || matches!(raw_toughness, Value::X | Value::XTimes(_));
     let scale_fixed_components = scale.is_some() && !has_dynamic_component;
     let resolve_anthem_value = |component: Value,
                                 scale_expr: Option<&AnthemCountExpression>,
@@ -2658,7 +2646,8 @@ pub(crate) fn parse_anthem_clause(
     };
 
     let mut power = resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?;
-    let mut toughness = resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
+    let mut toughness =
+        resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
 
     // When the anthem affects multiple creatures (subject is a filter rather
     // than "this creature"), any "attached to it" count expression refers to
@@ -2968,8 +2957,18 @@ pub(crate) fn parse_soulbond_shared_line(
         let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
         if ability_words
             == [
-                "whenever", "this", "creature", "attacks", "each", "opponent", "mills", "cards",
-                "equal", "to", "its", "toughness",
+                "whenever",
+                "this",
+                "creature",
+                "attacks",
+                "each",
+                "opponent",
+                "mills",
+                "cards",
+                "equal",
+                "to",
+                "its",
+                "toughness",
             ]
         {
             let display = display_text_for_tokens(&ability_tokens, false);
@@ -3016,7 +3015,9 @@ pub(crate) fn parse_soulbond_shared_line(
         if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, .. }) =
             parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
         {
-            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility { ability }]));
+            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
+                ability,
+            }]));
         }
 
         return Err(CardTextError::ParseError(format!(
@@ -3120,8 +3121,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
         return Ok(None);
     };
 
-    let pre_grant_words =
-        crate::runtime_backend::token_word_refs(&tokens[..have_token_idx]);
+    let pre_grant_words = crate::runtime_backend::token_word_refs(&tokens[..have_token_idx]);
     // "until end of turn" in the pump clause indicates a one-shot effect.
     // Ignore timing text that appears only inside a quoted granted ability.
     if contains_until_end_of_turn(&pre_grant_words) {
@@ -3169,9 +3169,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
         .enumerate()
         .skip(get_idx + 2)
         .take_while(|(idx, _)| *idx < have_token_idx)
-        .find_map(|(idx, token)| {
-            (token.is_word("and") && idx + 1 < have_token_idx).then_some(idx)
-        })
+        .find_map(|(idx, token)| (token.is_word("and") && idx + 1 < have_token_idx).then_some(idx))
     {
         let first_clause = parse_anthem_clause(tokens, get_idx, split_idx)?;
         let mut result = vec![build_anthem_static_ability(&first_clause).into()];
@@ -3182,9 +3180,8 @@ pub(crate) fn parse_anthem_and_keyword_line(
             .enumerate()
             .skip(tail_start)
             .take_while(|(idx, _)| *idx < have_token_idx)
-            .find_map(|(idx, token)| {
-                (token.is_word("get") || token.is_word("gets")).then_some(idx)
-            }) {
+            .find_map(|(idx, token)| (token.is_word("get") || token.is_word("gets")).then_some(idx))
+        {
             let second_tail_end = if have_token_idx > second_get_idx + 2
                 && tokens
                     .get(have_token_idx - 1)
@@ -3224,7 +3221,10 @@ pub(crate) fn parse_anthem_and_keyword_line(
             .into_iter()
             .filter(|action| action.lowers_to_static_ability())
         {
-            result.push(grant_keyword_action_for_anthem_subject(&grant_clause, action));
+            result.push(grant_keyword_action_for_anthem_subject(
+                &grant_clause,
+                action,
+            ));
         }
         return Ok(Some(result));
     }
@@ -3576,7 +3576,8 @@ fn add_static_ability_ast_condition(
         StaticAbilityAst::RemoveStaticAbility { .. }
         | StaticAbilityAst::RemoveKeywordAction { .. }
         | StaticAbilityAst::EquipmentKeywordActionsGrant { .. }
-        | StaticAbilityAst::SoulbondSharedObjectAbility { .. } => {
+        | StaticAbilityAst::SoulbondSharedObjectAbility { .. }
+        | StaticAbilityAst::AttachmentRestriction { .. } => {
             return Err(CardTextError::ParseError(
                 "cannot apply leading static condition to unsupported static ability shape"
                     .to_string(),
@@ -3684,11 +3685,11 @@ fn every_subtype_family_for_subject(
             {
                 base
             }
-        #[cfg(feature = "serialization")]
-        {
-            Some(base)
-        }
-    });
+            #[cfg(feature = "serialization")]
+            {
+                Some(base)
+            }
+        });
     #[cfg(not(feature = "serialization"))]
     {
         StaticAbilityAst::Static(ability)
@@ -3838,10 +3839,15 @@ fn parse_color_filtered_keyword_grants(
     for (actions, color) in parsed_segments {
         for action in actions {
             match &subject {
-                AnthemSubjectAst::Source => compiled.push(StaticAbilityAst::ConditionalKeywordAction {
-                    action,
-                    condition: append_condition(condition.clone(), source_color_condition(color)),
-                }),
+                AnthemSubjectAst::Source => {
+                    compiled.push(StaticAbilityAst::ConditionalKeywordAction {
+                        action,
+                        condition: append_condition(
+                            condition.clone(),
+                            source_color_condition(color),
+                        ),
+                    })
+                }
                 AnthemSubjectAst::Filter(filter) => {
                     compiled.push(StaticAbilityAst::GrantKeywordAction {
                         filter: color_filtered_grant_filter(filter.clone(), color),
@@ -4039,10 +4045,9 @@ fn parse_triggered_granted_ability(
                 max_triggers_per_turn,
             );
             let intervening_if = match (trigger_condition, max_condition) {
-                (Some(left), Some(right)) => Some(crate::ConditionExpr::And(
-                    Box::new(left),
-                    Box::new(right),
-                )),
+                (Some(left), Some(right)) => {
+                    Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
+                }
                 (Some(condition), None) | (None, Some(condition)) => Some(condition),
                 (None, None) => None,
             };
@@ -4148,9 +4153,7 @@ fn parse_granted_keyword_fragment(segment: &[OwnedLexToken]) -> Option<Vec<Keywo
         let words = crate::runtime_backend::token_word_refs(segment);
         (matches!(
             words.as_slice(),
-            ["can't", "be", "blocked"]
-                | ["cant", "be", "blocked"]
-                | ["cannot", "be", "blocked"]
+            ["can't", "be", "blocked"] | ["cant", "be", "blocked"] | ["cannot", "be", "blocked"]
         ))
         .then(|| vec![KeywordAction::Unblockable])
     })
@@ -5305,6 +5308,22 @@ pub(crate) fn parse_anthem_line(
     let Some(get_idx) = get_idx else {
         return Ok(None);
     };
+    let mut modifier_idx = get_idx + 1;
+    if tokens
+        .get(modifier_idx)
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && tokens
+            .get(modifier_idx + 1)
+            .is_some_and(|token| token.is_word("additional"))
+    {
+        modifier_idx += 2;
+    }
+    let Some(modifier_word) = tokens.get(modifier_idx).and_then(OwnedLexToken::as_word) else {
+        return Ok(None);
+    };
+    if parse_pt_modifier(modifier_word).is_err() {
+        return Ok(None);
+    }
     let clause = parse_anthem_clause(tokens, get_idx, tokens.len())?;
     Ok(Some(build_anthem_static_ability(&clause)))
 }

@@ -1,9 +1,13 @@
 use crate::ability::Ability;
 use crate::cards::builders::{CardTextError, GrantedAbilityAst, KeywordAction};
 use crate::cost::TotalCost;
+use crate::effect::Effect;
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
+use crate::target::PlayerFilter;
+use crate::triggers::Trigger;
 
 use super::lowering_support::rewrite_lower_parsed_ability;
 
@@ -30,6 +34,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Trample => Some(StaticAbility::trample()),
         KeywordAction::Reach => Some(StaticAbility::reach()),
         KeywordAction::Defender => Some(StaticAbility::defender()),
+        KeywordAction::Decayed => Some(StaticAbility::cant_block()),
         KeywordAction::Flash => Some(StaticAbility::flash()),
         KeywordAction::Phasing => Some(StaticAbility::phasing()),
         KeywordAction::Indestructible => Some(StaticAbility::indestructible()),
@@ -40,6 +45,8 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
             ])))
         }),
         KeywordAction::Wither => Some(StaticAbility::wither()),
+        KeywordAction::Afflict(_) => None,
+        KeywordAction::Amplify(_) => None,
         KeywordAction::Afterlife(amount) => {
             Some(StaticAbility::keyword_marker(format!("afterlife {amount}")))
         }
@@ -150,6 +157,12 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::ProtectionFromChosenPlayer => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::ChosenPlayer,
         )),
+        KeywordAction::ProtectionFromChosenColor => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::ChosenColor,
+        )),
+        KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Permanents(filter),
+        )),
         KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),
         )),
@@ -176,9 +189,8 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
 }
 
 fn supported_keyword_marker_text(text: &str) -> bool {
-    text.trim_start()
-        .to_ascii_lowercase()
-        .starts_with("prototype ")
+    let text = text.trim_start().to_ascii_lowercase();
+    text.starts_with("prototype ") || text.starts_with("splice onto ")
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {
@@ -223,6 +235,95 @@ pub(crate) fn lower_granted_abilities_ast(
     abilities.iter().map(lower_granted_ability_ast).collect()
 }
 
+pub(crate) fn decayed_triggered_ability() -> Ability {
+    Ability::triggered(
+        Trigger::this_attacks(),
+        ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::EndOfCombat,
+                vec![Effect::sacrifice_source()],
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            ),
+        )]),
+    )
+}
+
+pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
+    vec![
+        Ability::static_ability(StaticAbility::cant_block()),
+        decayed_triggered_ability(),
+    ]
+}
+
+fn graveyard_return_counter_ability(
+    counter_type: crate::object::CounterType,
+    trigger_tag: &'static str,
+    return_tag: &'static str,
+    returned_tag: &'static str,
+) -> Ability {
+    let filter = crate::target::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Graveyard)
+        .same_stable_id_as_tagged(trigger_tag);
+
+    Ability {
+        kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+            trigger: Trigger::this_dies(),
+            effects: ResolutionProgram::from_effects(vec![
+                Effect::tag_triggering_object(trigger_tag),
+                Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                    filter, return_tag,
+                )),
+                Effect::new(
+                    crate::effects::MoveToZoneEffect::new(
+                        crate::target::ChooseSpec::Tagged(return_tag.into()),
+                        crate::zone::Zone::Battlefield,
+                        true,
+                    )
+                    .under_owner_control(),
+                )
+                .tag(returned_tag),
+                Effect::for_each_tagged(
+                    returned_tag,
+                    vec![Effect::put_counters(
+                        counter_type,
+                        1,
+                        crate::target::ChooseSpec::Iterated,
+                    )],
+                ),
+            ]),
+            choices: vec![],
+            intervening_if: Some(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::TriggeringObjectHadCounters {
+                    counter_type,
+                    min_count: 1,
+                },
+            ))),
+            presentation_label: None,
+        }),
+        functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
+    }
+}
+
+pub(crate) fn persist_triggered_ability() -> Ability {
+    graveyard_return_counter_ability(
+        crate::object::CounterType::MinusOneMinusOne,
+        "persist_trigger",
+        "persist_return",
+        "persist_returned",
+    )
+}
+
+pub(crate) fn undying_triggered_ability() -> Ability {
+    graveyard_return_counter_ability(
+        crate::object::CounterType::PlusOnePlusOne,
+        "undying_trigger",
+        "undying_return",
+        "undying_returned",
+    )
+}
+
 pub(crate) fn lower_granted_ability_ast_to_object_ability(
     ability: &GrantedAbilityAst,
 ) -> Result<Ability, CardTextError> {
@@ -264,8 +365,20 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
 pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<Ability>, CardTextError> {
-    abilities
-        .iter()
-        .map(lower_granted_ability_ast_to_object_ability)
-        .collect()
+    let mut lowered = Vec::new();
+    for ability in abilities {
+        match ability {
+            GrantedAbilityAst::KeywordAction(KeywordAction::Decayed) => {
+                lowered.extend(decayed_object_abilities());
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Persist) => {
+                lowered.push(persist_triggered_ability());
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Undying) => {
+                lowered.push(undying_triggered_ability());
+            }
+            _ => lowered.push(lower_granted_ability_ast_to_object_ability(ability)?),
+        }
+    }
+    Ok(lowered)
 }

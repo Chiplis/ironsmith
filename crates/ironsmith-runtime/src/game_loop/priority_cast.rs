@@ -379,6 +379,10 @@ pub(super) fn format_alternative_method(
                 format!("{cost_desc} with each-mode text"),
             )
         }
+        AlternativeCastingMethod::Awaken { cost, .. } => {
+            let cost_desc = format_mana_cost_simple(cost);
+            ("Awaken".to_string(), cost_desc)
+        }
         AlternativeCastingMethod::Flashback { .. } => {
             let cost_desc = method
                 .mana_cost()

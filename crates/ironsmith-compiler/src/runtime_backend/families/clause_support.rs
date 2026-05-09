@@ -21,7 +21,7 @@ use super::grammar::structure::{
     split_first_time_each_turn_trigger_suffix_lexed, split_state_triggered_clause_lexed,
     split_triggered_conditional_clause_lexed,
 };
-use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
+use super::lexer::{OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences};
 use super::util::{
     parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
 };
@@ -40,6 +40,34 @@ fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
     }
 
     true
+}
+
+fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction> {
+    if !matches!(
+        words,
+        [
+            "protection",
+            "from",
+            "spells",
+            "that",
+            "are",
+            "one",
+            "or",
+            "more",
+            "colors"
+        ]
+    ) {
+        return None;
+    }
+
+    let all_colors = crate::color::ColorSet::WHITE
+        .union(crate::color::ColorSet::BLUE)
+        .union(crate::color::ColorSet::BLACK)
+        .union(crate::color::ColorSet::RED)
+        .union(crate::color::ColorSet::GREEN);
+    let mut filter = ObjectFilter::spell();
+    filter.colors = Some(all_colors);
+    Some(KeywordAction::ProtectionFromFilter(filter))
 }
 
 fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
@@ -283,6 +311,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("toxic", KeywordAction::Toxic) {
             return Some(action);
         }
+        if let Some(action) = parse_count_keyword("afflict", KeywordAction::Afflict) {
+            return Some(action);
+        }
         if let Some(action) = parse_count_keyword("afterlife", KeywordAction::Afterlife) {
             return Some(action);
         }
@@ -326,6 +357,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return Some(action);
         }
         if let Some(action) = parse_count_keyword("casualty", KeywordAction::Casualty) {
+            return Some(action);
+        }
+        if let Some(action) = parse_count_keyword("amplify", KeywordAction::Amplify) {
             return Some(action);
         }
         if let Some(action) = parse_count_keyword("devour", KeywordAction::Devour) {
@@ -390,9 +424,25 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         Some(vec![KeywordAction::MarkerText(text)])
     }
 
+    fn parse_splice_keyword_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+        let words = TokenWordView::new(tokens);
+        if words.get(0) != Some("splice") || words.get(1) != Some("onto") {
+            return None;
+        }
+
+        let mut text = render_token_slice(tokens).trim().to_string();
+        if let Some(reminder_start) = text.find(" (") {
+            text.truncate(reminder_start);
+        }
+        (!text.is_empty()).then_some(vec![KeywordAction::MarkerText(text)])
+    }
+
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
+        if let Some(action) = protection_from_colored_spells_action(&words) {
+            return Some(vec![action]);
+        }
         let first_word_idx = if words.first().copied() == Some("and") {
             1
         } else {
@@ -488,6 +538,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     }
 
     if let Some(actions) = parse_flashback_keyword_line_lexed(tokens) {
+        return Some(actions);
+    }
+    if let Some(actions) = parse_splice_keyword_line_lexed(tokens) {
         return Some(actions);
     }
 

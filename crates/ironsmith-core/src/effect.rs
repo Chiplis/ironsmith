@@ -1371,11 +1371,26 @@ impl MoveToZoneEffect {
 pub struct ReturnAllToBattlefieldEffect {
     pub filter: ObjectFilter,
     pub tapped: bool,
+    pub battlefield_controller: BattlefieldController,
 }
 
 impl ReturnAllToBattlefieldEffect {
     pub fn new(filter: ObjectFilter, tapped: bool) -> Self {
-        Self { filter, tapped }
+        Self {
+            filter,
+            tapped,
+            battlefield_controller: BattlefieldController::Owner,
+        }
+    }
+
+    pub fn under_owner_control(mut self) -> Self {
+        self.battlefield_controller = BattlefieldController::Owner;
+        self
+    }
+
+    pub fn under_you_control(mut self) -> Self {
+        self.battlefield_controller = BattlefieldController::You;
+        self
     }
 }
 
@@ -1888,6 +1903,17 @@ pub struct SupportEffect {
 }
 
 impl SupportEffect {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AmplifyEffect {
+    pub amount: u32,
+}
+
+impl AmplifyEffect {
     pub fn new(amount: u32) -> Self {
         Self { amount }
     }
@@ -3999,6 +4025,15 @@ impl ExchangeZonesEffect {
             zone1,
             zone2,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraSwapEffect;
+
+impl AuraSwapEffect {
+    pub fn new() -> Self {
+        Self
     }
 }
 

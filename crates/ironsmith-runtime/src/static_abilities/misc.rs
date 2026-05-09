@@ -3,11 +3,12 @@
 //! This module contains static abilities that don't fit neatly into other categories.
 
 use super::{
-    ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsEntersSpec,
-    ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec, ChooseNamedOptionAsEntersSpec,
-    ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
-    EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId, StaticAbilityKind,
-    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
+    ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
+    ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind,
+    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
+    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
+    TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -271,6 +272,20 @@ impl StaticAbilityKind for FirstEquipCostAlternative {
 
     fn display(&self) -> String {
         self.display_text.clone()
+    }
+}
+
+/// "You may activate equip abilities any time you could cast an instant."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EquipAbilitiesAnyTime;
+
+impl StaticAbilityKind for EquipAbilitiesAnyTime {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EquipAbilitiesAnyTime
+    }
+
+    fn display(&self) -> String {
+        "You may activate equip abilities any time you could cast an instant".to_string()
     }
 }
 
@@ -1290,6 +1305,32 @@ impl StaticAbilityKind for ChooseColorAsEnters {
         Some(ChooseColorAsEntersSpec {
             excluded: self.excluded,
         })
+    }
+}
+
+/// "As this becomes attached, choose a color."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseColorAsBecomesAttached {
+    pub display: String,
+}
+
+impl ChooseColorAsBecomesAttached {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ChooseColorAsBecomesAttached {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseColorAsBecomesAttached
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn color_choice_as_becomes_attached(&self) -> Option<ChooseColorAsBecomesAttachedSpec> {
+        Some(ChooseColorAsBecomesAttachedSpec)
     }
 }
 
@@ -2757,8 +2798,7 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
     ) -> bool {
         match event.event_kind() {
             EventKind::PutCounters => {
-                let Some(put_counters) =
-                    downcast_event::<crate::events::PutCountersEvent>(event)
+                let Some(put_counters) = downcast_event::<crate::events::PutCountersEvent>(event)
                 else {
                     return false;
                 };
@@ -2768,9 +2808,9 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 {
                     return false;
                 }
-                ctx.game.object(put_counters.target).is_some_and(|obj| {
-                    self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-                })
+                ctx.game
+                    .object(put_counters.target)
+                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
             }
             EventKind::EnterBattlefield => {
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
@@ -2779,9 +2819,16 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 if etb.object == self.ability_source {
                     return false;
                 }
-                if !etb.enters_with_counters.iter().any(|(counter_type, count)| {
-                    *count > 0 && self.counter_type.is_none_or(|required| required == *counter_type)
-                }) {
+                if !etb
+                    .enters_with_counters
+                    .iter()
+                    .any(|(counter_type, count)| {
+                        *count > 0
+                            && self
+                                .counter_type
+                                .is_none_or(|required| required == *counter_type)
+                    })
+                {
                     return false;
                 }
                 let mut filter = self.filter.clone();
@@ -3428,6 +3475,48 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
             ))])
             .build(source, controller),
         )
+    }
+}
+
+/// "If [objects] would die, exile them instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExileWouldDieInstead {
+    pub filter: ObjectFilter,
+}
+
+impl ExileWouldDieInstead {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for ExileWouldDieInstead {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ExileWouldDieInstead
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "If {} would die, exile it instead.",
+            self.filter.description()
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                self.filter.clone(),
+                Some(Zone::Battlefield),
+                Some(Zone::Graveyard),
+            ),
+            ReplacementAction::ExileWithSourceLink,
+        ))
     }
 }
 

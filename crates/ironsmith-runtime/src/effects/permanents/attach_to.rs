@@ -1,6 +1,6 @@
 //! Attach to effect implementation.
 
-use super::attach_battlefield_object_to_target;
+use super::{attach_battlefield_object_to_target, choose_color_as_becomes_attached};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_target_from_spec;
@@ -44,10 +44,16 @@ impl EffectExecutor for AttachToEffect {
 
         match target {
             crate::effects::ResolvedTarget::Object(id) => {
-                attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Object(id));
+                let target = AttachmentTarget::Object(id);
+                if attach_battlefield_object_to_target(game, ctx.source, target) {
+                    choose_color_as_becomes_attached(game, ctx, ctx.source, target);
+                }
             }
             crate::effects::ResolvedTarget::Player(id) => {
-                attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Player(id));
+                let target = AttachmentTarget::Player(id);
+                if attach_battlefield_object_to_target(game, ctx.source, target) {
+                    choose_color_as_becomes_attached(game, ctx, ctx.source, target);
+                }
             }
         }
 

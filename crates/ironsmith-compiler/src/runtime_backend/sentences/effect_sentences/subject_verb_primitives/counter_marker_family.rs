@@ -800,12 +800,17 @@ pub(crate) fn clone_return_effect_with_subtype(
                     effect
                 })
             }
-            SubjectVerbActionAst::ReturnAllToBattlefield { filter, tapped } => {
+            SubjectVerbActionAst::ReturnAllToBattlefield {
+                filter,
+                tapped,
+                controller,
+            } => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
                 Some(EffectAst::subject_verb_return_all_to_battlefield(
                     cloned_filter,
                     *tapped,
+                    *controller,
                 ))
             }
             _ => None,

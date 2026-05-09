@@ -43,10 +43,7 @@ impl EffectExecutor for LookAtTopCardsEffect {
 
         ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
         if self.reveal {
-            ctx.tag_objects(
-                crate::effects::PUBLIC_REVEALED_TAG,
-                snapshots.clone(),
-            );
+            ctx.tag_objects(crate::effects::PUBLIC_REVEALED_TAG, snapshots.clone());
             for viewer_idx in 0..game.players.len() {
                 let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
                 let view_ctx = ViewCardsContext::new(

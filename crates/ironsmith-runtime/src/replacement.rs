@@ -91,6 +91,9 @@ pub enum ReplacementAction {
     /// Change the zone an object would go to
     ChangeDestination(Zone),
 
+    /// Exile the object and record it as exiled with the replacement source.
+    ExileWithSourceLink,
+
     /// Enter with additional counters
     EnterWithCounters {
         counter_type: CounterType,
@@ -128,9 +131,7 @@ pub enum ReplacementAction {
     Double,
 
     /// Double counters of the matching type on counter-placement events.
-    DoubleCounters {
-        counter_type: Option<CounterType>,
-    },
+    DoubleCounters { counter_type: Option<CounterType> },
 
     /// Add an additional effect
     Additionally(Vec<Effect>),

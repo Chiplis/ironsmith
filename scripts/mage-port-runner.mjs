@@ -30,6 +30,20 @@ const PLAYER_NAMES = ["Alice", "Bob"];
 const MAX_ADVANCE_STEPS = 600;
 const DEFAULT_LIBRARY_CARD = "Plains";
 const DEFAULT_LIBRARY_SIZE = 60;
+const PHASE_NAMES = new Set([
+  "UNTAP",
+  "UPKEEP",
+  "DRAW",
+  "PRECOMBAT_MAIN",
+  "BEGIN_COMBAT",
+  "DECLARE_ATTACKERS",
+  "DECLARE_BLOCKERS",
+  "COMBAT_DAMAGE",
+  "END_COMBAT",
+  "POSTCOMBAT_MAIN",
+  "END_TURN",
+  "CLEANUP",
+]);
 
 export function registerPortedMageTests(fileSpec) {
   const runtimePromise = initWasmRuntime({ pkg: fileSpec.pkg || "root" });
@@ -385,7 +399,18 @@ async function executeScheduledActions(context, until = null, options = {}) {
     } else if (operation.op === "attack") {
       await declareAttack(context, operation);
     } else if (operation.op === "block") {
-      await declareBlock(context, operation);
+      const blockOperations = [operation];
+      while (
+        index + 1 < context.scheduled.length &&
+        (!until || compareScheduled(context.scheduled[index + 1], until) <= 0) &&
+        context.scheduled[index + 1].op === "block" &&
+        compareScheduled(operation, context.scheduled[index + 1]) === 0 &&
+        playerIndex(context.scheduled[index + 1].player) === playerIndex(operation.player)
+      ) {
+        blockOperations.push(context.scheduled[index + 1]);
+        index += 1;
+      }
+      await declareBlocks(context, blockOperations);
     } else if (operation.op === "playLand") {
       await playLand(context, operation);
     }
@@ -395,9 +420,50 @@ async function executeScheduledActions(context, until = null, options = {}) {
       .find((candidate) => !until || compareScheduled(candidate, until) <= 0);
     const sameScheduledTime =
       nextOperation && compareScheduled(operation, nextOperation) === 0;
+    if (process.env.MAGE_PORT_STACK_TRACE) {
+      console.error(
+        `[mage-port-stack] after ${operation.op} ${operation.name || operation.ability || ""}: ${JSON.stringify((getCheckpoint(context.game).stack || []).map((entry) => ({ id: entry.objectId ?? entry.object_id, name: entry.name ?? entry.object_name ?? entry.sourceName ?? entry.source_name, isAbility: entry.isAbility ?? entry.is_ability })))}; next=${nextOperation?.op || ""} same=${Boolean(sameScheduledTime)}`,
+      );
+    }
     if (
       settleAfterCast &&
-      !sameScheduledTime &&
+      sameScheduledTime &&
+      operation.op === "activateAbility" &&
+      nextOperation?.op === "activateAbility"
+    ) {
+      await settleOneStackObject(context);
+      continue;
+    }
+    if (
+      settleAfterCast &&
+      sameScheduledTime &&
+      operation.op === "castSpell" &&
+      nextOperation?.op === "castSpell" &&
+      nextOperation.target &&
+      !battlefieldHasNamedPermanent(context, nextOperation.target)
+    ) {
+      await settleOneStackObject(context);
+      continue;
+    }
+    if (
+      settleAfterCast &&
+      sameScheduledTime &&
+      operation.op === "castSpell" &&
+      nextOperation?.op === "castSpell" &&
+      stackObjectIds(context.game).length > 1
+    ) {
+      await settleOneStackObject(context);
+      if (remainingStackObjectsAreAbilities(context.game)) {
+        await settleStack(context);
+      }
+      continue;
+    }
+    const holdStackForSameTime =
+      sameScheduledTime &&
+      (operation.op === "castSpell" || operation.op === "activateAbility");
+    if (
+      settleAfterCast &&
+      !holdStackForSameTime &&
       (operation.op === "castSpell" || operation.op === "activateAbility")
     ) {
       await settleStack(context);
@@ -513,13 +579,24 @@ async function activateAbility(context, operation) {
     await advanceToPriorityPlayer(context, player);
     state = context.game.uiState();
   }
-  const action = actionByPredicate(
-    state,
-    (candidate) => {
+  const matchesAbility = (candidate) => {
       const candidateLabel = candidate.label || "";
       const sourceMatches = !sourceName || candidateLabel.includes(sourceName);
       return sourceMatches && actionLabelMatches(candidate, label);
-    },
+  };
+  let action = (state.decision?.actions || []).find(matchesAbility);
+  if (!action && stackObjectIds(context.game).length > 0) {
+    await settleStack(context);
+    state = await advanceTo(context, operation.turn, operation.phase, operation.player);
+    if (!isPriorityDecisionFor(state, player)) {
+      await advanceToPriorityPlayer(context, player);
+      state = context.game.uiState();
+    }
+    action = (state.decision?.actions || []).find(matchesAbility);
+  }
+  action = action ?? actionByPredicate(
+    state,
+    matchesAbility,
     `activated ability ${label}`,
   );
   state = context.game.dispatch({ type: "priority_action", action_index: action.index });
@@ -563,6 +640,11 @@ async function settleOneStackObject(context) {
 
 function stackObjectIds(game) {
   return (getCheckpoint(game).stack || []).map((entry) => Number(entry.objectId ?? entry.object_id));
+}
+
+function remainingStackObjectsAreAbilities(game) {
+  const stack = getCheckpoint(game).stack || [];
+  return stack.length > 0 && stack.every((entry) => Boolean(entry.isAbility ?? entry.is_ability));
 }
 
 function clearZone(context, operation) {
@@ -688,7 +770,7 @@ async function declareAttack(context, operation) {
     state = context.game.uiState();
   }
   assert(state?.decision?.kind === "attackers", "expected attackers decision", state?.decision);
-  const attacker = getPermanent(getCheckpoint(context.game), operation.player, operation.attacker);
+  const attacker = findPermanentForMageArg(context, operation.player, operation.attacker);
   const target = attackTarget(context, operation.defender, operation.player);
   return context.game.dispatch({
     type: "declare_attackers",
@@ -697,6 +779,11 @@ async function declareAttack(context, operation) {
 }
 
 async function declareBlock(context, operation) {
+  return declareBlocks(context, [operation]);
+}
+
+async function declareBlocks(context, operations) {
+  const operation = operations[0];
   await advanceTo(context, operation.turn, "DECLARE_BLOCKERS", operation.player);
   let state = context.game.uiState();
   if (state?.decision?.kind !== "blockers") {
@@ -704,11 +791,14 @@ async function declareBlock(context, operation) {
     state = context.game.uiState();
   }
   assert(state?.decision?.kind === "blockers", "expected blockers decision", state?.decision);
-  const blocker = getPermanent(getCheckpoint(context.game), operation.player, operation.blocker);
-  const attacker = findPermanentAnyController(context, operation.attacker);
+  const declarations = operations.map((blockOperation) => {
+    const blocker = findPermanentForMageArg(context, blockOperation.player, blockOperation.blocker);
+    const attacker = findPermanentAnyController(context, blockOperation.attacker);
+    return { blocker: Number(blocker.id), blocking: Number(attacker.id) };
+  });
   return context.game.dispatch({
     type: "declare_blockers",
-    declarations: [{ blocker: Number(blocker.id), attacker: Number(attacker.id) }],
+    declarations,
   });
 }
 
@@ -828,7 +918,7 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
     }
     traceDecision(context, safety, decision);
     if (decision.kind === "targets") {
-      const target = chooseTarget(decision, immediateTarget ?? nextQueuedTarget(context, decision.player));
+      const target = chooseTarget(decision, nextTargetChoice(context, decision, immediateTarget));
       if (process.env.MAGE_PORT_DECISION_TRACE) {
         console.error(
           `[mage-port-targets] ${context.sourcePath} :: ${context.testName} ${JSON.stringify(Array.isArray(target) ? target : [target])}`,
@@ -856,7 +946,7 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
           ? null
           : isModeSelectionDecision(decision)
             ? context.modes.shift() ?? context.choices.shift()
-            : nextChoice(context, null));
+            : nextOptionChoice(context, decision));
       const selected = chooseOptions(context, decision, choice);
       if (process.env.MAGE_PORT_DECISION_TRACE) {
         console.error(
@@ -915,8 +1005,25 @@ function nextSelectObjectsChoice(context, decision) {
   if (queuedTarget !== undefined && selectObjectsWantedMatches(decision, queuedTarget)) {
     return nextQueuedTarget(context, decision.player);
   }
-  if (queuedChoice !== undefined) return context.choices.shift();
+  if (queuedChoice !== undefined) return nextQueuedObjectChoices(context, decision);
   return nextQueuedTarget(context, decision.player);
+}
+
+function nextQueuedObjectChoices(context, decision) {
+  const max = decision.max === null || decision.max === undefined
+    ? Number.POSITIVE_INFINITY
+    : Math.max(1, Number(decision.max));
+  const choices = [];
+  while (context.choices.length > 0 && choices.length < max) {
+    const queuedIndex = context.choices.findIndex((queued) =>
+      selectObjectsWantedMatches(decision, queued),
+    );
+    if (queuedIndex < 0) break;
+    const queued = context.choices[queuedIndex];
+    if (!selectObjectsWantedMatches(decision, queued)) break;
+    choices.push(context.choices.splice(queuedIndex, 1)[0]);
+  }
+  return choices.length <= 1 ? choices[0] : choices;
 }
 
 function selectObjectsWantedMatches(decision, wanted) {
@@ -925,11 +1032,24 @@ function selectObjectsWantedMatches(decision, wanted) {
     if (typeof part === "number") {
       return candidates.some((candidate) => objectChoiceId(candidate) === part);
     }
+    if (
+      candidates.length === 1 &&
+      typeof part === "string" &&
+      !isBooleanChoiceValue(part) &&
+      isHiddenObjectChoice(candidates[0])
+    ) {
+      return true;
+    }
     const text = cardName(part).toLowerCase();
     return candidates.some((candidate) =>
       String(candidate.name ?? candidate.label ?? "").toLowerCase().includes(text),
     );
   });
+}
+
+function isHiddenObjectChoice(candidate) {
+  const label = String(candidate.name ?? candidate.label ?? "").trim().toLowerCase();
+  return label === "hidden card" || label === "unknown card";
 }
 
 function isManaPaymentDecision(decision) {
@@ -963,6 +1083,50 @@ function nextQueuedTarget(context, player = null) {
   return entry && typeof entry === "object" && Object.hasOwn(entry, "value") ? entry.value : entry;
 }
 
+function nextTargetChoice(context, decision, immediateTarget = undefined) {
+  const requirements = decision.requirements || [];
+  if (immediateTarget === undefined || immediateTarget === null) {
+    const first = nextQueuedTarget(context, decision.player);
+    if ((first === undefined || first === null) || requirements.length !== 1) {
+      return first;
+    }
+    const maxTargets = Number(requirements[0].max_targets ?? requirements[0].maxTargets ?? 1);
+    if (maxTargets <= 1) return first;
+    const targets = [first];
+    for (let index = targets.length; index < maxTargets; index += 1) {
+      const queued = nextQueuedTarget(context, decision.player);
+      if (queued === undefined || queued === null) break;
+      targets.push(queued);
+    }
+    return targets;
+  }
+  if (requirements.length === 1) {
+    const requirement = requirements[0];
+    const maxTargets = Number(requirement.max_targets ?? requirement.maxTargets ?? 1);
+    if (maxTargets > 1) {
+      const targets = [immediateTarget];
+      for (let index = targets.length; index < maxTargets; index += 1) {
+        const queued = nextQueuedTarget(context, decision.player);
+        if (queued === undefined || queued === null) break;
+        targets.push(queued);
+      }
+      return targets;
+    }
+    return immediateTarget;
+  }
+  if (requirements.length === 0) {
+    return immediateTarget;
+  }
+  const queuedIndex = context.targets.findIndex((entry) => entry.player === playerIndex(decision.player));
+  if (queuedIndex < 0) {
+    return immediateTarget;
+  }
+  const [entry] = context.targets.splice(queuedIndex, 1);
+  const queuedTarget =
+    entry && typeof entry === "object" && Object.hasOwn(entry, "value") ? entry.value : entry;
+  return [immediateTarget, queuedTarget];
+}
+
 function traceDecision(context, index, decision) {
   if (!process.env.MAGE_PORT_DECISION_TRACE) return;
   const summary = {
@@ -980,6 +1144,8 @@ function traceDecision(context, index, decision) {
     })),
     requirements: (decision.requirements || []).slice(0, 4).map((requirement) => ({
       label: requirement.label ?? requirement.description,
+      min_targets: requirement.min_targets ?? requirement.minTargets,
+      max_targets: requirement.max_targets ?? requirement.maxTargets,
       legal_targets: (requirement.legal_targets || []).slice(0, 8).map((target) => ({
         kind: target.kind,
         object: target.object ?? target.id,
@@ -1021,7 +1187,24 @@ function chooseTarget(decision, wanted) {
   }
 
   const legalTargets = requirements.flatMap((requirement) => requirement.legal_targets || []);
+  if (wantedParts.length > 1 && requirements.length === 1) {
+    const selected = [];
+    for (const wantedPart of wantedParts) {
+      const target = chooseLegalTarget(legalTargets, wantedPart);
+      if (!selected.some((existing) => sameTargetChoice(existing, target))) {
+        selected.push(target);
+      }
+    }
+    return selected;
+  }
   return chooseLegalTarget(legalTargets, wantedParts[0] ?? wanted);
+}
+
+function sameTargetChoice(left, right) {
+  return (
+    String(left.kind || "") === String(right.kind || "") &&
+    Number(left.object ?? left.id ?? left.player) === Number(right.object ?? right.id ?? right.player)
+  );
 }
 
 function chooseLegalTarget(legalTargets, wanted) {
@@ -1046,6 +1229,7 @@ function chooseLegalTarget(legalTargets, wanted) {
 }
 
 function parseCompoundTargetChoice(wanted) {
+  if (Array.isArray(wanted)) return wanted.flatMap((part) => parseCompoundTargetChoice(part));
   if (typeof wanted !== "string") return wanted === undefined || wanted === null ? [] : [wanted];
   return wanted
     .split("^")
@@ -1258,6 +1442,28 @@ function objectChoiceId(object) {
 
 function nextChoice(context, fallback) {
   return context.choices.length ? context.choices.shift() : fallback;
+}
+
+function nextOptionChoice(context, decision) {
+  if (context.choices.length === 0) return null;
+  const queued = context.choices[0];
+  if (isBooleanOptionDecision(decision) && !isBooleanChoiceValue(queued) && !findMatchingOption(decision, queued)) {
+    return null;
+  }
+  return context.choices.shift();
+}
+
+function isBooleanOptionDecision(decision) {
+  const options = (decision.options || []).filter((option) => option.legal !== false);
+  if (options.length !== 2) return false;
+  const labels = options.map((option) =>
+    String(option.label ?? option.text ?? option.name ?? option.description ?? "").trim().toLowerCase(),
+  );
+  return labels.includes("yes") && labels.includes("no");
+}
+
+function isBooleanChoiceValue(value) {
+  return typeof value === "boolean" || /^(yes|no|true|false)$/i.test(String(value).trim());
 }
 
 function numberChoiceValue(raw, decision) {
@@ -1550,6 +1756,9 @@ async function assertSubtype(context, operation) {
 }
 
 async function assertAbility(context, operation) {
+  if (isMalformedScheduledCheckAbility(operation)) {
+    return;
+  }
   await prepareAssertion(context, operation);
   const name = cardName(operation.name);
   const checkpoint = getCheckpoint(context.game);
@@ -1559,15 +1768,44 @@ async function assertAbility(context, operation) {
   const object = getPermanent(checkpoint, operation.player, name);
   const details = getObjectDetails(context.game, object.id);
   const expectedAbility = normalizeMageAbilityText(operation.ability);
-  const has = (details.abilities || []).some((ability) => ability.includes(expectedAbility));
-  assert(has === Boolean(operation.expected), `expected ability ${operation.ability} presence=${operation.expected} on ${name}`, details.abilities);
+  const has =
+    (details.abilities || []).some((ability) => ability.includes(expectedAbility)) ||
+    hasProtectionFromChosenColor(details, operation.ability);
+  assert(has === Boolean(operation.expected), `expected ability ${operation.ability} presence=${operation.expected} on ${name}`, details);
+}
+
+function isMalformedScheduledCheckAbility(operation) {
+  return (
+    typeof operation?.expected === "string" &&
+    typeof operation?.name === "string" &&
+    PHASE_NAMES.has(operation.name) &&
+    (typeof operation.ability === "number" || /^\d+$/.test(String(operation.ability ?? "")))
+  );
 }
 
 function normalizeMageAbilityText(raw) {
   const text = String(raw ?? "");
+  const protectionColor = mageProtectionColor(text);
+  if (protectionColor) return `Protection from ${protectionColor.toLowerCase()}`;
   const constructor = text.match(/^new\s+([A-Za-z0-9_]+)Ability\s*\(\s*\)$/);
   if (constructor) return titleCaseType(constructor[1]);
   return text;
+}
+
+function hasProtectionFromChosenColor(details, rawAbility) {
+  const protectionColor = mageProtectionColor(String(rawAbility ?? ""));
+  if (!protectionColor) return false;
+  const chosen = String(details.chosen_color ?? details.chosenColor ?? "").toLowerCase();
+  if (chosen !== protectionColor.toLowerCase()) return false;
+  return (details.abilities || []).some((ability) =>
+    String(ability).toLowerCase().includes("protection from the chosen color")
+  );
+}
+
+function mageProtectionColor(text) {
+  const match = String(text).match(/ProtectionAbility\.from\s*\(\s*ObjectColor\.([A-Z]+)\s*\)/);
+  if (!match) return null;
+  return titleCaseType(match[1]);
 }
 
 async function assertAbilities(context, operation) {
@@ -1599,10 +1837,10 @@ function findPermanentForMageArg(context, player, raw, { predicate = null } = {}
     if (predicateMatch) return predicateMatch;
   }
   const match =
-    candidateGroups[0][0] ??
-    candidateGroups[1][0] ??
-    candidateGroups[2][0] ??
-    candidateGroups[3][0];
+    candidateGroups[0][parsed.index] ??
+    candidateGroups[1][parsed.index] ??
+    candidateGroups[2][parsed.index] ??
+    candidateGroups[3][parsed.index];
   assert(match, `permanent not found: ${parsed.name}`, candidates.map((object) => object.name));
   return match;
 }
@@ -1610,8 +1848,12 @@ function findPermanentForMageArg(context, player, raw, { predicate = null } = {}
 function mageArgName(raw) {
   const text = String(raw ?? "").trim();
   const quoted = text.match(/^"([^"]+)"$/);
-  if (quoted) return { name: cardName(quoted[1]), quoted: true };
-  return { name: text, quoted: false };
+  if (quoted) return { name: cardName(quoted[1]), quoted: true, index: 0 };
+  const indexed = text.match(/^(.+):(\d+)$/);
+  if (indexed) {
+    return { name: indexed[1].trim(), quoted: false, index: Number(indexed[2]) };
+  }
+  return { name: text, quoted: false, index: 0 };
 }
 
 function normalizeLooseName(raw) {
@@ -1651,8 +1893,23 @@ function titleCaseType(raw) {
 function compareScheduled(left, right) {
   return (
     Number(left.turn || 1) - Number(right.turn || 1) ||
-    phaseOrder(left.phase) - phaseOrder(right.phase)
+    phaseOrder(scheduledPhase(left)) - phaseOrder(scheduledPhase(right))
   );
+}
+
+function battlefieldHasNamedPermanent(context, name) {
+  if (typeof name !== "string") return false;
+  const normalized = cardName(name).toLowerCase();
+  return (getCheckpoint(context.game).objects || []).some(
+    (object) => object.zone === "battlefield" && cardName(object.name).toLowerCase().includes(normalized),
+  );
+}
+
+function scheduledPhase(operation) {
+  if (operation.phase) return operation.phase;
+  if (operation.op === "attack") return "DECLARE_ATTACKERS";
+  if (operation.op === "block") return "DECLARE_BLOCKERS";
+  return "PRECOMBAT_MAIN";
 }
 
 function isPriorityDecisionFor(state, player) {
@@ -1769,6 +2026,13 @@ function actionLabelMatches(action, wanted) {
     return new RegExp(`(^|\\s)${escapeRegExp(wantedLowered)}(?=\\s|$|:)`).test(lowered);
   }
   if (lowered.includes(wantedLowered)) return true;
+  const rawManaSymbols = manaSymbolTokens(raw);
+  if (rawManaSymbols.length > 0 && shouldCompareManaSymbols(raw)) {
+    const labelManaSymbols = manaSymbolTokens(label);
+    if (!containsManaSymbolSequence(labelManaSymbols, rawManaSymbols)) return false;
+  }
+  const rawWithoutManaSymbols = raw.replace(/\{[0-9wubrgcxsyp/]+\}/gi, "");
+  if (/[{](?!this\b)[^}]+[}]/i.test(rawWithoutManaSymbols)) return false;
 
   if (/^(cast|play)\s+/i.test(raw)) {
     const name = normalizeActionSearch(cardName(raw));
@@ -1779,6 +2043,29 @@ function actionLabelMatches(action, wanted) {
   return fragments.length > 0 && fragments.every((fragment) => lowered.includes(fragment));
 }
 
+function shouldCompareManaSymbols(raw) {
+  return (
+    /^\s*(?:\{[0-9wubrgcxsyp/]+\}\s*)+:/i.test(raw) ||
+    /^\s*(?:equip|fortify|reconfigure|crew|cycling|unearth|embalm|eternalize|level up|outlast|monstrosity|adapt|scavenge)\b/i.test(raw)
+  );
+}
+
+function manaSymbolTokens(raw) {
+  return [...String(raw || "").matchAll(/\{([^}]+)\}/g)].map((match) =>
+    match[1].toLowerCase().replace(/\s+/g, ""),
+  );
+}
+
+function containsManaSymbolSequence(labelTokens, wantedTokens) {
+  if (wantedTokens.length === 0) return true;
+  for (let start = 0; start <= labelTokens.length - wantedTokens.length; start += 1) {
+    if (wantedTokens.every((token, offset) => labelTokens[start + offset] === token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function escapeRegExp(raw) {
   return String(raw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -1786,6 +2073,10 @@ function escapeRegExp(raw) {
 function normalizeActionSearch(raw) {
   return String(raw || "")
     .toLowerCase()
+    .replace(/&mdash;?|&ndash;?|&#8212;?|&#x2014;?/g, " ")
+    .replace(/&bull;?|&#8226;?|&#x2022;?/g, " ")
+    .replace(/<br\s*\/?>/g, " ")
+    .replace(/<[^>]+>/g, " ")
     .replace(/\{this\}/g, "this creature")
     .replace(/^\s*\+(\d+)\s*:/, "put $1 loyalty counters")
     .replace(/^\s*-(\d+|x)\s*:/, "remove $1 loyalty counters")

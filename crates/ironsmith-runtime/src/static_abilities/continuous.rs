@@ -52,6 +52,17 @@ fn effect_target_for_filter(source: ObjectId, filter: &ObjectFilter) -> EffectTa
     }
 }
 
+fn filter_for_attached_subject_match(filter: &ObjectFilter) -> ObjectFilter {
+    let mut stripped = filter.clone();
+    if attached_subject(filter).is_some() {
+        stripped.tagged_constraints.retain(|constraint| {
+            constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+        });
+    }
+    stripped
+}
+
 fn color_list(colors: crate::color::ColorSet) -> Vec<String> {
     let mut list = Vec::new();
     if colors.contains(crate::color::Color::White) {
@@ -1507,12 +1518,32 @@ impl StaticAbilityKind for Anthem {
 
         if uses_affected && !self.source_only {
             let filter_ctx = game.filter_context_for(controller, Some(source));
+            let attached_target = if attached_subject(&self.filter).is_some() {
+                game.object(source)
+                    .and_then(|source_obj| source_obj.attached_to)
+                    .and_then(|target| target.object_id())
+            } else {
+                None
+            };
+            let match_filter = attached_target
+                .is_some()
+                .then(|| filter_for_attached_subject_match(&self.filter));
             let mut effects = Vec::new();
-            for &obj_id in &game.battlefield {
+            let candidate_ids: Vec<ObjectId> = attached_target
+                .map(|id| vec![id])
+                .unwrap_or_else(|| game.battlefield.clone());
+            for obj_id in candidate_ids {
                 let Some(obj) = game.object(obj_id) else {
                     continue;
                 };
-                if !self.filter.matches_non_recursive(obj, &filter_ctx, game) {
+                if obj.zone != Zone::Battlefield {
+                    continue;
+                }
+                let matches_filter = match_filter
+                    .as_ref()
+                    .unwrap_or(&self.filter)
+                    .matches_non_recursive(obj, &filter_ctx, game);
+                if !matches_filter {
                     continue;
                 }
                 // Evaluate the anthem values using the affected creature's id
@@ -4689,6 +4720,55 @@ mod tests {
             game.calculated_power(soldier_id),
             Some(5),
             "Soldier with 2 Equipment should still have power 1 + 4 = 5"
+        );
+    }
+
+    #[test]
+    fn equipped_creature_anthem_counts_attachments_on_equipped_creature() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
+        let anthem_filter = ObjectFilter::creature()
+            .match_tagged("equipped", TaggedOpbjectRelation::IsTaggedObject);
+        let anthem = Anthem::new(anthem_filter, 0, 0).with_values(
+            AnthemValue::scaled(
+                1,
+                AnthemCountExpression::AttachedToAffected(equipment_filter),
+            ),
+            AnthemValue::Fixed(0),
+        );
+
+        let gauntlets_def = CardDefinitionBuilder::new(CardId::new(), "Golem-Skin Gauntlets")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+                anthem,
+            )))
+            .build();
+        let gauntlets_id =
+            game.create_object_from_definition(&gauntlets_def, alice, Zone::Battlefield);
+
+        let creature_card = CardBuilder::new(CardId::new(), "Elite Vanguard")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let other_equipment_card = CardBuilder::new(CardId::new(), "Other Equipment")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+        let other_equipment_id =
+            game.create_object_from_card(&other_equipment_card, alice, Zone::Battlefield);
+
+        attach_equipment(&mut game, gauntlets_id, creature_id);
+        attach_equipment(&mut game, other_equipment_id, creature_id);
+
+        assert_eq!(
+            game.calculated_power(creature_id),
+            Some(4),
+            "equipped creature should get +1/+0 for each Equipment attached to it"
         );
     }
 

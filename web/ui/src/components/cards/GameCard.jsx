@@ -1296,6 +1296,7 @@ export default function GameCard({
                   src={artUrl}
                   alt=""
                   loading="lazy"
+                  crossOrigin="anonymous"
                   referrerPolicy="no-referrer"
                 />
               )}
@@ -1315,6 +1316,7 @@ export default function GameCard({
             src={artUrl}
             alt=""
             loading="lazy"
+            crossOrigin="anonymous"
             referrerPolicy="no-referrer"
           />
         )}

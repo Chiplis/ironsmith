@@ -27058,6 +27058,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Adapt {}", adapt.amount);
     }
     if effect
+        .downcast_ref::<crate::effects::AuraSwapEffect>()
+        .is_some()
+    {
+        return "Aura swap".to_string();
+    }
+    if effect
         .downcast_ref::<crate::effects::CounterAbilityEffect>()
         .is_some()
     {

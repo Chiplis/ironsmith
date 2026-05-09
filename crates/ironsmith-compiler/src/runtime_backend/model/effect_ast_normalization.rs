@@ -131,9 +131,7 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 }
 
 fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    use crate::cards::builders::{
-        ReturnAsAuraAst, SubjectVerbActionAst, TargetAst, IT_TAG,
-    };
+    use crate::cards::builders::{IT_TAG, ReturnAsAuraAst, SubjectVerbActionAst, TargetAst};
 
     let mut rewritten = Vec::with_capacity(effects.len());
     let mut index = 0;
@@ -144,10 +142,8 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
             index += 1;
             continue;
         };
-        let SubjectVerbActionAst::ReturnToBattlefield {
-            as_aura: None,
-            ..
-        } = &return_subject_verb.action
+        let SubjectVerbActionAst::ReturnToBattlefield { as_aura: None, .. } =
+            &return_subject_verb.action
         else {
             rewritten.push(effects[index].clone());
             index += 1;

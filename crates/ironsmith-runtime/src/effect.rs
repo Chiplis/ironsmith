@@ -1549,6 +1549,12 @@ impl Effect {
         Self::new(DevourEffect::new(multiplier))
     }
 
+    /// Create an "amplify N" effect.
+    pub fn amplify(amount: u32) -> Self {
+        use crate::effects::AmplifyEffect;
+        Self::new(AmplifyEffect::new(amount))
+    }
+
     /// Create a "backup N" effect.
     pub fn backup(amount: u32, granted_abilities: Vec<crate::ability::Ability>) -> Self {
         use crate::effects::BackupEffect;
@@ -1725,6 +1731,12 @@ impl Effect {
     ) -> Self {
         use crate::effects::ExchangeZonesEffect;
         Self::new(ExchangeZonesEffect::new(player, zone1, zone2))
+    }
+
+    /// Create an "aura swap" effect.
+    pub fn aura_swap() -> Self {
+        use crate::effects::AuraSwapEffect;
+        Self::new(AuraSwapEffect::new())
     }
 
     /// Create an "exchange values" effect.

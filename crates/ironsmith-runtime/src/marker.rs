@@ -219,6 +219,7 @@ impl CounterTypeExt for CounterType {
     fn granted_ability(&self) -> Option<StaticAbilityId> {
         match self {
             CounterType::Deathtouch => Some(StaticAbilityId::Deathtouch),
+            CounterType::Decayed => Some(StaticAbilityId::CantBlock),
             CounterType::Flying => Some(StaticAbilityId::Flying),
             CounterType::FirstStrike => Some(StaticAbilityId::FirstStrike),
             CounterType::DoubleStrike => Some(StaticAbilityId::DoubleStrike),

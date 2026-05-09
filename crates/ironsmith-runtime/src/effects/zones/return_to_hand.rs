@@ -127,8 +127,9 @@ impl EffectExecutor for ReturnToHandEffect {
                 }
                 affected_ids.extend(moved_ids);
             }
-            return Ok(EffectOutcome::count(applied_count as i32)
-                .with_affected_objects(affected_ids));
+            return Ok(
+                EffectOutcome::count(applied_count as i32).with_affected_objects(affected_ids)
+            );
         }
 
         // Handle targeted effects with special single-target behavior

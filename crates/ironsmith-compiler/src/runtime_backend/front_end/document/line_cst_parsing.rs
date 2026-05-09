@@ -237,6 +237,7 @@ pub(super) fn parse_static_line_cst(
             | "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
             | "creatures you control can boast twice during each of your turns rather than once."
+            | "you may activate equip abilities any time you could cast an instant."
             | "while voting, you may vote an additional time."
             | "while voting, you get an additional vote."
     ) || is_first_equip_cost_alternative_line(normalized)

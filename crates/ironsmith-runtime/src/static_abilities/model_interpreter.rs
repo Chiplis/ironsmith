@@ -1123,6 +1123,9 @@ impl StaticAbilityModelInterpreter {
                 player.clone(),
                 *counter_type,
             ),
+            ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter } => {
+                StaticAbility::exile_would_die_instead(filter.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -1625,6 +1628,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
                 | ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(_)
         )
+    }
+
+    fn color_choice_as_becomes_attached(&self) -> Option<super::ChooseColorAsBecomesAttachedSpec> {
+        matches!(
+            self.model.id,
+            Some(StaticAbilityId::ChooseColorAsBecomesAttached)
+        )
+        .then_some(super::ChooseColorAsBecomesAttachedSpec)
     }
 
     fn modifies_costs(&self) -> bool {

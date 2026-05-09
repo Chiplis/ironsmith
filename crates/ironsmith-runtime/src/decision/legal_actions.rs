@@ -919,12 +919,19 @@ fn activation_timing_allows(
     controller: PlayerId,
     source: ObjectId,
     ability_index: usize,
+    activated: &crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
     timing: &crate::ability::ActivationTiming,
 ) -> bool {
     match timing {
         crate::ability::ActivationTiming::AnyTime => true,
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
         crate::ability::ActivationTiming::SorcerySpeed => {
+            if is_equip_ability(game, source, activated)
+                && player_may_activate_equip_abilities_any_time(game, controller, view)
+            {
+                return true;
+            }
             game.turn.active_player == controller
                 && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
                 && game.stack_is_empty()
@@ -937,6 +944,57 @@ fn activation_timing_allows(
             game.turn.active_player != controller
         }
     }
+}
+
+fn is_equip_ability(
+    game: &GameState,
+    source: ObjectId,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    let Some(source_object) = game.object(source) else {
+        return false;
+    };
+    if !source_object
+        .subtypes
+        .contains(&crate::types::Subtype::Equipment)
+    {
+        return false;
+    }
+    activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::AttachToEffect>()
+                .is_some()
+        })
+}
+
+fn player_may_activate_equip_abilities_any_time(
+    game: &GameState,
+    controller: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    game.battlefield.iter().copied().any(|object_id| {
+        let Some(object) = game.object(object_id) else {
+            return false;
+        };
+        if game.controller_of(object) != controller {
+            return false;
+        }
+        let abilities = view
+            .abilities_rc(object_id)
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+        abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::EquipAbilitiesAnyTime
+            )
+        })
+    })
 }
 
 fn activation_cost_component_precheck_with_view(
@@ -1055,7 +1113,15 @@ fn activation_precheck_with_view(
     }
 
     if activated_ability_uses_simple_precheck(activated) {
-        if !activation_timing_allows(game, controller, source, ability_index, &activated.timing) {
+        if !activation_timing_allows(
+            game,
+            controller,
+            source,
+            ability_index,
+            activated,
+            view,
+            &activated.timing,
+        ) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
@@ -1105,7 +1171,15 @@ fn activation_precheck_with_view(
         options: Default::default(),
     };
 
-    if !activation_timing_allows(game, controller, source, ability_index, &activated.timing) {
+    if !activation_timing_allows(
+        game,
+        controller,
+        source,
+        ability_index,
+        activated,
+        view,
+        &activated.timing,
+    ) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }

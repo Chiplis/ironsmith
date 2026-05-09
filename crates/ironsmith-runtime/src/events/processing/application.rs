@@ -53,6 +53,8 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::ExileWithSourceLink => TraitApplyResult::Replaced(Vec::new()),
+
         ReplacementAction::EnterTapped => {
             let modified = apply_trait_enter_tapped(&event);
             match modified {
@@ -333,10 +335,12 @@ fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Optio
         EventKind::ZoneChange => {
             let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
             if zone_change.to == Zone::Battlefield {
-                Some(event.rewrap(
-                    EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
-                        .with_controller_override(controller),
-                ))
+                Some(
+                    event.rewrap(
+                        EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
+                            .with_controller_override(controller),
+                    ),
+                )
             } else {
                 None
             }

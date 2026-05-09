@@ -136,6 +136,35 @@ fn contains_any_keyword_static_phrase(words: &[&str], phrases: &[&[&str]]) -> bo
         .any(|phrase| contains_keyword_static_phrase(words, phrase))
 }
 
+pub(crate) fn parse_can_be_attached_only_to_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(phrase_idx) = tokens.windows(5).position(|window| {
+        window[0].is_word("can")
+            && window[1].is_word("be")
+            && window[2].is_word("attached")
+            && window[3].is_word("only")
+            && window[4].is_word("to")
+    }) else {
+        return Ok(None);
+    };
+    if phrase_idx == 0 {
+        return Ok(None);
+    }
+    let target_tokens = trim_commas(&tokens[phrase_idx + 5..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "attachment restriction missing target filter (clause: '{}')",
+            render_token_slice(tokens)
+        )));
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    Ok(Some(StaticAbilityAst::AttachmentRestriction {
+        filter: filter.into(),
+        display: render_token_slice(tokens),
+    }))
+}
+
 const AS_ENTERS_STANDARD_SUBJECTS: &[(&str, &str)] = &[
     ("land", "this land"),
     ("creature", "this creature"),
@@ -176,9 +205,8 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 }
 
 fn supported_keyword_marker_text(text: &str) -> bool {
-    text.trim_start()
-        .to_ascii_lowercase()
-        .starts_with("prototype ")
+    let text = text.trim_start().to_ascii_lowercase();
+    text.starts_with("prototype ") || text.starts_with("splice onto ")
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -266,6 +294,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("player"),
             StaticAbilityLineHeadHint::Single("players"),
             StaticAbilityLineHeadHint::Single("as"),
+        ],
+        "parse_can_be_attached_only_to_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "equipment"),
         ],
         "parse_conditional_source_spell_keyword_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
@@ -479,6 +511,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
+        single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
@@ -503,6 +536,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
+        single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
@@ -540,6 +574,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_cant_cycle_line),
         single_static_ability_ast_rule!(parse_starting_life_bonus_line),
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
+        single_static_ability_ast_passthrough_rule!(parse_can_be_attached_only_to_line),
         single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
@@ -2790,6 +2825,63 @@ pub(crate) fn parse_choose_color_as_enters_line(
 
     Ok(Some(StaticAbility::choose_color_as_enters(
         excluded, display,
+    )))
+}
+
+pub(crate) fn parse_choose_color_as_becomes_attached_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.first().copied() != Some("as") || words.get(1).copied() != Some("this") {
+        return Ok(None);
+    }
+    let display_subject = match words.get(2).copied() {
+        Some("equipment") => "this Equipment",
+        Some("aura") => "this Aura",
+        Some("permanent") => "this permanent",
+        Some("artifact") => "this artifact",
+        Some("enchantment") => "this enchantment",
+        _ => return Ok(None),
+    };
+    if words.get(3).copied() != Some("becomes")
+        || words.get(4).copied() != Some("attached")
+        || words.get(5).copied() != Some("to")
+    {
+        return Ok(None);
+    }
+    let Some(choose_idx) = words.iter().position(|word| *word == "choose") else {
+        return Ok(None);
+    };
+    if choose_idx <= 6 {
+        return Ok(None);
+    }
+    let Some((consumed, excluded_color_set)) =
+        parse_choose_color_phrase_words(&words[choose_idx..])?
+    else {
+        return Ok(None);
+    };
+    if choose_idx + consumed != words.len() {
+        return Ok(None);
+    }
+    let excluded = if let Some(color_set) = excluded_color_set {
+        Some(color_from_color_set(color_set).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "ambiguous color choice in choose-color attached clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?)
+    } else {
+        None
+    };
+    if excluded.is_some() {
+        return Err(CardTextError::ParseError(format!(
+            "excluded color choices for attachment choices are not supported yet (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+
+    Ok(Some(StaticAbility::choose_color_as_becomes_attached(
+        format!("As {display_subject} becomes attached, choose a color."),
     )))
 }
 
@@ -5679,8 +5771,7 @@ pub(crate) fn parse_double_counters_replacement_line(
         ) || slice_ends_with(
             &line_words,
             &[
-                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "it",
-                "instead",
+                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "it", "instead",
             ],
         ))
     {
@@ -6673,6 +6764,78 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
             spec.counter_type,
         ),
     ))
+}
+
+pub(crate) fn parse_exile_would_die_instead_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let player = match words.as_slice() {
+        [
+            "if",
+            "a",
+            "creature",
+            "an",
+            "opponent",
+            "controls",
+            "would",
+            "die",
+            "exile",
+            "it",
+            "instead",
+        ]
+        | [
+            "if",
+            "creature",
+            "an",
+            "opponent",
+            "controls",
+            "would",
+            "die",
+            "exile",
+            "it",
+            "instead",
+        ] => PlayerFilter::Opponent,
+        [
+            "if",
+            "a",
+            "creature",
+            "you",
+            "control",
+            "would",
+            "die",
+            "exile",
+            "it",
+            "instead",
+        ]
+        | [
+            "if",
+            "creature",
+            "you",
+            "control",
+            "would",
+            "die",
+            "exile",
+            "it",
+            "instead",
+        ] => PlayerFilter::You,
+        [
+            "if",
+            "a",
+            "creature",
+            "would",
+            "die",
+            "exile",
+            "it",
+            "instead",
+        ]
+        | ["if", "creature", "would", "die", "exile", "it", "instead"] => PlayerFilter::Any,
+        _ => return Ok(None),
+    };
+
+    Ok(Some(StaticAbility::exile_would_die_instead(
+        ObjectFilter::creature().controlled_by(player),
+    )))
 }
 
 pub(crate) fn parse_discard_or_redirect_replacement_line(

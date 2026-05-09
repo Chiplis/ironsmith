@@ -56,6 +56,17 @@ const EFFECT_COMPILE_HANDLERS: [EffectCompileHandlerDef; 14] = [
     },
 ];
 
+fn retarget_target_is_bare_it(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
+        TargetAst::Object(filter, _, _) => filter == &ObjectFilter::tagged(IT_TAG),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            retarget_target_is_bare_it(inner)
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn compile_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -1227,6 +1238,9 @@ fn compile_subject_verb_effect(
             }
             let mut effect =
                 Effect::shuffle_objects_into_library(spec.clone(), subject.into_player_filter());
+            let id = ctx.next_effect_id();
+            ctx.last_effect_id = Some(id);
+            effect = Effect::with_id(id.0, effect);
             if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("moved");
                 ctx.last_object_tag = Some(tag.clone());
@@ -1904,11 +1918,22 @@ fn compile_subject_verb_effect(
             }
             Ok((effects, choices))
         }
-        SubjectVerbActionAst::ReturnAllToBattlefield { filter, tapped } => {
-            let mut effect = Effect::new(crate::effects::ReturnAllToBattlefieldEffect::new(
+        SubjectVerbActionAst::ReturnAllToBattlefield {
+            filter,
+            tapped,
+            controller,
+        } => {
+            let return_all = crate::effects::ReturnAllToBattlefieldEffect::new(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
                 *tapped,
-            ));
+            );
+            let return_all = match controller {
+                ReturnControllerAst::Preserve | ReturnControllerAst::Owner => {
+                    return_all.under_owner_control()
+                }
+                ReturnControllerAst::You => return_all.under_you_control(),
+            };
+            let mut effect = Effect::new(return_all);
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("returned");
                 effect = effect.tag(tag.clone());
@@ -3702,8 +3727,13 @@ fn compile_subject_verb_effect(
             mode,
             require_change,
         } => {
+            let refs = current_reference_env(ctx);
             let (spec, mut choices) =
-                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                if retarget_target_is_bare_it(target) && refs.has_source_object_antecedent() {
+                    (ChooseSpec::Source, Vec::new())
+                } else {
+                    resolve_target_spec_with_choices(target, &refs)?
+                };
             let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, true)?;
             for choice in subject.clone().into_choices() {
                 push_choice(&mut choices, choice);

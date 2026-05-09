@@ -865,9 +865,9 @@ fn specialize_iterated_player_choose_spec(spec: &ChooseSpec, player: PlayerId) -
             spec: Box::new(specialize_iterated_player_choose_spec(spec, player)),
             hints: hints.clone(),
         },
-        ChooseSpec::Target(inner) => {
-            ChooseSpec::Target(Box::new(specialize_iterated_player_choose_spec(inner, player)))
-        }
+        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(
+            specialize_iterated_player_choose_spec(inner, player),
+        )),
         ChooseSpec::Player(filter) => {
             ChooseSpec::Player(specialize_iterated_player_filter(filter, player))
         }
@@ -956,9 +956,9 @@ fn specialize_iterated_player_object_filter(
 fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) -> PlayerFilter {
     match filter {
         PlayerFilter::IteratedPlayer => PlayerFilter::Specific(player),
-        PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
-            specialize_iterated_player_filter(inner, player),
-        )),
+        PlayerFilter::Target(inner) => {
+            PlayerFilter::Target(Box::new(specialize_iterated_player_filter(inner, player)))
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             PlayerFilter::CardsInHandAtLeastMoreThanYou {
                 base: Box::new(specialize_iterated_player_filter(base, player)),

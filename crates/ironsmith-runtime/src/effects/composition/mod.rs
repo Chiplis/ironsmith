@@ -15,6 +15,7 @@
 //! - `ChooseObjects` - Interactive object selection with tagging
 //! - `Vote` - Council's dilemma and voting mechanics
 
+mod aura_swap;
 mod behold;
 mod choose_mode;
 mod choose_mode_runtime;
@@ -53,6 +54,7 @@ mod vote;
 mod vote_runtime;
 mod with_id;
 
+pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
 pub use choose_mode::ChooseModeEffect;
 pub use choose_objects::ChooseObjectsEffect;
@@ -72,8 +74,8 @@ pub use local_rewrite::LocalRewriteEffect;
 pub use mana_restricted::ManaRestrictedEffect;
 pub use may::MayEffect;
 pub use mechanic_actions::{
-    AdaptEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect, CipherEffect,
-    CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestDreadEffect,
+    AdaptEffect, AmplifyEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect,
+    CipherEffect, CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestDreadEffect,
     ManifestTopCardOfLibraryEffect, OpenAttractionEffect, PopulateEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;

@@ -81,6 +81,7 @@ impl StaticAbilityKind for Protection {
             ProtectionFrom::Colorless => "Protection from colorless".to_string(),
             ProtectionFrom::Everything => "Protection from everything".to_string(),
             ProtectionFrom::ChosenPlayer => "Protection from the chosen player".to_string(),
+            ProtectionFrom::ChosenColor => "Protection from the chosen color".to_string(),
             ProtectionFrom::CardType(ct) => format!("Protection from {}", ct.plural_name()),
             ProtectionFrom::Creatures => "Protection from creatures".to_string(),
             ProtectionFrom::Permanents(filter) => {

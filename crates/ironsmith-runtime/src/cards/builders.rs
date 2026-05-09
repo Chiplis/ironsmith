@@ -464,6 +464,7 @@ pub(crate) enum KeywordAction {
     Shroud,
     Ward(u32),
     Wither,
+    Afflict(u32),
     Afterlife(u32),
     Fabricate(u32),
     Infect,
@@ -507,6 +508,10 @@ pub(crate) enum KeywordAction {
     },
     Disturb(ManaCost),
     Overload(ManaCost),
+    Awaken {
+        amount: u32,
+        cost: ManaCost,
+    },
     Spectacle(ManaCost),
     Foretell(ManaCost),
     Echo {
@@ -520,6 +525,8 @@ pub(crate) enum KeywordAction {
     },
     Casualty(u32),
     Conspire,
+    Amplify(u32),
+    AuraSwap(ManaCost),
     Devour(u32),
     Ravenous,
     Ascend,
@@ -556,6 +563,8 @@ pub(crate) enum KeywordAction {
     ProtectionFromColorless,
     ProtectionFromEverything,
     ProtectionFromChosenPlayer,
+    ProtectionFromChosenColor,
+    ProtectionFromFilter(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -658,6 +667,8 @@ impl KeywordAction {
                 | Self::ProtectionFromColorless
                 | Self::ProtectionFromEverything
                 | Self::ProtectionFromChosenPlayer
+                | Self::ProtectionFromChosenColor
+                | Self::ProtectionFromFilter(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -711,6 +722,7 @@ impl KeywordAction {
             Self::Shroud => "Shroud".to_string(),
             Self::Ward(amount) => format!("Ward {{{amount}}}"),
             Self::Wither => "Wither".to_string(),
+            Self::Afflict(amount) => format!("Afflict {amount}"),
             Self::Afterlife(amount) => format!("Afterlife {amount}"),
             Self::Fabricate(amount) => format!("Fabricate {amount}"),
             Self::Infect => "Infect".to_string(),
@@ -751,12 +763,15 @@ impl KeywordAction {
             Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),
+            Self::Awaken { amount, cost } => format!("Awaken {amount}—{}", cost.to_oracle()),
             Self::Spectacle(cost) => format!("Spectacle {}", cost.to_oracle()),
             Self::Foretell(cost) => format!("Foretell {}", cost.to_oracle()),
             Self::Echo { text, .. } => text.clone(),
             Self::CumulativeUpkeep { text, .. } => text.clone(),
             Self::Casualty(amount) => format!("Casualty {amount}"),
             Self::Conspire => "Conspire".to_string(),
+            Self::Amplify(amount) => format!("Amplify {amount}"),
+            Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
             Self::Devour(amount) => format!("Devour {amount}"),
             Self::Ravenous => "Ravenous".to_string(),
             Self::Ascend => "Ascend".to_string(),
@@ -797,6 +812,10 @@ impl KeywordAction {
             Self::ProtectionFromColorless => "Protection from colorless".to_string(),
             Self::ProtectionFromEverything => "Protection from everything".to_string(),
             Self::ProtectionFromChosenPlayer => "Protection from the chosen player".to_string(),
+            Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
+            Self::ProtectionFromFilter(filter) => {
+                format!("Protection from {}", filter.description())
+            }
             Self::ProtectionFromCardType(card_type) => format!(
                 "Protection from {}",
                 card_type.to_string().to_ascii_lowercase()
@@ -1551,6 +1570,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Shroud => self.shroud(),
             KeywordAction::Ward(amount) => self.ward_generic(amount),
             KeywordAction::Wither => self.wither(),
+            KeywordAction::Afflict(amount) => self.afflict(amount),
             KeywordAction::Afterlife(amount) => self.afterlife(amount),
             KeywordAction::Fabricate(amount) => self.fabricate(amount),
             KeywordAction::Infect => self.infect(),
@@ -1591,6 +1611,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Disturb(cost) => self.disturb(cost),
             KeywordAction::Overload(cost) => self.overload(cost),
+            KeywordAction::Awaken { amount, cost } => self.awaken(amount, cost),
             KeywordAction::Spectacle(cost) => self.spectacle(cost),
             KeywordAction::Foretell(cost) => self.foretell(cost),
             KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
@@ -1601,6 +1622,8 @@ impl CardDefinitionBuilder {
             } => self.cumulative_upkeep(mana_symbols_per_counter, life_per_counter),
             KeywordAction::Casualty(power) => self.casualty(power),
             KeywordAction::Conspire => self.conspire(),
+            KeywordAction::Amplify(amount) => self.amplify(amount),
+            KeywordAction::AuraSwap(cost) => self.aura_swap(cost),
             KeywordAction::Devour(multiplier) => self.devour(multiplier),
             KeywordAction::Ravenous => self.ravenous(),
             KeywordAction::Ascend => self.ascend(),
@@ -1676,6 +1699,10 @@ impl CardDefinitionBuilder {
                     crate::ability::ProtectionFrom::ChosenPlayer,
                 )))
             }
+            KeywordAction::ProtectionFromChosenColor => self.with_ability(Ability::static_ability(
+                StaticAbility::protection(crate::ability::ProtectionFrom::ChosenColor),
+            )),
+            KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -1770,6 +1797,8 @@ impl CardDefinitionBuilder {
                     self.has_fuse()
                 } else if let Some(amount) = parse_standalone_bolster_marker(name) {
                     self.with_standalone_bolster_effect(amount)
+                } else if supported_keyword_marker_text(name) {
+                    self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(name)))
                 } else {
                     self.with_ability(Ability::static_ability(
                         StaticAbility::keyword_fallback_text(name),
@@ -1781,6 +1810,8 @@ impl CardDefinitionBuilder {
                     self.has_fuse()
                 } else if let Some(amount) = parse_standalone_bolster_marker(&text) {
                     self.with_standalone_bolster_effect(amount)
+                } else if supported_keyword_marker_text(&text) {
+                    self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)))
                 } else {
                     self.with_ability(Ability::static_ability(
                         StaticAbility::keyword_fallback_text(text),
@@ -2173,11 +2204,16 @@ impl CardDefinitionBuilder {
             .in_zone(Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag);
 
-        let choose = Effect::choose_objects(filter, 1, PlayerFilter::You, return_tag);
-        let move_to_battlefield = Effect::move_to_zone(
-            ChooseSpec::Tagged(return_tag.into()),
-            Zone::Battlefield,
-            true,
+        let tag_return = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+            filter, return_tag,
+        ));
+        let move_to_battlefield = Effect::new(
+            crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(return_tag.into()),
+                Zone::Battlefield,
+                true,
+            )
+            .under_owner_control(),
         )
         .tag(returned_tag);
         let counters = Effect::for_each_tagged(
@@ -2190,7 +2226,7 @@ impl CardDefinitionBuilder {
         );
         let effects = vec![
             Effect::tag_triggering_object(trigger_tag),
-            choose,
+            tag_return,
             move_to_battlefield,
             counters,
         ];
@@ -2228,11 +2264,16 @@ impl CardDefinitionBuilder {
             .in_zone(Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag);
 
-        let choose = Effect::choose_objects(filter, 1, PlayerFilter::You, return_tag);
-        let move_to_battlefield = Effect::move_to_zone(
-            ChooseSpec::Tagged(return_tag.into()),
-            Zone::Battlefield,
-            true,
+        let tag_return = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+            filter, return_tag,
+        ));
+        let move_to_battlefield = Effect::new(
+            crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(return_tag.into()),
+                Zone::Battlefield,
+                true,
+            )
+            .under_owner_control(),
         )
         .tag(returned_tag);
         let counters = Effect::for_each_tagged(
@@ -2245,7 +2286,7 @@ impl CardDefinitionBuilder {
         );
         let effects = vec![
             Effect::tag_triggering_object(trigger_tag),
-            choose,
+            tag_return,
             move_to_battlefield,
             counters,
         ];
@@ -2499,6 +2540,13 @@ impl CardDefinitionBuilder {
             }),
             functional_zones: vec![Zone::Graveyard],
         })
+    }
+
+    /// Add aura swap with a mana cost.
+    pub fn aura_swap(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
+
+        self.with_ability(Ability::activated(total_cost, vec![Effect::aura_swap()]))
     }
 
     /// Add scavenge with a mana cost.
@@ -2797,6 +2845,18 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![Effect::devour(multiplier)],
+        ))
+    }
+
+    /// Add amplify N.
+    ///
+    /// Amplify means "As this creature enters, reveal any number of cards from your hand
+    /// that share a creature type with it. This creature enters with N times that many
+    /// +1/+1 counters on it."
+    pub fn amplify(self, amount: u32) -> Self {
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::amplify(amount)],
         ))
     }
 
@@ -3389,6 +3449,19 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::static_ability(StaticAbility::skulk()))
     }
 
+    /// Add afflict N.
+    ///
+    /// Afflict means "Whenever this creature becomes blocked, defending player loses N life."
+    pub fn afflict(self, amount: u32) -> Self {
+        self.with_ability(Ability::triggered(
+            Trigger::this_becomes_blocked(),
+            vec![Effect::lose_life_player(
+                amount as i32,
+                PlayerFilter::Defending,
+            )],
+        ))
+    }
+
     /// Add afterlife N.
     ///
     /// Afterlife means "When this creature dies, create N 1/1 white and black Spirit creature
@@ -3637,6 +3710,13 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::static_ability(protection))
     }
 
+    /// Add protection from objects matching a filter.
+    pub fn protection_from_filter(self, filter: ObjectFilter) -> Self {
+        use crate::ability::ProtectionFrom;
+        let protection = StaticAbility::protection(ProtectionFrom::Permanents(filter));
+        self.with_ability(Ability::static_ability(protection))
+    }
+
     /// Add protection from a creature subtype (e.g., "Protection from Humans").
     pub fn protection_from_subtype(self, subtype: Subtype) -> Self {
         use crate::ability::ProtectionFrom;
@@ -3853,6 +3933,26 @@ impl CardDefinitionBuilder {
             .push(AlternativeCastingMethod::Overload {
                 cost,
                 effects: Vec::new(),
+            });
+        self
+    }
+
+    /// Add awaken with the given counter count and alternative cost.
+    pub fn awaken(mut self, amount: u32, cost: ManaCost) -> Self {
+        let mut effects = self
+            .spell_effect
+            .as_ref()
+            .map(|program| program.all_effects_owned())
+            .unwrap_or_default();
+        let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
+        effects.push(Effect::new(crate::effects::EarthbendEffect::new(
+            spec, amount,
+        )));
+        self.alternative_casts
+            .push(AlternativeCastingMethod::Awaken {
+                amount,
+                cost,
+                effects,
             });
         self
     }
@@ -4134,6 +4234,11 @@ impl CardDefinitionBuilder {
         });
         finalize_cipher_effects(definition)
     }
+}
+
+fn supported_keyword_marker_text(text: &str) -> bool {
+    let text = text.trim_start().to_ascii_lowercase();
+    text.starts_with("prototype ") || text.starts_with("splice onto ")
 }
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {

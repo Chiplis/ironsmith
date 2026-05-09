@@ -12,6 +12,7 @@ pub enum CounterType {
     MinusZeroMinusTwo,
     MinusTwoMinusTwo,
     Deathtouch,
+    Decayed,
     DoubleStrike,
     FirstStrike,
     Flying,

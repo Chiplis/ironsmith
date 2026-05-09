@@ -245,6 +245,9 @@ fn maybe_tag_target(
 ) -> Result<(), CardTextError> {
     let refs = lowering_reference_frame(frame);
     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+    if matches!(spec.base(), ChooseSpec::Source) {
+        frame.source_object_antecedent = true;
+    }
     if frame.auto_tag_object_targets
         && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, prefix)
     {

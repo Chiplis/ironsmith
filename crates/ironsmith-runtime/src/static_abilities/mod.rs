@@ -582,6 +582,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "as this becomes attached, choose a color" abilities.
+    fn color_choice_as_becomes_attached(&self) -> Option<ChooseColorAsBecomesAttachedSpec> {
+        None
+    }
+
     /// Returns info for "as this enters, choose a player" abilities.
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         None
@@ -888,6 +893,10 @@ pub struct ChooseColorAsEntersSpec {
     pub excluded: Option<crate::color::Color>,
 }
 
+/// Spec for "as this becomes attached, choose a color" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChooseColorAsBecomesAttachedSpec;
+
 /// Spec for "as this enters, choose a player" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChoosePlayerAsEntersSpec;
@@ -991,6 +1000,10 @@ impl StaticAbility {
 
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         self.0.color_choice_as_enters()
+    }
+
+    pub fn color_choice_as_becomes_attached(&self) -> Option<ChooseColorAsBecomesAttachedSpec> {
+        self.0.color_choice_as_becomes_attached()
     }
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
@@ -1792,6 +1805,10 @@ impl StaticAbility {
         Self::new(FirstEquipCostAlternative::new(display_text))
     }
 
+    pub fn equip_abilities_any_time() -> Self {
+        Self::new(EquipAbilitiesAnyTime)
+    }
+
     pub fn vote_additional_time_while_voting() -> Self {
         Self::new(VoteAdditionalTimeWhileVoting)
     }
@@ -2335,6 +2352,10 @@ impl StaticAbility {
         Self::new(ChooseColorAsEnters::new(excluded, display))
     }
 
+    pub fn choose_color_as_becomes_attached(display: String) -> Self {
+        Self::new(ChooseColorAsBecomesAttached::new(display))
+    }
+
     pub fn choose_player_as_enters(display: String) -> Self {
         Self::new(ChoosePlayerAsEnters::new(display))
     }
@@ -2539,6 +2560,10 @@ impl StaticAbility {
             player,
             counter_type,
         ))
+    }
+
+    pub fn exile_would_die_instead(filter: crate::target::ObjectFilter) -> Self {
+        Self::new(ExileWouldDieInstead::new(filter))
     }
 
     pub fn players_cant_gain_life() -> Self {

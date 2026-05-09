@@ -104,9 +104,9 @@ pub use combat::{
     PreventDamageEffect, RemoveFromCombatEffect, SetBasePowerToughnessEffect,
 };
 pub use composition::{
-    AdaptEffect, BackupEffect, BeholdEffect, BolsterEffect, CastEncodedCardCopyEffect,
-    ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect, CipherEffect,
-    ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
+    AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BolsterEffect,
+    CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect,
+    CipherEffect, ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
     EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, LocalRewriteEffect, ManaRestrictedEffect, ManifestDreadEffect,
@@ -189,7 +189,7 @@ pub use zones::{
     MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToLibraryTopOrBottomChoiceEffect,
     MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
     ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
-    ReturnFromGraveyardOrExileToBattlefieldEffect,
-    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
-    SacrificeEffect, SacrificeTargetEffect, ShuffleObjectsIntoLibraryEffect,
+    ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
+    ShuffleObjectsIntoLibraryEffect,
 };

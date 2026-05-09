@@ -1581,6 +1581,10 @@ impl Effect {
         Self::new(crate::effects::AmassEffect::new(subtype, amount))
     }
 
+    pub fn amplify(amount: u32) -> Self {
+        Self::new(crate::effects::AmplifyEffect::new(amount))
+    }
+
     pub fn reveal_top(
         player: crate::target::PlayerFilter,
         tag: impl Into<crate::tag::TagKey>,
@@ -1630,6 +1634,10 @@ impl Effect {
         Self::new(crate::effects::ExchangeZonesEffect::new(
             player, left, right,
         ))
+    }
+
+    pub fn aura_swap() -> Self {
+        Self::new(crate::effects::AuraSwapEffect::new())
     }
 
     pub fn exchange_text_boxes(target: crate::target::ChooseSpec) -> Self {

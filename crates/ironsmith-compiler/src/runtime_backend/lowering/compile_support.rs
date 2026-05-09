@@ -83,7 +83,10 @@ use super::reference_model::{
     ReferenceImports,
 };
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
-use super::static_ability_helpers::lower_granted_abilities_ast;
+use super::static_ability_helpers::{
+    decayed_triggered_ability, lower_granted_abilities_ast, persist_triggered_ability,
+    undying_triggered_ability,
+};
 use super::util::{
     contains_until_end_of_turn, map_span_to_original, parse_card_type, parse_number_word_i32,
 };
@@ -1627,6 +1630,24 @@ fn lower_granted_ability_grant_modifications(
                 *lowered.text_mut() = Some(display.clone());
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(
                     lowered.into_runtime(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Decayed) => {
+                modifications.push(crate::continuous::Modification::AddAbility(
+                    StaticAbility::cant_block(),
+                ));
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    decayed_triggered_ability(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Persist) => {
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    persist_triggered_ability(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Undying) => {
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    undying_triggered_ability(),
                 ));
             }
             _ => {

@@ -159,6 +159,36 @@ fn is_basic_color_word(word: &str) -> bool {
     )
 }
 
+fn is_card_type_word(word: &str) -> bool {
+    matches!(
+        word,
+        "artifact"
+            | "artifacts"
+            | "battle"
+            | "battles"
+            | "creature"
+            | "creatures"
+            | "enchantment"
+            | "enchantments"
+            | "instant"
+            | "instants"
+            | "land"
+            | "lands"
+            | "planeswalker"
+            | "planeswalkers"
+            | "sorcery"
+            | "sorceries"
+            | "kindred"
+    )
+}
+
+fn is_shared_card_type_list_noun(word: &str) -> bool {
+    matches!(
+        word,
+        "card" | "cards" | "spell" | "spells" | "permanent" | "permanents"
+    )
+}
+
 fn starts_with_each_player_or_opponent(tokens: &[OwnedLexToken]) -> bool {
     grammar::words_match_any_prefix(tokens, EACH_PLAYER_OR_OPPONENT_PREFIXES).is_some()
 }
@@ -297,6 +327,13 @@ fn should_keep_and_for_exchange_zones(
     should_keep_and_for_exchange_zones_lexed(current, remaining)
 }
 
+fn should_keep_and_for_card_type_list(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    should_keep_and_for_card_type_list_lexed(current, remaining)
+}
+
 pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
@@ -315,6 +352,7 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
                 || should_keep_and_for_put_rest_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_steps_and_phases_end(&current, &tokens[idx + 1..])
                 || should_keep_and_for_exchange_zones(&current, &tokens[idx + 1..])
+                || should_keep_and_for_card_type_list(&current, &tokens[idx + 1..])
                 || should_keep_and_for_become_with_quoted_ability(&current, &tokens[idx + 1..])
             {
                 current.push(token.clone());
@@ -525,6 +563,51 @@ fn should_keep_and_for_exchange_zones_lexed(
             .is_some_and(|word| parse_zone_word(word).is_some())
 }
 
+fn should_keep_and_for_card_type_list_lexed(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    if current.is_empty() || remaining.is_empty() {
+        return false;
+    }
+
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
+    if current_words.is_empty() || remaining_words.is_empty() {
+        return false;
+    }
+
+    if !remaining_words
+        .first()
+        .is_some_and(|word| is_card_type_word(word))
+    {
+        return false;
+    }
+    if !remaining_words
+        .iter()
+        .any(|word| is_shared_card_type_list_noun(word))
+    {
+        return false;
+    }
+
+    let current_last_type = current_words
+        .iter()
+        .rev()
+        .find(|word| !matches!(**word, "a" | "an" | "the" | "all" | "each"))
+        .is_some_and(|word| is_card_type_word(word));
+    if !current_last_type {
+        return false;
+    }
+
+    let current_has_type = current_words.iter().any(|word| is_card_type_word(word));
+    let current_has_list_marker = current.iter().any(|token| token.kind == TokenKind::Comma)
+        || current_words
+            .iter()
+            .any(|word| matches!(*word, "or" | "and/or"));
+
+    current_has_type && current_has_list_marker
+}
+
 fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
     if words.first().copied() != Some("prevent") {
         return false;
@@ -707,6 +790,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_put_rest_clause_lexed(current, remaining)
             || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
             || should_keep_and_for_exchange_zones_lexed(current, remaining)
+            || should_keep_and_for_card_type_list_lexed(current, remaining)
             || should_keep_and_for_power_toughness_axis_lexed(current, remaining)
             || should_keep_and_for_become_with_quoted_ability(current, remaining)
             || should_keep_and_for_shared_subject_gain_clause(current, remaining)

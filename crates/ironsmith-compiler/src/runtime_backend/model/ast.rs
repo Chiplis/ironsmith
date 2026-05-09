@@ -83,6 +83,10 @@ pub(crate) enum StaticAbilityAst {
     SoulbondSharedObjectAbility {
         ability: ParsedAbility,
     },
+    AttachmentRestriction {
+        filter: AuraAttachmentFilter,
+        display: String,
+    },
 }
 
 impl From<StaticAbility> for StaticAbilityAst {
@@ -959,6 +963,7 @@ pub(crate) enum SubjectVerbActionAst {
     ReturnAllToBattlefield {
         filter: ObjectFilter,
         tapped: bool,
+        controller: ReturnControllerAst,
     },
     ExileUntilSourceLeaves {
         target: TargetAst,
@@ -2072,10 +2077,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count_value", count_value)
                 .field("as_aura", as_aura)
                 .finish(),
-            Self::ReturnAllToBattlefield { filter, tapped } => f
+            Self::ReturnAllToBattlefield {
+                filter,
+                tapped,
+                controller,
+            } => f
                 .debug_struct("ReturnAllToBattlefield")
                 .field("filter", filter)
                 .field("tapped", tapped)
+                .field("controller", controller)
                 .finish(),
             Self::ExileUntilSourceLeaves { target, face_down } => f
                 .debug_struct("ExileUntilSourceLeaves")
@@ -3401,11 +3411,16 @@ impl EffectAst {
     pub(crate) fn subject_verb_return_all_to_battlefield(
         filter: ObjectFilter,
         tapped: bool,
+        controller: ReturnControllerAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ReturnAllToBattlefield { filter, tapped },
+            SubjectVerbActionAst::ReturnAllToBattlefield {
+                filter,
+                tapped,
+                controller,
+            },
         )
     }
 

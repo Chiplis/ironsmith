@@ -354,6 +354,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         player: PlayerFilter,
         counter_type: CounterType,
     },
+    ExileWouldDieInstead {
+        filter: ObjectFilter,
+    },
     ModifyDamageAmountReplacement {
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
@@ -1074,6 +1077,9 @@ where
                 player,
                 counter_type,
             },
+            StaticAbilityPayload::ExileWouldDieInstead { filter } => {
+                StaticAbilityPayload::ExileWouldDieInstead { filter }
+            }
             StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -2194,6 +2200,12 @@ impl<
             payload: StaticAbilityPayload::FirstEquipCostAlternative(display),
         }
     }
+    pub fn equip_abilities_any_time() -> Self {
+        Self::identified(
+            StaticAbilityId::EquipAbilitiesAnyTime,
+            "activate equip abilities any time",
+        )
+    }
     pub fn vote_additional_time_while_voting() -> Self {
         Self::identified(
             StaticAbilityId::VoteAdditionalTimeWhileVoting,
@@ -2609,6 +2621,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn choose_color_as_becomes_attached(_display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ChooseColorAsBecomesAttached),
+            label: "choose color as becomes attached".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn choose_player_as_enters(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -2912,6 +2931,13 @@ impl<
                 player,
                 counter_type,
             },
+        }
+    }
+    pub fn exile_would_die_instead(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExileWouldDieInstead),
+            label: "exile would die instead".into(),
+            payload: StaticAbilityPayload::ExileWouldDieInstead { filter },
         }
     }
     pub fn modify_damage_amount_replacement(
