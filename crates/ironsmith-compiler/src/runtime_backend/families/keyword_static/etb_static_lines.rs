@@ -2066,7 +2066,13 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         controller_override = Some(PlayerFilter::Opponent);
         filter_end = find_suffix_cut(3);
     }
-    let mut filter = parse_object_filter(&before_enter[..filter_end], false)?;
+    let mut filter = match parse_object_filter(&before_enter[..filter_end], false) {
+        Ok(filter) => filter,
+        Err(_) if filter_end == before_enter.len() && !before_words.is_empty() => {
+            return Ok(Some(StaticAbility::enters_tapped_ability()));
+        }
+        Err(err) => return Err(err),
+    };
     if controller_override.is_none() && filter.source {
         return Ok(Some(StaticAbility::enters_tapped_ability()));
     }

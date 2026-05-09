@@ -289,6 +289,24 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             };
             ("{X}".to_string(), Some(format!("where X is {phrase}")))
         }
+        Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, colors } => {
+            let source = match (player, colors) {
+                (PlayerFilter::You, Some(colors))
+                    if colors.contains(crate::color::Color::Red) && colors.count() == 1 =>
+                {
+                    "red sources you controlled"
+                }
+                (PlayerFilter::You, _) => "sources you controlled",
+                (PlayerFilter::Opponent, _) => "sources your opponents controlled",
+                _ => "matching sources",
+            };
+            (
+                "{X}".to_string(),
+                Some(format!(
+                    "where X is the total amount of noncombat damage {source} dealt this turn"
+                )),
+            )
+        }
         Value::LandsEnteredBattlefieldThisTurn(player) => {
             let phrase = match player {
                 PlayerFilter::You => {
@@ -1109,6 +1127,23 @@ fn this_spell_condition_eval_ctx<'a>(
     }
 }
 
+fn condition_expr_matches_for_cast(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    expr: &crate::effect::Condition,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
+    if let crate::effect::Condition::ThisSpellPaidLabel(label) = expr
+        && let Some(paid) = optional_costs_paid
+    {
+        return paid.was_paid_label(label);
+    }
+
+    let eval_ctx = this_spell_condition_eval_ctx(source, controller);
+    crate::condition_eval::evaluate_condition_external(game, expr, &eval_ctx)
+}
+
 fn chosen_targets_match(
     game: &crate::game_state::GameState,
     source: crate::ids::ObjectId,
@@ -1166,6 +1201,22 @@ pub fn this_spell_cost_condition_is_active_for_cast(
     source: crate::ids::ObjectId,
     condition: &ThisSpellCostCondition,
     chosen_targets: &[crate::game_state::Target],
+) -> bool {
+    this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+        game,
+        source,
+        condition,
+        chosen_targets,
+        None,
+    )
+}
+
+pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    condition: &ThisSpellCostCondition,
+    chosen_targets: &[crate::game_state::Target],
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
     if matches!(condition, ThisSpellCostCondition::Always) {
         return true;
@@ -1267,10 +1318,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
         }
         ThisSpellCostCondition::ConditionExpr {
             condition: expr, ..
-        } => {
-            let eval_ctx = this_spell_condition_eval_ctx(source, controller);
-            crate::condition_eval::evaluate_condition_external(game, expr, &eval_ctx)
-        }
+        } => condition_expr_matches_for_cast(game, source, controller, expr, optional_costs_paid),
         ThisSpellCostCondition::TargetsPlayer(filter) => {
             chosen_targets_match(game, source, controller, chosen_targets, Some(filter), None)
         }

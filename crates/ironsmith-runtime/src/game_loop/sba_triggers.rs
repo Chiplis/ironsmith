@@ -162,9 +162,12 @@ pub fn put_triggers_on_stack_with_dm(
             if !can_stack_trigger_this_turn(game, &trigger) {
                 continue;
             }
-            if let Some(entry) =
-                create_triggered_stack_entry_with_targets(game, trigger, decision_maker)
-            {
+            if let Some(entry) = create_triggered_stack_entry_with_targets(
+                game,
+                trigger,
+                decision_maker,
+                trigger_queue,
+            ) {
                 if decision_maker.awaiting_choice() {
                     for deferred in ordered_for_stacking.iter().skip(index).rev() {
                         trigger_queue.add(deferred.clone());
@@ -181,7 +184,20 @@ pub fn put_triggers_on_stack_with_dm(
                     return Ok(());
                 }
                 game.record_trigger_fired(trigger.source, trigger.trigger_identity);
+                let targets = entry.targets.clone();
+                let object_id = entry.object_id;
+                let controller = entry.controller;
+                let provenance = entry.provenance;
                 game.push_to_stack(entry);
+                queue_becomes_targeted_events(
+                    game,
+                    trigger_queue,
+                    &targets,
+                    object_id,
+                    controller,
+                    true,
+                    provenance,
+                );
             } else if decision_maker.awaiting_choice() {
                 for deferred in ordered_for_stacking.iter().skip(index).rev() {
                     trigger_queue.add(deferred.clone());
@@ -489,9 +505,12 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
                 continue;
             }
 
-            if let Some(entry) =
-                create_triggered_stack_entry_with_targets(game, &trigger, decision_maker)
-            {
+            if let Some(entry) = create_triggered_stack_entry_with_targets(
+                game,
+                &trigger,
+                decision_maker,
+                trigger_queue,
+            ) {
                 game.record_trigger_fired(trigger.source, trigger.trigger_identity);
                 resolve_triggered_stack_entry_immediately(
                     game,
@@ -834,6 +853,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     game: &mut GameState,
     trigger: &TriggeredAbilityEntry,
     decision_maker: &mut dyn DecisionMaker,
+    _trigger_queue: &mut TriggerQueue,
 ) -> Option<StackEntry> {
     let effects = game.cached_continuous_effects_snapshot();
     let mut entry = triggered_to_stack_entry_with_effects(game, trigger, &effects);

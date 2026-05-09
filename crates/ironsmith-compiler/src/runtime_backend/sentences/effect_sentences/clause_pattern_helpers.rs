@@ -471,6 +471,7 @@ pub(crate) fn parse_copy_spell_clause(
         let target = match target_words.as_slice() {
             ["this", "spell"] => TargetAst::Source(None),
             ["that", "spell"] => TargetAst::Tagged(TagKey::from("triggering"), None),
+            ["that", "ability"] => TargetAst::Tagged(TagKey::from("triggering_source"), None),
             ["it"] | ["that"] | ["that", "card"] | ["the", "exiled", "card"] => {
                 TargetAst::Tagged(TagKey::from(IT_TAG), None)
             }

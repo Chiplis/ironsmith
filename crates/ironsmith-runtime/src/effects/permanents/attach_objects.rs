@@ -8,7 +8,33 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
 use crate::target::ChooseSpec;
+use crate::zone::Zone;
 pub use ironsmith_core::AttachObjectsEffect;
+
+fn resolve_attachment_target(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Result<AttachmentTarget, ExecutionError> {
+    if let ChooseSpec::Tagged(tag) = spec.base()
+        && let Some(tagged) = ctx.get_tagged_all(tag)
+    {
+        for snapshot in tagged {
+            if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+                && game
+                    .object(current_id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+            {
+                return Ok(AttachmentTarget::Object(current_id));
+            }
+        }
+    }
+
+    match resolve_single_target_from_spec(game, spec, ctx)? {
+        crate::effects::ResolvedTarget::Object(id) => Ok(AttachmentTarget::Object(id)),
+        crate::effects::ResolvedTarget::Player(id) => Ok(AttachmentTarget::Player(id)),
+    }
+}
 
 /// Effect that attaches one or more objects to a destination object.
 impl EffectExecutor for AttachObjectsEffect {
@@ -17,9 +43,8 @@ impl EffectExecutor for AttachObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target = match resolve_single_target_from_spec(game, &self.target, ctx) {
-            Ok(crate::effects::ResolvedTarget::Object(id)) => AttachmentTarget::Object(id),
-            Ok(crate::effects::ResolvedTarget::Player(id)) => AttachmentTarget::Player(id),
+        let target = match resolve_attachment_target(game, &self.target, ctx) {
+            Ok(target) => target,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
             Err(err) => return Err(err),
         };
@@ -291,6 +316,90 @@ mod tests {
                 .attachments
                 .contains(&aura),
             "the enchanted player should record the Aura attachment"
+        );
+    }
+
+    #[test]
+    fn test_attach_objects_tagged_target_follows_returned_battlefield_object() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let equipment = create_equipment(&mut game, "Test Equipment", alice);
+        let creature = create_creature(&mut game, "Bear", alice);
+        let graveyard_id = game
+            .move_object_by_effect(creature, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+        let graveyard_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(graveyard_id).unwrap(), &game);
+        let returned_id = game
+            .move_object_by_effect(graveyard_id, Zone::Battlefield)
+            .expect("creature should return to battlefield");
+        let mut ctx = ExecutionContext::new_default(equipment, alice);
+        ctx.tag_object("returned", graveyard_snapshot);
+
+        let effect = AttachObjectsEffect::new(
+            ChooseSpec::SpecificObject(equipment),
+            ChooseSpec::Tagged("returned".into()),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        assert_eq!(result.count_or_zero(), 1);
+        assert_eq!(
+            game.object(equipment).and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(returned_id))
+        );
+        assert!(
+            game.object(returned_id)
+                .expect("returned creature should exist")
+                .attachments
+                .contains(&equipment)
+        );
+    }
+
+    #[test]
+    fn test_attach_objects_source_to_original_tag_after_return_sequence() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let equipment = create_equipment(&mut game, "Test Equipment", alice);
+        let original = create_creature(&mut game, "Bear", alice);
+        let graveyard_id = game
+            .move_object_by_effect(original, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+        let stable_id = game.object(graveyard_id).unwrap().stable_id;
+        let graveyard_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(graveyard_id).unwrap(), &game);
+        let mut ctx = ExecutionContext::new_default(equipment, alice);
+        ctx.tag_object("triggering", graveyard_snapshot);
+
+        let move_effect = crate::effect::Effect::new(crate::effects::TaggedEffect::new(
+            "returned_0",
+            crate::effect::Effect::new(
+                crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Tagged("triggering".into()),
+                    Zone::Battlefield,
+                    false,
+                )
+                .under_you_control(),
+            ),
+        ));
+        crate::effects::execute_effect(&mut game, &move_effect, &mut ctx)
+            .expect("return effect should resolve");
+        let returned_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("returned creature should keep stable id");
+
+        let attach_effect =
+            AttachObjectsEffect::new(ChooseSpec::Source, ChooseSpec::Tagged("triggering".into()));
+        let result = attach_effect
+            .execute(&mut game, &mut ctx)
+            .expect("attach should resolve");
+
+        assert_eq!(result.count_or_zero(), 1);
+        assert_eq!(
+            game.object(equipment).and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(returned_id))
         );
     }
 }

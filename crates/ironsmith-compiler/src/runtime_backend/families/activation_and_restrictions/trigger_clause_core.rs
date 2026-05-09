@@ -1779,6 +1779,15 @@ pub(crate) fn parse_trigger_clause_lexed(
             {
                 return Ok(TriggerSpec::BecomesTargeted(filter));
             }
+            if (tail_words == ["a", "backup", "ability"] || tail_words == ["backup", "ability"])
+                && let Some(filter) = subject_filter
+            {
+                let ability_filter = ObjectFilter::ability().with_ability_marker("backup");
+                return Ok(TriggerSpec::BecomesTargetedByStackObject {
+                    target: filter,
+                    stack_object: ability_filter,
+                });
+            }
         }
     }
 

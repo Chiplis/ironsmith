@@ -422,7 +422,7 @@ pub(super) fn resolve_stack_entry_full(
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
 
     // Get the object for this stack entry
-    let obj = game.object(entry.object_id).cloned();
+    let mut obj = game.object(entry.object_id).cloned();
 
     // Create execution context
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
@@ -513,24 +513,40 @@ pub(super) fn resolve_stack_entry_full(
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
         validate_stack_entry_targets_with_view(game, &entry, &target_validation_view);
 
-    // If the spell/ability had targets and ALL are now invalid, it fizzles
-    if !entry.targets.is_empty() && all_targets_invalid {
-        // Spell fizzles - move to graveyard without executing effects
-        if let Some(obj) = &obj
-            && obj.zone == Zone::Stack
-            && !entry.is_ability
-        {
-            // Move spell to owner's graveyard (via replacement effects)
-            let _ = crate::effects::zones::apply_zone_change(
-                game,
-                entry.object_id,
-                Zone::Stack,
-                Zone::Graveyard,
-                crate::events::cause::EventCause::from_game_rule(),
-                &mut *decision_maker,
-            );
+    let bestow_resolves_as_creature_after_illegal_target = !entry.is_ability
+        && all_targets_invalid
+        && obj
+            .as_ref()
+            .is_some_and(|obj| obj.zone == Zone::Stack && obj.is_bestow_overlay_active());
+    if bestow_resolves_as_creature_after_illegal_target {
+        if let Some(stack_obj) = game.object_mut(entry.object_id) {
+            stack_obj.end_bestow_cast_overlay();
+            obj = Some(stack_obj.clone());
         }
-        return Ok(());
+    }
+
+    // If the spell/ability had targets and ALL are now invalid, it fizzles.
+    // Bestow is the exception from CR 702.103e: it stops being bestowed and
+    // continues resolving as a creature spell.
+    if !entry.targets.is_empty() && all_targets_invalid {
+        if !bestow_resolves_as_creature_after_illegal_target {
+            // Spell fizzles - move to graveyard without executing effects
+            if let Some(obj) = &obj
+                && obj.zone == Zone::Stack
+                && !entry.is_ability
+            {
+                // Move spell to owner's graveyard (via replacement effects)
+                let _ = crate::effects::zones::apply_zone_change(
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Graveyard,
+                    crate::events::cause::EventCause::from_game_rule(),
+                    &mut *decision_maker,
+                );
+            }
+            return Ok(());
+        }
     }
 
     if let Some(trigger_identity) = entry.trigger_identity {

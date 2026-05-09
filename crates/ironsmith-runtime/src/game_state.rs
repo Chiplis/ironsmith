@@ -28,6 +28,7 @@ use crate::player::Player;
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
 use crate::replacement::{ReplacementEffectId, ReplacementEffectManager};
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
@@ -180,8 +181,13 @@ pub struct TurnStore {
     /// Total number of spells cast during the immediately previous turn.
     /// Updated when turn advances.
     pub spells_cast_last_turn_total: u32,
+    /// Last-known snapshots for objects that entered the battlefield during the immediately
+    /// previous turn.
+    pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Static or temporary grant sources whose once-per-turn cast permission was used.
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Explicit combat damage assignments keyed by attacker then damage recipient.
+    pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -2330,6 +2336,31 @@ impl GameState {
                 .then_some(idx)
             })
             .collect::<Vec<_>>();
+        let granted_abilities = matching
+            .iter()
+            .filter_map(|idx| {
+                self.effect_store
+                    .temporary_spell_ability_grants
+                    .get(*idx)
+                    .map(|effect| effect.ability.clone())
+            })
+            .collect::<Vec<_>>();
+        if let Some(spell) = self.object_mut(spell_id) {
+            for ability in granted_abilities {
+                let already_present = spell.abilities.iter().any(|existing| {
+                    matches!(
+                        &existing.kind,
+                        crate::ability::AbilityKind::Static(static_ability)
+                            if static_ability.id() == ability.id()
+                    )
+                });
+                if !already_present {
+                    spell
+                        .abilities
+                        .push(crate::ability::Ability::static_ability(ability));
+                }
+            }
+        }
         for idx in matching {
             if let Some(effect) = self
                 .effect_store
@@ -3171,6 +3202,7 @@ impl GameState {
         let preserve_temporary_static_ability_grants =
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_cast_tags = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
@@ -3182,6 +3214,9 @@ impl GameState {
         }
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
+        }
+        if !preserve_optional_costs_paid {
+            new_object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
         }
 
         if old_zone != Zone::Stack
@@ -4634,11 +4669,25 @@ impl GameState {
     ) -> Option<PlayerId> {
         let object = self.object(id)?;
         let mut controller = object.owner;
-        for effect in self
-            .effect_store
-            .continuous_effects
-            .effects_sorted()
-            .into_iter()
+        let mut effects = if self.continuous_state_is_clean() {
+            self.cached_continuous_effects_snapshot()
+        } else {
+            self.effect_store
+                .continuous_effects
+                .effects_sorted()
+                .into_iter()
+                .cloned()
+                .collect()
+        };
+        effects.sort_by(|a, b| {
+            let layer_cmp = a.modification.layer().cmp(&b.modification.layer());
+            if layer_cmp != std::cmp::Ordering::Equal {
+                return layer_cmp;
+            }
+            a.timestamp.cmp(&b.timestamp)
+        });
+        for effect in effects
+            .iter()
             .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
         {
             if skipped_effect == Some(effect.id) {
@@ -5983,6 +6032,10 @@ impl GameState {
         self.turn_store.cards_drawn_this_draw_step = 0;
 
         // Clear turn-based tracking
+        self.turn_store.entered_battlefield_last_turn = self
+            .turn_store
+            .turn_history
+            .entered_battlefield_snapshots_this_turn();
         self.turn_store.spells_cast_last_turn_total =
             self.turn_store.turn_history.clear_for_new_turn();
         self.turn_store.grant_cast_uses_this_turn.clear();
@@ -6237,6 +6290,13 @@ impl GameState {
             .turn_history
             .creatures_attacked_this_turn
             .insert(creature);
+        *self
+            .turn_store
+            .turn_history
+            .creature_attack_counts_this_turn
+            .entry(creature)
+            .or_insert(0) += 1;
+        self.mark_continuous_state_dirty();
     }
 
     /// Check whether a creature has attacked this turn.
@@ -6245,6 +6305,38 @@ impl GameState {
             .turn_history
             .creatures_attacked_this_turn
             .contains(&creature)
+    }
+
+    /// Count how many times a creature has attacked this turn.
+    pub fn creature_attack_count_this_turn(&self, creature: ObjectId) -> u32 {
+        self.turn_store
+            .turn_history
+            .creature_attack_counts_this_turn
+            .get(&creature)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Record an explicit combat damage assignment for the next combat damage step.
+    pub fn set_combat_damage_assignment(
+        &mut self,
+        attacker: ObjectId,
+        recipient: ObjectId,
+        amount: u32,
+    ) {
+        self.turn_store
+            .combat_damage_assignments
+            .entry(attacker)
+            .or_default()
+            .insert(recipient, amount);
+    }
+
+    /// Consume explicit damage assignments for an attacker.
+    pub fn take_combat_damage_assignments(&mut self, attacker: ObjectId) -> HashMap<ObjectId, u32> {
+        self.turn_store
+            .combat_damage_assignments
+            .remove(&attacker)
+            .unwrap_or_default()
     }
 
     /// Check whether an object performed a specific keyword action this turn.

@@ -1163,7 +1163,6 @@ pub(crate) fn parse_search_library_object_filter_lexed(
             .skip(named_idx + 1)
             .map(|(_, word)| *word)
             .take_while(|word| !matches!(*word, "that" | "with"))
-            .filter(|word| !is_article(word))
             .collect::<Vec<_>>();
         let name = name_words.join(" ");
         if name.is_empty() {

@@ -5,6 +5,7 @@ pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
     AttachedToSource(ObjectFilter),
     AttachedToAffected(ObjectFilter),
+    AffectedAttackedThisTurn,
     CountersOnSource(CounterType),
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
@@ -38,7 +39,8 @@ impl AnthemValue {
         matches!(
             self,
             Self::PerCount {
-                count: AnthemCountExpression::AttachedToAffected(_),
+                count: AnthemCountExpression::AttachedToAffected(_)
+                    | AnthemCountExpression::AffectedAttackedThisTurn,
                 ..
             }
         )

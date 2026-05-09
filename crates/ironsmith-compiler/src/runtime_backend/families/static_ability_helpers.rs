@@ -19,6 +19,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
     match action {
         KeywordAction::Flying => Some(StaticAbility::flying()),
         KeywordAction::Menace => Some(StaticAbility::menace()),
+        KeywordAction::Banding => Some(StaticAbility::banding()),
         KeywordAction::Hexproof => Some(StaticAbility::hexproof()),
         KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
         KeywordAction::Haste => Some(StaticAbility::haste()),

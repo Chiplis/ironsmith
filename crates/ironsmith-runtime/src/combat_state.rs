@@ -26,6 +26,8 @@ pub struct CombatState {
     pub blockers: HashMap<ObjectId, Vec<ObjectId>>,
     /// Damage assignment order: attacker -> ordered list of blockers.
     pub damage_assignment_order: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Attacking bands declared for the current combat.
+    pub attacking_bands: Vec<Vec<ObjectId>>,
 }
 
 /// Information about an attacking creature.
@@ -653,6 +655,8 @@ pub fn declare_blockers(
             .push(*attacker_id);
     }
 
+    propagate_banding_blocks(combat, &mut blockers_by_attacker);
+
     if let Some(max_blockers) = max_creatures_can_block_each_combat(game)
         && blocker_counts.len() > max_blockers
     {
@@ -797,6 +801,100 @@ pub fn declare_blockers(
     }
 
     Ok(())
+}
+
+/// Records an attacking band for the current combat.
+///
+/// This covers rule 702.22c for ordinary banding: a band may contain one or
+/// more attacking creatures with banding and up to one attacking creature
+/// without banding. "Bands with other" has extra quality constraints and is
+/// intentionally not modeled here yet.
+pub fn set_attacking_band(
+    game: &GameState,
+    combat: &mut CombatState,
+    members: Vec<ObjectId>,
+) -> Result<(), CombatError> {
+    if members.len() < 2 {
+        return Ok(());
+    }
+
+    let mut deduped = Vec::new();
+    for member in members {
+        if !deduped.contains(&member) {
+            deduped.push(member);
+        }
+    }
+
+    for member in &deduped {
+        if !is_attacking(combat, *member) {
+            return Err(CombatError::NotInCombat(*member));
+        }
+        if combat
+            .attacking_bands
+            .iter()
+            .any(|band| band.contains(member))
+        {
+            return Err(CombatError::DuplicateAttacker(*member));
+        }
+    }
+
+    let banding_count = deduped
+        .iter()
+        .filter(|&&member| creature_has_banding(game, member))
+        .count();
+    if banding_count == 0 || deduped.len().saturating_sub(banding_count) > 1 {
+        return Err(CombatError::CreatureCannotAttack(deduped[0]));
+    }
+
+    let Some(first_target) = get_attack_target(combat, deduped[0]).cloned() else {
+        return Err(CombatError::NotInCombat(deduped[0]));
+    };
+    if deduped
+        .iter()
+        .skip(1)
+        .any(|member| get_attack_target(combat, *member) != Some(&first_target))
+    {
+        return Err(CombatError::InvalidAttackTarget(first_target));
+    }
+
+    combat.attacking_bands.push(deduped);
+    Ok(())
+}
+
+fn creature_has_banding(game: &GameState, creature: ObjectId) -> bool {
+    let all_effects = game.all_continuous_effects();
+    static_abilities_for_object(game, creature, &all_effects)
+        .iter()
+        .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Banding)
+}
+
+fn propagate_banding_blocks(
+    combat: &CombatState,
+    blockers_by_attacker: &mut HashMap<ObjectId, Vec<ObjectId>>,
+) {
+    for band in &combat.attacking_bands {
+        let mut shared_blockers = Vec::new();
+        for attacker in band {
+            if let Some(blockers) = blockers_by_attacker.get(attacker) {
+                for blocker in blockers {
+                    if !shared_blockers.contains(blocker) {
+                        shared_blockers.push(*blocker);
+                    }
+                }
+            }
+        }
+        if shared_blockers.is_empty() {
+            continue;
+        }
+        for attacker in band {
+            let blockers = blockers_by_attacker.entry(*attacker).or_default();
+            for blocker in &shared_blockers {
+                if !blockers.contains(blocker) {
+                    blockers.push(*blocker);
+                }
+            }
+        }
+    }
 }
 
 /// Sets the damage assignment order for an attacker's blockers.

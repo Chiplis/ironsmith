@@ -115,6 +115,9 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::SpellsCastThisTurn(player)
         | crate::effect::Value::SpellsCastBeforeThisTurn(player)
         | crate::effect::Value::CardTypesInGraveyard(player) => player.mentions_iterated_player(),
+        crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {
+            player, ..
+        } => player.mentions_iterated_player(),
         crate::effect::Value::Devotion { player, .. } => player.mentions_iterated_player(),
         crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)

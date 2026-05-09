@@ -102,6 +102,8 @@ define_keyword!(Menace, Menace, "Menace",
     has_menace => true
 );
 
+define_keyword!(Banding, Banding, "Banding");
+
 define_keyword!(Reach, Reach, "Reach",
     has_reach => true
 );

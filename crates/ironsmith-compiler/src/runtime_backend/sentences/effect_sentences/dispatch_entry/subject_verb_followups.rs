@@ -128,6 +128,9 @@ fn pre_followup_subject_verb_route(id: &str) -> &'static str {
         "copy-and-cast" => "subject-verb verb=Copy subject=implicit recognizer=copy-cast-followup",
         "token-followups" => "subject-verb verb=Create subject=implicit recognizer=token-followup",
         "exile-this-way" => "subject-verb verb=Exile subject=implicit recognizer=this-way-followup",
+        "tap-damage-this-way" => {
+            "subject-verb verb=Tap subject=implicit recognizer=damage-this-way-followup"
+        }
         "destroy-those-creatures" => {
             "subject-verb verb=Destroy subject=implicit recognizer=referential-followup"
         }
@@ -312,6 +315,43 @@ fn pre_rule_damage_this_way_player_followup(
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "players",
+            "dealt",
+            "damage",
+            "this",
+            "way",
+            "cant",
+            "cast",
+            "noncreature",
+            "spells",
+            "this",
+            "turn"
+        ] | [
+            "players", "dealt", "damage", "this", "way", "cant", "cast", "non", "creature",
+            "spells", "this", "turn"
+        ]
+    ) {
+        return Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+            tokens: sentence_tokens.to_vec(),
+            wrap_if_result: None,
+            direct_effects: Some(vec![EffectAst::ForEachTaggedPlayer {
+                tag: TagKey::from("damaged_0"),
+                effects: vec![EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::cast_spells_matching(
+                        PlayerFilter::IteratedPlayer,
+                        ObjectFilter::noncreature_spell(),
+                    ),
+                    crate::effect::Until::EndOfTurn,
+                    None,
+                )],
+            }]),
+            consumed_sentences: 1,
+        })));
+    }
+
     if !matches!(
         words.as_slice(),
         [
@@ -335,6 +375,32 @@ fn pre_rule_damage_this_way_player_followup(
                 None,
             )],
         }]),
+        consumed_sentences: 1,
+    })))
+}
+
+fn pre_rule_tap_damage_this_way_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if !matches!(
+        words.as_slice(),
+        ["tap", "each", "creature", "dealt", "damage", "this", "way"]
+            | ["tap", "all", "creatures", "dealt", "damage", "this", "way"]
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::subject_verb_tap(TargetAst::Tagged(
+            TagKey::from("damaged_0"),
+            None,
+        ))]),
         consumed_sentences: 1,
     })))
 }
@@ -890,8 +956,14 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "damage-this-way-player-followup",
         priority: 58,
-        heads: &["if"],
+        heads: &["if", "players"],
         run: pre_rule_damage_this_way_player_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "tap-damage-this-way",
+        priority: 58,
+        heads: &["tap"],
+        run: pre_rule_tap_damage_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "destroy-those-creatures",

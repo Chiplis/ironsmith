@@ -62,6 +62,10 @@ export class WasmGame {
      */
     drawOpeningHands(cards_per_player: number): void;
     /**
+     * Move directly into an inserted combat phase without rebuilding from a sync checkpoint.
+     */
+    enterAdditionalCombatPhase(): void;
+    /**
      * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
      */
     exportSyncCheckpoint(): any;
@@ -129,11 +133,19 @@ export class WasmGame {
      */
     reset(player_names: any, starting_life: number): void;
     sampleLoadedDeckSeed(player_index: number): any;
+    /**
+     * Record an attacking band for the current combat.
+     */
+    setAttackingBand(member_ids: Array<any>): void;
     setAutoChooseSingleObjectDecisions(enabled: boolean): void;
     /**
      * Toggle automatic cleanup discard (random cards).
      */
     setAutoCleanupDiscard(enabled: boolean): void;
+    /**
+     * Set an explicit combat damage assignment for the next combat damage step.
+     */
+    setCombatDamageAssignment(attacker_id: bigint, recipient_id: bigint, amount: number): void;
     /**
      * Set a player's life total.
      */
@@ -200,6 +212,8 @@ export interface InitOutput {
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];
     readonly wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];
+    readonly wasmgame_setCombatDamageAssignment: (a: number, b: bigint, c: bigint, d: number) => void;
+    readonly wasmgame_setAttackingBand: (a: number, b: any) => [number, number];
     readonly wasmgame_drawOpeningHands: (a: number, b: number) => [number, number];
     readonly wasmgame_loadDemoDecks: (a: number) => [number, number];
     readonly wasmgame_loadDecks: (a: number, b: any) => [number, number, number];
@@ -208,6 +222,7 @@ export interface InitOutput {
     readonly wasmgame_previewCustomCard: (a: number, b: any) => [number, number, number];
     readonly wasmgame_createCustomCard: (a: number, b: any) => [bigint, number, number];
     readonly wasmgame_advancePhase: (a: number) => [number, number];
+    readonly wasmgame_enterAdditionalCombatPhase: (a: number) => [number, number];
     readonly wasmgame_setAutoCleanupDiscard: (a: number, b: number) => void;
     readonly wasmgame_setSemanticThreshold: (a: number, b: number) => void;
     readonly wasmgame_getSemanticThreshold: (a: number) => number;

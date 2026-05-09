@@ -4814,6 +4814,29 @@ fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
 }
 
 #[test]
+fn rewrite_lexed_next_spell_cant_be_countered_grant_parses_natively() {
+    let tokens = lex_line(
+        "The next instant or sorcery spell you cast this turn can't be countered.",
+        0,
+    )
+    .expect("rewrite lexer should classify next-spell uncounterable grant");
+
+    let effects = super::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("next-spell uncounterable grant should parse");
+
+    assert!(matches!(
+        effects.as_slice(),
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. },
+                ..
+            },
+        )]
+    ));
+}
+
+#[test]
 fn rewrite_lexed_cycling_parser_ignores_static_grant_clause_prefixes() {
     let tokens = lex_line(
         "Each Sliver card in each player's hand has slivercycling {3}.",
@@ -5710,6 +5733,17 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
     .expect("search-library object-filter helper should parse named filter");
 
     assert_eq!(parsed.name.as_deref(), Some("sol ring"));
+
+    let leading_article_name = lex_line("card named The Unspeakable", 0)
+        .expect("rewrite lexer should classify leading-article card name text");
+    let leading_article_words = crate::runtime_backend::token_word_refs(&leading_article_name);
+    let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
+        &leading_article_name,
+        &leading_article_words,
+    )
+    .expect("search-library object-filter helper should preserve card-name articles");
+
+    assert_eq!(parsed.name.as_deref(), Some("the unspeakable"));
 
     let counted_named = lex_line("exactly two artifact cards named Sol Ring", 0)
         .expect("rewrite lexer should classify counted named search filter text");
@@ -8760,6 +8794,39 @@ fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_replacement
 }
 
 #[test]
+fn rewrite_dealt_damage_by_source_would_die_static_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kumano's Blessing Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nIf a creature dealt damage by enchanted creature this turn would die, exile it instead.",
+        )
+        .expect("source-damaged static replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("damaged_by: Some"), "{debug}");
+    assert!(debug.contains("EnchantedCreature"), "{debug}");
+}
+
+#[test]
+fn rewrite_damage_this_way_would_die_registers_source_history_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Yamabushi's Storm Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Yamabushi's Storm deals 1 damage to each creature. If a creature dealt damage this way would die this turn, exile it instead.",
+        )
+        .expect("damage-this-way replacement should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        debug.contains("RegisterDamagedBySourceZoneReplacementEffect"),
+        "{debug}"
+    );
+    assert!(debug.contains("mode: UntilEndOfTurn"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_destroy_all_keeps_named_counter_filter() {
     let lexed = lex_line("Destroy each permanent with a doom counter on it.", 0)
         .expect("rewrite lexer should classify destroy-with-counter text");
@@ -11250,6 +11317,23 @@ fn rewrite_grammar_you_lost_life_this_turn_threshold_predicate_parses() {
     assert!(debug.contains("LifeLostThisTurn(You)"), "{debug}");
     assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
     assert!(debug.contains("Fixed(2)"), "{debug}");
+}
+
+#[test]
+fn rewrite_grammar_conjoined_named_spells_cast_this_turn_predicate_parses() {
+    let tokens = lex_line(
+        "you've cast a spell named Peer Through Depths and a spell named Reach Through Mists this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify conjoined named-spell predicate");
+
+    let parsed = super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("And("), "{debug}");
+    assert!(debug.contains("SpellsCastThisTurnMatching"), "{debug}");
+    assert!(debug.contains("peer through depths"), "{debug}");
+    assert!(debug.contains("reach through mists"), "{debug}");
 }
 
 #[test]

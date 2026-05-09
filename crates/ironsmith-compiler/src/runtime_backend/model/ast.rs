@@ -133,6 +133,10 @@ pub(crate) enum TriggerSpec {
     BecomesTargeted(ObjectFilter),
     ThisBecomesTargetedBySpell(ObjectFilter),
     ThisBecomesTargetedByStackObject(ObjectFilter),
+    BecomesTargetedByStackObject {
+        target: ObjectFilter,
+        stack_object: ObjectFilter,
+    },
     BecomesTargetedBySourceController {
         target: ObjectFilter,
         source_controller: PlayerFilter,
@@ -480,6 +484,7 @@ pub(crate) enum PredicateAst {
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
+    ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     YouHaveFullParty,
     YouAttackedThisTurn,
@@ -788,6 +793,13 @@ pub(crate) enum SubjectVerbActionAst {
         choice_description: Option<String>,
     },
     RegisterFutureZoneReplacement {
+        filter: ObjectFilter,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+    },
+    RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -1794,6 +1806,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
             } => f
                 .debug_struct("RegisterFutureZoneReplacement")
+                .field("filter", filter)
+                .field("from_zone", from_zone)
+                .field("to_zone", to_zone)
+                .field("replacement_zone", replacement_zone)
+                .field("duration", duration)
+                .finish(),
+            Self::RegisterDamagedBySourceZoneReplacement {
+                filter,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+            } => f
+                .debug_struct("RegisterDamagedBySourceZoneReplacement")
                 .field("filter", filter)
                 .field("from_zone", from_zone)
                 .field("to_zone", to_zone)
@@ -4289,6 +4315,26 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RegisterFutureZoneReplacement {
+                filter,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_damaged_by_source_zone_replacement(
+        filter: ObjectFilter,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
                 filter,
                 from_zone,
                 to_zone,

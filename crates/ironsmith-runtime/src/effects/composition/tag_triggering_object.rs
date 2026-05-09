@@ -27,6 +27,31 @@ impl EffectExecutor for TagTriggeringObjectEffect {
         })?;
 
         if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
+            && let Some(snapshot) = zone_change.snapshot.as_ref()
+        {
+            if zone_change.from == crate::zone::Zone::Battlefield {
+                let mut tagged = snapshot.clone();
+                if let Some(&destination_id) = zone_change.destination_objects().first() {
+                    tagged.object_id = destination_id;
+                }
+                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
+                return Ok(EffectOutcome::count(1));
+            }
+
+            let tagged = game
+                .find_object_by_stable_id(snapshot.stable_id)
+                .and_then(|id| game.object(id))
+                .filter(|obj| obj.zone == zone_change.to)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+            if let Some(tagged) = tagged {
+                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
+                return Ok(EffectOutcome::count(1));
+            }
+            set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
+            return Ok(EffectOutcome::count(0));
+        }
+
+        if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
             && !zone_change.result_objects.is_empty()
         {
             let tagged: Vec<_> = zone_change
@@ -42,22 +67,6 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                 set_triggering_object_tags(ctx, self.tag.as_str(), tagged.clone());
                 return Ok(EffectOutcome::count(tagged.len() as i32));
             }
-        }
-
-        if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
-            && let Some(snapshot) = zone_change.snapshot.as_ref()
-        {
-            let tagged = game
-                .find_object_by_stable_id(snapshot.stable_id)
-                .and_then(|id| game.object(id))
-                .filter(|obj| obj.zone == zone_change.to)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-            if let Some(tagged) = tagged {
-                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
-                return Ok(EffectOutcome::count(1));
-            }
-            set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
-            return Ok(EffectOutcome::count(0));
         }
 
         if let Some(sacrifice) = event.downcast::<crate::events::permanents::SacrificeEvent>()
@@ -361,5 +370,58 @@ mod tests {
             .expect("triggering tag should be present");
         let tagged_ids: Vec<_> = tagged.iter().map(|snapshot| snapshot.object_id).collect();
         assert_eq!(tagged_ids, vec![first, second]);
+    }
+
+    #[test]
+    fn test_tag_triggering_object_preserves_lki_counters_for_battlefield_departure() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature_id = game.new_object_id();
+        let card = make_creature_card(creature_id.0 as u32, "Countered Departed");
+        let mut obj = Object::from_card(creature_id, &card, alice, Zone::Battlefield);
+        obj.counters
+            .insert(crate::object::CounterType::PlusOnePlusOne, 2);
+        game.add_object(obj);
+
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("creature should exist"),
+            &game,
+        );
+        let graveyard_id = game
+            .move_object_by_effect(creature_id, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+
+        let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_results(
+                creature_id,
+                vec![graveyard_id],
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.triggering_event = Some(trigger_event);
+
+        let effect = TagTriggeringObjectEffect::new("triggering");
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        let tagged = ctx
+            .get_tagged("triggering")
+            .expect("triggering tag should be present");
+        assert_eq!(tagged.object_id, graveyard_id);
+        assert_eq!(
+            tagged
+                .counters
+                .get(&crate::object::CounterType::PlusOnePlusOne)
+                .copied(),
+            Some(2)
+        );
     }
 }

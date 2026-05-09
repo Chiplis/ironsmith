@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::color::ColorSet;
 use crate::events::EnterBattlefieldEvent;
 use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
 use crate::events::other::{
@@ -40,6 +41,7 @@ pub struct TurnHistory {
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
+    pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub event_records: Vec<TurnEventRecord>,
@@ -61,6 +63,7 @@ impl TurnHistory {
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();
         self.creatures_attacked_this_turn.clear();
+        self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
         self.saddled_this_turn.clear();
         self.event_records.clear();
@@ -225,6 +228,31 @@ impl TurnHistory {
             .sum()
     }
 
+    pub fn total_noncombat_damage_dealt_by_sources_controlled_by(
+        &self,
+        players: &[PlayerId],
+        colors: Option<ColorSet>,
+    ) -> u32 {
+        self.projected_records()
+            .filter_map(|record| {
+                let damage = record.event.downcast::<DamageEvent>()?;
+                if damage.is_combat {
+                    return None;
+                }
+                let source = record.source_snapshot.as_ref()?;
+                if !players.contains(&source.controller) {
+                    return None;
+                }
+                if let Some(colors) = colors
+                    && source.colors.intersection(colors).is_empty()
+                {
+                    return None;
+                }
+                Some(damage.amount)
+            })
+            .sum()
+    }
+
     pub fn total_damage_to_player(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<DamageEvent>())
@@ -331,6 +359,19 @@ impl TurnHistory {
         })
     }
 
+    pub fn entered_battlefield_snapshots_this_turn(&self) -> Vec<ObjectSnapshot> {
+        self.projected_records()
+            .filter_map(|record| {
+                let is_entry = record.event.downcast::<EnterBattlefieldEvent>().is_some()
+                    || record
+                        .event
+                        .downcast::<ZoneChangeEvent>()
+                        .is_some_and(|event| event.is_etb());
+                is_entry.then(|| record.object_snapshot.clone()).flatten()
+            })
+            .collect()
+    }
+
     pub fn object_came_under_controller_this_turn(
         &self,
         stable_id: StableId,
@@ -398,15 +439,69 @@ impl TurnHistory {
         creature: ObjectId,
         source: ObjectId,
     ) -> bool {
+        self.creature_was_damaged_by_source_identity_this_turn(creature, None, source, None)
+    }
+
+    pub fn creature_was_damaged_by_source_identity_this_turn(
+        &self,
+        creature: ObjectId,
+        creature_stable_id: Option<StableId>,
+        source: ObjectId,
+        source_stable_id: Option<StableId>,
+    ) -> bool {
         self.projected_records().any(|record| {
-            record
-                .event
-                .downcast::<DamageEvent>()
-                .is_some_and(|event| {
-                    matches!(event.target, crate::events::DamageTarget::Object(target) if target == creature)
-                        && event.source == source
-                        && event.amount > 0
-                })
+            record.event.downcast::<DamageEvent>().is_some_and(|event| {
+                let target_matches = match event.target {
+                    crate::events::DamageTarget::Object(target) if target == creature => true,
+                    crate::events::DamageTarget::Object(_) => {
+                        creature_stable_id.is_some_and(|stable_id| {
+                            event
+                                .target_snapshot
+                                .as_ref()
+                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                        })
+                    }
+                    crate::events::DamageTarget::Player(_) => false,
+                };
+                let source_matches = event.source == source
+                    || source_stable_id.is_some_and(|stable_id| {
+                        record
+                            .source_snapshot
+                            .as_ref()
+                            .or(record.object_snapshot.as_ref())
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    });
+                target_matches && source_matches && event.amount > 0
+            })
+        })
+    }
+
+    pub fn creature_was_damaged_by_source_attached_to_this_turn(
+        &self,
+        creature: ObjectId,
+        creature_stable_id: Option<StableId>,
+        attachment_source: ObjectId,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<DamageEvent>().is_some_and(|event| {
+                let target_matches = match event.target {
+                    crate::events::DamageTarget::Object(target) if target == creature => true,
+                    crate::events::DamageTarget::Object(_) => {
+                        creature_stable_id.is_some_and(|stable_id| {
+                            event
+                                .target_snapshot
+                                .as_ref()
+                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                        })
+                    }
+                    crate::events::DamageTarget::Player(_) => false,
+                };
+                let source_was_attached = record
+                    .object_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.attachments.contains(&attachment_source));
+                target_matches && source_was_attached && event.amount > 0
+            })
         })
     }
 

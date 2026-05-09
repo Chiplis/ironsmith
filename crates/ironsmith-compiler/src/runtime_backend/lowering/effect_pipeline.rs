@@ -18,6 +18,7 @@ use super::semantic::{
 pub(crate) enum EffectPreludeTag {
     AttachedSource(TagKey),
     TriggeringObject(TagKey),
+    TriggeringSource(TagKey),
     TriggeringDamageTarget(TagKey),
 }
 

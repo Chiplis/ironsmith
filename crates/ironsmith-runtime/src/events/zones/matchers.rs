@@ -10,6 +10,7 @@ use crate::filter::{ObjectFilterExt as _, StackObjectKind};
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
+use ironsmith_core::DamagedBySource;
 
 use super::{EnterBattlefieldEvent, ZoneChangeEvent};
 
@@ -166,6 +167,98 @@ impl ReplacementMatcher for WouldDieMatcher {
 
     fn display(&self) -> String {
         "When a creature would die".to_string()
+    }
+}
+
+/// Matches when an object would die after being dealt damage by a specific source this turn.
+#[derive(Debug, Clone)]
+pub struct WouldDieDamagedBySourceThisTurnMatcher {
+    pub filter: ObjectFilter,
+    pub damaged_by: DamagedBySource,
+}
+
+impl WouldDieDamagedBySourceThisTurnMatcher {
+    pub fn new(filter: ObjectFilter, damaged_by: DamagedBySource) -> Self {
+        Self { filter, damaged_by }
+    }
+
+    fn resolve_damager(&self, ctx: &EventContext) -> Option<ObjectId> {
+        let source = ctx.source?;
+        match self.damaged_by {
+            DamagedBySource::ThisCreature => Some(source),
+            DamagedBySource::EquippedCreature | DamagedBySource::EnchantedCreature => ctx
+                .game
+                .object(source)
+                .and_then(|obj| obj.attached_to.and_then(|target| target.object_id())),
+        }
+    }
+
+    fn victim_matches(
+        &self,
+        victim_id: ObjectId,
+        zc: &ZoneChangeEvent,
+        ctx: &EventContext,
+    ) -> bool {
+        if let Some(snapshot) = zc.snapshot.as_ref()
+            && snapshot.object_id == victim_id
+        {
+            return self
+                .filter
+                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+        }
+
+        ctx.game
+            .object(victim_id)
+            .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+    }
+}
+
+impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::ZoneChange {
+            return false;
+        }
+
+        let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
+            return false;
+        };
+        if zone_change.from != Zone::Battlefield || zone_change.to != Zone::Graveyard {
+            return false;
+        }
+        let Some(damager_id) = self.resolve_damager(ctx) else {
+            return false;
+        };
+        let damager_stable_id = ctx.game.object(damager_id).map(|obj| obj.stable_id);
+
+        zone_change.objects.iter().any(|&victim_id| {
+            let victim_stable_id = zone_change.snapshot.as_ref().and_then(|snapshot| {
+                (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
+            });
+            self.victim_matches(victim_id, zone_change, ctx)
+                && ctx
+                    .game
+                    .turn_store
+                    .turn_history
+                    .creature_was_damaged_by_source_identity_this_turn(
+                        victim_id,
+                        victim_stable_id,
+                        damager_id,
+                        damager_stable_id,
+                    )
+        })
+    }
+
+    fn display(&self) -> String {
+        let source_text = match self.damaged_by {
+            DamagedBySource::ThisCreature => "this creature",
+            DamagedBySource::EquippedCreature => "equipped creature",
+            DamagedBySource::EnchantedCreature => "enchanted creature",
+        };
+        format!(
+            "When {} dealt damage by {} this turn would die",
+            self.filter.description(),
+            source_text
+        )
     }
 }
 

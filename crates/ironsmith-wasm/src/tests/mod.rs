@@ -3280,6 +3280,83 @@ fn wasm_stubborn_denial_can_target_and_counter_lightning_bolt() {
 }
 
 #[test]
+fn wasm_dispatch_failed_counter_allows_protected_spell_to_resolve() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::SecondMain;
+    wasm.game.turn.step = None;
+
+    let goblin = CardBuilder::new(CardId::new(), "Raging Goblin")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let goblin_id = wasm
+        .game
+        .create_object_from_card(&goblin, alice, Zone::Battlefield);
+    let bolt_id = wasm
+        .game
+        .create_object_from_definition(&lightning_bolt(), alice, Zone::Stack);
+    wasm.game.add_temporary_spell_ability_grant(
+        alice,
+        bolt_id,
+        ironsmith::target::ObjectFilter::instant_or_sorcery().cast_by(ironsmith::PlayerFilter::You),
+        StaticAbility::cant_be_countered_ability(),
+        1,
+    );
+    wasm.game
+        .consume_temporary_spell_ability_grants_for_spell(bolt_id, alice);
+    wasm.game.push_to_stack(
+        StackEntry::new(bolt_id, alice)
+            .with_targets(vec![Target::Object(goblin_id)])
+            .with_target_assignments(vec![ironsmith::game_state::TargetAssignment {
+                spec: ironsmith::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            }]),
+    );
+
+    let counterspell = CardDefinitionBuilder::new(CardId::new(), "Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell.")
+        .expect("counter spell should parse");
+    let counter_id = wasm
+        .game
+        .create_object_from_definition(&counterspell, alice, Zone::Stack);
+    wasm.game.push_to_stack(
+        StackEntry::new(counter_id, alice)
+            .with_targets(vec![Target::Object(bolt_id)])
+            .with_target_assignments(vec![ironsmith::game_state::TargetAssignment {
+                spec: ironsmith::target::ChooseSpec::spell(),
+                range: 0..1,
+            }]),
+    );
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    dispatch_pass_priority(&mut wasm);
+    dispatch_pass_priority(&mut wasm);
+
+    assert!(
+        wasm.game
+            .player(alice)
+            .expect("alice should exist")
+            .graveyard
+            .iter()
+            .any(|id| wasm
+                .game
+                .object(*id)
+                .is_some_and(|object| object.name == "Raging Goblin")),
+        "failed counter should leave the protected spell to deal lethal damage"
+    );
+}
+
+#[test]
 fn duress_snapshot_keeps_revealed_hand_visible_during_discard_choice() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);

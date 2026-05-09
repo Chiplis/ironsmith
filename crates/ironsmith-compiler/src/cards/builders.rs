@@ -269,6 +269,9 @@ impl CardDefinitionBuilder {
     pub fn apply_keyword_action(self, action: KeywordAction) -> Self {
         match action {
             KeywordAction::Flying => self.flying(),
+            KeywordAction::Banding => self.with_ability(crate::ability::Ability::static_ability(
+                StaticAbility::banding(),
+            )),
             KeywordAction::Defender => self.defender(),
             KeywordAction::Decayed => self.decayed(),
             KeywordAction::Vigilance => self.vigilance(),

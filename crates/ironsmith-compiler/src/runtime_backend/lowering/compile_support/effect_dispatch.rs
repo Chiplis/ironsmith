@@ -67,6 +67,16 @@ fn retarget_target_is_bare_it(target: &TargetAst) -> bool {
     }
 }
 
+fn target_is_any_damage_target(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_) => true,
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_is_any_damage_target(inner)
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn compile_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -947,6 +957,24 @@ fn compile_subject_verb_effect(
                 )
                 .with_cause_filter(crate::events::cause::CauseFilter::effect_like())
                 .requiring_cause_source_match(),
+            );
+            Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
+            filter,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            duration: _,
+        } => {
+            let effect = Effect::new(
+                crate::effects::RegisterDamagedBySourceZoneReplacementEffect::new(
+                    filter.clone(),
+                    *from_zone,
+                    *to_zone,
+                    *replacement_zone,
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+                ),
             );
             Ok((vec![effect], Vec::new()))
         }
@@ -3788,7 +3816,7 @@ fn compile_subject_verb_effect(
                     &PlayerFilter::Target(Box::new(filter.clone())),
                 );
             }
-            let (effects, choices) =
+            let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
                     Effect::deal_damage(resolved_amount.clone(), spec)
                 })?;
@@ -3796,10 +3824,12 @@ fn compile_subject_verb_effect(
                 target
             {
                 ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
-            } else if matches!(
-                target,
-                TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_)
-            ) {
+            } else if target_is_any_damage_target(target) {
+                let tag = ctx.next_tag("damaged");
+                ctx.last_object_tag = Some(tag.clone());
+                if let Some(effect) = effects.pop() {
+                    effects.push(effect.tag(tag));
+                }
                 ctx.last_player_filter = Some(PlayerFilter::DamagedPlayer);
             }
             Ok((effects, choices))
@@ -3817,13 +3847,20 @@ fn compile_subject_verb_effect(
         }
         SubjectVerbActionAst::DealDistributedDamage { amount, target } => {
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            let compiled = compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
+            let (mut effects, choices) = compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
                 Effect::new(crate::effects::DealDistributedDamageEffect::new(
                     resolved_amount.clone(),
                     spec,
                 ))
             })?;
-            Ok(compiled)
+            if target_is_any_damage_target(target) {
+                let tag = ctx.next_tag("damaged");
+                ctx.last_object_tag = Some(tag.clone());
+                if let Some(effect) = effects.pop() {
+                    effects.push(effect.tag(tag));
+                }
+            }
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
             let (source_spec, mut choices) =

@@ -5,6 +5,7 @@ use winnow::token::any;
 
 use crate::ConditionExpr;
 use crate::ability::{ActivationTiming, ManaUsageRestriction};
+use crate::color::{Color, ColorSet};
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
@@ -31,6 +32,7 @@ pub(crate) struct UntapEachOtherPlayersUntapStepSpec<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CombatDamageUsingToughnessSubject {
+    ThisCreature,
     EachCreature,
     EachCreatureYouControl,
 }
@@ -844,7 +846,10 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     );
     let granted_abilities = if matches!(
         clause_words.as_slice(),
-        ["it", "gains", "haste", "until", "end", "of", "turn"]
+        ["it", "gains", "haste"]
+            | ["that", "spell", "gains", "haste"]
+            | ["that", "creature", "gains", "haste"]
+            | ["it", "gains", "haste", "until", "end", "of", "turn"]
             | [
                 "that", "spell", "gains", "haste", "until", "end", "of", "turn"
             ]
@@ -1170,6 +1175,52 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             .collect::<Vec<_>>();
         if tail == ["or", "greater"] {
             return Some(ConditionExpr::ControlCreaturesTotalPowerAtLeast(threshold));
+        }
+        return None;
+    }
+    if primitives::words_match_prefix(
+        tokens,
+        &[
+            "activate",
+            "only",
+            "if",
+            "red",
+            "sources",
+            "you",
+            "controlled",
+            "dealt",
+        ],
+    )
+    .is_some()
+    {
+        let threshold = parse_number_word_u32(words.get(8)?)?;
+        let tail = (9..words.len())
+            .filter_map(|idx| words.get(idx))
+            .collect::<Vec<_>>();
+        if tail
+            == [
+                "or",
+                "more",
+                "noncombat",
+                "damage",
+                "this",
+                "turn",
+                "and",
+                "only",
+                "as",
+                "a",
+                "sorcery",
+            ]
+            || tail == ["or", "more", "noncombat", "damage", "this", "turn"]
+        {
+            return Some(ConditionExpr::ValueComparison {
+                left: crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {
+                    player: PlayerFilter::You,
+                    colors: Some(ColorSet::from_color(Color::Red)),
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(threshold as i32),
+            });
         }
         return None;
     }
@@ -1830,6 +1881,18 @@ fn parse_assign_combat_damage_using_toughness_suffix<'a>(
 pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDamageUsingToughnessSubject> {
+    if let Some((((), ()), remainder)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["this", "creature"]),
+            parse_assign_combat_damage_using_toughness_suffix,
+        ),
+    ) {
+        if remainder.is_empty() {
+            return Some(CombatDamageUsingToughnessSubject::ThisCreature);
+        }
+    }
+
     if let Some((((), ()), remainder)) = primitives::parse_prefix(
         tokens,
         (

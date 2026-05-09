@@ -38,6 +38,29 @@ fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     }
 }
 
+fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let [mana_token, rest @ ..] = tokens else {
+        return None;
+    };
+    if mana_token.kind != crate::runtime_backend::lexer::TokenKind::ManaGroup {
+        return None;
+    }
+    let words = crate::runtime_backend::token_word_refs(rest);
+    if words.as_slice() != ["was", "spent", "to", "cast", "it"]
+        && words.as_slice() != ["was", "spent", "to", "cast", "this", "spell"]
+    {
+        return None;
+    }
+    let symbols = parse_mana_symbol_group(mana_token.slice.as_str()).ok()?;
+    let [symbol] = symbols.as_slice() else {
+        return None;
+    };
+    Some(PredicateAst::ManaSpentToCastThisSpellAtLeast {
+        amount: 1,
+        symbol: Some(*symbol),
+    })
+}
+
 pub(crate) fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -65,6 +88,15 @@ pub(crate) fn parse_sacrifice(
             };
             let sacrifice_tokens = trim_commas(&tokens[..unless_token_idx]);
             let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
+            if let Some(predicate) =
+                parse_unless_mana_spent_to_cast_predicate(&tokens[unless_token_idx + 1..])
+            {
+                return Ok(EffectAst::Conditional {
+                    predicate,
+                    if_true: Vec::new(),
+                    if_false: vec![base],
+                });
+            }
             if let Some(unless_effect) = try_build_unless(vec![base], tokens, unless_token_idx)? {
                 return Ok(unless_effect);
             }

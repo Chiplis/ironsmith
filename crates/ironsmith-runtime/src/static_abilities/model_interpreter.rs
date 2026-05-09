@@ -1123,8 +1123,15 @@ impl StaticAbilityModelInterpreter {
                 player.clone(),
                 *counter_type,
             ),
-            ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter } => {
-                StaticAbility::exile_would_die_instead(filter.clone())
+            ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
+                if let Some(damaged_by) = damaged_by {
+                    StaticAbility::exile_would_die_instead_damaged_by(
+                        filter.clone(),
+                        damaged_by.clone(),
+                    )
+                } else {
+                    StaticAbility::exile_would_die_instead(filter.clone())
+                }
             }
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
@@ -1137,6 +1144,21 @@ impl StaticAbilityModelInterpreter {
                 target_player_filter.clone(),
                 target_object_filter.clone(),
                 *delta,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::MinimumDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                floor,
+                noncombat_only,
+                display,
+            } => StaticAbility::minimum_damage_amount_replacement(
+                source_filter.clone(),
+                target_player_filter.clone(),
+                target_object_filter.clone(),
+                floor.clone(),
+                *noncombat_only,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement {

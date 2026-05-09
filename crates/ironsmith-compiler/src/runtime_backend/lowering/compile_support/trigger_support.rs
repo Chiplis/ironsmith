@@ -51,6 +51,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesTargetedByStackObject(filter) => {
             Trigger::becomes_targeted_by_stack_object(filter)
         }
+        TriggerSpec::BecomesTargetedByStackObject {
+            target,
+            stack_object,
+        } => Trigger::becomes_targeted_object_by_stack_object(target, stack_object),
         TriggerSpec::BecomesTargetedBySourceController {
             target,
             source_controller,

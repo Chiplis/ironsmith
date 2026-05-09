@@ -31,6 +31,7 @@ impl StaticAbility {
             Some(StaticAbilityId::Intimidate) => Self::intimidate(),
             Some(StaticAbilityId::Lifelink) => Self::lifelink(),
             Some(StaticAbilityId::Menace) => Self::menace(),
+            Some(StaticAbilityId::Banding) => Self::banding(),
             Some(StaticAbilityId::Reach) => Self::reach(),
             Some(StaticAbilityId::Shroud) => Self::shroud(),
             Some(StaticAbilityId::Trample) => Self::trample(),
@@ -95,6 +96,9 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::CreaturesAssignCombatDamageUsingToughness) => {
                 Self::creatures_assign_combat_damage_using_toughness()
+            }
+            Some(StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness) => {
+                Self::this_creature_assigns_combat_damage_using_toughness()
             }
             Some(StaticAbilityId::BlackManaMayBePaidWithLife) => {
                 Self::krrik_black_mana_may_be_paid_with_life()

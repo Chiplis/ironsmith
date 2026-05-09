@@ -527,6 +527,19 @@ impl Object {
     /// Per MTG rules, tokens copy copiable values but not non-copiable state.
     /// Note: Battlefield state (tapped, summoning_sick, etc.) is managed via GameState extension maps.
     pub fn token_copy_of(source: &Object, id: ObjectId, owner: PlayerId) -> Self {
+        let bestow_restore = source.bestow_cast_state.as_ref();
+        let card_types = bestow_restore
+            .map(|restore| restore.card_types.clone())
+            .unwrap_or_else(|| source.card_types.clone());
+        let subtypes = bestow_restore
+            .map(|restore| restore.subtypes.clone())
+            .unwrap_or_else(|| source.subtypes.clone());
+        let spell_effect = bestow_restore
+            .map(|restore| restore.spell_effect.clone())
+            .unwrap_or_else(|| source.spell_effect.clone());
+        let aura_attach_filter = bestow_restore
+            .map(|restore| restore.aura_attach_filter.clone())
+            .unwrap_or_else(|| source.aura_attach_filter.clone());
         let mut token = Self {
             id,
             stable_id: StableId::from(id), // Token copy is a new instance
@@ -539,8 +552,8 @@ impl Object {
             mana_cost: source.mana_cost.clone(),
             color_override: source.color_override,
             supertypes: source.supertypes.clone(),
-            card_types: source.card_types.clone(),
-            subtypes: source.subtypes.clone(),
+            card_types,
+            subtypes,
             compiled_card_text: source.compiled_card_text.clone(),
             rules_text_color_identity: source.rules_text_color_identity,
             other_face: source.other_face,
@@ -556,9 +569,9 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             // Note: spell_effect is copiable for spell copies
-            spell_effect: source.spell_effect.clone(),
-            aura_attach_filter: source.aura_attach_filter.clone(),
-            bestow_cast_state: source.bestow_cast_state.clone(),
+            spell_effect,
+            aura_attach_filter,
+            bestow_cast_state: None,
             face_down_cast_state: source.face_down_cast_state.clone(),
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),

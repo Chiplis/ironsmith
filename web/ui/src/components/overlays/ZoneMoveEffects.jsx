@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scryfallImageUrl } from "@/lib/scryfall";
+import { RIFT_DISSOLVE_EXILE_EFFECT_MS } from "@/lib/game-animations";
 
-const EXILE_EFFECT_DURATION_MS = 2400;
+const EXILE_EFFECT_DURATION_MS = RIFT_DISSOLVE_EXILE_EFFECT_MS;
+const EXILE_EFFECT_KIND = "rift-dissolve-exile";
+const ANGELIC_DESTROY_EFFECT_DURATION_MS = 2400;
+const ANGELIC_DESTROY_EFFECT_KIND = "angelic-destroy";
 const MAX_SHADER_EFFECTS = 8;
 const TARGET_WAIT_TIMEOUT_MS = 1100;
 // The inspector mounts with hover-art-drop-in (360ms translate3d -36px → 0)
@@ -33,6 +37,8 @@ uniform vec4 u_targetRects[MAX_EFFECTS];
 uniform vec4 u_clipRects[MAX_EFFECTS];
 uniform float u_progress[MAX_EFFECTS];
 uniform float u_seed[MAX_EFFECTS];
+uniform float u_effectKinds[MAX_EFFECTS];
+uniform vec3 u_accentColors[MAX_EFFECTS];
 uniform sampler2D u_inspectorImage;
 uniform vec4 u_inspectorRect;
 uniform float u_inspectorReady;
@@ -44,6 +50,11 @@ float saturate(float v) {
 float easeOutCubic(float t) {
   t = saturate(t);
   return 1.0 - pow(1.0 - t, 3.0);
+}
+
+float easeInCubic(float t) {
+  t = saturate(t);
+  return t * t * t;
 }
 
 float easeInOut(float t) {
@@ -77,84 +88,95 @@ float ringRect(vec2 p, vec4 rect, float width, float feather) {
   return saturate(outer - inner);
 }
 
-vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float seed) {
+vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float seed, vec3 accentColor) {
   vec2 srcC = src.xy + src.zw * 0.5;
   vec2 dstC = dst.xy + dst.zw * 0.5;
-  float travel = easeInOut(saturate((progress - 0.22) / 0.46));
-  vec2 head = mix(srcC, dstC, travel);
-  float pathLength = max(length(dstC - srcC), 1.0);
-  float pathT = saturate(length(head - srcC) / pathLength);
+  vec2 path = dstC - srcC;
+  float pathLength = max(length(path), 1.0);
+  vec2 dir = path / pathLength;
+  vec2 side = vec2(-dir.y, dir.x);
+  float along = dot(p - srcC, dir);
+  float lateral = dot(p - srcC, side);
+  float pathT = saturate(along / pathLength);
+  float travel = easeInCubic(saturate((progress - 0.04) / 0.76));
+  float headAlong = pathLength * travel;
 
-  // Late-phase dissolve: as the comet nears the target, fade out the tight
-  // head/wings entirely so multiple flights converging on the same rect
-  // don't accumulate into a bright "TV turn-off" dot at the landing point.
-  float dissolveBlend = smoothstep(0.62, 0.94, progress);
-  float cometAttn = 1.0 - dissolveBlend * 0.98;
-
-  float wingPhase = sin((progress * 18.0) + seed);
-  float wingSpread = mix(src.z * 0.36, dst.z * 0.18, travel);
-  float wingY = sin((p.x - head.x) / max(wingSpread, 1.0) * 3.14159 + wingPhase) * 18.0;
-  float wingDist = abs((p.y - head.y) - wingY) + abs(abs(p.x - head.x) - wingSpread) * 0.28;
-  float wingGlow = exp(-wingDist * 0.035) * smoothstep(0.22, 0.34, progress) * smoothstep(0.72, 0.44, progress) * cometAttn;
-
-  float headDist = length(p - head);
-  float sourceIgnition = rectMask(p, src, 14.0) * sin(saturate(progress / 0.22) * 3.14159);
-  float headGlow = exp(-headDist * 0.022) * smoothstep(0.22, 0.34, progress) * smoothstep(0.74, 0.48, progress) * cometAttn;
-  float core = exp(-headDist * 0.04) * smoothstep(0.2, 0.32, progress) * cometAttn;
-
-  float targetFillProgress = saturate((progress - 0.52) / 0.36);
+  float targetFillProgress = smoothstep(0.74, 0.94, progress) * smoothstep(1.0, 0.82, progress);
   float clipMask = rectMask(p, clip, 5.0);
-  float targetMask = rectMask(p, dst, 14.0) * clipMask;
-  float targetRing = ringRect(p, dst, 8.0 + 12.0 * sin(targetFillProgress * 3.14159), 12.0) * clipMask;
-  float whiteFill = targetMask * sin(targetFillProgress * 3.14159);
-  float targetBloom = targetMask * smoothstep(0.42, 0.72, progress) * smoothstep(1.0, 0.68, progress);
 
-  vec2 sparkleSpace = (p - head) + seed * 97.0;
-  vec2 cell = floor(sparkleSpace / 18.0);
-  vec2 local = fract(sparkleSpace / 18.0) - 0.5;
-  float sparkleSeed = hash(cell + seed);
-  float sparkleTime = fract(sparkleSeed + progress * 1.8);
-  float sparkle = smoothstep(0.036, 0.0, length(local)) * sin(sparkleTime * 3.14159);
-  sparkle *= smoothstep(0.18, 0.46, progress) * smoothstep(0.72, 0.48, progress) * step(0.72, sparkleSeed);
-  sparkle *= smoothstep(190.0, 24.0, headDist);
+  float streamWidth = mix(src.z * 0.72, max(dst.z * 0.42, 42.0), pathT);
+  float lateralNorm = abs(lateral) / max(streamWidth, 1.0);
+  float lateralEnvelope = exp(-lateralNorm * lateralNorm * 1.18);
+  float pathEnvelope = smoothstep(-48.0, 34.0, along) * smoothstep(pathLength + 66.0, pathLength - 8.0, along);
+  float tail = smoothstep(430.0, 0.0, headAlong - along) * smoothstep(-22.0, 62.0, headAlong - along);
+  float front = exp(-abs(along - headAlong) * 0.018);
+  float turbulence = sin(pathT * 19.0 + seed * 37.0 + progress * 12.0) * 20.0
+                   + sin(pathT * 47.0 + seed * 91.0) * 8.0;
 
-  // Particle cloud: dense scatter inside the container during dissolve. Each
-  // pixel hashes to a per-cell pulse so the cloud reads as individual particles
-  // rather than a uniform glow.
-  vec2 cloudSpace = (p - dstC) + seed * 73.0;
-  vec2 cloudCell = floor(cloudSpace / 7.0);
-  vec2 cloudLocal = fract(cloudSpace / 7.0) - 0.5;
+  vec2 particleCoord = vec2(
+    along / 8.4 - travel * pathLength / 6.8,
+    (lateral + turbulence) / 8.4
+  );
+  vec2 cell = floor(particleCoord);
+  vec2 cellJitter = vec2(hash(cell + seed * 127.0 + 5.1), hash(cell + seed * 149.0 + 9.7)) - 0.5;
+  vec2 local = fract(particleCoord) - 0.5 - cellJitter * 0.42;
+  float particleSeed = hash(cell + seed * 113.0);
+  float particleSize = mix(8.0, 17.0, hash(cell + 31.0));
+  float fireflyCore = exp(-dot(local, local) * particleSize);
+  float fireflyGlow = exp(-dot(local, local) * (particleSize * 0.18));
+  float fireflyVisible = step(0.36, particleSeed);
+  float fireflyTwinkle = 0.72 + 0.28 * sin(progress * 21.0 + particleSeed * 6.28318 + seed * 17.0);
+  fireflyCore *= fireflyVisible * fireflyTwinkle;
+  fireflyGlow *= fireflyVisible * fireflyTwinkle;
+
+  float streamActive = smoothstep(0.06, 0.18, progress) * smoothstep(0.96, 0.78, progress);
+  float fireflyPath = (tail * 0.92 + front * 0.64);
+  float particleStream = fireflyCore
+                       * fireflyPath
+                       * lateralEnvelope
+                       * pathEnvelope
+                       * streamActive;
+  float haloStream = (fireflyGlow * fireflyPath * lateralEnvelope + exp(-lateralNorm * lateralNorm * 0.18) * 0.18)
+                   * pathEnvelope
+                   * smoothstep(0.1, 0.28, progress)
+                   * smoothstep(0.94, 0.7, progress)
+                   * streamActive;
+
+  float sourceMask = rectMask(p, src, 8.0);
+  float sourceBreak = saturate((progress - 0.10) / 0.72);
+  float sourceCoord = dot(p - src.xy, dir) / max(src.z, src.w);
+  float sourceEdgeNoise = sin((p.y + seed * 193.0) * 0.11) * 0.045
+                        + sin((p.x + seed * 71.0) * 0.17) * 0.028;
+  float sourceCut = smoothstep(sourceBreak - 0.16 + sourceEdgeNoise, sourceBreak + 0.10 + sourceEdgeNoise, sourceCoord);
+  float sourceAsh = sourceMask * sourceCut * smoothstep(0.08, 0.22, progress) * smoothstep(0.94, 0.72, progress);
+
+  vec2 clipC = clip.xy + clip.zw * 0.5;
+  vec2 landingSpace = vec2((p.x - dstC.x) / max(clip.z, 1.0), (p.y - dstC.y) / max(clip.w, 1.0));
+  float landingEnvelope = exp(-dot(landingSpace, landingSpace) * 7.5);
+  float inspectorEnvelope = rectMask(p, clip, 22.0);
+
+  vec2 cloudSpace = (p - clipC) + seed * 73.0;
+  vec2 cloudCell = floor(cloudSpace / 9.0);
+  vec2 cloudJitter = vec2(hash(cloudCell + seed * 269.0 + 4.6), hash(cloudCell + seed * 281.0 + 7.2)) - 0.5;
+  vec2 cloudLocal = fract(cloudSpace / 9.0) - 0.5 - cloudJitter * 0.44;
   float cloudSeed = hash(cloudCell * 1.31 + seed * 4.0);
-  float cloudPulse = fract(cloudSeed + progress * 2.4);
-  float cloudParticle = smoothstep(0.045, 0.0, length(cloudLocal) * (1.2 + cloudSeed * 0.4))
-                      * sin(cloudPulse * 3.14159);
-  cloudParticle *= step(0.5, cloudSeed) * dissolveBlend * clipMask;
+  float cloudParticle = exp(-dot(cloudLocal, cloudLocal) * (12.0 + cloudSeed * 10.0));
+  cloudParticle *= step(0.34, cloudSeed)
+                 * targetFillProgress
+                 * clipMask
+                 * inspectorEnvelope
+                 * mix(landingEnvelope, 1.0, 0.22);
 
-  vec3 gold = vec3(1.0, 0.78, 0.28);
-  vec3 blue = vec3(0.48, 0.78, 1.0);
   vec3 white = vec3(1.0);
+  vec3 pearl = vec3(1.0, 0.96, 0.82);
+  vec3 ash = vec3(0.82, 0.82, 0.76);
+  float shimmer = 0.84 + 0.16 * sin(pathT * 37.0 + seed * 41.0 + progress * 15.0);
   vec3 color = vec3(0.0);
-  color += mix(white, gold, 0.24) * sourceIgnition * 0.95;
-  color += mix(gold, blue, pathT) * headGlow * 0.34;
-  float landedClip = mix(1.0, clipMask, smoothstep(0.66, 0.78, progress));
-  color += white * core * 0.92 * landedClip;
-  color += white * whiteFill * 0.45;
-  // Suppress the gold target ring inside the inspector area — main()'s
-  // image-reconstruction pass owns the visual there. Outside the inspector
-  // (no texture loaded), keep the ring so the comet still has a landing
-  // flourish.
-  color += gold * targetRing * targetFillProgress * 0.55 * (1.0 - u_inspectorReady * 0.9);
-  color += mix(white, blue, 0.35) * wingGlow * 0.45 * landedClip;
-  color += mix(gold, white, 0.55) * sparkle * 0.9;
-  color += mix(blue, white, 0.3) * targetBloom * 0.22;
-  // Per-effect particle dissolve: provides a fallback particle storm when
-  // the inspector image hasn't loaded yet (CORS load pending or failed).
-  // When the texture is ready, main() runs the image-reconstruction pass
-  // instead, so we damp this contribution accordingly. Even the fallback is
-  // now subtle so it doesn't read as a hot white blob.
-  float cloudFallback = mix(0.55, 0.18, u_inspectorReady);
-  color += mix(gold, white, 0.55) * cloudParticle * cloudFallback;
-  color += mix(white, blue, 0.4) * targetMask * dissolveBlend * 0.12;
+  color += mix(ash, pearl, 0.82) * sourceAsh * 1.02;
+  color += white * particleStream * 1.72 * shimmer;
+  color += accentColor * haloStream * 0.62;
+  color += white * particleStream * front * 0.58;
+  color += mix(white, accentColor, 0.42) * cloudParticle * mix(0.7, 0.3, u_inspectorReady);
   return color;
 }
 
@@ -162,66 +184,72 @@ void main() {
   vec2 pixel = gl_FragCoord.xy / max(u_dpr, 0.0001);
   vec2 p = vec2(pixel.x, u_resolution.y - pixel.y);
   vec3 color = vec3(0.0);
-  // Reveal drives "how much of the image has been sampled into the canvas".
-  // Window peaks during dissolve and fades back to 0 by progress = 1 so the
-  // shader stops painting and the natural <img> underneath takes over.
-  float globalReveal = 0.0;
+  float groupProgress = 1.0;
+  float hasAngelicDestroy = 0.0;
   float globalWindow = 0.0;
 
   for (int i = 0; i < MAX_EFFECTS; i++) {
     if (i >= u_count) break;
-    color += effectColor(p, u_sourceRects[i], u_targetRects[i], u_clipRects[i], u_progress[i], u_seed[i]);
-    float pi = u_progress[i];
-    globalReveal = max(globalReveal, smoothstep(0.62, 0.92, pi));
-    // Keep globalWindow at 1.0 once reached, so the inspector area stays
-    // cleanly replaced by reconColor (black-passthrough once revealed) rather
-    // than fading back through comet residuals — those residuals are tiny
-    // (~5-7% brightness from core/targetRing) but become visible during a
-    // ramp-down because they screen-blend over the image. The cleanup timer
-    // unmounts the canvas shortly after progress = 1, which is the actual
-    // hand-off to the natural <img>.
-    globalWindow = max(globalWindow, smoothstep(0.62, 0.78, pi));
+    float rawProgress = u_progress[i];
+    float effectKind = u_effectKinds[i];
+    float pi = effectKind < 0.5 ? saturate(rawProgress / 0.8) : rawProgress;
+    groupProgress = min(groupProgress, rawProgress);
+    hasAngelicDestroy = max(hasAngelicDestroy, step(0.5, effectKind));
+    if (effectKind < 0.5) {
+      color += effectColor(p, u_sourceRects[i], u_targetRects[i], u_clipRects[i], pi, u_seed[i], u_accentColors[i]);
+    }
   }
 
-  // Center-out white-to-passthrough mask. We don't sample the inspector image
-  // at all — instead we paint white where the reveal hasn't reached yet, and
-  // black inside the reveal radius. With mix-blend-mode: screen, black is a
-  // no-op so the underlying <img> shows through unmodified. This avoids the
-  // double-exposure / filter appearance that came from screen-blending
-  // sampled imageColor over the same pixels in the natural <img>.
+  float revealStart = mix(0.84, 0.54, hasAngelicDestroy);
+  float revealEnd = mix(1.0, 0.74, hasAngelicDestroy);
+
+  // All cards in the current batch must reach the inspector before the black
+  // foreground mask dissolves away to reveal the DOM-rendered inspector art.
+  float globalReveal = smoothstep(revealStart, revealEnd, groupProgress);
+  globalWindow = 1.0;
+  float alpha = saturate(max(max(color.r, color.g), color.b));
+
   if (u_inspectorReady > 0.5
       && u_inspectorRect.z > 0.0
       && u_inspectorRect.w > 0.0
       && globalWindow > 0.0) {
     vec2 uv = (p - u_inspectorRect.xy) / u_inspectorRect.zw;
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
-      vec2 cell = floor(p / 4.5);
-      float cellSeed = hash(cell + 11.0);
+      float aspect = u_inspectorRect.z / max(u_inspectorRect.w, 1.0);
+      vec2 centered = uv - 0.5;
+      float centerDist = length(vec2(centered.x * aspect, centered.y));
+      float maxDist = length(vec2(0.5 * aspect, 0.5));
 
-      float centerDist = length(uv - 0.5);
-      float jitter = (cellSeed - 0.5) * 0.06;
-      float revealRadius = globalReveal * 0.92;
+      vec2 cell = floor(p / 4.25);
+      vec2 coarseCell = floor(p / 13.0);
+      float cellSeed = hash(cell + 11.0);
+      float coarseSeed = hash(coarseCell + 47.0);
+      float waveNoise = sin((p.x * 0.041) + (p.y * 0.033) + coarseSeed * 6.28318) * 0.028;
+      float jaggedNoise = (cellSeed - 0.5) * 0.11 + (coarseSeed - 0.5) * 0.08 + waveNoise;
+
+      float revealRadius = mix(-0.10, maxDist + 0.16, easeOutCubic(globalReveal));
       float pixelReveal = saturate(1.0 - smoothstep(
-        revealRadius - 0.07 + jitter,
-        revealRadius + 0.04 + jitter,
+        revealRadius - 0.08 + jaggedNoise,
+        revealRadius + 0.035 + jaggedNoise,
         centerDist
       ));
 
-      vec2 cellLocal = fract(p / 4.5) - 0.5;
-      float sparkShape = smoothstep(0.08, 0.0, length(cellLocal));
-      float frontier = sparkShape * step(0.55, cellSeed)
-                     * sin(saturate(pixelReveal) * 3.14159);
+      float dissolveNoise = hash(floor(p / 2.7) + 89.0);
+      float freckleWindow = smoothstep(0.04, 0.36, globalReveal) * smoothstep(0.96, 0.62, globalReveal);
+      pixelReveal = saturate(pixelReveal + (dissolveNoise - 0.68) * 0.18 * freckleWindow);
 
-      // (1 - pixelReveal) is white outside the reveal, black inside. Add a
-      // subtle white frontier sparkle along the leading edge.
-      vec3 reconColor = vec3(1.0 - pixelReveal);
-      reconColor += vec3(1.0) * frontier * 0.32;
+      vec2 cellLocal = fract(p / 4.25) - 0.5;
+      float sparkShape = smoothstep(0.1, 0.0, length(cellLocal));
+      float edgeBand = exp(-pow((centerDist - revealRadius) / 0.055, 2.0))
+                     * smoothstep(0.02, 0.16, globalReveal)
+                     * smoothstep(1.0, 0.84, globalReveal);
+      float frontier = sparkShape * step(0.5, cellSeed) * edgeBand;
 
-      color = mix(color, reconColor, globalWindow);
+      color += vec3(1.0) * frontier * globalWindow * 0.42;
+      alpha = max(alpha, frontier * globalWindow * 0.44);
     }
   }
 
-  float alpha = saturate(max(max(color.r, color.g), color.b));
   gl_FragColor = vec4(color, alpha);
 }
 `;
@@ -242,7 +270,7 @@ function hashText(text) {
 
 function deterministicEffectId(rawEffect) {
   if (rawEffect.id) return String(rawEffect.id);
-  const seedSource = `exile:${rawEffect.card?.name || "?"}:${rawEffect.objectId ?? "?"}:${rawEffect.targetToken || "?"}`;
+  const seedSource = `${rawEffect.kind || "effect"}:${rawEffect.card?.name || "?"}:${rawEffect.objectId ?? "?"}:${rawEffect.targetToken || "?"}`;
   return `${seedSource}:${hashText(seedSource).toString(36)}`;
 }
 
@@ -284,7 +312,7 @@ function isElementVisuallyAvailable(element) {
   return true;
 }
 
-function resolveInspectorTargetElement(targetToken) {
+function resolveInspectorTargetElement(targetToken, targetScope = "foreground") {
   if (!targetToken || typeof document === "undefined") return null;
   const escapedToken = escapeAttributeValue(targetToken);
   // Two inspector shells (compact + expanded) can both carry the same token at
@@ -296,41 +324,71 @@ function resolveInspectorTargetElement(targetToken) {
     `.ironsmith-inspector-shell[data-zone-transition-token="${escapedToken}"] .hover-art-foreground-crop`,
     `.ironsmith-inspector-shell[data-zone-transition-token="${escapedToken}"] .hover-art-full-art-crop`,
   ];
+  const shellSelectors = [
+    `.ironsmith-inspector-shell[data-zone-transition-token="${escapedToken}"]`,
+  ];
+  const stageSelectors = [
+    `.hover-art-stage[data-zone-transition-token="${escapedToken}"]`,
+    `.ironsmith-inspector-shell[data-zone-transition-token="${escapedToken}"] .hover-art-stage`,
+  ];
+  const preferredSelectors = targetScope === "inspector" ? shellSelectors : cropSelectors;
+  const fallbackSelectors = targetScope === "inspector" ? [...stageSelectors, ...cropSelectors] : [...stageSelectors, ...shellSelectors];
   let bestElement = null;
   let bestArea = 0;
-  for (const selector of cropSelectors) {
-    const matches = document.querySelectorAll(selector);
-    for (const candidate of matches) {
-      if (!isElementVisuallyAvailable(candidate)) continue;
-      const rect = candidate.getBoundingClientRect();
-      const area = rect.width * rect.height;
-      if (area > bestArea) {
-        bestArea = area;
-        bestElement = candidate;
-      }
-    }
-    if (bestElement) return bestElement;
-  }
 
-  const stageMatches = document.querySelectorAll(
-    `.hover-art-stage[data-zone-transition-token="${escapedToken}"], ` +
-    `.ironsmith-inspector-shell[data-zone-transition-token="${escapedToken}"] .hover-art-stage`
-  );
-  for (const candidate of stageMatches) {
-    if (!isElementVisuallyAvailable(candidate)) continue;
-    const rect = candidate.getBoundingClientRect();
+  const findBestElement = (selectors) => {
+    for (const selector of selectors) {
+      const matches = document.querySelectorAll(selector);
+      for (const candidate of matches) {
+        if (!isElementVisuallyAvailable(candidate)) continue;
+        const rect = candidate.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (area > bestArea) {
+          bestArea = area;
+          bestElement = candidate;
+        }
+      }
+      if (bestElement) return bestElement;
+    }
+    return null;
+  };
+
+  if (findBestElement(preferredSelectors)) return bestElement;
+  bestArea = 0;
+  bestElement = null;
+  return findBestElement(fallbackSelectors);
+}
+
+function resolveInspectorTargetRect(targetToken, targetScope = "foreground") {
+  const target = resolveInspectorTargetElement(targetToken, targetScope);
+  return normalizeRect(target?.getBoundingClientRect?.());
+}
+
+function resolveInspectorImageElement(targetToken) {
+  const target = resolveInspectorTargetElement(targetToken, "inspector")
+    || resolveInspectorTargetElement(targetToken, "foreground");
+  if (!target) return null;
+  if (target.tagName === "IMG") return target;
+  if (typeof target.querySelector !== "function") return null;
+  return target.querySelector("img.hover-art-foreground-image")
+    || target.querySelector("img");
+}
+
+function resolveLargestInspectorMaskElement(effects) {
+  let bestElement = null;
+  let bestArea = 0;
+  for (const effect of effects) {
+    if (!effect.targetToken) continue;
+    const target = resolveInspectorTargetElement(effect.targetToken, effect.targetScope);
+    if (!target) continue;
+    const rect = target.getBoundingClientRect();
     const area = rect.width * rect.height;
     if (area > bestArea) {
       bestArea = area;
-      bestElement = candidate;
+      bestElement = target;
     }
   }
   return bestElement;
-}
-
-function resolveInspectorTargetRect(targetToken) {
-  const target = resolveInspectorTargetElement(targetToken);
-  return normalizeRect(target?.getBoundingClientRect?.());
 }
 
 function fallbackTargetRect(sourceRect) {
@@ -357,17 +415,42 @@ function capTargetRectToSourceScale(sourceRect, targetRect) {
   });
 }
 
-function normalizeEffect(rawEffect, targetRect, clipRect = targetRect, options = {}) {
-  if (!rawEffect || rawEffect.kind !== "angelic-exile") return null;
-  const rect = normalizeRect(rawEffect.rect);
-  if (!rect) return null;
+function effectDurationMs(effect) {
+  return effect?.kind === ANGELIC_DESTROY_EFFECT_KIND
+    ? ANGELIC_DESTROY_EFFECT_DURATION_MS
+    : EXILE_EFFECT_DURATION_MS;
+}
+
+function resolveFlightTargetRects(rawEffect, sourceRect, targetRect, clipRect = targetRect) {
   const travelsToInspector = rawEffect.travelsToInspector === true;
+  const fallbackRect = targetRect || fallbackTargetRect(sourceRect);
   const resolvedTargetRect = travelsToInspector
-    ? capTargetRectToSourceScale(rect, targetRect || fallbackTargetRect(rect))
-    : rect;
+    ? (
+      rawEffect?.kind === EXILE_EFFECT_KIND && rawEffect?.targetScope === "inspector"
+        ? normalizeRect({
+          left: fallbackRect.left + (fallbackRect.width / 2) - 8,
+          top: fallbackRect.top + (fallbackRect.height / 2) - 8,
+          width: 16,
+          height: 16,
+        })
+        : capTargetRectToSourceScale(sourceRect, fallbackRect)
+    )
+    : sourceRect;
   const resolvedClipRect = travelsToInspector
     ? normalizeRect(clipRect || targetRect || resolvedTargetRect)
-    : rect;
+    : sourceRect;
+  return {
+    travelsToInspector,
+    resolvedTargetRect,
+    resolvedClipRect: resolvedClipRect || resolvedTargetRect,
+  };
+}
+
+function normalizeExileEffect(rawEffect, targetRect, clipRect = targetRect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== EXILE_EFFECT_KIND) return null;
+  const rect = normalizeRect(rawEffect.rect);
+  if (!rect) return null;
+  const { travelsToInspector, resolvedTargetRect, resolvedClipRect } = resolveFlightTargetRects(rawEffect, rect, targetRect, clipRect);
   const startDelayMs = Math.max(0, Number(rawEffect.startDelayMs) || 0);
   const anchorAt = Number.isFinite(options.anchorAt) ? options.anchorAt : performance.now();
   const startedAt = anchorAt + startDelayMs;
@@ -380,35 +463,60 @@ function normalizeEffect(rawEffect, targetRect, clipRect = targetRect, options =
   const convergeOffsetX = convergeRect ? (convergeRect.left + convergeRect.width / 2) - sourceCenterX : 0;
   const convergeOffsetY = convergeRect ? (convergeRect.top + convergeRect.height / 2) - sourceCenterY : 0;
 
-  // Per-effect wing flap rhythm: deterministic from the id hash so each angel
-  // beats its wings at its own pace and the right wing is slightly out of
-  // phase with the left.
-  const flapHash = hashText(`flap:${id}`);
-  const wingFlapDurationMs = 320 + (flapHash % 360);
-  const wingFlapPhaseMs = -((flapHash >>> 8) % wingFlapDurationMs);
-  const wingFlapPhaseRightMs = wingFlapPhaseMs - Math.round(wingFlapDurationMs * 0.18);
-
   return {
     id,
-    kind: "angelic-exile",
+    kind: EXILE_EFFECT_KIND,
     rect,
     targetRect: resolvedTargetRect,
-    clipRect: resolvedClipRect || resolvedTargetRect,
+    clipRect: resolvedClipRect,
     travelsToInspector,
     includeSourceClone: rawEffect.includeSourceClone !== false,
     targetToken: rawEffect.targetToken || null,
+    targetScope: rawEffect.targetScope === "inspector" ? "inspector" : "foreground",
     sourceCloneHtml: rawEffect.sourceCloneHtml || null,
     sourceImageUrl: rawEffect.sourceImageUrl || null,
     card: rawEffect.card || {},
+    accentColor: rawEffect.accentColor || null,
+    accentRgb: rawEffect.accentRgb || null,
     seed: (hashText(`${id}:${rawEffect.card?.name || ""}`) % 10000) / 10000,
     startDelayMs,
     startedAt,
     cssAnimationDelayMs,
     convergeOffsetX,
     convergeOffsetY,
-    wingFlapDurationMs,
-    wingFlapPhaseMs,
-    wingFlapPhaseRightMs,
+  };
+}
+
+function normalizeAngelicDestroyEffect(rawEffect, targetRect, clipRect = targetRect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== ANGELIC_DESTROY_EFFECT_KIND) return null;
+  const rect = normalizeRect(rawEffect.rect);
+  if (!rect) return null;
+  const { travelsToInspector, resolvedTargetRect, resolvedClipRect } = resolveFlightTargetRects(rawEffect, rect, targetRect, clipRect);
+  const startDelayMs = Math.max(0, Number(rawEffect.startDelayMs) || 0);
+  const anchorAt = Number.isFinite(options.anchorAt) ? options.anchorAt : performance.now();
+  const startedAt = anchorAt + startDelayMs;
+  const id = deterministicEffectId(rawEffect);
+
+  return {
+    id,
+    kind: ANGELIC_DESTROY_EFFECT_KIND,
+    rect,
+    targetRect: resolvedTargetRect,
+    clipRect: resolvedClipRect,
+    travelsToInspector,
+    includeSourceClone: rawEffect.includeSourceClone !== false,
+    targetToken: rawEffect.targetToken || null,
+    targetScope: rawEffect.targetScope === "inspector" ? "inspector" : "foreground",
+    sourceCloneHtml: rawEffect.sourceCloneHtml || null,
+    sourceImageUrl: rawEffect.sourceImageUrl || null,
+    card: rawEffect.card || {},
+    accentColor: rawEffect.accentColor || null,
+    accentRgb: rawEffect.accentRgb || null,
+    seed: (hashText(`${id}:${rawEffect.card?.name || ""}`) % 10000) / 10000,
+    startDelayMs,
+    startedAt,
+    cssAnimationDelayMs: startedAt - performance.now(),
+    preflight: rawEffect.preflight === true,
   };
 }
 
@@ -460,11 +568,47 @@ function rectsToFloat32Array(rects) {
   return values;
 }
 
+function parseRgbString(value) {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => Number.parseFloat(part.trim()));
+  if (parts.length < 3 || !parts.slice(0, 3).every(Number.isFinite)) return null;
+  return parts.slice(0, 3).map((part) => clamp(part / 255, 0, 1));
+}
+
+function parseHexColor(value) {
+  const match = String(value || "").trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 16);
+  return [
+    ((parsed >> 16) & 255) / 255,
+    ((parsed >> 8) & 255) / 255,
+    (parsed & 255) / 255,
+  ];
+}
+
+function effectAccentColor(effect) {
+  return parseRgbString(effect?.accentRgb)
+    || parseHexColor(effect?.accentColor)
+    || [0.2, 1.0, 0.9];
+}
+
+function accentColorUniformArray(effects) {
+  const values = new Float32Array(MAX_SHADER_EFFECTS * 3);
+  for (let index = 0; index < MAX_SHADER_EFFECTS; index += 1) {
+    const color = effectAccentColor(effects[index]);
+    values[index * 3] = color[0];
+    values[index * 3 + 1] = color[1];
+    values[index * 3 + 2] = color[2];
+  }
+  return values;
+}
+
 function progressUniformArray(effects, now) {
   const values = new Float32Array(MAX_SHADER_EFFECTS);
   for (let index = 0; index < MAX_SHADER_EFFECTS; index += 1) {
     const effect = effects[index];
-    values[index] = effect ? clamp((now - effect.startedAt) / EXILE_EFFECT_DURATION_MS, 0, 1) : 0;
+    values[index] = effect ? clamp((now - effect.startedAt) / effectDurationMs(effect), 0, 1) : 0;
   }
   return values;
 }
@@ -477,9 +621,17 @@ function seedUniformArray(effects) {
   return values;
 }
 
+function effectKindUniformArray(effects) {
+  const values = new Float32Array(MAX_SHADER_EFFECTS);
+  for (let index = 0; index < MAX_SHADER_EFFECTS; index += 1) {
+    values[index] = effects[index]?.kind === ANGELIC_DESTROY_EFFECT_KIND ? 1 : 0;
+  }
+  return values;
+}
+
 function freshTargetRect(effect) {
   if (effect.travelsToInspector && effect.targetToken) {
-    const fresh = resolveInspectorTargetRect(effect.targetToken);
+    const fresh = resolveInspectorTargetRect(effect.targetToken, effect.targetScope);
     if (fresh) return capTargetRectToSourceScale(effect.rect, fresh);
   }
   return effect.targetRect || effect.rect;
@@ -487,7 +639,7 @@ function freshTargetRect(effect) {
 
 function freshClipRect(effect) {
   if (effect.travelsToInspector && effect.targetToken) {
-    const fresh = resolveInspectorTargetRect(effect.targetToken);
+    const fresh = resolveInspectorTargetRect(effect.targetToken, effect.targetScope);
     if (fresh) return fresh;
   }
   return effect.clipRect || effect.targetRect || effect.rect;
@@ -496,15 +648,7 @@ function freshClipRect(effect) {
 function findInspectorImageElement(effects) {
   for (const effect of effects) {
     if (!effect.targetToken) continue;
-    const targetEl = resolveInspectorTargetElement(effect.targetToken);
-    if (!targetEl) continue;
-    let img = null;
-    if (targetEl.tagName === "IMG") {
-      img = targetEl;
-    } else if (typeof targetEl.querySelector === "function") {
-      img = targetEl.querySelector("img.hover-art-foreground-image")
-        || targetEl.querySelector("img");
-    }
+    const img = resolveInspectorImageElement(effect.targetToken);
     if (img && img.complete && img.naturalWidth > 0) return img;
   }
   return null;
@@ -513,7 +657,15 @@ function findInspectorImageElement(effects) {
 function ShaderCanvas({ effects }) {
   const canvasRef = useRef(null);
   const shaderEffects = useMemo(
-    () => effects.filter((effect) => effect.travelsToInspector).slice(0, MAX_SHADER_EFFECTS),
+    () => effects
+      .filter((effect) => (
+        effect.travelsToInspector
+        && (
+          effect.kind === EXILE_EFFECT_KIND
+          || effect.kind === ANGELIC_DESTROY_EFFECT_KIND
+        )
+      ))
+      .slice(0, MAX_SHADER_EFFECTS),
     [effects]
   );
   const effectsRef = useRef(shaderEffects);
@@ -556,6 +708,8 @@ function ShaderCanvas({ effects }) {
     const clipRectsLocation = gl.getUniformLocation(program, "u_clipRects[0]");
     const progressLocation = gl.getUniformLocation(program, "u_progress[0]");
     const seedLocation = gl.getUniformLocation(program, "u_seed[0]");
+    const effectKindsLocation = gl.getUniformLocation(program, "u_effectKinds[0]");
+    const accentColorsLocation = gl.getUniformLocation(program, "u_accentColors[0]");
     const inspectorImageLocation = gl.getUniformLocation(program, "u_inspectorImage");
     const inspectorRectLocation = gl.getUniformLocation(program, "u_inspectorRect");
     const inspectorReadyLocation = gl.getUniformLocation(program, "u_inspectorReady");
@@ -588,7 +742,6 @@ function ShaderCanvas({ effects }) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-    let inspectorImageReady = false;
     let inspectorImageSrc = null;
     let pendingInspectorImage = null;
 
@@ -598,11 +751,9 @@ function ShaderCanvas({ effects }) {
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        inspectorImageReady = true;
         return true;
       } catch (error) {
         console.warn("[zone-move-effects] inspector image upload failed:", error);
-        inspectorImageReady = false;
         return false;
       }
     };
@@ -612,17 +763,16 @@ function ShaderCanvas({ effects }) {
       const src = imgElement.currentSrc || imgElement.src;
       if (!src || src === inspectorImageSrc) return;
       inspectorImageSrc = src;
-      inspectorImageReady = false;
       if (pendingInspectorImage) {
         pendingInspectorImage.onload = null;
         pendingInspectorImage.onerror = null;
         pendingInspectorImage = null;
       }
 
-      // The in-DOM <img> already has crossOrigin="anonymous", so when the
-      // browser has finished loading it we can sample directly without an
-      // extra fetch. If it's still loading (or never reached crossOrigin
-      // mode for some reason), kick off a CORS-tagged mirror as a fallback.
+      // Visible Scryfall card images intentionally load without anonymous
+      // CORS because the final cards.scryfall.io JPEG response does not send
+      // ACAO headers. For WebGL sampling, try a CORS-tagged mirror only; if
+      // the host rejects it, the visible DOM image still renders normally.
       if (
         imgElement.crossOrigin
         && imgElement.complete
@@ -642,7 +792,6 @@ function ShaderCanvas({ effects }) {
       };
       corsImg.onerror = () => {
         if (corsImg !== pendingInspectorImage) return;
-        inspectorImageReady = false;
         pendingInspectorImage = null;
       };
       pendingInspectorImage = corsImg;
@@ -673,10 +822,11 @@ function ShaderCanvas({ effects }) {
 
       const inspectorImgElement = findInspectorImageElement(activeEffects);
       if (inspectorImgElement) tryUploadInspectorImage(inspectorImgElement);
-      const inspectorImgRect = inspectorImgElement
-        ? normalizeRect(inspectorImgElement.getBoundingClientRect())
+      const inspectorMaskElement = resolveLargestInspectorMaskElement(activeEffects);
+      const inspectorMaskRect = inspectorMaskElement
+        ? normalizeRect(inspectorMaskElement.getBoundingClientRect())
         : null;
-      const inspectorActive = inspectorImageReady && inspectorImgRect != null;
+      const inspectorActive = inspectorMaskRect != null;
 
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -690,6 +840,8 @@ function ShaderCanvas({ effects }) {
       gl.uniform4fv(clipRectsLocation, rectsToFloat32Array(clipRects));
       gl.uniform1fv(progressLocation, progressUniformArray(activeEffects, now));
       gl.uniform1fv(seedLocation, seedUniformArray(activeEffects));
+      gl.uniform1fv(effectKindsLocation, effectKindUniformArray(activeEffects));
+      gl.uniform3fv(accentColorsLocation, accentColorUniformArray(activeEffects));
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
       gl.uniform1i(inspectorImageLocation, 0);
@@ -697,10 +849,10 @@ function ShaderCanvas({ effects }) {
       if (inspectorActive) {
         gl.uniform4f(
           inspectorRectLocation,
-          inspectorImgRect.left,
-          inspectorImgRect.top,
-          inspectorImgRect.width,
-          inspectorImgRect.height,
+          inspectorMaskRect.left,
+          inspectorMaskRect.top,
+          inspectorMaskRect.width,
+          inspectorMaskRect.height,
         );
       } else {
         gl.uniform4f(inspectorRectLocation, 0, 0, 0, 0);
@@ -732,7 +884,7 @@ function ShaderCanvas({ effects }) {
   return <canvas ref={canvasRef} className="zone-move-effects-canvas zone-move-effects-canvas--shader" aria-hidden="true" />;
 }
 
-function AngelicExileCard({ effect }) {
+function ParticleExileCard({ effect }) {
   const name = String(effect.card?.name || "");
   const artUrl = effect.sourceImageUrl || (name ? scryfallImageUrl(name, "art_crop") : null);
   const rect = effect.rect;
@@ -754,9 +906,6 @@ function AngelicExileCard({ effect }) {
     "--exile-start-delay": `${effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0}ms`,
     "--exile-converge-x": `${effect.convergeOffsetX || 0}px`,
     "--exile-converge-y": `${effect.convergeOffsetY || 0}px`,
-    "--exile-wing-flap-duration": `${effect.wingFlapDurationMs ?? 520}ms`,
-    "--exile-wing-flap-phase-left": `${effect.wingFlapPhaseMs ?? 0}ms`,
-    "--exile-wing-flap-phase-right": `${effect.wingFlapPhaseRightMs ?? 0}ms`,
   }), [
     effect.id,
     rect.height,
@@ -767,9 +916,6 @@ function AngelicExileCard({ effect }) {
     effect.startDelayMs,
     effect.convergeOffsetX,
     effect.convergeOffsetY,
-    effect.wingFlapDurationMs,
-    effect.wingFlapPhaseMs,
-    effect.wingFlapPhaseRightMs,
     sourceCenterX,
     sourceCenterY,
     targetCenterX,
@@ -778,6 +924,8 @@ function AngelicExileCard({ effect }) {
     targetRect.width,
   ]);
 
+  if (!effect.includeSourceClone) return null;
+
   return (
     <div
       className={`zone-exile-effect ${effect.travelsToInspector ? "zone-exile-effect--to-inspector" : "zone-exile-effect--source-only"}`}
@@ -785,35 +933,85 @@ function AngelicExileCard({ effect }) {
       aria-hidden="true"
     >
       <div className="zone-exile-halo" />
-      {effect.travelsToInspector ? (
-        <div className="zone-exile-wings">
-          <div className="zone-exile-wing zone-exile-wing--left">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="zone-exile-wing zone-exile-wing--right">
-            <span />
-            <span />
-            <span />
-          </div>
+      <div className="zone-exile-card-proxy">
+        {effect.sourceCloneHtml ? (
+          <div
+            className="zone-exile-source-clone"
+            dangerouslySetInnerHTML={{ __html: effect.sourceCloneHtml }}
+          />
+        ) : artUrl ? (
+          <img src={artUrl} alt="" draggable="false" referrerPolicy="no-referrer" />
+        ) : null}
+        <div className="zone-exile-card-frame" />
+        <div className="zone-exile-card-dissolve" />
+        <div className="zone-exile-card-whiteout" />
+      </div>
+    </div>
+  );
+}
+
+function AngelicDestroyCard({ effect }) {
+  const rect = effect.rect;
+  const targetRect = effect.targetRect || rect;
+  const sourceCenterX = rect.left + rect.width / 2;
+  const sourceCenterY = rect.top + rect.height / 2;
+  const targetCenterX = targetRect.left + targetRect.width / 2;
+  const targetCenterY = targetRect.top + targetRect.height / 2;
+  const targetOffsetX = targetCenterX - sourceCenterX;
+  const targetOffsetY = targetCenterY - sourceCenterY;
+  const flightDistance = Math.hypot(targetOffsetX, targetOffsetY);
+  const rise = Math.max(170, Math.min(360, rect.height * 2.25));
+  const style = useMemo(() => ({
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    "--destroy-target-x": `${targetOffsetX}px`,
+    "--destroy-target-y": `${targetOffsetY}px`,
+    "--destroy-flight-angle": `${Math.atan2(targetOffsetY, targetOffsetX)}rad`,
+    "--destroy-trail-length": `${Math.max(42, Math.min(190, flightDistance * 0.24))}px`,
+    "--exile-rise": `${rise}px`,
+    "--exile-tilt": `${hashText(effect.id) % 2 === 0 ? -5 : 5}deg`,
+    "--exile-start-delay": `${effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0}ms`,
+    "--exile-wing-flap-duration": `${460 + (hashText(effect.id) % 180)}ms`,
+    "--exile-wing-flap-phase-left": `-${hashText(`${effect.id}:left`) % 280}ms`,
+    "--exile-wing-flap-phase-right": `-${hashText(`${effect.id}:right`) % 280}ms`,
+  }), [
+    effect.cssAnimationDelayMs,
+    effect.id,
+    effect.startDelayMs,
+    rect.height,
+    rect.left,
+    rect.top,
+    rect.width,
+    rise,
+    targetOffsetX,
+    targetOffsetY,
+    flightDistance,
+  ]);
+
+  if (!effect.includeSourceClone) return null;
+
+  return (
+    <div
+      className={`zone-angelic-destroy-effect ${effect.preflight ? "zone-angelic-destroy-effect--preflight" : effect.travelsToInspector ? "zone-angelic-destroy-effect--to-inspector" : "zone-angelic-destroy-effect--source-only"}`}
+      style={style}
+      aria-hidden="true"
+    >
+      <div className="zone-exile-halo" />
+      <div className="zone-exile-wings">
+        <div className="zone-exile-wing zone-exile-wing--left">
+          <span />
+          <span />
+          <span />
         </div>
-      ) : null}
-      {effect.includeSourceClone ? (
-        <div className="zone-exile-card-proxy">
-          {effect.sourceCloneHtml ? (
-            <div
-              className="zone-exile-source-clone"
-              dangerouslySetInnerHTML={{ __html: effect.sourceCloneHtml }}
-            />
-          ) : artUrl ? (
-            <img src={artUrl} alt="" draggable="false" referrerPolicy="no-referrer" />
-          ) : null}
-          <div className="zone-exile-card-frame" />
-          <div className="zone-exile-card-whiteout" />
+        <div className="zone-exile-wing zone-exile-wing--right">
+          <span />
+          <span />
+          <span />
         </div>
-      ) : null}
-      {effect.travelsToInspector ? <div className="zone-exile-final-spark" /> : null}
+      </div>
+      <div className="zone-angelic-destroy-shooting-star" />
     </div>
   );
 }
@@ -837,7 +1035,7 @@ export default function ZoneMoveEffects() {
     const now = performance.now();
     for (const effect of nextEffects) {
       const elapsed = now - effect.startedAt;
-      const remaining = Math.max(120, EXILE_EFFECT_DURATION_MS - elapsed + CLEANUP_TAIL_MS);
+      const remaining = Math.max(120, effectDurationMs(effect) - elapsed + CLEANUP_TAIL_MS);
       const timerId = window.setTimeout(() => {
         setEffects((currentEffects) => currentEffects.filter((currentEffect) => currentEffect.id !== effect.id));
       }, remaining);
@@ -847,24 +1045,48 @@ export default function ZoneMoveEffects() {
 
   const spawnEffects = useCallback((rawEffects) => {
     const validEffects = (Array.isArray(rawEffects) ? rawEffects : [])
-      .filter((effect) => effect && effect.kind === "angelic-exile");
+      .filter((effect) => effect && (
+        effect.kind === EXILE_EFFECT_KIND
+        || effect.kind === ANGELIC_DESTROY_EFFECT_KIND
+      ));
     if (validEffects.length === 0) return;
 
     const requestedAt = performance.now();
+    const exileEffects = validEffects.filter((effect) => effect.kind === EXILE_EFFECT_KIND);
+    const angelicFlights = validEffects.filter((effect) => (
+      effect.kind === ANGELIC_DESTROY_EFFECT_KIND
+      && effect.travelsToInspector === true
+      && effect.includeSourceClone !== false
+    ));
 
     // Phase 1: per-card in-place dissolves spawn immediately so the cards are
     // visibly dissolving while the inspector forefront-image rect is still
     // being resolved.
-    const sourceBurns = validEffects
+    const sourceBurns = exileEffects
       .filter((effect) => effect.travelsToInspector !== true)
-      .map((effect) => normalizeEffect(effect, null, undefined, { anchorAt: requestedAt }))
+      .map((effect) => normalizeExileEffect(effect, null, undefined, { anchorAt: requestedAt }))
       .filter(Boolean);
-    if (sourceBurns.length > 0) addEffects(sourceBurns);
+    const preflightAngels = angelicFlights
+      .map((effect) => normalizeAngelicDestroyEffect(
+        {
+          ...effect,
+          id: `${deterministicEffectId(effect)}:preflight`,
+          travelsToInspector: false,
+          preflight: true,
+        },
+        null,
+        undefined,
+        { anchorAt: requestedAt },
+      ))
+      .filter(Boolean);
+    if (sourceBurns.length > 0 || preflightAngels.length > 0) {
+      addEffects([...sourceBurns, ...preflightAngels]);
+    }
 
-    // Phase 2: flights are grouped so every card in the same dispatch shares
-    // one polling loop and one anchor time, guaranteeing they all leave their
-    // origins simultaneously and therefore arrive at the shared target
-    // simultaneously (longer paths = visibly faster).
+    // Flights are grouped so every card in the same dispatch shares one
+    // polling loop. Exile dust remains anchored to the dispatch; angelic
+    // destroy flights anchor once the inspector target is ready so their
+    // per-card stagger is visible instead of being spent during target polling.
     const flightEffects = validEffects.filter((effect) => effect.travelsToInspector === true);
     if (flightEffects.length === 0) return;
 
@@ -877,6 +1099,9 @@ export default function ZoneMoveEffects() {
 
     for (const flights of flightsByGroup.values()) {
       const targetToken = flights[0].targetToken;
+      const targetScope = flights.some((flight) => flight.targetScope === "inspector")
+        ? "inspector"
+        : "foreground";
       const pollState = { cancelled: false, frameId: 0 };
       pendingPollsRef.current.add(pollState);
 
@@ -887,7 +1112,7 @@ export default function ZoneMoveEffects() {
       const trySpawn = () => {
         if (pollState.cancelled) return;
 
-        const targetRect = targetToken ? resolveInspectorTargetRect(targetToken) : null;
+        const targetRect = targetToken ? resolveInspectorTargetRect(targetToken, targetScope) : null;
         const now = performance.now();
         if (targetRect && elementFirstSeenAt === null) {
           elementFirstSeenAt = now;
@@ -908,13 +1133,22 @@ export default function ZoneMoveEffects() {
 
         if ((targetRect && entrySettled && stableTargetFrames >= 2) || timedOut) {
           pendingPollsRef.current.delete(pollState);
+          const flightAnchorAt = performance.now();
           const normalized = flights
             .map((flight) => {
               const sourceRect = normalizeRect(flight.rect);
               if (!sourceRect) return null;
               const finalTargetRect = targetRect || fallbackTargetRect(sourceRect);
               if (!finalTargetRect) return null;
-              return normalizeEffect(
+              if (flight.kind === ANGELIC_DESTROY_EFFECT_KIND) {
+                return normalizeAngelicDestroyEffect(
+                  flight,
+                  finalTargetRect,
+                  targetRect,
+                  { anchorAt: flightAnchorAt },
+                );
+              }
+              return normalizeExileEffect(
                 flight,
                 finalTargetRect,
                 targetRect,
@@ -922,6 +1156,17 @@ export default function ZoneMoveEffects() {
               );
             })
             .filter(Boolean);
+          for (const flight of flights) {
+            if (flight.kind !== ANGELIC_DESTROY_EFFECT_KIND) continue;
+            const preflightId = `${deterministicEffectId(flight)}:preflight`;
+            const removeAt = flightAnchorAt + (Math.max(0, Number(flight.startDelayMs) || 0));
+            const timerId = window.setTimeout(() => {
+              setEffects((currentEffects) => (
+                currentEffects.filter((currentEffect) => currentEffect.id !== preflightId)
+              ));
+            }, Math.max(0, removeAt - performance.now()));
+            cleanupTimersRef.current.push(timerId);
+          }
           if (normalized.length > 0) addEffects(normalized);
           return;
         }
@@ -962,7 +1207,9 @@ export default function ZoneMoveEffects() {
     <div className="zone-move-effects-layer">
       <ShaderCanvas effects={effects} />
       {effects.map((effect) => (
-        <AngelicExileCard key={effect.id} effect={effect} />
+        effect.kind === ANGELIC_DESTROY_EFFECT_KIND
+          ? <AngelicDestroyCard key={effect.id} effect={effect} />
+          : <ParticleExileCard key={effect.id} effect={effect} />
       ))}
     </div>
   );

@@ -488,6 +488,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::ObjectEnteredBattlefieldThisTurn(filter) => {
             Condition::ObjectEnteredBattlefieldThisTurn(filter.clone())
         }
+        PredicateAst::ObjectEnteredBattlefieldLastTurn(filter) => {
+            Condition::ObjectEnteredBattlefieldLastTurn(filter.clone())
+        }
         PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
             Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter.clone())
         }
@@ -3399,9 +3402,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             return None;
         }
         if has_word("banding") {
-            builder = builder.with_ability(Ability::static_ability(
-                StaticAbility::keyword_fallback_text("banding"),
-            ));
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::banding()));
         }
         if has_word("hexproof") {
             builder = builder.hexproof();

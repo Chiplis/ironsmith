@@ -307,6 +307,8 @@
   --card-translate-y: 0px;
   --card-rotate: 0deg;
   --card-scale: 1;
+  --battlefield-settle-x: 0px;
+  --battlefield-settle-y: 0px;
   --card-jolt-x: 0px;
   --card-jolt-y: 0px;
   --card-jolt-rotate: 0deg;
@@ -328,8 +330,8 @@
     inset 0 0 0 1px rgba(255,255,255,0.05);
   transform:
     translate3d(
-      calc(var(--card-translate-x) + var(--card-jolt-x)),
-      calc(var(--card-translate-y) + var(--card-jolt-y)),
+      calc(var(--card-translate-x) + var(--battlefield-settle-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) + var(--battlefield-settle-y) + var(--card-jolt-y)),
       0
     )
     rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
@@ -3566,30 +3568,77 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  mix-blend-mode: screen;
+  mix-blend-mode: normal;
 }
 
 .zone-exile-effect {
   position: fixed;
   transform-origin: 50% 50%;
-  animation: zone-exile-rise 1900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-root 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity, filter;
+}
+
+.zone-angelic-destroy-effect {
+  position: fixed;
+  transform-origin: 50% 50%;
+  animation: zone-exile-rise 1900ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
+  will-change: transform, opacity, filter;
+}
+
+.zone-angelic-destroy-effect--to-inspector {
+  animation: none;
+  opacity: 1;
+}
+
+.zone-angelic-destroy-effect--preflight {
+  animation: zone-angelic-destroy-preflight-root 60000ms linear var(--exile-start-delay, 0ms) both;
+  opacity: 0;
+  filter: brightness(1.06) saturate(1.08);
 }
 
 .zone-exile-halo {
   position: absolute;
-  inset: -58%;
+  inset: -34%;
   border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.72) 0%, rgba(186, 221, 255, 0.32) 20%, rgba(30, 38, 48, 0.22) 46%, transparent 74%),
+    conic-gradient(from 20deg, transparent 0deg, rgba(255, 255, 255, 0.22) 38deg, transparent 86deg, rgba(120, 181, 220, 0.18) 146deg, transparent 226deg, rgba(255, 255, 255, 0.16) 284deg, transparent 360deg);
+  filter: blur(3px) saturate(0.8);
+  opacity: 0;
+  transform: scale(0.74);
+  animation: zone-exile-source-only-halo 2200ms ease-out forwards;
+}
+
+.zone-angelic-destroy-effect .zone-exile-halo {
+  inset: -38% -16% -26%;
   background:
     radial-gradient(circle at 50% 50%, rgba(255, 255, 252, 0.95) 0%, rgba(255, 238, 178, 0.52) 18%, rgba(128, 203, 255, 0.14) 44%, transparent 72%),
     conic-gradient(from 0deg, transparent 0deg, rgba(255, 248, 215, 0.22) 52deg, transparent 104deg, rgba(170, 221, 255, 0.18) 156deg, transparent 214deg, rgba(255, 220, 138, 0.2) 286deg, transparent 360deg);
   filter: blur(2px);
-  opacity: 0;
   transform: scale(0.62);
-  animation: zone-exile-halo 1900ms ease-out forwards;
+  animation: zone-exile-halo 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-exile-halo {
+  animation: zone-angelic-destroy-launch-halo 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-exile-halo {
+  animation: zone-angelic-destroy-preflight-halo 900ms ease-in-out var(--exile-start-delay, 0ms) infinite alternate both;
 }
 
 .zone-exile-card-proxy {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  transform-origin: 50% 52%;
+  animation: zone-exile-source-only-card-proxy 2200ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.zone-angelic-destroy-card-proxy {
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -3603,7 +3652,17 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     0 0 62px rgba(145, 207, 255, 0.46),
     inset 0 0 18px rgba(255, 255, 255, 0.28);
   transform-origin: 50% 52%;
-  animation: zone-exile-card-proxy 1900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: zone-exile-card-proxy 1900ms cubic-bezier(0.22, 1, 0.36, 1) var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-proxy {
+  animation: zone-angelic-destroy-card-proxy-to-inspector 2400ms cubic-bezier(0.22, 1, 0.36, 1) var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-proxy {
+  animation: none;
+  opacity: 1;
+  transform: scale(1) rotateX(0deg);
 }
 
 .zone-exile-card-proxy img {
@@ -3613,8 +3672,29 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   height: 100%;
   object-fit: cover;
   opacity: 0.94;
+  filter: saturate(1.08) contrast(1.08) brightness(1.02);
+  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.zone-angelic-destroy-card-proxy img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.94;
   filter: saturate(1.18) contrast(1.08) brightness(1.04);
-  animation: zone-exile-art-whiteout 1900ms ease-out forwards;
+  animation: zone-exile-art-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-proxy img {
+  animation: zone-angelic-destroy-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-proxy img {
+  animation: none;
+  opacity: 1;
+  filter: saturate(1.14) contrast(1.06) brightness(1.02);
 }
 
 .zone-exile-source-clone {
@@ -3623,7 +3703,42 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 0;
   overflow: hidden;
   border-radius: inherit;
-  animation: zone-exile-source-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.zone-angelic-destroy-source-clone {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  animation: zone-exile-art-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-source-clone {
+  animation: zone-angelic-destroy-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-source-clone {
+  animation: none;
+  opacity: 1;
+  filter: saturate(1.08) contrast(1.04) brightness(1.02);
+}
+
+.zone-angelic-destroy-source-clone > .game-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  pointer-events: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.zone-angelic-destroy-source-clone .game-card,
+.zone-angelic-destroy-source-clone .game-card * {
+  pointer-events: none !important;
 }
 
 .zone-exile-source-clone > .game-card {
@@ -3642,7 +3757,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   pointer-events: none !important;
 }
 
-.zone-exile-card-frame {
+.zone-angelic-destroy-card-frame {
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -3651,6 +3766,37 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     linear-gradient(180deg, rgba(255, 252, 230, 0.88), transparent 10%, transparent 88%, rgba(160, 218, 255, 0.54));
   opacity: 0.75;
   mix-blend-mode: screen;
+}
+
+.zone-exile-card-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+
+.zone-angelic-destroy-card-whiteout {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 1) 0%, rgba(255, 246, 205, 0.86) 24%, rgba(255, 255, 255, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 236, 162, 0.2));
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: zone-exile-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-whiteout {
+  animation: zone-angelic-destroy-whiteout-to-inspector 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-whiteout {
+  animation: none;
+  opacity: 0;
 }
 
 .zone-exile-card-whiteout,
@@ -3662,28 +3808,33 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .zone-exile-card-whiteout {
+  inset: 0 auto 0 0;
+  width: 42%;
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 1) 0%, rgba(255, 246, 205, 0.86) 24%, rgba(255, 255, 255, 0) 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 236, 162, 0.2));
+    linear-gradient(96deg, transparent 0%, rgba(255, 255, 255, 0.18) 34%, rgba(255, 255, 255, 0.88) 54%, rgba(255, 255, 255, 0.16) 72%, transparent 100%),
+    radial-gradient(circle at 55% 46%, rgba(255, 255, 255, 0.46) 0%, rgba(201, 227, 245, 0.22) 38%, rgba(255, 255, 255, 0) 72%);
+  clip-path: polygon(18% 0, 100% 0, 82% 12%, 100% 26%, 78% 42%, 100% 58%, 76% 74%, 100% 100%, 8% 100%, 30% 82%, 10% 66%, 32% 50%, 12% 34%, 34% 18%);
   opacity: 0;
   mix-blend-mode: screen;
-  animation: zone-exile-whiteout 1900ms ease-out forwards;
+  animation: zone-exile-source-only-whiteout 2200ms ease-out forwards;
 }
 
 .zone-exile-card-dissolve {
+  inset: 0 auto 0 0;
+  width: 58%;
   background:
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0) 0 6px,
-      rgba(255, 255, 255, 0.82) 7px 9px,
-      rgba(255, 220, 128, 0.38) 10px 13px,
-      rgba(255, 255, 255, 0) 14px 22px
-    );
+    radial-gradient(circle at 16% 24%, rgba(255,255,255,0.98) 0 1.4px, transparent 2.7px),
+    radial-gradient(circle at 30% 64%, rgba(207,229,242,0.9) 0 1.2px, transparent 2.5px),
+    radial-gradient(circle at 48% 38%, rgba(255,255,255,0.92) 0 1.8px, transparent 3.4px),
+    radial-gradient(circle at 62% 76%, rgba(179,208,222,0.72) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 78% 46%, rgba(255,255,255,0.82) 0 1.3px, transparent 2.8px),
+    repeating-linear-gradient(96deg, transparent 0 7px, rgba(255,255,255,0.54) 8px 10px, rgba(134,159,172,0.24) 11px 15px, transparent 16px 26px);
+  background-size: 48px 48px, 62px 62px, 38px 38px, 56px 56px, 44px 44px, auto;
   opacity: 0;
-  transform: translateY(22%);
+  transform: translate3d(86%, 0, 0) scaleX(0.82);
   filter: blur(0.5px);
   mix-blend-mode: screen;
-  animation: zone-exile-dissolve 1900ms ease-in forwards;
+  animation: zone-exile-dissolve 2200ms ease-in forwards;
 }
 
 .zone-exile-wings {
@@ -3720,9 +3871,27 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .zone-exile-wing--right {
   right: 0;
   transform-origin: 0% 58%;
-  transform: scaleX(-1);
   animation-name: zone-exile-wing-flap-right;
   animation-delay: var(--exile-wing-flap-phase-right, 0ms);
+}
+
+.zone-exile-wing--right span {
+  left: 0;
+  right: auto;
+  border-radius: 12% 86% 20% 78%;
+  background:
+    radial-gradient(ellipse at 16% 18%, rgba(255, 255, 255, 0.98), rgba(255, 244, 205, 0.72) 28%, rgba(189, 225, 255, 0.34) 58%, transparent 76%),
+    linear-gradient(225deg, rgba(255, 255, 255, 0.92), rgba(248, 221, 145, 0.38) 48%, rgba(145, 205, 255, 0));
+  clip-path: polygon(0 48%, 18% 18%, 48% 2%, 80% 8%, 100% 24%, 74% 44%, 96% 62%, 64% 66%, 80% 88%, 42% 78%, 30% 100%, 14% 70%);
+  transform-origin: 0% 52%;
+}
+
+.zone-exile-wing--right span:nth-child(2) {
+  transform: rotate(14deg) translateX(8%);
+}
+
+.zone-exile-wing--right span:nth-child(3) {
+  transform: rotate(26deg) translateX(17%);
 }
 
 .zone-exile-wing span {
@@ -3771,6 +3940,75 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     0 0 58px rgba(143, 211, 255, 0.72);
   opacity: 0;
   animation: zone-exile-final-spark 1900ms ease-out forwards;
+}
+
+.zone-angelic-destroy-effect .zone-exile-wings {
+  animation: zone-exile-wings-visible 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect .zone-exile-final-spark {
+  animation: zone-exile-final-spark 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-exile-wings {
+  animation: zone-angelic-destroy-wings-to-star 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-exile-final-spark {
+  animation: zone-angelic-destroy-final-spark-to-inspector 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-exile-wings {
+  animation: zone-angelic-destroy-preflight-wings 360ms ease-out var(--exile-start-delay, 0ms) both;
+}
+
+.zone-angelic-destroy-effect--preflight .zone-exile-final-spark {
+  animation: none;
+  opacity: 0;
+}
+
+.zone-angelic-destroy-shooting-star {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: 999px;
+  opacity: 0;
+  background: #fffdf4;
+  box-shadow:
+    0 0 10px #fff,
+    0 0 26px rgba(255, 230, 145, 0.92),
+    0 0 54px rgba(142, 211, 255, 0.62);
+  transform-origin: 50% 50%;
+  animation: none;
+}
+
+.zone-angelic-destroy-shooting-star::before,
+.zone-angelic-destroy-shooting-star::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 50%;
+  height: 2px;
+  width: var(--destroy-trail-length, 96px);
+  border-radius: 999px;
+  pointer-events: none;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, rgba(151, 214, 255, 0.48), rgba(255, 255, 255, 0.96));
+  filter: blur(0.2px);
+}
+
+.zone-angelic-destroy-shooting-star::after {
+  height: 7px;
+  opacity: 0.46;
+  filter: blur(5px);
+}
+
+.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-shooting-star {
+  animation: zone-angelic-destroy-shooting-star 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
 }
 
 @keyframes zone-exile-rise {
@@ -3869,10 +4107,10 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 
 @keyframes zone-exile-wing-flap-right {
   0% {
-    transform: scaleX(-1) rotateZ(-18deg) rotateY(-32deg) translateX(-12%);
+    transform: rotateZ(18deg) rotateY(-32deg) translateX(-12%);
   }
   100% {
-    transform: scaleX(-1) rotateZ(18deg) rotateY(20deg) translateX(6%);
+    transform: rotateZ(-18deg) rotateY(20deg) translateX(6%);
   }
 }
 
@@ -3914,17 +4152,28 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 @keyframes zone-exile-dissolve {
-  0%,
-  38% {
+  0% {
     opacity: 0;
-    transform: translateY(28%) scaleY(1);
+    transform: translate3d(104%, 0, 0) scaleX(0.62);
+    filter: blur(0.4px);
   }
-  58% {
-    opacity: 0.92;
+  24% {
+    opacity: 0.18;
+    transform: translate3d(92%, 0, 0) scaleX(0.76);
+  }
+  52% {
+    opacity: 0.72;
+    transform: translate3d(64%, -1%, 0) scaleX(1);
+  }
+  78% {
+    opacity: 0.66;
+    transform: translate3d(26%, -4%, 0) scaleX(1.18);
+    filter: blur(0.9px);
   }
   100% {
     opacity: 0;
-    transform: translateY(-74%) scaleY(1.8);
+    transform: translate3d(-36%, -7%, 0) scaleX(1.36);
+    filter: blur(1.6px);
   }
 }
 
@@ -3944,6 +4193,318 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   }
 }
 
+@keyframes zone-angelic-destroy-to-inspector {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    filter: brightness(1.08) saturate(1.08);
+  }
+  18% {
+    opacity: 1;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.14),
+        calc(var(--destroy-target-y) * 0.09 - 18px),
+        0
+      )
+      rotate(calc(var(--exile-tilt) * 0.7))
+      scale(0.96);
+    filter: brightness(2.25) saturate(0.7);
+  }
+  38% {
+    opacity: 0.92;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.52),
+        calc(var(--destroy-target-y) * 0.48 - 26px),
+        0
+      )
+      rotate(calc(var(--exile-tilt) * -0.4))
+      scale(0.54);
+    filter: brightness(2.9) saturate(0.38) blur(0.35px);
+  }
+  56% {
+    opacity: 0.28;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.9),
+        calc(var(--destroy-target-y) * 0.9 - 6px),
+        0
+      )
+      rotate(calc(var(--exile-tilt) * 0.16))
+      scale(0.16);
+    filter: brightness(4.1) saturate(0.08) blur(1.1px);
+  }
+  62% {
+    opacity: 0;
+    transform:
+      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
+      rotate(0deg)
+      scale(0.045);
+    filter: brightness(4.5) saturate(0) blur(1.8px);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
+      rotate(0deg)
+      scale(0.045);
+    filter: brightness(4.5) saturate(0) blur(1.8px);
+  }
+}
+
+@keyframes zone-angelic-destroy-preflight-root {
+  0% {
+    opacity: 0;
+  }
+  0.01%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes zone-angelic-destroy-preflight-halo {
+  0% {
+    opacity: 0.36;
+    transform: scale(0.86) rotate(0deg);
+  }
+  100% {
+    opacity: 0.74;
+    transform: scale(1.08) rotate(18deg);
+  }
+}
+
+@keyframes zone-angelic-destroy-preflight-wings {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) translateY(8%);
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1.02) translateY(-3%);
+  }
+}
+
+@keyframes zone-angelic-destroy-launch-halo {
+  0%,
+  8% {
+    opacity: 0.58;
+    transform: scale(0.92) rotate(0deg);
+  }
+  22% {
+    opacity: 0.86;
+    transform: scale(1.18) rotate(28deg);
+  }
+  42% {
+    opacity: 0.26;
+    transform: scale(0.72) rotate(78deg);
+  }
+  58%,
+  100% {
+    opacity: 0;
+    transform: scale(0.18) rotate(128deg);
+  }
+}
+
+@keyframes zone-angelic-destroy-wings-to-star {
+  0%,
+  8% {
+    opacity: 0.92;
+    transform: scaleX(0.94) scaleY(1.02) translateY(-3%);
+  }
+  22% {
+    opacity: 1;
+    transform: scaleX(0.68) scaleY(1.22) translateY(-7%);
+  }
+  38% {
+    opacity: 0.42;
+    transform: scaleX(0.24) scaleY(1.38) translateY(-12%);
+  }
+  52%,
+  100% {
+    opacity: 0;
+    transform: scaleX(0.06) scaleY(0.52) translateY(-18%);
+  }
+}
+
+@keyframes zone-angelic-destroy-shooting-star {
+  0%,
+  18% {
+    opacity: 0;
+    transform:
+      translate3d(0, 0, 0)
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(0.22);
+    filter: brightness(2.8) saturate(0.4) blur(0.2px);
+  }
+  24% {
+    opacity: 1;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.06),
+        calc(var(--destroy-target-y) * 0.04 - 10px),
+        0
+      )
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(1.2);
+    filter: brightness(3.6) saturate(0.7) blur(0);
+  }
+  46% {
+    opacity: 0.92;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.46),
+        calc(var(--destroy-target-y) * 0.42 - 24px),
+        0
+      )
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(0.8);
+    filter: brightness(2.5) saturate(0.86) blur(0.1px);
+  }
+  58% {
+    opacity: 0.72;
+    transform:
+      translate3d(
+        calc(var(--destroy-target-x) * 0.82),
+        calc(var(--destroy-target-y) * 0.8 - 8px),
+        0
+      )
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(0.36);
+    filter: brightness(3.8) saturate(0.4) blur(0.45px);
+  }
+  64% {
+    opacity: 0;
+    transform:
+      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(0.08);
+    filter: brightness(4.6) saturate(0) blur(1.2px);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
+      rotate(var(--destroy-flight-angle, 0rad))
+      scale(0.08);
+    filter: brightness(4.6) saturate(0) blur(1.2px);
+  }
+}
+
+@keyframes zone-angelic-destroy-card-proxy-to-inspector {
+  0% {
+    transform: scale(0.98) rotateX(0deg);
+  }
+  18% {
+    transform: scale(1.08) rotateX(8deg);
+  }
+  42% {
+    transform: scale(0.82) rotateX(22deg);
+  }
+  62%,
+  100% {
+    transform: scale(0.38) rotateX(72deg);
+  }
+}
+
+@keyframes zone-angelic-destroy-art-to-inspector {
+  0% {
+    opacity: 1;
+    filter: saturate(1.14) contrast(1.06) brightness(1.02);
+  }
+  18% {
+    opacity: 0.88;
+    filter: saturate(0.62) contrast(1.24) brightness(2.3);
+  }
+  48% {
+    opacity: 0.36;
+    filter: saturate(0.12) contrast(1.48) brightness(4.2) blur(0.7px);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    filter: saturate(0) contrast(1.7) brightness(4.8) blur(2px);
+  }
+}
+
+@keyframes zone-angelic-destroy-halo-to-inspector {
+  0% {
+    opacity: 0;
+    transform: scale(0.42) rotate(0deg);
+  }
+  16% {
+    opacity: 0.94;
+    transform: scale(1.36) rotate(26deg);
+  }
+  44% {
+    opacity: 0.72;
+    transform: scale(0.84) rotate(78deg);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(0.2) rotate(128deg);
+  }
+}
+
+@keyframes zone-angelic-destroy-wings-to-inspector {
+  0%,
+  10% {
+    opacity: 0;
+    transform: scale(0.78) translateY(10%);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1.14) translateY(-4%);
+  }
+  44% {
+    opacity: 0.84;
+    transform: scale(0.86) translateY(-10%);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(0.18) translateY(-38%);
+  }
+}
+
+@keyframes zone-angelic-destroy-whiteout-to-inspector {
+  0% {
+    opacity: 0;
+    transform: scale(0.52);
+  }
+  20% {
+    opacity: 0.86;
+    transform: scale(1.1);
+  }
+  50% {
+    opacity: 0.52;
+    transform: scale(0.74);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(0.24);
+  }
+}
+
+@keyframes zone-angelic-destroy-final-spark-to-inspector {
+  0%,
+  48% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  58% {
+    opacity: 0.74;
+    transform: scale(1.55);
+  }
+  66%,
+  100% {
+    opacity: 0;
+    transform: scale(0.14);
+  }
+}
+
 .zone-move-effects-canvas--shader {
   opacity: 0.96;
   filter: saturate(1.08);
@@ -3956,28 +4517,28 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .zone-exile-effect--source-only {
-  animation: zone-exile-source-only-root 1120ms ease-out both;
+  animation: zone-exile-source-only-root 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 1;
 }
 
 .zone-exile-effect--source-only .zone-exile-halo {
   animation-name: zone-exile-source-only-halo;
-  animation-duration: 1120ms;
+  animation-duration: 2200ms;
 }
 
 .zone-exile-effect--source-only .zone-exile-card-proxy {
   animation-name: zone-exile-source-only-card-proxy;
-  animation-duration: 1120ms;
+  animation-duration: 2200ms;
 }
 
 .zone-exile-effect--source-only .zone-exile-source-clone,
 .zone-exile-effect--source-only .zone-exile-card-proxy img {
-  animation: zone-exile-source-only-art 1120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zone-exile-effect--source-only .zone-exile-card-whiteout {
   animation-name: zone-exile-source-only-whiteout;
-  animation-duration: 1120ms;
+  animation-duration: 2200ms;
 }
 
 .zone-exile-effect--to-inspector .zone-exile-card-proxy {
@@ -4019,6 +4580,37 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   isolation: isolate;
 }
 
+@property --inspector-shell-reveal-radius {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+.ironsmith-inspector-shell--shader-reveal {
+  --inspector-shell-reveal-radius: 0%;
+  opacity: 0;
+  filter: brightness(1.18) saturate(0.86) blur(2px);
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 50%,
+    #000 0 var(--inspector-shell-reveal-radius),
+    rgba(0, 0, 0, 0.58) calc(var(--inspector-shell-reveal-radius) + 4%),
+    transparent calc(var(--inspector-shell-reveal-radius) + 10%)
+  );
+  mask-image: radial-gradient(
+    circle at 50% 50%,
+    #000 0 var(--inspector-shell-reveal-radius),
+    rgba(0, 0, 0, 0.58) calc(var(--inspector-shell-reveal-radius) + 4%),
+    transparent calc(var(--inspector-shell-reveal-radius) + 10%)
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  transform-origin: 50% 50%;
+  animation: inspector-shell-dissolve-in var(--inspector-shell-reveal-duration, 3000ms) cubic-bezier(0.16, 1, 0.3, 1) var(--inspector-shader-reveal-delay, 0ms) both;
+  will-change: opacity, filter, mask-image;
+}
+
 .hover-art-stage--shader-reveal .hover-art-foreground-crop,
 .hover-art-stage--shader-reveal .hover-art-full-art-crop {
   isolation: isolate;
@@ -4035,7 +4627,8 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   background:
     radial-gradient(82% 82% at 50% 50%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.34) 58%, transparent 92%);
   mix-blend-mode: screen;
-  animation: inspector-shader-white-fill 2400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+  animation: inspector-shader-white-fill 2400ms cubic-bezier(0.22, 1, 0.36, 1) var(--inspector-shader-reveal-delay, 0ms) both;
 }
 
 .hover-art-stage--shader-reveal .hover-art-foreground-crop::before,
@@ -4055,13 +4648,23 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     radial-gradient(circle at 84% 66%, rgba(190,226,255,0.78) 0 1.8px, transparent 3.4px);
   mix-blend-mode: screen;
   filter: blur(0.2px) saturate(1.18);
-  animation: inspector-shader-particle-dissolve 2400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: inspector-shader-particle-dissolve 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--inspector-shader-reveal-delay, 0ms) both;
 }
 
 .hover-art-stage--shader-reveal .hover-art-slice-in--shader-reveal,
 .hover-art-stage--shader-reveal .hover-art-image-layer,
 .hover-art-stage--shader-reveal .hover-art-foreground-image {
-  animation: inspector-shader-art-fade-in 2400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: inspector-shader-art-fade-in 2400ms cubic-bezier(0.22, 1, 0.36, 1) var(--inspector-shader-reveal-delay, 0ms) both;
+  transform-origin: 50% 50%;
+  will-change: opacity, clip-path, filter;
+}
+
+.hover-art-stage--shader-reveal-inspector .hover-art-foreground-crop::before,
+.hover-art-stage--shader-reveal-inspector .hover-art-foreground-crop::after,
+.hover-art-stage--shader-reveal-inspector .hover-art-full-art-crop::before,
+.hover-art-stage--shader-reveal-inspector .hover-art-full-art-crop::after {
+  animation: none;
+  opacity: 0;
 }
 
 @keyframes zone-exile-rise-to-inspector {
@@ -4129,29 +4732,30 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 @keyframes zone-exile-source-only-root {
-  0%,
-  44% {
+  0% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: brightness(1.08) saturate(1.08);
+    filter: brightness(1.02) contrast(1.02);
   }
-  72% {
+  42% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.005);
+    filter: brightness(1.08) contrast(1.06);
+  }
+  76% {
     opacity: 0.92;
-    transform: translate3d(
-      calc(var(--exile-converge-x, 0px) * 0.55),
-      calc(var(--exile-converge-y, 0px) * 0.55),
-      0
-    ) scale(0.74);
-    filter: brightness(2.6) saturate(0.5) blur(0.4px);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: brightness(1.12) contrast(1.08) blur(0.2px);
+  }
+  92% {
+    opacity: 0.34;
+    transform: translate3d(0, 0, 0) scale(1.006);
+    filter: brightness(1.05) contrast(1.06) blur(0.6px);
   }
   100% {
     opacity: 0;
-    transform: translate3d(
-      var(--exile-converge-x, 0px),
-      var(--exile-converge-y, 0px),
-      0
-    ) scale(0.18);
-    filter: brightness(4.8) saturate(0) blur(2px);
+    transform: translate3d(0, 0, 0) scale(1.01);
+    filter: brightness(0.95) contrast(1.04) blur(1px);
   }
 }
 
@@ -4162,57 +4766,75 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   }
   34% {
     opacity: 1;
-    transform: scale(1.01) rotateX(0deg);
+    transform: scale(1.006) rotateX(0deg);
   }
-  62% {
-    opacity: 0.48;
-    transform: scale(0.96) rotateX(0deg);
+  68% {
+    opacity: 0.96;
+    transform: scale(1) rotateX(0deg);
   }
-  82% {
-    opacity: 0.14;
-    transform: scale(0.86) rotateX(0deg);
+  88% {
+    opacity: 0.44;
+    transform: scale(1.004) rotateX(0deg);
   }
   100% {
     opacity: 0;
-    transform: scale(0.62) rotateX(0deg);
+    transform: scale(1.01) rotateX(0deg);
   }
 }
 
 @keyframes zone-exile-source-only-art {
   0% {
     opacity: 1;
-    filter: saturate(1.12) contrast(1.06) brightness(1);
+    clip-path: inset(0 0 0 0);
+    filter: saturate(1.08) contrast(1.06) brightness(1);
   }
   34% {
     opacity: 1;
-    filter: saturate(0.58) contrast(1.24) brightness(2.3);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    filter: saturate(1.06) contrast(1.08) brightness(1.08);
   }
-  62% {
-    opacity: 0.28;
-    filter: saturate(0) contrast(1.55) brightness(4.8) blur(1.5px);
+  56% {
+    opacity: 1;
+    clip-path: polygon(0 0, 88% 0, 95% 8%, 84% 17%, 92% 27%, 80% 39%, 88% 52%, 76% 66%, 83% 82%, 72% 100%, 0 100%);
+    filter: saturate(1.04) contrast(1.08) brightness(1.04);
+  }
+  76% {
+    opacity: 0.92;
+    clip-path: polygon(0 0, 54% 0, 66% 9%, 48% 20%, 60% 34%, 42% 46%, 55% 60%, 36% 74%, 48% 88%, 30% 100%, 0 100%);
+    filter: saturate(1) contrast(1.1) brightness(1);
+  }
+  92% {
+    opacity: 0.72;
+    clip-path: polygon(0 0, 18% 0, 30% 11%, 12% 25%, 26% 42%, 10% 58%, 22% 74%, 7% 88%, 14% 100%, 0 100%);
+    filter: saturate(1) contrast(1.12) brightness(0.96) blur(0.2px);
   }
   100% {
     opacity: 0;
-    filter: saturate(0) contrast(1.7) brightness(5) blur(3px);
+    clip-path: polygon(0 0, 2% 0, 9% 13%, 0 28%, 8% 45%, 0 64%, 6% 82%, 0 100%);
+    filter: saturate(1) contrast(1.14) brightness(0.9) blur(1px);
   }
 }
 
 @keyframes zone-exile-source-only-whiteout {
   0% {
     opacity: 0;
-    transform: scale(0.5);
+    transform: translate3d(162%, 0, 0) scaleX(0.36);
   }
-  42% {
-    opacity: 1;
-    transform: scale(1.08);
+  50% {
+    opacity: 0.52;
+    transform: translate3d(104%, 0, 0) scaleX(0.72);
   }
-  70% {
-    opacity: 0.38;
-    transform: scale(1.18);
+  76% {
+    opacity: 0.42;
+    transform: translate3d(48%, 0, 0) scaleX(0.82);
+  }
+  92% {
+    opacity: 0.18;
+    transform: translate3d(4%, 0, 0) scaleX(0.72);
   }
   100% {
     opacity: 0;
-    transform: scale(1.34);
+    transform: translate3d(-42%, 0, 0) scaleX(0.54);
   }
 }
 
@@ -4222,12 +4844,12 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     transform: scale(0.62) rotate(0deg);
   }
   38% {
-    opacity: 0.86;
+    opacity: 0.62;
     transform: scale(1.08) rotate(14deg);
   }
   100% {
     opacity: 0;
-    transform: scale(1.72) rotate(54deg);
+    transform: scale(1.42) rotate(54deg);
   }
 }
 
@@ -4363,50 +4985,78 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 
 @keyframes inspector-shader-white-fill {
   0%,
-  56% {
+  48% {
     opacity: 0;
-    transform: scale(0.08);
+    transform: scale(0.12);
   }
-  68% {
-    opacity: 0.18;
-    transform: scale(0.96);
+  58% {
+    opacity: 0.5;
+    transform: scale(0.98);
   }
-  78% {
-    opacity: 0.12;
+  70% {
+    opacity: 0.22;
     transform: scale(1.02);
   }
   100% {
     opacity: 0;
-    transform: scale(1.08);
+    transform: scale(1.1);
   }
 }
 
 @keyframes inspector-shader-art-fade-in {
-  0%,
-  60% {
+  0% {
     opacity: 0;
+    clip-path: circle(142% at 50% 50%);
+    filter: brightness(1) saturate(1) blur(0);
   }
-  74% {
-    opacity: 1;
-  }
+  1%,
   100% {
     opacity: 1;
+    clip-path: circle(142% at 50% 50%);
+    filter: brightness(1) saturate(1) blur(0);
   }
 }
 
 @keyframes inspector-shader-particle-dissolve {
   0%,
-  64% {
+  58% {
     opacity: 0;
-    transform: translate3d(-1%, 0.5%, 0) scale(0.92);
+    transform: translate3d(-2%, 0.5%, 0) scale(0.92);
   }
-  72% {
-    opacity: 0.86;
+  70% {
+    opacity: 0.76;
     transform: translate3d(0, 0, 0) scale(1);
+  }
+  84% {
+    opacity: 0.22;
+    transform: translate3d(0, 0, 0) scale(1.04);
   }
   100% {
     opacity: 0;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1.08);
+  }
+}
+
+@keyframes inspector-shell-dissolve-in {
+  0% {
+    --inspector-shell-reveal-radius: 0%;
+    opacity: 0;
+    filter: brightness(1.18) saturate(0.86) blur(2px);
+  }
+  18% {
+    --inspector-shell-reveal-radius: 14%;
+    opacity: 0.32;
+    filter: brightness(1.28) saturate(0.92) blur(1.2px);
+  }
+  62% {
+    --inspector-shell-reveal-radius: 74%;
+    opacity: 0.84;
+    filter: brightness(1.08) saturate(0.98) blur(0.35px);
+  }
+  100% {
+    --inspector-shell-reveal-radius: 150%;
+    opacity: 1;
+    filter: brightness(1) saturate(1) blur(0);
   }
 }
 
@@ -10785,7 +11435,11 @@ select::-ms-expand {
 
   .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 {
     transform:
-      translate3d(calc(var(--card-translate-x) - 2px), calc(var(--card-translate-y) + 18px), 0)
+      translate3d(
+        calc(var(--card-translate-x) + var(--battlefield-settle-x) - 2px),
+        calc(var(--card-translate-y) + var(--battlefield-settle-y) + 18px),
+        0
+      )
       rotate(calc(var(--card-rotate) - 0.5deg))
       scale(calc(var(--card-scale) * 0.94));
     transform-origin: 50% 100%;
@@ -10807,7 +11461,11 @@ select::-ms-expand {
 
   .mobile-battle-opponent-slot .battlefield-row-card--paper-row-2 {
     transform:
-      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 26px), 0)
+      translate3d(
+        calc(var(--card-translate-x) + var(--battlefield-settle-x)),
+        calc(var(--card-translate-y) + var(--battlefield-settle-y) + 26px),
+        0
+      )
       rotate(var(--card-rotate))
       scale(calc(var(--card-scale) * 0.99));
     transform-origin: 50% 100%;
@@ -10838,7 +11496,11 @@ select::-ms-expand {
 
   .mobile-battle-my-zone .battlefield-row-card--paper-row-1 {
     transform:
-      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 18px), 0)
+      translate3d(
+        calc(var(--card-translate-x) + var(--battlefield-settle-x)),
+        calc(var(--card-translate-y) + var(--battlefield-settle-y) + 18px),
+        0
+      )
       rotate(var(--card-rotate))
       scale(calc(var(--card-scale) * 0.98));
     transform-origin: 50% 100%;
@@ -10846,7 +11508,11 @@ select::-ms-expand {
 
   .mobile-battle-my-zone .battlefield-row-card--paper-row-2 {
     transform:
-      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 32px), 0)
+      translate3d(
+        calc(var(--card-translate-x) + var(--battlefield-settle-x)),
+        calc(var(--card-translate-y) + var(--battlefield-settle-y) + 32px),
+        0
+      )
       rotate(var(--card-rotate))
       scale(calc(var(--card-scale) * 0.97));
     transform-origin: 50% 100%;
@@ -13103,58 +13769,9 @@ select::-ms-expand {
     align-items: stretch;
   }
 
-  .my-zone-mobile-body-grid.has-inline-inspector {
-    grid-template-columns: minmax(0, 1fr) 184px 72px;
-  }
-
   .my-zone-mobile-board-shell {
     min-width: 0;
     min-height: 0;
-  }
-
-  .my-zone-mobile-inline-inspector {
-    position: relative;
-    display: flex;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    padding: 1px 0 2px;
-  }
-
-  .my-zone-mobile-inline-inspector-stage {
-    position: relative;
-    flex: 1 1 auto;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-    border-bottom: 1px solid rgba(255, 240, 206, 0.08);
-    background:
-      linear-gradient(180deg, rgba(38, 31, 25, 0.9), rgba(12, 13, 16, 0.98));
-  }
-
-  .my-zone-mobile-inline-inspector-stage .hover-art-stage {
-    pointer-events: auto !important;
-  }
-
-  .my-zone-mobile-inline-inspector-stage .inspector-oracle-scroll {
-    overflow-y: hidden !important;
-  }
-
-  .my-zone-mobile-inline-inspector-stage .inspector-oracle-line,
-  .my-zone-mobile-inline-inspector-stage .inspector-oracle-line-bullet {
-    text-align: left !important;
-  }
-
-  .my-zone-mobile-inspector-rail {
-    position: relative;
-    z-index: 1;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border-left: 1px solid rgba(255, 240, 206, 0.08);
-    border-right: 1px solid rgba(255, 240, 206, 0.08);
-    background:
-      linear-gradient(180deg, rgba(36, 30, 25, 0.88), rgba(14, 14, 16, 0.96));
   }
 
   .my-zone-hand-rail {

@@ -82,6 +82,11 @@ impl RawEvent {
         self.inner().controller()
     }
 
+    /// Get the source object for this event, if any.
+    pub fn source_object(&self) -> Option<ObjectId> {
+        self.inner().source_object()
+    }
+
     /// Get snapshot/LKI payload if present.
     pub fn snapshot(&self) -> Option<&ObjectSnapshot> {
         self.inner().snapshot()

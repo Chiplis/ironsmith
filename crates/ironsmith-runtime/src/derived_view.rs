@@ -829,6 +829,26 @@ impl<'a> DerivedGameView<'a> {
         has_ability
     }
 
+    pub(crate) fn card_view_has_granted_static_ability_id(
+        &self,
+        card_id: ObjectId,
+        card: &crate::object::Object,
+        zone: Zone,
+        player: PlayerId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        let ctx = self.game.filter_context_for(player, None);
+        self.active_grants().iter().any(|grant| {
+            grant.player == player
+                && grant.zone == zone
+                && grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+                && matches!(
+                    &grant.grantable,
+                    Grantable::Ability(ability) if ability.id() == ability_id
+                )
+        })
+    }
+
     pub(crate) fn player_has_active_grants_for_zone(&self, player: PlayerId, zone: Zone) -> bool {
         let key = (player, zone);
         if let Some(cached) = self.active_grant_zone_presence.borrow().get(&key) {
@@ -1200,6 +1220,23 @@ fn grant_applies_to_card(
         .filter
         .as_ref()
         .is_some_and(|filter| filter.matches(card, ctx, game))
+}
+
+fn grant_applies_to_card_non_recursive(
+    grant: &Grant,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+    ctx: &crate::filter::FilterContext,
+    game: &GameState,
+) -> bool {
+    if let Some(target_id) = grant.target_id {
+        return target_id == card_id;
+    }
+
+    grant
+        .filter
+        .as_ref()
+        .is_some_and(|filter| filter.matches_non_recursive(card, ctx, game))
 }
 
 fn materialize_derived_alternative_cast(

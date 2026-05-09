@@ -444,6 +444,7 @@ fn parse_card_text_with_annotations_policy(
 pub(crate) enum KeywordAction {
     Flying,
     Menace,
+    Banding,
     Hexproof,
     Haste,
     Improvise,
@@ -702,6 +703,7 @@ impl KeywordAction {
         match self {
             Self::Flying => "Flying".to_string(),
             Self::Menace => "Menace".to_string(),
+            Self::Banding => "Banding".to_string(),
             Self::Hexproof => "Hexproof".to_string(),
             Self::Haste => "Haste".to_string(),
             Self::Improvise => "Improvise".to_string(),
@@ -1548,6 +1550,9 @@ impl CardDefinitionBuilder {
         match action {
             KeywordAction::Flying => self.flying(),
             KeywordAction::Menace => self.menace(),
+            KeywordAction::Banding => {
+                self.with_ability(Ability::static_ability(StaticAbility::banding()))
+            }
             KeywordAction::Hexproof => self.hexproof(),
             KeywordAction::Haste => self.haste(),
             KeywordAction::Improvise => self.improvise(),

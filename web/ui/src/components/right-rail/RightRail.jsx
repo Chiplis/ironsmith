@@ -8,12 +8,8 @@ import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 
 const INSPECTOR_OVERLAY_WIDTH = "25vw";
-const INSPECTOR_INLINE_MIN_WIDTH = 220;
-const INSPECTOR_INLINE_FALLBACK_WIDTH = 300;
-const INSPECTOR_INLINE_MAX_WIDTH = "25vw";
 const INSPECTOR_INLINE_MAX_WIDTH_PX = 420;
 const INLINE_EXPANDED_MIN_WIDTH = 220;
-const INLINE_EXPANDED_FALLBACK_WIDTH = 300;
 const INLINE_EXPANDED_MAX_WIDTH_PX = 1800;
 const INLINE_EXPANDED_MIN_HAND_WIDTH = 168;
 const DEFAULT_INSPECTOR_BOTTOM_OFFSET = 8;
@@ -286,30 +282,24 @@ export default function RightRail({
   suppressFallback = false,
   inspectorBottomOffset = DEFAULT_INSPECTOR_BOTTOM_OFFSET,
   inline = false,
-  inlineExpanded = false,
   inlineDockPlacement = "bottom",
   inlineHostSide = "right",
   inlineExpandedSide = "right",
   inlineExpandedAnchor = "bottom",
   inlineExpandedMaxHeight = null,
   expandInlineToZoneViewer = false,
-  expandSelectedInline = false,
   inlineFillWidth = false,
-  disableInlineExpansion = false,
   allowTopInlinePlacement = false,
   dockRole = "primary",
   inspectorVariant = "normal",
 }) {
   const { state } = useGame();
-  const [, setPreferredInlineWidth] = useState(null);
   const [preferredExpandedInlineWidth, setPreferredExpandedInlineWidth] = useState(null);
   const [preferredExpandedInlineHeight, setPreferredExpandedInlineHeight] = useState(null);
   const [maxExpandedInlineWidth, setMaxExpandedInlineWidth] = useState(INLINE_EXPANDED_MAX_WIDTH_PX);
   const railRef = useRef(null);
-  const compactInspectorRef = useRef(null);
   const expandedInspectorRef = useRef(null);
   const railMotionRef = useRef(null);
-  const compactMotionRef = useRef(null);
   const expandedMotionRef = useRef(null);
   const [expandedInlineHeight, setExpandedInlineHeight] = useState(INLINE_EXPANDED_DEFAULT_HEIGHT);
   const [inspectorAccent, setInspectorAccent] = useState(null);
@@ -431,7 +421,14 @@ export default function RightRail({
     ? transientInspectorPreview
     : null;
   const renderedTransitionToken = renderedTransientInspectorPreview?.token || undefined;
-  const selectedCanExpandInline = expandSelectedInline && validSelectedObjectId != null;
+  const inspectorShellShaderReveal = (
+    renderedTransientInspectorPreview?.inspectorShaderReveal === true
+    && renderedTransientInspectorPreview?.inspectorRevealScope === "inspector"
+  );
+  const inspectorShellShaderRevealDelayMs = inspectorShellShaderReveal
+    ? Math.max(0, Number(renderedTransientInspectorPreview?.inspectorRevealDelayMs) || 0)
+    : 0;
+  const inspectorShellShaderRevealDurationMs = 780;
   const shouldShowRail = shouldShowInspector && (
     !inline
     || (
@@ -439,25 +436,13 @@ export default function RightRail({
       && inlineHostSide === preferredPlacement.side
     )
   );
-  const shouldRenderExpandedInlineInspector =
-    inline
-    && !disableInlineExpansion
-    && shouldShowRail
-    && (inlineExpanded || selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasActiveTransientInspectorPreview);
-  const useExpandedInlineInspector =
-    shouldRenderExpandedInlineInspector
-    && (selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasActiveTransientInspectorPreview);
   const anchorExpandedInlineToTop = inlineExpandedAnchor === "top";
-  const inlineWidth = useMemo(() => {
-    const targetWidth = viewportInspectorTargetWidthPx();
-    return `${targetWidth}px`;
-  }, []);
-  const compactInlineWidthPx = useMemo(() => {
+  const baseInlineWidthPx = useMemo(() => {
     return Math.min(INSPECTOR_INLINE_MAX_WIDTH_PX, viewportInspectorTargetWidthPx());
   }, []);
   const expandedInlineWidth = useMemo(() => {
     const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
-    const baseWidth = Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
+    const baseWidth = Math.max(baseInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
     const contentPreferredWidth = Number(preferredExpandedInlineWidth);
     const hasPreferredWidth = Number.isFinite(contentPreferredWidth) && contentPreferredWidth > 0;
     const preferredWidth = hasPreferredWidth ? Math.ceil(contentPreferredWidth) : baseWidth;
@@ -482,7 +467,7 @@ export default function RightRail({
     }
 
     return Math.max(baseWidth, Math.min(preferredWidth, preferredWidthCap));
-  }, [compactInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth]);
+  }, [baseInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;
@@ -503,44 +488,26 @@ export default function RightRail({
   }, [inline, shouldShowRail]);
 
   useLayoutEffect(() => {
-    const compactEl = compactInspectorRef.current;
-    if (!compactEl) return undefined;
-
-    cancelMotion(compactMotionRef.current);
-    compactMotionRef.current = animate(compactEl, {
-      opacity: useExpandedInlineInspector ? 0 : 1,
-      scale: useExpandedInlineInspector ? 0.986 : 1,
-      duration: 220,
-      ease: "out(3)",
-    });
-
-    return () => {
-      cancelMotion(compactMotionRef.current);
-      compactMotionRef.current = null;
-    };
-  }, [useExpandedInlineInspector]);
-
-  useLayoutEffect(() => {
     const expandedEl = expandedInspectorRef.current;
     if (!expandedEl) return undefined;
 
     cancelMotion(expandedMotionRef.current);
     expandedMotionRef.current = animate(expandedEl, {
-      opacity: useExpandedInlineInspector ? 1 : 0,
-      x: useExpandedInlineInspector ? 0 : 32,
-      y: useExpandedInlineInspector ? 0 : (anchorExpandedInlineToTop ? -10 : 10),
-      scale: useExpandedInlineInspector ? 1 : 0.965,
-      rotateY: useExpandedInlineInspector ? 0 : -18,
-      rotateZ: useExpandedInlineInspector ? 0 : 1.8,
-      duration: 420,
-      ease: uiSpring({ duration: 420, bounce: 0.12 }),
+      opacity: shouldShowRail ? 1 : 0,
+      x: shouldShowRail ? 0 : 32,
+      y: shouldShowRail ? 0 : (anchorExpandedInlineToTop ? -10 : 10),
+      scale: shouldShowRail ? 1 : 0.965,
+      rotateY: shouldShowRail ? 0 : -18,
+      rotateZ: shouldShowRail ? 0 : 1.8,
+      duration: shouldShowRail ? 420 : 280,
+      ease: uiSpring({ duration: shouldShowRail ? 420 : 280, bounce: 0.12 }),
     });
 
     return () => {
       cancelMotion(expandedMotionRef.current);
       expandedMotionRef.current = null;
     };
-  }, [anchorExpandedInlineToTop, useExpandedInlineInspector]);
+  }, [anchorExpandedInlineToTop, shouldShowRail]);
 
   useLayoutEffect(() => {
     if (!inline) return undefined;
@@ -630,7 +597,7 @@ export default function RightRail({
         )
         : effectiveExpandedMaxWidth;
       const nextMaxWidth = Math.max(
-        Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH),
+        Math.max(baseInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH),
         Math.min(Math.floor(availableWidth), effectiveExpandedMaxWidth)
       );
       setMaxExpandedInlineWidth((currentWidth) => (
@@ -665,13 +632,12 @@ export default function RightRail({
     };
   }, [
     anchorExpandedInlineToTop,
-    compactInlineWidthPx,
+    baseInlineWidthPx,
     inline,
     inlineDockPlacement,
     inlineExpandedMaxHeight,
     preferredExpandedInlineHeight,
     expandInlineToZoneViewer,
-    shouldRenderExpandedInlineInspector,
     shouldShowRail,
   ]);
 
@@ -682,7 +648,7 @@ export default function RightRail({
           ? (
             inlineFillWidth
               ? "100%"
-              : (useExpandedInlineInspector ? `${expandedInlineWidth}px` : inlineWidth)
+              : `${expandedInlineWidth}px`
           )
           : "0px",
       }
@@ -695,10 +661,8 @@ export default function RightRail({
       expandedInlineWidth,
       inline,
       inlineFillWidth,
-      inlineWidth,
       inspectorBottomOffset,
       shouldShowRail,
-      useExpandedInlineInspector,
     ]
   );
   const expandedInlineShellOffset = inlineExpandedSide === "left"
@@ -729,20 +693,36 @@ export default function RightRail({
     >
       <div className={cn("relative h-full min-h-0", inline ? "overflow-visible" : "overflow-hidden")}>
         <div
-          ref={compactInspectorRef}
+          ref={expandedInspectorRef}
           data-card-inspector="true"
           data-zone-transition-token={renderedTransitionToken}
           className={cn(
-            "ironsmith-inspector-shell h-full overflow-hidden border border-[#2a3647]/70 bg-transparent shadow-[0_18px_42px_rgba(0,0,0,0.24)]",
+            "ironsmith-inspector-shell overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)] shadow-[0_18px_42px_rgba(0,0,0,0.28)]",
             inline
-              ? "rounded-none"
-              : "rounded-none",
-            shouldShowRail && !useExpandedInlineInspector ? "pointer-events-auto" : "pointer-events-none"
+              ? "hand-inspector-inline-shell ironsmith-inspector-shell--expanded absolute rounded-none"
+              : "h-full rounded-none",
+            inspectorShellShaderReveal && "ironsmith-inspector-shell--shader-reveal",
+            shouldShowRail ? "pointer-events-auto z-[60]" : "pointer-events-none z-0"
           )}
-          style={inspectorBorderStyle(inspectorAccent)}
+          style={{
+            ...(inline
+              ? {
+                width: "100%",
+                height: `${expandedInlineHeight}px`,
+                ...expandedInlineShellOffset,
+              }
+              : { width: "100%", height: "100%" }),
+            ...(inspectorShellShaderReveal
+              ? {
+                "--inspector-shader-reveal-delay": `${inspectorShellShaderRevealDelayMs}ms`,
+                "--inspector-shell-reveal-duration": `${inspectorShellShaderRevealDurationMs}ms`,
+              }
+              : undefined),
+            ...inspectorBorderStyle(inspectorAccent),
+          }}
         >
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
-            <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden">
               <HoverArtOverlay
                 objectId={shouldShowRail ? renderedInspectorObjectId : null}
                 transientPreview={renderedTransientInspectorPreview}
@@ -750,52 +730,17 @@ export default function RightRail({
                 transientPreviewCount={transientInspectorPreviewCount}
                 onShowPreviousTransientPreview={onShowPreviousTransientInspectorPreview}
                 onShowNextTransientPreview={onShowNextTransientInspectorPreview}
-                compact={inline}
-                compactLayout={disableInlineExpansion ? "topbar" : "default"}
+                displayMode="inspector"
                 inspectorVariant={inspectorVariant}
-                onPreferredWidthChange={inline ? setPreferredInlineWidth : null}
-                onInspectorAccentChange={useExpandedInlineInspector ? null : setInspectorAccent}
+                availableInspectorWidth={inline ? expandedInlineWidth : undefined}
+                availableInspectorHeight={inline ? expandedInlineHeight : undefined}
+                onOracleTextHeightChange={inline ? setPreferredExpandedInlineHeight : null}
+                onPreferredInspectorWidthChange={inline ? setPreferredExpandedInlineWidth : null}
+                onInspectorAccentChange={setInspectorAccent}
               />
             </div>
           </div>
         </div>
-        {shouldRenderExpandedInlineInspector && (
-          <div
-            ref={expandedInspectorRef}
-            data-card-inspector="true"
-            data-zone-transition-token={renderedTransitionToken}
-            className={cn(
-              "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
-              useExpandedInlineInspector ? "is-open pointer-events-auto z-[60]" : "is-closed pointer-events-none z-0"
-            )}
-            style={{
-              width: "100%",
-              height: `${expandedInlineHeight}px`,
-              ...expandedInlineShellOffset,
-              ...inspectorBorderStyle(inspectorAccent),
-            }}
-          >
-            <div className="flex h-full min-h-0 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <HoverArtOverlay
-                  objectId={shouldShowRail ? renderedInspectorObjectId : null}
-                  transientPreview={renderedTransientInspectorPreview}
-                  transientPreviewIndex={transientInspectorPreviewIndex}
-                  transientPreviewCount={transientInspectorPreviewCount}
-                  onShowPreviousTransientPreview={onShowPreviousTransientInspectorPreview}
-                  onShowNextTransientPreview={onShowNextTransientInspectorPreview}
-                  displayMode="inspector"
-                  inspectorVariant={inspectorVariant}
-                  availableInspectorWidth={expandedInlineWidth}
-                  availableInspectorHeight={expandedInlineHeight}
-                  onOracleTextHeightChange={setPreferredExpandedInlineHeight}
-                  onPreferredInspectorWidthChange={setPreferredExpandedInlineWidth}
-                  onInspectorAccentChange={useExpandedInlineInspector ? setInspectorAccent : null}
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </aside>
   );

@@ -1,7 +1,7 @@
 pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if words.first().copied() != Some("monstrosity") {
         return Ok(None);
     }
@@ -88,7 +88,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -210,9 +210,40 @@ pub(crate) fn parse_take_extra_turn_sentence(
 pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     use crate::effects::AdditionalPhase;
 
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     let phases = match words.as_slice() {
         [
+            "after",
+            "this",
+            "phase",
+            "theres",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+        ] => vec![AdditionalPhase::Combat],
+        [
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+            "after",
+            "this",
+            "phase",
+        ]
+        | [
+            "theres",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+            "after",
+            "this",
+            "phase",
+        ]
+        | [
             "after",
             "this",
             "phase",

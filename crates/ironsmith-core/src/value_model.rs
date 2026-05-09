@@ -2,7 +2,7 @@ use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
     ManaSymbol, ObjectFilter, PlayerFilter, StableId, TagKey, ValueComparisonOperator, Zone,
 };
-use crate::{ChooseSpec, Color};
+use crate::{ChooseSpec, Color, ColorSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetricSource {
@@ -93,6 +93,10 @@ pub enum Value {
     LifeGainedThisTurn(PlayerFilter),
     LifeLostThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
+    NoncombatDamageDealtBySourcesControlledThisTurn {
+        player: PlayerFilter,
+        colors: Option<ColorSet>,
+    },
     MaxCardsDrawnThisTurn(PlayerFilter),
     LandsEnteredBattlefieldThisTurn(PlayerFilter),
     MaxCardsInHand(PlayerFilter),
@@ -636,6 +640,7 @@ pub enum Condition {
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
+    ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     SourceWasCast,
     ThisSpellEscaped,

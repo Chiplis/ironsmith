@@ -12,7 +12,7 @@ import { scryfallImageUrl } from "@/lib/scryfall";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import {
   buildTriggerOrderingEntries,
   buildTriggerOrderingKey,
@@ -113,7 +113,7 @@ function HorizontalStackEntry({
             aria-label={reorderControls.leftLabel || `Move ${name} toward the top of the stack`}
             title={reorderControls.leftTitle || "Move toward the top of the stack"}
           >
-            <ArrowLeft className="size-3.5" />
+            <ArrowUp className="size-3.5" />
           </button>
           <button
             type="button"
@@ -123,7 +123,7 @@ function HorizontalStackEntry({
             aria-label={reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`}
             title={reorderControls.rightTitle || "Move toward the bottom of the stack"}
           >
-            <ArrowRight className="size-3.5" />
+            <ArrowDown className="size-3.5" />
           </button>
         </>
       )}

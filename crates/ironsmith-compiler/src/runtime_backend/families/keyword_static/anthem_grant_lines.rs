@@ -2342,6 +2342,12 @@ pub(crate) fn parse_anthem_for_each_expression(
         ));
     }
 
+    if crate::runtime_backend::token_word_refs(rest).as_slice()
+        == ["time", "it", "has", "attacked", "this", "turn"]
+    {
+        return Ok(AnthemCountExpression::AffectedAttackedThisTurn);
+    }
+
     if words_start_with(rest, &["basic", "land", "type", "among"]) {
         let filter_tokens = &rest[4..];
         let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
@@ -4624,6 +4630,19 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()).into());
                 continue;
             }
+            if segment_words.as_slice() == ["cant", "attack", "alone"] {
+                extras.push(
+                    grant_for_anthem_subject(
+                        &clause,
+                        StaticAbility::restriction(
+                            crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+                            "This creature can't attack alone".to_string(),
+                        ),
+                    )
+                    .into(),
+                );
+                continue;
+            }
 
             return Ok(None);
         }
@@ -4657,6 +4676,19 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             .collect::<Vec<_>>();
         if segment_words.as_slice() == ["cant", "block"] {
             extras.push(grant_for_anthem_subject(&clause, StaticAbility::cant_block()).into());
+            continue;
+        }
+        if segment_words.as_slice() == ["cant", "attack", "alone"] {
+            extras.push(
+                grant_for_anthem_subject(
+                    &clause,
+                    StaticAbility::restriction(
+                        crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+                        "This creature can't attack alone".to_string(),
+                    ),
+                )
+                .into(),
+            );
             continue;
         }
         if segment_words.as_slice() == ["attacks", "each", "combat", "if", "able"]
@@ -5331,6 +5363,99 @@ pub(crate) fn parse_anthem_line(
     }
     let clause = parse_anthem_clause(tokens, get_idx, tokens.len())?;
     Ok(Some(build_anthem_static_ability(&clause)))
+}
+
+fn trim_multi_anthem_subject_segment(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut segment = trim_edge_punctuation(tokens);
+    while segment
+        .last()
+        .is_some_and(|token| token.is_word("each"))
+    {
+        segment = trim_edge_punctuation(&segment[..segment.len() - 1]);
+    }
+    segment
+}
+
+pub(crate) fn parse_multi_subject_anthem_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if anthem_contains_word(&words, "target") || contains_until_end_of_turn(&words) {
+        return Ok(None);
+    }
+
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    }) else {
+        return Ok(None);
+    };
+    let mut modifier_idx = get_idx + 1;
+    if tokens
+        .get(modifier_idx)
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && tokens
+            .get(modifier_idx + 1)
+            .is_some_and(|token| token.is_word("additional"))
+    {
+        modifier_idx += 2;
+    }
+    let Some(modifier_word) = tokens.get(modifier_idx).and_then(OwnedLexToken::as_word) else {
+        return Ok(None);
+    };
+    if parse_pt_modifier_values(modifier_word).is_err() {
+        return Ok(None);
+    }
+
+    let Ok((_prefix_condition, subject_start)) = parse_anthem_prefix_condition(tokens, get_idx)
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..get_idx]);
+    if subject_tokens.is_empty()
+        || !subject_tokens
+            .iter()
+            .any(|token| token.is_word("and"))
+    {
+        return Ok(None);
+    }
+
+    let mut segments: Vec<Vec<OwnedLexToken>> = Vec::new();
+    let mut segment_start = 0usize;
+    for (idx, token) in subject_tokens.iter().enumerate() {
+        if token.is_word("and") {
+            let segment = trim_multi_anthem_subject_segment(&subject_tokens[segment_start..idx]);
+            if segment.is_empty() {
+                return Ok(None);
+            }
+            segments.push(segment);
+            segment_start = idx + 1;
+        }
+    }
+    let segment = trim_multi_anthem_subject_segment(&subject_tokens[segment_start..]);
+    if segment.is_empty() {
+        return Ok(None);
+    }
+    segments.push(segment);
+    if segments.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut abilities = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let mut clause_tokens = Vec::with_capacity(tokens.len());
+        clause_tokens.extend_from_slice(&tokens[..subject_start]);
+        clause_tokens.extend_from_slice(&segment);
+        clause_tokens.extend_from_slice(&tokens[get_idx..]);
+        let adjusted_get_idx = subject_start + segment.len();
+        let clause = match parse_anthem_clause(&clause_tokens, adjusted_get_idx, clause_tokens.len())
+        {
+            Ok(clause) => clause,
+            Err(_) => return Ok(None),
+        };
+        abilities.push(build_anthem_static_ability(&clause));
+    }
+
+    Ok(Some(abilities))
 }
 
 pub(crate) fn parse_has_base_power_toughness_static_line(

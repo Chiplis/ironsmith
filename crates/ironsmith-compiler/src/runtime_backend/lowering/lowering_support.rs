@@ -201,6 +201,14 @@ fn rewrite_prepare_effects_from_normalized(
                 )),
             );
         }
+        if effects_reference_tag(reference_effects, "triggering_source") {
+            prelude.insert(
+                0,
+                EffectPreludeTag::TriggeringSource(crate::cards::builders::TagKey::from(
+                    "triggering_source",
+                )),
+            );
+        }
         let needs_damaged_prelude = default_last_object_tag
             .as_ref()
             .is_some_and(|tag| tag.as_str() == "damaged")

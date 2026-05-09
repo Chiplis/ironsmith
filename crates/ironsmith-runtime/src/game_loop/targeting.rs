@@ -1153,8 +1153,28 @@ fn effect_has_new_cast_time_target_selection(effect: &Effect) -> bool {
 fn target_spec_references_previous_target_tag(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Object(filter) => object_filter_references_previous_target_tag(filter),
+        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            player_filter_references_previous_target_tag(filter)
+        }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             target_spec_references_previous_target_tag(inner)
+        }
+        _ => false,
+    }
+}
+
+fn player_filter_references_previous_target_tag(filter: &PlayerFilter) -> bool {
+    match filter {
+        PlayerFilter::ControllerOf(object_ref)
+        | PlayerFilter::OwnerOf(object_ref)
+        | PlayerFilter::AliasedOwnerOf(object_ref)
+        | PlayerFilter::AliasedControllerOf(object_ref) => {
+            matches!(object_ref, crate::filter::ObjectRef::Tagged(_))
+        }
+        PlayerFilter::Target(inner) => player_filter_references_previous_target_tag(inner),
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_references_previous_target_tag(base)
+                || player_filter_references_previous_target_tag(excluded)
         }
         _ => false,
     }

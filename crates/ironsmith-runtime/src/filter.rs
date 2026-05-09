@@ -890,6 +890,22 @@ fn effects_for_stack_entry(
         .unwrap_or_default()
 }
 
+fn stack_entry_has_ability_marker(
+    game: &crate::game_state::GameState,
+    entry: &crate::game_state::StackEntry,
+    marker: &str,
+) -> bool {
+    let normalized = marker.trim().to_ascii_lowercase();
+    if normalized == "backup" || normalized == "backup ability" {
+        return effects_for_stack_entry(game, entry).iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::BackupEffect>()
+                .is_some()
+        });
+    }
+    false
+}
+
 fn object_could_be_targeted_by(
     object_id: ObjectId,
     constraint: &TargetabilityConstraint,
@@ -1241,18 +1257,18 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Required/excluded ability markers
-        if self
-            .ability_markers
-            .iter()
-            .any(|marker| !subject.tail_has_ability_marker(marker))
-        {
+        if self.ability_markers.iter().any(|marker| {
+            !subject.tail_has_ability_marker(marker)
+                && !stack_entry
+                    .is_some_and(|entry| stack_entry_has_ability_marker(game, entry, marker))
+        }) {
             return false;
         }
-        if self
-            .excluded_ability_markers
-            .iter()
-            .any(|marker| subject.tail_has_ability_marker(marker))
-        {
+        if self.excluded_ability_markers.iter().any(|marker| {
+            subject.tail_has_ability_marker(marker)
+                || stack_entry
+                    .is_some_and(|entry| stack_entry_has_ability_marker(game, entry, marker))
+        }) {
             return false;
         }
 
@@ -4418,6 +4434,7 @@ mod tests {
             }],
             blockers: std::collections::HashMap::from([(attacker.id, vec![blocker.id])]),
             damage_assignment_order: std::collections::HashMap::new(),
+            attacking_bands: Vec::new(),
         });
 
         let blocker_snapshot =

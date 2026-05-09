@@ -6,7 +6,9 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{DamageEvent, DamageTarget};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 pub type TaggedEffect = ironsmith_core::TaggedEffect<crate::effect::Effect>;
 
@@ -76,6 +78,34 @@ impl EffectExecutor for TaggedEffect {
 
         // Execute the inner effect
         let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
+        for damage in outcome.events_of_type::<DamageEvent>() {
+            if damage.amount == 0 {
+                continue;
+            }
+            match damage.target {
+                DamageTarget::Player(player_id) => {
+                    ctx.tag_player(self.tag.clone(), player_id);
+                    if self.tag.as_str() != "__it__"
+                        && self.tag.as_str() != "__copied_stack_object__"
+                    {
+                        ctx.tag_player(TagKey::from("__it__"), player_id);
+                    }
+                }
+                DamageTarget::Object(object_id) => {
+                    if let Some(snapshot) = damage.target_snapshot.clone().or_else(|| {
+                        game.object(object_id)
+                            .map(|obj| ObjectSnapshot::from_object(obj, game))
+                    }) {
+                        ctx.tag_object(self.tag.clone(), snapshot.clone());
+                        if self.tag.as_str() != "__it__"
+                            && self.tag.as_str() != "__copied_stack_object__"
+                        {
+                            ctx.tag_object(TagKey::from("__it__"), snapshot);
+                        }
+                    }
+                }
+            }
+        }
         apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime.clone());
         if self.tag.as_str() != "__it__" && self.tag.as_str() != "__copied_stack_object__" {
             apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), &outcome, runtime);

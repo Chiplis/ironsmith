@@ -417,6 +417,9 @@ pub(crate) fn parse_cant_cast_restriction_words(
 }
 
 pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
+    if slice_starts_with(&words, &["players", "dealt", "damage", "this", "way"]) {
+        return Some((PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")), 5));
+    }
     if slice_starts_with(&words, &["that", "player"]) {
         return Some((PlayerFilter::IteratedPlayer, 2));
     }
@@ -777,6 +780,12 @@ pub(crate) fn parse_player_restriction_subject(
         ["you"] => return Ok(Some((PlayerFilter::You, None))),
         ["that", "player"] | ["they"] => {
             return Ok(Some((PlayerFilter::IteratedPlayer, None)));
+        }
+        ["players", "dealt", "damage", "this", "way"] => {
+            return Ok(Some((
+                PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")),
+                None,
+            )));
         }
         ["your", "opponents"] | ["each", "opponent"] | ["opponents"] => {
             return Ok(Some((PlayerFilter::Opponent, None)));

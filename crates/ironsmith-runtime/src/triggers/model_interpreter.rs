@@ -141,6 +141,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::BecomesTargetedByStackObject { filter } => {
             crate::triggers::Trigger::becomes_targeted_by_stack_object(filter)
         }
+        TriggerKind::BecomesTargetedObjectByStackObject { target, source } => {
+            crate::triggers::Trigger::becomes_targeted_object_by_stack_object(target, source)
+        }
         TriggerKind::BecomesTargetedBySourceController { target, controller } => {
             crate::triggers::Trigger::becomes_targeted_by_source_controller(target, controller)
         }

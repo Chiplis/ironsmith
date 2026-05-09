@@ -735,6 +735,29 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         .map(Some);
     }
 
+    if normalized
+        == "at the beginning of each upkeep, if you had another creature enter the battlefield under your control last turn, draw a card"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of each upkeep",
+            line.info.line_index,
+        )?;
+        let effects = parse_effect_sentences_from_text("draw a card.", line.info.line_index)?;
+        return Ok(Some(LineAst::Triggered {
+            trigger,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::ObjectEnteredBattlefieldLastTurn(
+                    ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::You)
+                        .other(),
+                ),
+                if_true: effects,
+                if_false: Vec::new(),
+            }],
+            max_triggers_per_turn: line.max_triggers_per_turn,
+        }));
+    }
+
     if let Some(rest) = str_strip_prefix(
         normalized,
         "when this creature dies during combat, it deals ",

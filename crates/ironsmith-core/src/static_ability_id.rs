@@ -18,6 +18,7 @@ pub enum StaticAbilityId {
     Intimidate,
     Lifelink,
     Menace,
+    Banding,
     Protection,
     Reach,
     Shroud,
@@ -77,6 +78,7 @@ pub enum StaticAbilityId {
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     CantBlock,
     MayAssignDamageAsUnblocked,
+    ThisCreatureAssignsCombatDamageUsingToughness,
     CreaturesAssignCombatDamageUsingToughness,
     CreaturesYouControlAssignCombatDamageUsingToughness,
     Anthem,
@@ -241,6 +243,7 @@ impl StaticAbilityId {
             | Intimidate
             | Lifelink
             | Menace
+            | Banding
             | Protection
             | Reach
             | Shroud
@@ -300,6 +303,7 @@ impl StaticAbilityId {
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
             | CantBlock
             | MayAssignDamageAsUnblocked
+            | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
             | CreaturesYouControlAssignCombatDamageUsingToughness
             | Anthem
@@ -466,6 +470,7 @@ impl StaticAbilityId {
                 | Intimidate
                 | Lifelink
                 | Menace
+                | Banding
                 | Protection
                 | Reach
                 | Shroud
@@ -535,6 +540,7 @@ impl StaticAbilityId {
                 | Defender
                 | Lifelink
                 | Menace
+                | Banding
                 | Reach
                 | Trample
                 | Vigilance
@@ -569,6 +575,7 @@ impl StaticAbilityId {
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
                 | CantBlock
                 | MayAssignDamageAsUnblocked
+                | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness
                 | CreaturesYouControlAssignCombatDamageUsingToughness
         )

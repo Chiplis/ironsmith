@@ -1384,6 +1384,12 @@ impl Effect {
         Self::new(TagTriggeringObjectEffect::new(tag.into()))
     }
 
+    /// Tag the source of the triggering event for later reference.
+    pub fn tag_triggering_source(tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TagTriggeringSourceEffect;
+        Self::new(TagTriggeringSourceEffect::new(tag.into()))
+    }
+
     /// Tag the damaged object from the triggering damage event.
     pub fn tag_triggering_damage_target(tag: impl Into<TagKey>) -> Self {
         use crate::effects::TagTriggeringDamageTargetEffect;

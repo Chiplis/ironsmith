@@ -1500,6 +1500,10 @@ impl StaticAbility {
         Self::new(Menace)
     }
 
+    pub fn banding() -> Self {
+        Self::new(Banding)
+    }
+
     pub fn reach() -> Self {
         Self::new(Reach)
     }
@@ -2158,6 +2162,10 @@ impl StaticAbility {
         Self::new(CreaturesAssignCombatDamageUsingToughness)
     }
 
+    pub fn this_creature_assigns_combat_damage_using_toughness() -> Self {
+        Self::new(ThisCreatureAssignsCombatDamageUsingToughness)
+    }
+
     pub fn creatures_you_control_assign_combat_damage_using_toughness() -> Self {
         Self::new(CreaturesYouControlAssignCombatDamageUsingToughness)
     }
@@ -2493,6 +2501,24 @@ impl StaticAbility {
         ))
     }
 
+    pub fn minimum_damage_amount_replacement(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        floor: crate::effect::Value,
+        noncombat_only: bool,
+        display: String,
+    ) -> Self {
+        Self::new(MinimumDamageAmountReplacement::new(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            floor,
+            noncombat_only,
+            display,
+        ))
+    }
+
     pub fn double_damage_amount_replacement(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: Option<crate::target::PlayerFilter>,
@@ -2564,6 +2590,13 @@ impl StaticAbility {
 
     pub fn exile_would_die_instead(filter: crate::target::ObjectFilter) -> Self {
         Self::new(ExileWouldDieInstead::new(filter))
+    }
+
+    pub fn exile_would_die_instead_damaged_by(
+        filter: crate::target::ObjectFilter,
+        damaged_by: ironsmith_core::DamagedBySource,
+    ) -> Self {
+        Self::new(ExileWouldDieInstead::damaged_by(filter, damaged_by))
     }
 
     pub fn players_cant_gain_life() -> Self {

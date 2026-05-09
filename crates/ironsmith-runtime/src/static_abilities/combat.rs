@@ -1684,6 +1684,12 @@ define_combat_ability!(
 );
 
 define_combat_ability!(
+    ThisCreatureAssignsCombatDamageUsingToughness,
+    ThisCreatureAssignsCombatDamageUsingToughness,
+    "This creature assigns combat damage equal to its toughness rather than its power"
+);
+
+define_combat_ability!(
     CreaturesAssignCombatDamageUsingToughness,
     CreaturesAssignCombatDamageUsingToughness,
     "Each creature assigns combat damage equal to its toughness rather than its power"

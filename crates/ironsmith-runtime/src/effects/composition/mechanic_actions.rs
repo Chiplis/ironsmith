@@ -70,18 +70,10 @@ impl EffectExecutor for BackupEffect {
 
         if target != ctx.source {
             for ability in &self.granted_abilities {
-                let granted = match &ability.kind {
-                    crate::ability::AbilityKind::Static(static_ability) => static_ability.clone(),
-                    _ => crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
-                        crate::target::ObjectFilter::source(),
-                        ability.clone(),
-                        "an ability".to_string(),
-                    ),
-                };
                 outcomes.push(
                     crate::effects::ApplyContinuousEffect::new(
                         crate::continuous::EffectTarget::Specific(target),
-                        crate::continuous::Modification::AddAbility(granted),
+                        crate::continuous::Modification::AddAbilityGeneric(ability.clone()),
                         Until::EndOfTurn,
                     )
                     .execute(game, ctx)?,
@@ -2138,6 +2130,34 @@ mod tests {
         assert!(
             game.object_has_static_ability_id(target, StaticAbilityId::Flying),
             "backup target should gain the granted ability until end of turn"
+        );
+    }
+
+    #[test]
+    fn backup_grants_triggered_ability_directly_to_another_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 22, "Backup Source", 2, 2);
+        let target = create_creature(&mut game, alice, 23, "Backup Target", 1, 1);
+        let granted = Ability::triggered(
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            vec![],
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+
+        BackupEffect::new(1, vec![granted])
+            .execute(&mut game, &mut ctx)
+            .expect("execute backup");
+
+        let abilities = game
+            .current_abilities(target)
+            .expect("target should have calculated abilities");
+        assert!(
+            abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Triggered(_))),
+            "backup should grant the triggered ability itself, not a nested static grant wrapper"
         );
     }
 

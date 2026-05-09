@@ -5602,6 +5602,229 @@ fn test_active_target_assignments_preserves_stored_target_slot_when_legality_cha
 }
 
 #[test]
+fn stack_spell_with_granted_static_ability_still_executes_spell_effect() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bolt = CardDefinitionBuilder::new(CardId::new(), "Lightning Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Lightning Probe deals 3 damage to any target.")
+        .expect("damage spell should parse");
+    let goblin_card = CardBuilder::new(CardId::new(), "Raging Goblin")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let goblin = game.create_object_from_card(&goblin_card, alice, Zone::Battlefield);
+    let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
+    game.object_mut(bolt_id)
+        .expect("spell should be on the stack")
+        .abilities
+        .push(Ability::static_ability(
+            StaticAbility::cant_be_countered_ability(),
+        ));
+
+    let entry = StackEntry::new(bolt_id, alice)
+        .with_targets(vec![Target::Object(goblin)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("damage spell should resolve");
+
+    assert_eq!(
+        game.damage_on(goblin),
+        3,
+        "granted static ability on the spell must not suppress its spell effect"
+    );
+}
+
+#[test]
+fn protected_stack_spell_still_resolves_after_failed_counterspell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bolt = CardDefinitionBuilder::new(CardId::new(), "Lightning Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Lightning Probe deals 3 damage to any target.")
+        .expect("damage spell should parse");
+    let counterspell = CardDefinitionBuilder::new(CardId::new(), "Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell.")
+        .expect("counter spell should parse");
+    let goblin_card = CardBuilder::new(CardId::new(), "Raging Goblin")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let goblin = game.create_object_from_card(&goblin_card, alice, Zone::Battlefield);
+    let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
+    game.object_mut(bolt_id)
+        .expect("spell should be on the stack")
+        .abilities
+        .push(Ability::static_ability(
+            StaticAbility::cant_be_countered_ability(),
+        ));
+    game.push_to_stack(
+        StackEntry::new(bolt_id, alice)
+            .with_targets(vec![Target::Object(goblin)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            }]),
+    );
+
+    let counter_id = game.create_object_from_definition(&counterspell, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(counter_id, alice)
+            .with_targets(vec![Target::Object(bolt_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::spell(),
+                range: 0..1,
+            }]),
+    );
+
+    resolve_stack_entry(&mut game).expect("counterspell should resolve");
+    assert!(
+        game.stack.iter().any(|entry| entry.object_id == bolt_id),
+        "failed counterspell should leave the protected spell on the stack"
+    );
+
+    resolve_stack_entry(&mut game).expect("protected spell should resolve");
+
+    assert_eq!(
+        game.damage_on(goblin),
+        3,
+        "protected spell should still execute after a failed counter"
+    );
+}
+
+#[test]
+fn priority_loop_resolves_failed_counter_then_protected_spell_effect() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let bolt = CardDefinitionBuilder::new(CardId::new(), "Lightning Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Lightning Probe deals 3 damage to any target.")
+        .expect("damage spell should parse");
+    let counterspell = CardDefinitionBuilder::new(CardId::new(), "Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell.")
+        .expect("counter spell should parse");
+    let goblin_card = CardBuilder::new(CardId::new(), "Raging Goblin")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let goblin = game.create_object_from_card(&goblin_card, alice, Zone::Battlefield);
+    let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
+    game.object_mut(bolt_id)
+        .expect("spell should be on the stack")
+        .abilities
+        .push(Ability::static_ability(
+            StaticAbility::cant_be_countered_ability(),
+        ));
+    game.push_to_stack(
+        StackEntry::new(bolt_id, alice)
+            .with_targets(vec![Target::Object(goblin)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            }]),
+    );
+
+    let counter_id = game.create_object_from_definition(&counterspell, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(counter_id, alice)
+            .with_targets(vec![Target::Object(bolt_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::spell(),
+                range: 0..1,
+            }]),
+    );
+    game.turn.priority_player = Some(alice);
+
+    let mut dm = AutoPassDecisionMaker;
+    run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("priority loop should resolve the stack");
+
+    assert!(
+        game.player(alice)
+            .expect("alice")
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Raging Goblin")),
+        "priority loop should apply lethal damage SBAs after the protected spell resolves"
+    );
+}
+
+#[test]
+fn priority_loop_resolves_next_spell_granted_protection_after_counterspell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let bolt = CardDefinitionBuilder::new(CardId::new(), "Lightning Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Lightning Probe deals 3 damage to any target.")
+        .expect("damage spell should parse");
+    let counterspell = CardDefinitionBuilder::new(CardId::new(), "Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell.")
+        .expect("counter spell should parse");
+    let goblin_card = CardBuilder::new(CardId::new(), "Raging Goblin")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let goblin = game.create_object_from_card(&goblin_card, alice, Zone::Battlefield);
+    let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
+    game.add_temporary_spell_ability_grant(
+        alice,
+        bolt_id,
+        crate::target::ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
+        StaticAbility::cant_be_countered_ability(),
+        1,
+    );
+    game.consume_temporary_spell_ability_grants_for_spell(bolt_id, alice);
+    game.push_to_stack(
+        StackEntry::new(bolt_id, alice)
+            .with_targets(vec![Target::Object(goblin)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            }]),
+    );
+
+    let counter_id = game.create_object_from_definition(&counterspell, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(counter_id, alice)
+            .with_targets(vec![Target::Object(bolt_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::spell(),
+                range: 0..1,
+            }]),
+    );
+    game.turn.priority_player = Some(alice);
+
+    let mut dm = AutoPassDecisionMaker;
+    run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("priority loop should resolve the stack");
+
+    assert!(
+        game.player(alice)
+            .expect("alice")
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Raging Goblin")),
+        "temporary next-spell grant should protect the spell without suppressing its damage"
+    );
+}
+
+#[test]
 fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_rechecking_legality()
 {
     let effects = vec![Effect::choose_one(vec![
@@ -7173,6 +7396,78 @@ fn test_resolve_stack_entry_basic() {
     // Spell should be in graveyard
     let player = game.player(alice).unwrap();
     assert_eq!(player.graveyard.len(), 1);
+}
+
+#[test]
+fn resolving_spell_can_insert_additional_combat_and_main_phases() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+
+    let card = CardBuilder::new(CardId::from_raw(91_001), "Extra Combat Test")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+    game.object_mut(spell_id).expect("spell").spell_effect =
+        Some(crate::resolution::ResolutionProgram::from_effects(vec![
+            Effect::new(crate::effects::AdditionalPhasesEffect::combat_then_main()),
+        ]));
+
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("spell should resolve");
+
+    crate::turn::advance_phase(&mut game).expect("advance to inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to inserted main");
+    assert_eq!(game.turn.phase, Phase::NextMain);
+}
+
+#[test]
+fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all_effects() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+
+    let creature = CardBuilder::new(CardId::from_raw(91_002), "Test Creature")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&creature, alice, Zone::Battlefield);
+
+    let card = CardBuilder::new(CardId::from_raw(91_003), "Fury Shape Test")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+    let filter = crate::filter::ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        card_types: vec![CardType::Creature],
+        ..Default::default()
+    };
+    game.object_mut(spell_id).expect("spell").spell_effect =
+        Some(crate::resolution::ResolutionProgram::from_effects(vec![
+            Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                filter.clone(),
+                crate::tag::TagKey::from("untapped_0"),
+            )),
+            Effect::new(crate::effects::UntapEffect::with_spec(
+                crate::target::ChooseSpec::All(filter),
+            )),
+            Effect::new(crate::effects::AdditionalPhasesEffect::combat_then_main()),
+        ]));
+
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("spell should resolve");
+
+    crate::turn::advance_phase(&mut game).expect("advance to inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -15467,6 +15762,64 @@ fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     assert!(
         reverted.attached_to.is_none(),
         "reverted bestow permanent should no longer be attached"
+    );
+}
+
+#[test]
+fn test_bestowed_control_aura_controls_attached_creature() {
+    use crate::cards::CardDefinitionBuilder;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let host_id = create_creature(&mut game, "Silvercoat Lion", bob, 2, 2);
+
+    let bestow_def = CardDefinitionBuilder::new(CardId::new(), "Hypnotic Siren Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Bestow {0}\nFlying\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has flying.",
+        )
+        .expect("bestow control probe should parse");
+
+    let bestow_in_hand = game.create_object_from_definition(&bestow_def, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: bestow_in_hand,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Alternative(0),
+        }),
+    )
+    .expect("bestow cast should start");
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(host_id)]),
+    )
+    .expect("bestow target should be accepted");
+    resolve_stack_entry(&mut game).expect("bestow spell should resolve");
+
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.current_controller(host_id),
+        Some(alice),
+        "bestowed control Aura should change control of the attached creature"
     );
 }
 

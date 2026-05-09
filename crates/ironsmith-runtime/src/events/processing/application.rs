@@ -22,7 +22,7 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::Instead(effects) => TraitApplyResult::Replaced(effects.clone()),
 
         ReplacementAction::Modify(modification) => {
-            let modified = apply_trait_modification(&event, modification);
+            let modified = apply_trait_modification(game, &event, modification, effect);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -421,7 +421,12 @@ pub(super) fn find_matching_cards_in_hand(
         .unwrap_or_default()
 }
 
-fn apply_trait_modification(event: &Event, modification: &EventModification) -> Option<Event> {
+fn apply_trait_modification(
+    game: &GameState,
+    event: &Event,
+    modification: &EventModification,
+    effect: &ReplacementEffect,
+) -> Option<Event> {
     use crate::events::{DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event};
 
     match event.kind() {
@@ -436,6 +441,13 @@ fn apply_trait_modification(event: &Event, modification: &EventModification) -> 
                 }
                 EventModification::Subtract(delta) => damage.reduced(*delta),
                 EventModification::SetTo(value) => damage.with_amount(*value),
+                EventModification::SetToAtLeast(value) => {
+                    let floor = resolve_value_for_replacement(value, game, effect.source);
+                    if damage.amount >= floor {
+                        return None;
+                    }
+                    damage.with_amount(floor)
+                }
                 EventModification::ReduceToZero => damage.prevented(),
             };
             Some(event.rewrap(modified))
@@ -453,6 +465,10 @@ fn apply_trait_modification(event: &Event, modification: &EventModification) -> 
                     life_gain.with_amount(life_gain.amount.saturating_sub(*delta))
                 }
                 EventModification::SetTo(value) => life_gain.with_amount(*value),
+                EventModification::SetToAtLeast(value) => {
+                    let floor = resolve_value_for_replacement(value, game, effect.source);
+                    life_gain.with_amount(life_gain.amount.max(floor))
+                }
                 EventModification::ReduceToZero => life_gain.with_amount(0),
             };
             Some(event.rewrap(modified))
@@ -470,6 +486,10 @@ fn apply_trait_modification(event: &Event, modification: &EventModification) -> 
                     put_counters.with_count(put_counters.count.saturating_sub(*delta))
                 }
                 EventModification::SetTo(value) => put_counters.with_count(*value),
+                EventModification::SetToAtLeast(value) => {
+                    let floor = resolve_value_for_replacement(value, game, effect.source);
+                    put_counters.with_count(put_counters.count.max(floor))
+                }
                 EventModification::ReduceToZero => put_counters.with_count(0),
             };
             Some(event.rewrap(modified))
@@ -487,6 +507,10 @@ fn apply_trait_modification(event: &Event, modification: &EventModification) -> 
                     draw.with_count(draw.count.saturating_sub(*delta))
                 }
                 EventModification::SetTo(value) => draw.with_count(*value),
+                EventModification::SetToAtLeast(value) => {
+                    let floor = resolve_value_for_replacement(value, game, effect.source);
+                    draw.with_count(draw.count.max(floor))
+                }
                 EventModification::ReduceToZero => draw.with_count(0),
             };
             Some(event.rewrap(modified))
@@ -787,6 +811,14 @@ fn resolve_trait_redirect_target(
 }
 
 fn resolve_value_for_etb(
+    count: &crate::effect::Value,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> u32 {
+    resolve_value_for_replacement(count, game, source)
+}
+
+fn resolve_value_for_replacement(
     count: &crate::effect::Value,
     game: &GameState,
     source: crate::ids::ObjectId,

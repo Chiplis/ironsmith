@@ -2,9 +2,10 @@ use std::any::Any;
 
 use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType, Color,
-    ColorSet, Condition, CostComponent, CounterType, DerivedAlternativeCast, GrantSpec, Grantable,
-    ManaCost, ManaSpendPermission, ObjectFilter, PlayerFilter, ProtectionFrom, Restriction,
-    StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Value, Zone,
+    ColorSet, Condition, CostComponent, CounterType, DamagedBySource, DerivedAlternativeCast,
+    GrantSpec, Grantable, ManaCost, ManaSpendPermission, ObjectFilter, PlayerFilter,
+    ProtectionFrom, Restriction, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost,
+    TriggeredAbility, Value, Zone,
 };
 
 type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C>;
@@ -356,12 +357,21 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ExileWouldDieInstead {
         filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
     },
     ModifyDamageAmountReplacement {
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         delta: i32,
+        display: String,
+    },
+    MinimumDamageAmountReplacement {
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        floor: Value,
+        noncombat_only: bool,
         display: String,
     },
     DoubleDamageAmountReplacement {
@@ -1077,8 +1087,8 @@ where
                 player,
                 counter_type,
             },
-            StaticAbilityPayload::ExileWouldDieInstead { filter } => {
-                StaticAbilityPayload::ExileWouldDieInstead { filter }
+            StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
+                StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by }
             }
             StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
@@ -1091,6 +1101,21 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                display,
+            },
+            StaticAbilityPayload::MinimumDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                floor,
+                noncombat_only,
+                display,
+            } => StaticAbilityPayload::MinimumDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                floor,
+                noncombat_only,
                 display,
             },
             StaticAbilityPayload::DoubleDamageAmountReplacement {
@@ -1671,6 +1696,10 @@ impl<
 
     pub fn menace() -> Self {
         Self::identified(StaticAbilityId::Menace, "menace")
+    }
+
+    pub fn banding() -> Self {
+        Self::identified(StaticAbilityId::Banding, "banding")
     }
 
     pub fn hexproof() -> Self {
@@ -2691,6 +2720,12 @@ impl<
             "creatures assign combat damage using toughness",
         )
     }
+    pub fn this_creature_assigns_combat_damage_using_toughness() -> Self {
+        Self::identified(
+            StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness,
+            "this creature assigns combat damage using toughness",
+        )
+    }
     pub fn creatures_you_control_assign_combat_damage_using_toughness() -> Self {
         Self {
             id: Some(StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness),
@@ -2736,7 +2771,10 @@ impl<
         }
     }
     pub fn legend_rule_doesnt_apply() -> Self {
-        Self::new("legend rule doesnt apply")
+        Self::identified(
+            StaticAbilityId::LegendRuleDoesntApply,
+            "legend rule doesnt apply",
+        )
     }
     pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
@@ -2934,10 +2972,17 @@ impl<
         }
     }
     pub fn exile_would_die_instead(filter: ObjectFilter) -> Self {
+        Self::exile_would_die_instead_with_damage_source(filter, None)
+    }
+
+    pub fn exile_would_die_instead_with_damage_source(
+        filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
+    ) -> Self {
         Self {
             id: Some(StaticAbilityId::ExileWouldDieInstead),
             label: "exile would die instead".into(),
-            payload: StaticAbilityPayload::ExileWouldDieInstead { filter },
+            payload: StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by },
         }
     }
     pub fn modify_damage_amount_replacement(
@@ -2956,6 +3001,28 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 delta,
+                display,
+            },
+        }
+    }
+    pub fn minimum_damage_amount_replacement(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        floor: Value,
+        noncombat_only: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ModifyDamageAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::MinimumDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                floor,
+                noncombat_only,
                 display,
             },
         }

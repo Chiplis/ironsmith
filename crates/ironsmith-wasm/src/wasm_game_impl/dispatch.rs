@@ -736,6 +736,49 @@ impl WasmGame {
         }
     }
 
+    /// Set an explicit combat damage assignment for the next combat damage step.
+    #[wasm_bindgen(js_name = setCombatDamageAssignment)]
+    pub fn set_combat_damage_assignment(
+        &mut self,
+        attacker_id: u64,
+        recipient_id: u64,
+        amount: u32,
+    ) {
+        self.game.set_combat_damage_assignment(
+            ObjectId::from_raw(attacker_id),
+            ObjectId::from_raw(recipient_id),
+            amount,
+        );
+    }
+
+    /// Record an attacking band for the current combat.
+    #[wasm_bindgen(js_name = setAttackingBand)]
+    pub fn set_attacking_band(&mut self, member_ids: js_sys::Array) -> Result<(), JsValue> {
+        let mut members = Vec::with_capacity(member_ids.length() as usize);
+        for value in member_ids.iter() {
+            let Some(id) = value.as_f64() else {
+                return Err(JsValue::from_str("attacking band member id must be numeric"));
+            };
+            members.push(ObjectId::from_raw(id as u64));
+        }
+
+        if let Some(runner) = self.runner.as_mut() {
+            let result =
+                ironsmith::combat_state::set_attacking_band(&self.game, runner.combat_mut(), members);
+            self.game.combat = Some(runner.combat().clone());
+            return result.map_err(|err| JsValue::from_str(&err.to_string()));
+        }
+
+        let mut combat = self
+            .game
+            .combat
+            .take()
+            .ok_or_else(|| JsValue::from_str("no active combat to record attacking band"))?;
+        let result = ironsmith::combat_state::set_attacking_band(&self.game, &mut combat, members);
+        self.game.combat = Some(combat);
+        result.map_err(|err| JsValue::from_str(&err.to_string()))
+    }
+
     /// Draw opening hands for all players.
     #[wasm_bindgen(js_name = drawOpeningHands)]
     pub fn draw_opening_hands(&mut self, cards_per_player: usize) -> Result<(), JsValue> {
@@ -969,6 +1012,19 @@ impl WasmGame {
     pub fn advance_phase(&mut self) -> Result<(), JsValue> {
         ironsmith::turn::advance_step(&mut self.game)
             .map_err(|e| JsValue::from_str(&format!("advance_step failed: {e:?}")))?;
+        self.runner = None;
+        self.runner_awaiting_priority = false;
+        self.runner_pending_decision = false;
+        self.recompute_ui_decision()?;
+        Ok(())
+    }
+
+    /// Move directly into an inserted combat phase without rebuilding from a sync checkpoint.
+    #[wasm_bindgen(js_name = enterAdditionalCombatPhase)]
+    pub fn enter_additional_combat_phase(&mut self) -> Result<(), JsValue> {
+        self.game.turn.phase = ironsmith::game_state::Phase::Combat;
+        self.game.turn.step = Some(ironsmith::game_state::Step::BeginCombat);
+        self.game.turn.priority_player = Some(self.game.turn.active_player);
         self.runner = None;
         self.runner_awaiting_priority = false;
         self.runner_pending_decision = false;

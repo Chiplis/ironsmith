@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
 import HandZone from "./HandZone";
-import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -244,7 +243,6 @@ export default function MyZone({
     : 0;
   const mergedMobileHeader = Boolean(embeddedActionBar);
   const showHeader = !hideHeader;
-  const mobileInspectorVisible = mergedMobileHeader && selectedObjectId != null;
   const showBodyStackRail = !mergedMobileHeader
     && Boolean(zoneActionControls)
     && (
@@ -713,8 +711,7 @@ export default function MyZone({
       <div
         className={cn(
           "battlefield-zones-shell relative min-h-0 h-full overflow-visible",
-          mobileHandRailVisible && "my-zone-mobile-body-grid",
-          mobileInspectorVisible && "has-inline-inspector"
+          mobileHandRailVisible && "my-zone-mobile-body-grid"
         )}
         data-turn-active={isActivePlayer ? "true" : "false"}
       >
@@ -947,28 +944,6 @@ export default function MyZone({
         ) : null}
         </div>
         </div>
-        {mobileInspectorVisible ? (
-          <aside
-            className="my-zone-mobile-inspector-rail"
-            data-card-inspector="true"
-            data-mobile-hand-drop-target="inspector"
-          >
-            <div className="my-zone-mobile-inline-inspector">
-              <div className="my-zone-mobile-inline-inspector-stage">
-                <HoverArtOverlay
-                  objectId={selectedObjectId}
-                  displayMode="inspector"
-                  availableInspectorWidth={182}
-                  availableInspectorHeight={116}
-                  hideOwnershipMetadata
-                  minInspectorTextScale={0.46}
-                  minInspectorTitleScale={0.42}
-                  onInspectorAccentChange={null}
-                />
-              </div>
-            </div>
-          </aside>
-        ) : null}
         {mobileHandRailVisible ? (
           <aside className="my-zone-hand-rail">
             <div className="my-zone-hand-rail-body">

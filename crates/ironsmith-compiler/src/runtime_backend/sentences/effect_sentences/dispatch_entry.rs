@@ -521,15 +521,14 @@ impl SentenceParsePlan {
 
 fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<EffectAst> {
     let normalized = sentence_text.to_ascii_lowercase();
-    let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
-
+    let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
     if str_contains(&normalized, "countered this way")
         && str_contains(&normalized, "instead of")
         && str_contains(&normalized, "graveyard")
         && str_contains(&normalized, "exile")
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
-            target,
+            target(),
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Exile,
@@ -543,7 +542,7 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         && str_contains(&normalized, "hand")
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
-            target,
+            target(),
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Hand,
@@ -557,7 +556,7 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         && str_contains(&normalized, "library")
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
-            target,
+            target(),
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Library,
@@ -566,8 +565,27 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
     }
 
     if str_contains(&normalized, "would die this turn") && str_contains(&normalized, "exile") {
+        if str_contains(&normalized, "dealt damage this way")
+            || str_contains(&normalized, "dealt damage by")
+        {
+            let filter = if str_contains(&normalized, "permanent dealt damage") {
+                ObjectFilter::permanent()
+            } else {
+                ObjectFilter::creature()
+            };
+            return Some(
+                EffectAst::subject_verb_register_damaged_by_source_zone_replacement(
+                    filter,
+                    Some(Zone::Battlefield),
+                    Some(Zone::Graveyard),
+                    Zone::Exile,
+                    ZoneReplacementDurationAst::OneShot,
+                ),
+            );
+        }
+
         return Some(EffectAst::subject_verb_register_zone_replacement(
-            target,
+            target(),
             Some(Zone::Battlefield),
             Some(Zone::Graveyard),
             Zone::Exile,
@@ -591,7 +609,7 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
             );
         }
         return Some(EffectAst::subject_verb_register_zone_replacement(
-            target,
+            target(),
             None,
             Some(Zone::Graveyard),
             Zone::Exile,
@@ -2432,6 +2450,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }

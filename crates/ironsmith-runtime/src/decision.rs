@@ -57,7 +57,9 @@ mod tests {
     use crate::CardDefinitionBuilder;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::cards::definitions::{basic_island, counterspell, force_of_will, lightning_bolt};
+    use crate::cards::definitions::{
+        basic_forest, basic_island, counterspell, force_of_will, lightning_bolt,
+    };
     use crate::color::ColorSet;
     use crate::costs::PaymentReason;
     use crate::decisions::context::{TargetRequirementContext, TargetsContext};
@@ -4149,6 +4151,82 @@ mod tests {
                 &card.alternative_casts[0]
             ),
             "spectacle alternative should become available once an opponent has lost life"
+        );
+    }
+
+    #[test]
+    fn test_bestow_alternative_uses_aura_cost_reductions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        for _ in 0..4 {
+            game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
+        }
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(881), "Cost Reducer")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .parse_text("Aura spells you cast cost {1} less to cast.")
+                .expect("cost reducer should parse"),
+            alice,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(882), "Second Cost Reducer")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .parse_text("Aura spells you cast cost {1} less to cast.")
+                .expect("cost reducer should parse"),
+            alice,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(883), "Bestow Host")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let bestow_def = CardDefinitionBuilder::new(CardId::from_raw(884), "Bestow Cost Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)], vec![ManaSymbol::Green]]))
+            .card_types(vec![CardType::Enchantment, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("Bestow {5}{G}\nEnchanted creature gets +3/+3.")
+            .expect("bestow card should parse");
+        let card_id = game.create_object_from_definition(&bestow_def, alice, Zone::Hand);
+        let card = game.object(card_id).expect("bestow card should exist");
+        let view = DerivedGameView::new(&game);
+        let effective = calculate_effective_mana_cost_with_view_for_casting_method(
+            &game,
+            alice,
+            card,
+            &ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)], vec![ManaSymbol::Green]]),
+            &CastingMethod::Alternative(0),
+            &view,
+        );
+        assert_eq!(
+            effective,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)], vec![ManaSymbol::Green]])
+        );
+
+        assert!(
+            can_cast_with_alternative_from_hand(
+                &game,
+                alice,
+                card,
+                card_id,
+                &card.alternative_casts[0]
+            ),
+            "two Aura cost reducers should make bestow {{5}}{{G}} payable with four Forests"
         );
     }
 

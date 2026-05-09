@@ -2030,6 +2030,10 @@ impl Effect {
         Self::new(crate::effects::TagTriggeringObjectEffect::new(tag))
     }
 
+    pub fn tag_triggering_source(tag: impl Into<crate::tag::TagKey>) -> Self {
+        Self::new(crate::effects::TagTriggeringSourceEffect::new(tag))
+    }
+
     pub fn tag_triggering_damage_target(tag: impl Into<crate::tag::TagKey>) -> Self {
         Self::new(crate::effects::TagTriggeringDamageTargetEffect::new(tag))
     }

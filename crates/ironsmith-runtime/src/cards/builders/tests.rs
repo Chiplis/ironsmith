@@ -1131,6 +1131,25 @@ fn test_parse_repeated_backup_keyword_line_compiles_each_instance() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_backup_copy_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mirror-Shield Hoplite")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a creature you control becomes the target of a backup ability, copy that ability. You may choose new targets for the copy. This ability triggers only once each turn.",
+        )
+        .expect("backup-copy trigger should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("BecomesTargetedObjectByStackObject")
+            && debug.contains("CopySpellEffect")
+            && debug.contains("TagTriggeringSourceEffect"),
+        "expected backup-copy trigger to target and copy the triggering ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_plain_vanishing_keyword_line_compiles_without_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanishing Parse Test")
         .card_types(vec![CardType::Enchantment])
@@ -15693,13 +15712,18 @@ fn parse_morph_keyword_line_with_non_cost_effect_fails_loudly() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_banding_keyword_line() {
-    let result = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text_allow_unsupported("Banding");
+        .parse_text("Banding")
+        .expect("banding should parse as a supported combat keyword");
 
     assert!(
-        result.is_err(),
-        "banding should fail loudly instead of compiling as a keyword marker"
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Banding
+        )),
+        "expected banding to lower to StaticAbilityId::Banding"
     );
 }
 
@@ -18555,10 +18579,10 @@ fn render_powerstone_token_name() {
 #[test]
 fn parse_token_with_banding_keyword_modifier() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
-        .parse_text_allow_unsupported("Create a 1/1 white Knight creature token with banding.");
+        .parse_text("Create a 1/1 white Knight creature token with banding.");
     assert!(
-        result.is_err(),
-        "token with unsupported banding marker should fail loudly"
+        result.is_ok(),
+        "token with banding marker should parse as a supported keyword"
     );
 }
 
@@ -18698,6 +18722,29 @@ fn parse_damage_redirect_to_source_line() {
             .to_ascii_lowercase()
             .contains("all damage that would be dealt to you and other permanents you control is dealt to this creature instead"),
         "expected compiled text to include damage redirect clause, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_red_noncombat_damage_minimum_replacement_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Deepest Might Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If a red source you control would deal an amount of noncombat damage less than Deepest Might's power to an opponent, that source deals damage equal to Deepest Might's power instead.",
+        )
+        .expect("dynamic minimum damage replacement should parse");
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::ModifyDamageAmountReplacement),
+        "expected minimum damage static ability, got {ids:?}"
     );
 }
 
@@ -19624,12 +19671,17 @@ fn parse_mana_ability_activate_only_if_control_subtype() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
-    let result = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text_allow_unsupported("First strike; banding");
+        .parse_text("First strike; banding")
+        .expect("semicolon-separated supported keywords should parse");
     assert!(
-        result.is_err(),
-        "semicolon keyword line should fail loudly when any keyword lowers to a marker"
+        def.abilities
+            .iter()
+            .filter(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id().is_keyword()))
+            .count()
+            >= 2,
+        "expected both semicolon-separated keywords to lower"
     );
 }
 
@@ -27064,6 +27116,33 @@ fn parse_each_creature_you_control_assigns_combat_damage_with_toughness_static_l
             &crate::static_abilities::StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness
         ),
         "expected controller-scoped toughness combat-damage static ability, got {static_ids:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_this_creature_assigns_combat_damage_with_toughness_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Streetwise Negotiator")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature assigns combat damage equal to its toughness rather than its power.",
+        )
+        .expect("source-scoped toughness-combat-damage static line should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        static_ids.contains(
+            &crate::static_abilities::StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness
+        ),
+        "expected source-scoped toughness combat-damage static ability, got {static_ids:?}"
     );
 }
 

@@ -16,6 +16,7 @@
 mod application;
 
 use crate::DecisionMaker;
+use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
 use crate::events::{Event, EventContext};
 use crate::filter::ObjectFilterExt as _;
@@ -26,6 +27,24 @@ use crate::replacement::{ReplacementAction, ReplacementEffect, ReplacementEffect
 use crate::types::CardType;
 use crate::zone::Zone;
 use application::{apply_trait_enter_tapped, apply_trait_replacement, find_matching_cards_in_hand};
+
+fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementEffect) -> String {
+    match &effect.replacement {
+        ReplacementAction::Additionally(_) => {
+            format!(
+                "Do not apply {}",
+                replacement_option_description(game, effect.source)
+            )
+        }
+        ReplacementAction::EnterAsCopy { source, .. } => {
+            let source_name = game
+                .current_name(*source)
+                .unwrap_or_else(|| "Unknown object".to_string());
+            format!("Enter as a copy of {source_name}")
+        }
+        _ => replacement_option_description(game, effect.source),
+    }
+}
 
 /// Priority order for replacement effects per Rule 616.1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -1468,7 +1487,7 @@ fn process_with_dm_and_additional_effects(
 ) -> TraitEventResult {
     use crate::decisions::{
         make_decision,
-        specs::{ReplacementOption, ReplacementSpec, replacement_option_description},
+        specs::{ReplacementOption, ReplacementSpec},
     };
 
     let mut current_event = game.ensure_event_provenance(event);
@@ -1503,7 +1522,7 @@ fn process_with_dm_and_additional_effects(
                                     ReplacementOption::new(
                                         idx,
                                         e.source,
-                                        replacement_option_description(game, e.source),
+                                        replacement_effect_choice_description(game, e),
                                     )
                                 })
                         })
@@ -2157,7 +2176,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
     use crate::ability::AbilityKind;
     use crate::decisions::{
         make_decision,
-        specs::{ReplacementOption, ReplacementSpec, replacement_option_description},
+        specs::{ReplacementOption, ReplacementSpec},
     };
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
@@ -2349,7 +2368,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             ReplacementOption::new(
                                 idx,
                                 e.source,
-                                replacement_option_description(game, e.source),
+                                replacement_effect_choice_description(game, &e),
                             )
                         })
                     })

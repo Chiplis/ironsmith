@@ -7,7 +7,7 @@ import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 const STACK_CARD_CIRCUIT_PATH = "M9.5 2.5H90.5 M9.5 93.5H90.5";
 
@@ -138,7 +138,7 @@ export default function StackCard({
             aria-label={reorderControls.leftLabel || `Move ${name} toward the top of the stack`}
             title={reorderControls.leftTitle || "Move toward the top of the stack"}
           >
-            <ArrowLeft className="size-3.5" />
+            <ArrowUp className="size-3.5" />
           </button>
           <button
             type="button"
@@ -151,7 +151,7 @@ export default function StackCard({
             aria-label={reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`}
             title={reorderControls.rightTitle || "Move toward the bottom of the stack"}
           >
-            <ArrowRight className="size-3.5" />
+            <ArrowDown className="size-3.5" />
           </button>
         </>
       )}

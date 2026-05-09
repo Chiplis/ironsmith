@@ -53,16 +53,6 @@ impl DiesDamagedByThisTurnTrigger {
         }
     }
 
-    fn resolve_damager(&self, ctx: &TriggerContext) -> Option<ObjectId> {
-        match self.damager_source {
-            DamagerSource::ThisCreature => Some(ctx.source_id),
-            DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => ctx
-                .game
-                .object(ctx.source_id)
-                .and_then(|obj| obj.attached_to.and_then(|target| target.object_id())),
-        }
-    }
-
     fn victim_matches(
         &self,
         victim_id: ObjectId,
@@ -92,17 +82,36 @@ impl DiesDamagedByThisTurnTrigger {
         if !zc.is_dies() {
             return 0;
         }
-        let Some(damager_id) = self.resolve_damager(ctx) else {
-            return 0;
-        };
-
         zc.objects
             .iter()
             .filter(|&&victim_id| {
-                self.victim_matches(victim_id, zc, ctx)
-                    && ctx
+                let victim_stable_id = zc.snapshot.as_ref().and_then(|snapshot| {
+                    (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
+                });
+                if !self.victim_matches(victim_id, zc, ctx) {
+                    return false;
+                }
+                match self.damager_source {
+                    DamagerSource::ThisCreature => ctx
                         .game
-                        .creature_was_damaged_by_source_this_turn(victim_id, damager_id)
+                        .turn_store
+                        .turn_history
+                        .creature_was_damaged_by_source_identity_this_turn(
+                            victim_id,
+                            victim_stable_id,
+                            ctx.source_id,
+                            ctx.game.object(ctx.source_id).map(|obj| obj.stable_id),
+                        ),
+                    DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => ctx
+                        .game
+                        .turn_store
+                        .turn_history
+                        .creature_was_damaged_by_source_attached_to_this_turn(
+                            victim_id,
+                            victim_stable_id,
+                            ctx.source_id,
+                        ),
+                }
             })
             .count() as u32
     }
@@ -128,5 +137,123 @@ impl TriggerMatcher for DiesDamagedByThisTurnTrigger {
             self.victim.description(),
             source_text
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::DamageEvent;
+    use crate::events::cause::EventCause;
+    use crate::events::zones::ZoneChangeEvent;
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::{AttachmentTarget, Object};
+    use crate::provenance::ProvNodeId;
+    use crate::target::ObjectFilter;
+    use crate::types::{CardType, Subtype};
+    use crate::zone::Zone;
+
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Cat])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.add_object(Object::from_card(id, &card, controller, Zone::Battlefield));
+        id
+    }
+
+    fn create_equipment(game: &mut crate::game_state::GameState, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), "Test Equipment")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+        game.add_object(Object::from_card(id, &card, controller, Zone::Battlefield));
+        id
+    }
+
+    #[test]
+    fn equipped_creature_damage_trigger_uses_damage_time_attachment() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let equipment = create_equipment(&mut game, alice);
+        let original_equipped = create_creature(&mut game, "Original Equipped", alice);
+        let later_equipped = create_creature(&mut game, "Later Equipped", alice);
+
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment,
+            AttachmentTarget::Object(original_equipped),
+        );
+        game.record_turn_history_event(&TriggerEvent::new(
+            DamageEvent::with_cause(
+                original_equipped,
+                crate::events::DamageTarget::Object(later_equipped),
+                2,
+                true,
+                EventCause::combat_damage(original_equipped),
+            ),
+            ProvNodeId::default(),
+        ));
+        game.record_turn_history_event(&TriggerEvent::new(
+            DamageEvent::with_cause(
+                later_equipped,
+                crate::events::DamageTarget::Object(original_equipped),
+                2,
+                true,
+                EventCause::combat_damage(later_equipped),
+            ),
+            ProvNodeId::default(),
+        ));
+
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment,
+            AttachmentTarget::Object(later_equipped),
+        );
+
+        let trigger = DiesDamagedByThisTurnTrigger::by_equipped_creature(ObjectFilter::creature());
+        let ctx = TriggerContext::for_source(equipment, alice, &game);
+        let later_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(later_equipped).unwrap(),
+            &game,
+        );
+        let later_dies = TriggerEvent::new(
+            ZoneChangeEvent::with_cause(
+                later_equipped,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_game_rule(),
+                Some(later_snapshot),
+            ),
+            ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&later_dies, &ctx));
+
+        let original_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(original_equipped).unwrap(),
+            &game,
+        );
+        let original_dies = TriggerEvent::new(
+            ZoneChangeEvent::with_cause(
+                original_equipped,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_game_rule(),
+                Some(original_snapshot),
+            ),
+            ProvNodeId::default(),
+        );
+        assert!(
+            !trigger.matches(&original_dies, &ctx),
+            "reattaching the Equipment after damage should not make earlier damage count"
+        );
     }
 }

@@ -17,7 +17,7 @@ use super::super::keyword_static::{
     parse_ability_line, parse_pt_modifier, parse_value_binding_clause,
     parse_value_binding_clause_lexed,
 };
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, parser_token_word_refs};
 use super::super::object_filters::{
     find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
 };

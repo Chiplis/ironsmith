@@ -37,11 +37,22 @@ impl EffectExecutor for CounterEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
+        if !game.can_be_countered(target_id) {
+            return Ok(EffectOutcome::protected());
+        }
+
         // Check if the spell can't be countered
         if let Some(obj) = game.object(target_id) {
-            let cant_be_countered = obj.abilities.iter().any(|ability| {
+            let abilities = game
+                .current_abilities(target_id)
+                .unwrap_or_else(|| obj.abilities.clone());
+            let cant_be_countered = abilities.iter().any(|ability| {
                 if let AbilityKind::Static(s) = &ability.kind {
+                    let display = s.display().to_ascii_lowercase();
                     s.cant_be_countered()
+                        || s.id() == crate::static_abilities::StaticAbilityId::CantBeCountered
+                        || display.contains("can't be countered")
+                        || display.contains("cant be countered")
                 } else {
                     false
                 }

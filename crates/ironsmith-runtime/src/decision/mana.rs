@@ -379,6 +379,28 @@ pub(crate) fn casting_method_matches_alternative_kind(
     }
 }
 
+fn casting_method_is_bestow(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    match casting_method {
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(|method| method.is_bestow()),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .as_ref()
+            .is_some_and(|method| method.is_bestow()),
+        _ => false,
+    }
+}
+
 pub(crate) fn spell_matches_cast_filter(
     game: &GameState,
     spell: &crate::object::Object,
@@ -488,6 +510,12 @@ pub(crate) fn spell_has_active_flash_with_view(
         false
     }) || view.card_has_granted_static_ability_id(
         spell_id,
+        Zone::Hand,
+        player,
+        crate::static_abilities::StaticAbilityId::Flash,
+    ) || view.card_view_has_granted_static_ability_id(
+        spell_id,
+        spell,
         Zone::Hand,
         player,
         crate::static_abilities::StaticAbilityId::Flash,
@@ -1019,6 +1047,75 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
     effects.is_empty() || view.spell_has_legal_targets(effects, player, Some(spell_id), None)
 }
 
+fn mana_cost_can_be_paid_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+    cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let potential = view.potential_mana(player);
+    let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
+    let allow_black_life = view
+        .player_can_pay_black_with_life_for_reason(player, crate::costs::PaymentReason::CastSpell);
+    !mana_cost_is_obviously_unpayable(&potential, cost, allow_any_color, allow_black_life)
+        && can_pay_mana_cost_with_available_sources(
+            game,
+            player,
+            Some(spell_id),
+            cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+            allow_any_color,
+            allow_black_life,
+            view,
+        )
+}
+
+fn effective_cost_with_affordable_non_mana_optional_cost(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> Option<crate::mana::ManaCost> {
+    for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
+        if optional_cost.cost.mana_cost().is_some() {
+            continue;
+        }
+        if crate::cost::can_pay_cost_with_reason(
+            game,
+            spell.id,
+            player,
+            &optional_cost.cost,
+            crate::costs::PaymentReason::CastSpell,
+        )
+        .is_err()
+        {
+            continue;
+        }
+
+        let mut hypothetical = spell.clone();
+        hypothetical.optional_costs_paid =
+            crate::cost::OptionalCostsPaid::from_costs(&hypothetical.optional_costs);
+        hypothetical.optional_costs_paid.pay_times(index, 1);
+        let reduced = calculate_effective_mana_cost_with_view_for_casting_method(
+            game,
+            player,
+            &hypothetical,
+            base_cost,
+            casting_method,
+            view,
+        );
+        if reduced != *base_cost {
+            return Some(reduced);
+        }
+    }
+
+    None
+}
+
 pub(crate) fn can_cast_spell_with_context(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
@@ -1028,7 +1125,7 @@ pub(crate) fn can_cast_spell_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
-    let split_view = match casting_method {
+    let cast_view = match casting_method {
         CastingMethod::FaceDown => {
             if !spell_can_be_cast_face_down(spell) {
                 return false;
@@ -1043,9 +1140,14 @@ pub(crate) fn can_cast_spell_with_context(
             Some(view) => Some(view),
             None => return false,
         },
+        _ if casting_method_is_bestow(game, player, spell, casting_method) => {
+            let mut view = spell.clone();
+            view.apply_bestow_cast_overlay();
+            Some(view)
+        }
         _ => None,
     };
-    let spell_for_checks = split_view.as_ref().unwrap_or(spell);
+    let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
     let restrictions_started_at = PerfTimer::start();
     if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
@@ -1088,7 +1190,7 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let target_started_at = PerfTimer::start();
-    let effects = split_view
+    let effects = cast_view
         .as_ref()
         .and_then(|view| view.spell_effect.as_deref())
         .or(spell.spell_effect.as_deref());
@@ -1117,10 +1219,10 @@ pub(crate) fn can_cast_spell_with_context(
             calculate_effective_mana_cost_with_view_for_casting_method(
                 game,
                 player,
-                spell_for_checks,
-                base_cost,
-                casting_method,
-                view,
+            spell_for_checks,
+            base_cost,
+            casting_method,
+            view,
             )
         } else {
             apply_minimum_spell_total_mana(
@@ -1137,33 +1239,21 @@ pub(crate) fn can_cast_spell_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
-        let potential = view.potential_mana(player);
-        let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell.id));
-        let allow_black_life = view.player_can_pay_black_with_life_for_reason(
-            player,
-            crate::costs::PaymentReason::CastSpell,
-        );
-        if mana_cost_is_obviously_unpayable(
-            &potential,
-            &effective_cost,
-            allow_any_color,
-            allow_black_life,
-        ) {
-            ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
-            ctx.add_total_ms(total_started_at.elapsed_ms());
-            return false;
-        }
-        if !can_pay_mana_cost_with_available_sources(
-            game,
-            player,
-            Some(spell.id),
-            &effective_cost,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-            allow_any_color,
-            allow_black_life,
-            view,
-        ) {
+        let can_pay_effective =
+            mana_cost_can_be_paid_with_view(game, player, spell.id, &effective_cost, view);
+        let can_pay_with_optional_reduction = !can_pay_effective
+            && effective_cost_with_affordable_non_mana_optional_cost(
+                game,
+                player,
+                spell_for_checks,
+                base_cost,
+                casting_method,
+                view,
+            )
+            .is_some_and(|cost| {
+                mana_cost_can_be_paid_with_view(game, player, spell.id, &cost, view)
+            });
+        if !can_pay_effective && !can_pay_with_optional_reduction {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             ctx.add_total_ms(total_started_at.elapsed_ms());
             return false;
@@ -1263,17 +1353,25 @@ pub(crate) fn can_cast_with_cost_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
+    let cast_view = if casting_method_is_bestow(game, player, spell, casting_method) {
+        let mut view = spell.clone();
+        view.apply_bestow_cast_overlay();
+        Some(view)
+    } else {
+        None
+    };
+    let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
     let restrictions_started_at = PerfTimer::start();
-    if violates_any_cant_cast_restriction(game, player, spell) {
+    if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-    if violates_any_cast_limit(game, player, spell) {
+    if violates_any_cast_limit(game, player, spell_for_checks) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-    if spell.is_land() {
+    if spell_for_checks.is_land() {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
@@ -1284,15 +1382,15 @@ pub(crate) fn can_cast_with_cost_with_context(
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-    if !spell_cast_restrictions_allow(game, player, spell) {
+    if !spell_cast_restrictions_allow(game, player, spell_for_checks) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
     ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
     let timing_started_at = PerfTimer::start();
-    if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view)
-        && !casting_method_grants_special_timing(ctx, spell, spell_id, casting_method)
+    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell_id, view)
+        && !casting_method_grants_special_timing(ctx, spell_for_checks, spell_id, casting_method)
     {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
         return false;
@@ -1300,8 +1398,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     ctx.add_timing_ms(timing_started_at.elapsed_ms());
 
     let target_started_at = PerfTimer::start();
+    let effects = effects_override.or_else(|| spell_for_checks.spell_effect.as_deref());
     let has_legal_targets =
-        spell_has_legal_targets_for_cast_with_view(spell, spell_id, effects_override, player, view);
+        spell_has_legal_targets_for_cast_with_view(spell_for_checks, spell_id, effects, player, view);
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
         return false;
@@ -1343,13 +1442,13 @@ pub(crate) fn can_cast_with_cost_with_context(
     if let Some(cost) = mana_cost {
         let cost_started_at = PerfTimer::start();
         let adjusted =
-            if ctx.can_use_printed_cost_directly(spell_has_intrinsic_cost_adjustments(spell)) {
+            if ctx.can_use_printed_cost_directly(spell_has_intrinsic_cost_adjustments(spell_for_checks)) {
                 cost.clone()
-            } else if ctx.spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell)) {
+            } else if ctx.spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell_for_checks)) {
                 calculate_effective_mana_cost_with_view_for_casting_method(
                     game,
                     player,
-                    spell,
+                    spell_for_checks,
                     cost,
                     casting_method,
                     view,
@@ -2263,7 +2362,22 @@ pub(crate) fn apply_spell_cost_modifiers(
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
-        cast_filter.matches(spell, &ctx.clone().with_caster(Some(caster)), game)
+        let overlaid_spell;
+        let spell_for_match = if casting_method_is_bestow(game, caster, spell, casting_method) {
+            overlaid_spell = {
+                let mut overlaid = spell.clone();
+                overlaid.apply_bestow_cast_overlay();
+                overlaid
+            };
+            &overlaid_spell
+        } else {
+            spell
+        };
+        cast_filter.matches_non_recursive(
+            spell_for_match,
+            &ctx.clone().with_caster(Some(caster)),
+            game,
+        )
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })
@@ -2284,11 +2398,12 @@ pub(crate) fn apply_spell_cost_modifiers(
         };
         let functions_in_current_zone = ability.functions_in(&spell.zone);
         if let Some(reduction) = static_ability.this_spell_cost_reduction() {
-            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 game,
                 spell.id,
                 &reduction.condition,
                 chosen_targets,
+                Some(&spell.optional_costs_paid),
             ) {
                 let amount =
                     resolve_this_spell_cost_reduction_value(game, player, spell, reduction);
@@ -2298,11 +2413,12 @@ pub(crate) fn apply_spell_cost_modifiers(
             }
         }
         if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost() {
-            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 game,
                 spell.id,
                 &reduction.condition,
                 chosen_targets,
+                Some(&spell.optional_costs_paid),
             ) {
                 reduction_pips.extend(reduction.reduction.pips().iter().cloned());
             }
@@ -2423,7 +2539,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
-        cast_filter.matches(spell, &ctx.clone().with_caster(Some(caster)), game)
+        let overlaid_spell;
+        let spell_for_match = if casting_method_is_bestow(game, caster, spell, casting_method) {
+            overlaid_spell = {
+                let mut overlaid = spell.clone();
+                overlaid.apply_bestow_cast_overlay();
+                overlaid
+            };
+            &overlaid_spell
+        } else {
+            spell
+        };
+        cast_filter.matches_non_recursive(
+            spell_for_match,
+            &ctx.clone().with_caster(Some(caster)),
+            game,
+        )
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })

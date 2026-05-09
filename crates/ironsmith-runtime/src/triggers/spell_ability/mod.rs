@@ -15,6 +15,7 @@ pub use becomes_targeted::BecomesTargetedTrigger;
 pub use becomes_targeted_by_source_controller::BecomesTargetedBySourceControllerTrigger;
 pub use becomes_targeted_by_spell::{
     BecomesTargetedBySpellTrigger, BecomesTargetedByStackObjectTrigger,
+    BecomesTargetedObjectByStackObjectTrigger,
 };
 pub use becomes_targeted_object::BecomesTargetedObjectTrigger;
 pub use spell_cast::SpellCastTrigger;

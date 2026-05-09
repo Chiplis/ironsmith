@@ -2,7 +2,7 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::{DistributeSpec, make_decision_with_fallback};
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::{ChoiceCount, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::damage::deal_damage::apply_processed_damage_outcome;
 use crate::effects::helpers::{
@@ -126,6 +126,10 @@ impl EffectExecutor for DealDistributedDamageEffect {
         } else {
             None
         }
+    }
+
+    fn get_target_count(&self) -> Option<ChoiceCount> {
+        Some(self.target.count())
     }
 
     fn target_description(&self) -> &'static str {

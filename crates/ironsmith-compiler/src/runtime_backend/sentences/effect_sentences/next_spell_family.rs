@@ -3,6 +3,7 @@ use super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::util::parse_subject;
 use crate::cards::builders::{CardTextError, EffectAst, PlayerAst, SubjectAst, TextSpan};
+use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
 
 fn synth_word_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
@@ -71,6 +72,15 @@ fn next_spell_grant_shared_cast_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [
 fn parse_next_spell_grant_ability(
     words: &[&str],
 ) -> Option<crate::cards::builders::GrantedAbilityAst> {
+    if matches!(
+        words,
+        ["cant", "be", "countered"] | ["can't", "be", "countered"]
+    ) {
+        return Some(crate::cards::builders::GrantedAbilityAst::StaticAbility(
+            StaticAbility::cant_be_countered_ability(),
+        ));
+    }
+
     let tokens = synth_word_tokens(words);
     let actions = parse_ability_line(&tokens)?;
     let [action] = actions.as_slice() else {
@@ -229,12 +239,17 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
         ]));
     }
 
-    let Some(has_idx) = find_word_index(&clause_words, |word| matches!(word, "has" | "have"))
-    else {
+    let (subject_words, ability_words) = if let Some(has_idx) =
+        find_word_index(&clause_words, |word| matches!(word, "has" | "have"))
+    {
+        (&clause_words[..has_idx], &clause_words[has_idx + 1..])
+    } else if let Some(cant_idx) = find_phrase_start(&clause_words, &["cant", "be", "countered"])
+        .or_else(|| find_phrase_start(&clause_words, &["can't", "be", "countered"]))
+    {
+        (&clause_words[..cant_idx], &clause_words[cant_idx..])
+    } else {
         return Ok(None);
     };
-    let subject_words = &clause_words[..has_idx];
-    let ability_words = &clause_words[has_idx + 1..];
     let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
         return Ok(None);
     };

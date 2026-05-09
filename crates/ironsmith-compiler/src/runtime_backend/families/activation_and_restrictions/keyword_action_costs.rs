@@ -589,6 +589,7 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
     match word {
         "flying" => Some(KeywordAction::Flying),
         "menace" => Some(KeywordAction::Menace),
+        "banding" => Some(KeywordAction::Banding),
         "hexproof" => Some(KeywordAction::Hexproof),
         "haste" => Some(KeywordAction::Haste),
         "improvise" => Some(KeywordAction::Improvise),
@@ -1225,8 +1226,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if let Some(first) = (!head.is_empty()).then_some(head)
         && matches!(
             first,
-            "banding"
-                | "fabricate"
+            "fabricate"
                 | "foretell"
                 | "bestow"
                 | "dash"

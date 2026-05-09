@@ -25,7 +25,8 @@ use crate::events::damage::matchers::{
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
 use crate::events::zones::matchers::{
-    ThisWouldEnterBattlefieldMatcher, WouldEnterBattlefieldMatcher,
+    ThisWouldEnterBattlefieldMatcher, WouldDieDamagedBySourceThisTurnMatcher,
+    WouldEnterBattlefieldMatcher,
 };
 use crate::events::zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
@@ -41,7 +42,7 @@ use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-use ironsmith_core::ValueSurfaceHint;
+use ironsmith_core::{DamagedBySource, ValueSurfaceHint};
 
 fn card_type_word(card_type: crate::types::CardType) -> &'static str {
     card_type.name()
@@ -2567,11 +2568,43 @@ impl ModifyDamageAmountReplacement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MinimumDamageAmountReplacement {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub floor: Value,
+    pub noncombat_only: bool,
+    pub display: String,
+}
+
+impl MinimumDamageAmountReplacement {
+    pub fn new(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        floor: Value,
+        noncombat_only: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            floor,
+            noncombat_only,
+            display: display.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct DamageAmountReplacementMatcher {
     source_filter: ObjectFilter,
     target_player_filter: Option<PlayerFilter>,
     target_object_filter: Option<ObjectFilter>,
     condition: Option<crate::ConditionExpr>,
+    noncombat_only: bool,
+    amount_less_than: Option<Value>,
 }
 
 impl DamageAmountReplacementMatcher {
@@ -2635,6 +2668,34 @@ impl DamageAmountReplacementMatcher {
         };
         crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
     }
+
+    fn amount_matches(
+        &self,
+        damage: &DamageEvent,
+        ctx: &crate::events::context::EventContext<'_>,
+    ) -> bool {
+        if self.noncombat_only && damage.is_combat {
+            return false;
+        }
+        let Some(value) = &self.amount_less_than else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut eval_ctx = crate::effects::ExecutionContext::new(source, ctx.controller, &mut dm);
+        if let Some(source_obj) = ctx.game.object(source) {
+            eval_ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
+            if !source_obj.cast_tagged_objects.is_empty() {
+                eval_ctx = eval_ctx.with_tagged_objects(source_obj.cast_tagged_objects.clone());
+            }
+        }
+        let Ok(floor) = crate::effects::helpers::resolve_value(ctx.game, value, &eval_ctx) else {
+            return false;
+        };
+        (damage.amount as i32) < floor
+    }
 }
 
 impl ReplacementMatcher for DamageAmountReplacementMatcher {
@@ -2654,6 +2715,7 @@ impl ReplacementMatcher for DamageAmountReplacementMatcher {
         self.condition_matches(ctx)
             && self.source_matches(damage, ctx)
             && self.target_matches(damage, ctx)
+            && self.amount_matches(damage, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -2708,8 +2770,40 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: self.condition.clone(),
+                noncombat_only: false,
+                amount_less_than: None,
             },
             ReplacementAction::Modify(EventModification::Add(self.delta)),
+        ))
+    }
+}
+
+impl StaticAbilityKind for MinimumDamageAmountReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ModifyDamageAmountReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.source_filter.clone(),
+                target_player_filter: self.target_player_filter.clone(),
+                target_object_filter: self.target_object_filter.clone(),
+                condition: None,
+                noncombat_only: self.noncombat_only,
+                amount_less_than: Some(self.floor.clone()),
+            },
+            ReplacementAction::Modify(EventModification::SetToAtLeast(self.floor.clone())),
         ))
     }
 }
@@ -2760,6 +2854,8 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
+                noncombat_only: false,
+                amount_less_than: None,
             },
             ReplacementAction::Double,
         ))
@@ -3482,11 +3578,22 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileWouldDieInstead {
     pub filter: ObjectFilter,
+    pub damaged_by: Option<DamagedBySource>,
 }
 
 impl ExileWouldDieInstead {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            damaged_by: None,
+        }
+    }
+
+    pub fn damaged_by(filter: ObjectFilter, damaged_by: DamagedBySource) -> Self {
+        Self {
+            filter,
+            damaged_by: Some(damaged_by),
+        }
     }
 }
 
@@ -3496,10 +3603,23 @@ impl StaticAbilityKind for ExileWouldDieInstead {
     }
 
     fn display(&self) -> String {
-        format!(
-            "If {} would die, exile it instead.",
-            self.filter.description()
-        )
+        if let Some(damaged_by) = self.damaged_by {
+            let source_text = match damaged_by {
+                DamagedBySource::ThisCreature => "this creature",
+                DamagedBySource::EquippedCreature => "equipped creature",
+                DamagedBySource::EnchantedCreature => "enchanted creature",
+            };
+            format!(
+                "If {} dealt damage by {} this turn would die, exile it instead.",
+                self.filter.description(),
+                source_text
+            )
+        } else {
+            format!(
+                "If {} would die, exile it instead.",
+                self.filter.description()
+            )
+        }
     }
 
     fn generate_replacement_effect(
@@ -3507,6 +3627,15 @@ impl StaticAbilityKind for ExileWouldDieInstead {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        if let Some(damaged_by) = self.damaged_by {
+            return Some(ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldDieDamagedBySourceThisTurnMatcher::new(self.filter.clone(), damaged_by),
+                ReplacementAction::ExileWithSourceLink,
+            ));
+        }
+
         Some(ReplacementEffect::with_matcher(
             source,
             controller,

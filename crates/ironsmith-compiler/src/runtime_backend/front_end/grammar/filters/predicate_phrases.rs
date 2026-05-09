@@ -232,15 +232,25 @@ fn parse_both_spell_cast_predicate(
     player: PlayerFilter,
     filter_words: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some(stripped) = filter_words.strip_prefix(&["both"]) else {
-        return Ok(None);
-    };
+    let stripped = filter_words.strip_prefix(&["both"]).unwrap_or(filter_words);
     let Some(and_idx) = find_index(stripped, |word| *word == "and") else {
         return Ok(None);
     };
     let left_words = &stripped[..and_idx];
     let right_words = &stripped[and_idx + 1..];
     if left_words.is_empty() || right_words.is_empty() {
+        return Ok(None);
+    }
+    if !filter_words.starts_with(&["both"])
+        && !(left_words.starts_with(&["a", "spell", "named"])
+            || left_words.starts_with(&["spell", "named"]))
+    {
+        return Ok(None);
+    }
+    if !filter_words.starts_with(&["both"])
+        && !(right_words.starts_with(&["a", "spell", "named"])
+            || right_words.starts_with(&["spell", "named"]))
+    {
         return Ok(None);
     }
     let left = spell_cast_matching_predicate(player.clone(), left_words)?;
@@ -1858,6 +1868,43 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ]
     ) {
         return Ok(PredicateAst::PermanentLeftBattlefieldThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        [
+            "you",
+            "had",
+            "another",
+            "creature",
+            "enter",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "last",
+            "turn"
+        ] | [
+            "you",
+            "had",
+            "another",
+            "creature",
+            "entered",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "last",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::ObjectEnteredBattlefieldLastTurn(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::You)
+                .other(),
+        ));
     }
 
     if matches!(

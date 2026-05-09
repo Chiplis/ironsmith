@@ -378,6 +378,7 @@ mod tests {
             ],
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
+            attacking_bands: Default::default(),
         });
 
         let mut ctx = ExecutionContext::new_default(source_battlefield, alice)

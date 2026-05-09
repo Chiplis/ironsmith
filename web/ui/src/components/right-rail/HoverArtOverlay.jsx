@@ -479,7 +479,6 @@ function InspectorArtImageLayers({
             className="h-full w-full object-contain drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
             loading="eager"
             decoding="async"
-            crossOrigin="anonymous"
             referrerPolicy="no-referrer"
             onError={() => {
               if (typeof onError === "function") {
@@ -500,7 +499,6 @@ function InspectorArtImageLayers({
           className="hover-art-backdrop-image"
           loading="eager"
           decoding="async"
-          crossOrigin="anonymous"
           referrerPolicy="no-referrer"
           onError={() => {
             if (typeof onError === "function") {
@@ -517,7 +515,6 @@ function InspectorArtImageLayers({
               className="hover-art-foreground-edge-blur"
               loading="eager"
               decoding="async"
-              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
             />
             <img
@@ -526,7 +523,6 @@ function InspectorArtImageLayers({
               className="hover-art-foreground-image"
               loading="eager"
               decoding="async"
-              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
               onError={() => {
                 if (typeof onError === "function") {
@@ -597,6 +593,14 @@ export default function HoverArtOverlay({
     && previewObjectIdKey != null
     && objectIdKey === previewObjectIdKey
   );
+  const inspectorShaderRevealStyle = inspectorShaderReveal
+    ? {
+      "--inspector-shader-reveal-delay": `${Math.max(0, Number(transientPreview?.inspectorRevealDelayMs) || 0)}ms`,
+    }
+    : undefined;
+  const inspectorShaderRevealScope = transientPreview?.inspectorRevealScope === "inspector"
+    ? "inspector"
+    : "foreground";
   const topHeaderRef = useRef(null);
   const topMetadataRef = useRef(null);
   const inspectorTitleRef = useRef(null);
@@ -1730,8 +1734,10 @@ export default function HoverArtOverlay({
 
   useLayoutEffect(() => {
     if (compact || displayMode !== "inspector" || displayRulesLines.length === 0) {
-      setRenderedRulesWidth(null);
-      return undefined;
+      const resetRafId = requestAnimationFrame(() => {
+        setRenderedRulesWidth(null);
+      });
+      return () => cancelAnimationFrame(resetRafId);
     }
 
     let rafId = null;
@@ -1776,6 +1782,7 @@ export default function HoverArtOverlay({
   }, [
     compact,
     displayMode,
+    displayRulesLines.length,
     displayRulesText,
     fontMeasureVersion,
     inspectorScale,
@@ -1800,9 +1807,11 @@ export default function HoverArtOverlay({
       <div
         className={cn(
           "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden pointer-events-auto",
-          inspectorShaderReveal && "hover-art-stage--shader-reveal"
+          inspectorShaderReveal && "hover-art-stage--shader-reveal",
+          inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
         )}
         data-zone-transition-token={transientPreview?.token || undefined}
+        style={inspectorShaderRevealStyle}
       >
         <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(188,150,92,0.28),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(16,12,9,0.96),rgba(8,7,7,0.98))]" />
         <div className="absolute inset-[10px] overflow-hidden rounded-none border border-[rgba(177,145,98,0.38)] bg-[rgba(16,12,10,0.94)] shadow-[0_0_0_1px_rgba(196,164,112,0.12),0_0_28px_rgba(156,118,62,0.18),0_28px_52px_rgba(0,0,0,0.48)]">
@@ -1917,9 +1926,11 @@ export default function HoverArtOverlay({
         (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none",
         lowProfileInspector && "hover-art-stage--low-profile",
         !compactTopbarLayout && !compact && "hover-art-stage--left-art",
-        inspectorShaderReveal && "hover-art-stage--shader-reveal"
+        inspectorShaderReveal && "hover-art-stage--shader-reveal",
+        inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
       )}
       data-zone-transition-token={transientPreview?.token || undefined}
+      style={inspectorShaderRevealStyle}
     >
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
       {showImageBackdrop && (

@@ -97,7 +97,7 @@ use crate::cards::builders::{
     ReferenceImports, StaticAbilityAst, TagKey, TextSpan,
 };
 #[allow(unused_imports)]
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 #[allow(unused_imports)]
 use crate::cost::TotalCost;
 #[allow(unused_imports)]
@@ -313,6 +313,14 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
         ],
+        "parse_multi_subject_anthem_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "creature"),
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
+        ],
         "parse_spell_cost_increase_per_target_beyond_first_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "spell"),
@@ -336,6 +344,8 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
         "parse_you_may_static_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("during"),
+            StaticAbilityLineHeadHint::Pair("during", "each"),
         ],
         "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -583,6 +593,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
+        single_static_ability_ast_rule!(parse_minimum_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
@@ -680,6 +691,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         },
         single_static_ability_ast_rule!(parse_has_base_power_toughness_static_line),
         single_static_ability_ast_rule!(parse_isnt_creature_line),
+        multi_static_ability_ast_rule!(parse_multi_subject_anthem_line),
         single_static_ability_ast_rule!(parse_anthem_line),
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
@@ -853,6 +865,9 @@ fn parse_static_ability_ast_line_early_lexed(
         return Ok(Some(vec![ability.into()]));
     }
     if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
+        return Ok(Some(vec![ability.into()]));
+    }
+    if let Some(ability) = parse_legend_rule_doesnt_apply_line(tokens)? {
         return Ok(Some(vec![ability.into()]));
     }
 
@@ -1663,6 +1678,10 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return Some(StaticAbility::doctors_companion());
     }
 
+    if crate::runtime_backend::token_word_refs(tokens) == ["banding"] {
+        return Some(StaticAbility::banding());
+    }
+
     if is_companion_marker_line_lexed(tokens) {
         return Some(keyword_static_marker(tokens));
     }
@@ -1712,7 +1731,7 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         ));
     }
 
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if words
         == [
             "each", "opponent", "can", "cast", "spells", "only", "any", "time", "they", "could",
@@ -2001,7 +2020,7 @@ pub(crate) fn parse_enters_tapped_with_choose_color_line(
 pub(crate) fn parse_damage_not_removed_cleanup_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if words.len() != 9 {
         return Ok(None);
     }
@@ -2637,6 +2656,99 @@ pub(crate) fn parse_damage_amount_replacement_line(
         delta,
         display,
     )))
+}
+
+pub(crate) fn parse_minimum_damage_amount_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    let prefix = [
+        "if",
+        "a",
+        "red",
+        "source",
+        "you",
+        "control",
+        "would",
+        "deal",
+        "an",
+        "amount",
+        "of",
+        "noncombat",
+        "damage",
+        "less",
+        "than",
+    ];
+    if !words.starts_with(&prefix) {
+        return Ok(None);
+    }
+
+    let Some(to_idx) = words
+        .iter()
+        .enumerate()
+        .skip(prefix.len())
+        .find_map(|(idx, word)| (*word == "to").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if words.get(to_idx + 1..to_idx + 3) != Some(["an", "opponent"].as_slice()) {
+        return Ok(None);
+    }
+
+    let Some(source_deals_idx) = find_word_sequence_index_in_words(
+        &words,
+        &["that", "source", "deals", "damage", "equal", "to"],
+    ) else {
+        return Ok(None);
+    };
+    if source_deals_idx <= to_idx {
+        return Ok(None);
+    }
+    if words.last().copied() != Some("instead") {
+        return Ok(None);
+    }
+
+    let floor_words = &words[prefix.len()..to_idx];
+    let replacement_floor_words = &words[source_deals_idx + 6..words.len() - 1];
+    if !damage_floor_value_words_match(floor_words)
+        || !damage_floor_value_words_match(replacement_floor_words)
+    {
+        return Ok(None);
+    }
+
+    let display = render_token_slice(&tokens);
+    Ok(Some(StaticAbility::minimum_damage_amount_replacement(
+        ObjectFilter::default()
+            .you_control()
+            .with_colors(ColorSet::from_color(Color::Red)),
+        Some(PlayerFilter::Opponent),
+        None,
+        Value::SourcePower,
+        true,
+        display,
+    )))
+}
+
+fn find_word_sequence_index_in_words(words: &[&str], sequence: &[&str]) -> Option<usize> {
+    if sequence.is_empty() || words.len() < sequence.len() {
+        return None;
+    }
+    words
+        .windows(sequence.len())
+        .position(|window| window == sequence)
+}
+
+fn damage_floor_value_words_match(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["source", "power"]
+            | ["sources", "power"]
+            | ["this", "power"]
+            | ["thiss", "power"]
+            | ["this", "creature", "power"]
+            | ["thiss", "creature", "power"]
+    ) || words.len() >= 2 && words.last().copied() == Some("power")
 }
 
 pub(crate) fn parse_enter_as_copy_as_enters_line(
@@ -3361,6 +3473,11 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_creatures_assign_combat_damage_using_toughness_line_lexed(tokens) {
+        Some(CombatDamageUsingToughnessSubject::ThisCreature) => {
+            return Ok(Some(
+                StaticAbility::this_creature_assigns_combat_damage_using_toughness(),
+            ));
+        }
         Some(CombatDamageUsingToughnessSubject::EachCreature) => {
             return Ok(Some(
                 StaticAbility::creatures_assign_combat_damage_using_toughness(),
@@ -3686,6 +3803,17 @@ pub(crate) fn parse_this_spell_cost_condition(
     }
     if w.as_slice() == ["its", "night"] || w.as_slice() == ["it", "is", "night"] {
         return Some(ThisSpellCostCondition::IsNight);
+    }
+    if w.as_slice() == ["its", "bargained"]
+        || w.as_slice() == ["it's", "bargained"]
+        || w.as_slice() == ["it", "is", "bargained"]
+        || w.as_slice() == ["this", "spell", "is", "bargained"]
+        || w.as_slice() == ["this", "spell", "was", "bargained"]
+    {
+        return Some(ThisSpellCostCondition::ConditionExpr {
+            condition: crate::ConditionExpr::ThisSpellPaidLabel("Bargain".to_string()),
+            display: w.join(" "),
+        });
     }
     if w.as_slice() == ["youve", "sacrificed", "an", "artifact", "this", "turn"]
         || w.as_slice() == ["you", "sacrificed", "an", "artifact", "this", "turn"]
@@ -5097,10 +5225,14 @@ pub(crate) fn parse_players_skip_upkeep_line(
 pub(crate) fn parse_legend_rule_doesnt_apply_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
+    let has_negative = slice_contains(&words, &"doesnt")
+        || slice_contains(&words, &"doesn")
+        || (slice_contains(&words, &"does") && slice_contains(&words, &"not"));
     if slice_contains(&words, &"legend")
         && slice_contains(&words, &"rule")
-        && slice_contains(&words, &"doesnt")
+        && slice_contains(&words, &"apply")
+        && has_negative
     {
         return Ok(Some(StaticAbility::legend_rule_doesnt_apply()));
     }
@@ -6111,6 +6243,32 @@ fn static_grant_beneficiary(player: crate::cards::builders::PlayerAst) -> Option
 pub(crate) fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let source_linked_exile_cast_prefix = [
+        "during", "each", "players", "turn", "that", "player", "may", "cast", "a", "spell", "from",
+        "among", "the", "cards", "they", "dont", "own", "exiled", "with",
+    ];
+    let any_mana_cast_suffix = [
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
+    ];
+    if words.starts_with(&source_linked_exile_cast_prefix)
+        && words.ends_with(&any_mana_cast_suffix)
+        && words.len() > source_linked_exile_cast_prefix.len() + any_mana_cast_suffix.len()
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.owner = Some(PlayerFilter::NotYou);
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        return Ok(Some(StaticAbility::grants(
+            crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, Zone::Exile)
+                .with_beneficiary(PlayerFilter::Any),
+        )));
+    }
+
     match parse_permission_clause_spec(tokens)? {
         Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player,
@@ -6792,6 +6950,52 @@ pub(crate) fn parse_exile_would_die_instead_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(dealt_idx) = words.iter().position(|word| *word == "dealt")
+        && words.get(dealt_idx + 1) == Some(&"damage")
+        && words.get(dealt_idx + 2) == Some(&"by")
+        && words.ends_with(&["this", "turn", "would", "die", "exile", "it", "instead"])
+    {
+        let victim_words = &words[1..dealt_idx];
+        let victim = match victim_words {
+            ["a", "creature"] | ["creature"] => ObjectFilter::creature(),
+            ["a", "permanent"] | ["permanent"] => ObjectFilter::permanent(),
+            _ => return Ok(None),
+        };
+
+        let damager_words = &words[dealt_idx + 3..words.len() - 7];
+        let has_named_source_words = !damager_words.is_empty()
+            && !matches!(
+                damager_words.first().copied(),
+                Some("a" | "an" | "the" | "target" | "that" | "this" | "equipped" | "enchanted")
+            )
+            && !damager_words.iter().any(|word| {
+                matches!(
+                    *word,
+                    "creature" | "creatures" | "permanent" | "permanents" | "source" | "sources"
+                )
+            });
+        let damaged_by = if damager_words == ["this", "creature"]
+            || damager_words == ["this", "permanent"]
+            || damager_words == ["this", "source"]
+            || damager_words == ["this"]
+            || has_named_source_words
+        {
+            Some(ironsmith_core::DamagedBySource::ThisCreature)
+        } else if damager_words == ["equipped", "creature"] {
+            Some(ironsmith_core::DamagedBySource::EquippedCreature)
+        } else if damager_words == ["enchanted", "creature"] {
+            Some(ironsmith_core::DamagedBySource::EnchantedCreature)
+        } else {
+            None
+        };
+
+        if let Some(damaged_by) = damaged_by {
+            return Ok(Some(
+                StaticAbility::exile_would_die_instead_with_damage_source(victim, Some(damaged_by)),
+            ));
+        }
+    }
+
     let player = match words.as_slice() {
         [
             "if",

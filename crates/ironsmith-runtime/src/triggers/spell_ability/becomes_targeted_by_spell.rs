@@ -79,6 +79,54 @@ impl TriggerMatcher for BecomesTargetedByStackObjectTrigger {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BecomesTargetedObjectByStackObjectTrigger {
+    pub target_filter: ObjectFilter,
+    pub source_filter: ObjectFilter,
+}
+
+impl BecomesTargetedObjectByStackObjectTrigger {
+    pub fn new(target_filter: ObjectFilter, source_filter: ObjectFilter) -> Self {
+        Self {
+            target_filter,
+            source_filter,
+        }
+    }
+}
+
+impl TriggerMatcher for BecomesTargetedObjectByStackObjectTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::BecomesTargeted {
+            return false;
+        }
+        let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
+            return false;
+        };
+        let Some(target) = ctx.game.object(e.target) else {
+            return false;
+        };
+        if !self
+            .target_filter
+            .matches(target, &ctx.filter_ctx, ctx.game)
+        {
+            return false;
+        }
+        let Some(source) = ctx.game.object(e.source) else {
+            return false;
+        };
+        self.source_filter
+            .matches(source, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Whenever {} becomes the target of {}",
+            self.target_filter.description(),
+            self.source_filter.description()
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

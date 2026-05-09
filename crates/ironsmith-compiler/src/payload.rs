@@ -10,6 +10,7 @@ use crate::types::{CardType, Subtype};
 pub enum KeywordAction {
     Flying,
     Menace,
+    Banding,
     Hexproof,
     Haste,
     Improvise,
@@ -158,6 +159,7 @@ impl KeywordAction {
             self,
             Self::Flying
                 | Self::Menace
+                | Self::Banding
                 | Self::Hexproof
                 | Self::Haste
                 | Self::Improvise
@@ -268,6 +270,7 @@ impl KeywordAction {
         match self {
             Self::Flying => "Flying".to_string(),
             Self::Menace => "Menace".to_string(),
+            Self::Banding => "Banding".to_string(),
             Self::Hexproof => "Hexproof".to_string(),
             Self::Haste => "Haste".to_string(),
             Self::Improvise => "Improvise".to_string(),

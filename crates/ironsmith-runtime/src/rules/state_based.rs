@@ -160,7 +160,7 @@ pub(crate) fn check_state_based_actions_with_context(
     check_soulbond_pair_sbas_with_view(game, view, &mut actions);
 
     // Check legend rule
-    check_legend_rule(game, &mut actions);
+    check_legend_rule_with_view(game, view, &mut actions);
 
     actions
 }
@@ -528,8 +528,18 @@ fn check_counter_annihilation(game: &GameState, actions: &mut Vec<StateBasedActi
 }
 
 /// Check the legend rule (no player can control two legendary permanents with the same name).
-fn check_legend_rule(game: &GameState, actions: &mut Vec<StateBasedAction>) {
+fn check_legend_rule_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
     use std::collections::HashMap;
+
+    if game.battlefield.iter().copied().any(|obj_id| {
+        view.object_has_static_ability_id(obj_id, StaticAbilityId::LegendRuleDoesntApply)
+    }) {
+        return;
+    }
 
     // Group legendary permanents by controller and name
     let mut legends: HashMap<(PlayerId, String), Vec<ObjectId>> = HashMap::new();

@@ -345,6 +345,12 @@ fn same_resolution_prelude(left: &Effect, right: &Effect) -> bool {
         return left == right;
     }
     if let (Some(left), Some(right)) = (
+        left.downcast_ref::<crate::effects::TagTriggeringSourceEffect>(),
+        right.downcast_ref::<crate::effects::TagTriggeringSourceEffect>(),
+    ) {
+        return left == right;
+    }
+    if let (Some(left), Some(right)) = (
         left.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>(),
         right.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>(),
     ) {
@@ -536,6 +542,7 @@ pub(crate) fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<E
         .map(|tag| match tag {
             EffectPreludeTag::AttachedSource(tag) => Effect::tag_attached_to_source(tag.as_str()),
             EffectPreludeTag::TriggeringObject(tag) => Effect::tag_triggering_object(tag.as_str()),
+            EffectPreludeTag::TriggeringSource(tag) => Effect::tag_triggering_source(tag.as_str()),
             EffectPreludeTag::TriggeringDamageTarget(tag) => {
                 Effect::tag_triggering_damage_target(tag.as_str())
             }

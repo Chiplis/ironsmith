@@ -482,6 +482,23 @@ fn object_matching_entered_battlefield_this_turn(
         })
 }
 
+fn object_matching_entered_battlefield_last_turn(
+    game: &GameState,
+    ctx: SharedConditionContext<'_>,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    game.turn_store
+        .entered_battlefield_last_turn
+        .iter()
+        .any(|snapshot| {
+            if filter.other && snapshot.object_id == ctx.source {
+                return false;
+            }
+            filter.matches_snapshot(snapshot, &filter_ctx, game)
+        })
+}
+
 fn condition_filter_context(
     game: &GameState,
     you: PlayerId,
@@ -610,6 +627,9 @@ fn evaluate_condition_shared_core(
         ),
         Condition::ObjectEnteredBattlefieldThisTurn(filter) => Some(
             object_matching_entered_battlefield_this_turn(game, ctx, filter),
+        ),
+        Condition::ObjectEnteredBattlefieldLastTurn(filter) => Some(
+            object_matching_entered_battlefield_last_turn(game, ctx, filter),
         ),
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => Some(
             object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, ctx, filter),
@@ -766,6 +786,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
+        Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
         Condition::SourceWasCast => {}
         Condition::ThisSpellEscaped => {}
@@ -1583,6 +1604,7 @@ pub fn evaluate_condition_external(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
@@ -2269,6 +2291,7 @@ fn evaluate_condition_simple(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
@@ -3287,6 +3310,7 @@ fn evaluate_condition(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn

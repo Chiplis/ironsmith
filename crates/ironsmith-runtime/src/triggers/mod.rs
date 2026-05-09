@@ -739,6 +739,17 @@ impl Trigger {
         Self::new(BecomesTargetedByStackObjectTrigger::new(filter))
     }
 
+    /// Create a "when [target] becomes the target of [stack-object filter]" trigger.
+    pub fn becomes_targeted_object_by_stack_object(
+        target_filter: ObjectFilter,
+        source_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(BecomesTargetedObjectByStackObjectTrigger::new(
+            target_filter,
+            source_filter,
+        ))
+    }
+
     /// Create a "when [target] becomes the target of a spell or ability [player] controls" trigger.
     pub fn becomes_targeted_by_source_controller(
         target_filter: ObjectFilter,

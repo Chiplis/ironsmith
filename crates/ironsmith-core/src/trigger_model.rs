@@ -9,7 +9,7 @@ pub enum CountMode {
     OneOrMore,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamagedBySource {
     ThisCreature,
     EquippedCreature,
@@ -87,6 +87,10 @@ pub enum TriggerKind {
     },
     BecomesTargetedByStackObject {
         filter: ObjectFilter,
+    },
+    BecomesTargetedObjectByStackObject {
+        target: ObjectFilter,
+        source: ObjectFilter,
     },
     BecomesTargetedBySourceController {
         target: ObjectFilter,
@@ -462,6 +466,15 @@ impl Trigger {
         Self::typed(
             "becomes_targeted_by_stack_object",
             TriggerKind::BecomesTargetedByStackObject { filter },
+        )
+    }
+    pub fn becomes_targeted_object_by_stack_object(
+        target: ObjectFilter,
+        source: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "becomes_targeted_object_by_stack_object",
+            TriggerKind::BecomesTargetedObjectByStackObject { target, source },
         )
     }
     pub fn becomes_targeted_by_source_controller(

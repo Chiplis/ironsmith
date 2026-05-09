@@ -105,20 +105,20 @@ pub fn execute_combat_damage_step(
     let mut blocker_damage_info: Vec<(ObjectId, ObjectId, PlayerId, u32, DamageResult)> =
         Vec::new();
     for (blocker_id, mut attacker_ids) in attackers_by_blocker {
-        let Some(blocker) = game.object(blocker_id) else {
+        let Some(blocker) = game.object(blocker_id).cloned() else {
             continue;
         };
 
         let participates = if first_strike {
-            deals_first_strike_damage_with_game(blocker, game)
+            deals_first_strike_damage_with_game(&blocker, game)
         } else {
-            deals_regular_combat_damage_with_game(blocker, game)
+            deals_regular_combat_damage_with_game(&blocker, game)
         };
         if !participates {
             continue;
         }
 
-        let Some(combat_stat) = combat_damage_stat_for_creature(game, blocker) else {
+        let Some(combat_stat) = combat_damage_stat_for_creature(game, &blocker) else {
             continue;
         };
         if combat_stat <= 0 {
@@ -128,16 +128,23 @@ pub fn execute_combat_damage_step(
         // Deterministic default order when multiple attackers are blocked.
         attacker_ids.sort_by_key(|id| id.0);
 
-        let controller = game.controller_of(blocker);
+        let controller = game.controller_of(&blocker);
+        let explicit_assignments = game.take_combat_damage_assignments(blocker_id);
         if attacker_ids.len() == 1 {
             let attacker_id = attacker_ids[0];
             if game.object(attacker_id).is_none() {
                 continue;
             }
-            let dmg = combat_stat as u32;
+            let dmg = explicit_assignments
+                .get(&attacker_id)
+                .copied()
+                .unwrap_or(combat_stat as u32)
+                .min(combat_stat as u32);
             let damage_result =
-                calculate_damage_with_game(game, blocker, DamageTarget::Permanent, dmg, true);
-            blocker_damage_info.push((blocker_id, attacker_id, controller, dmg, damage_result));
+                calculate_damage_with_game(game, &blocker, DamageTarget::Permanent, dmg, true);
+            if dmg > 0 {
+                blocker_damage_info.push((blocker_id, attacker_id, controller, dmg, damage_result));
+            }
             continue;
         }
 
@@ -149,12 +156,22 @@ pub fn execute_combat_damage_step(
             continue;
         }
 
-        let distribution = crate::rules::damage::distribute_combat_damage_to_creatures(
-            blocker,
-            &recipients,
-            combat_stat as u32,
-            game,
-        );
+        let distribution = if explicit_assignments.is_empty() {
+            crate::rules::damage::distribute_combat_damage_to_creatures(
+                &blocker,
+                &recipients,
+                combat_stat as u32,
+                game,
+            )
+        } else {
+            distribute_explicit_damage_to_creatures(
+                game,
+                &attacker_ids,
+                &recipients,
+                combat_stat as u32,
+                &explicit_assignments,
+            )
+        };
         for (idx, (dmg, _is_lethal)) in distribution.into_iter().enumerate() {
             if dmg == 0 {
                 continue;
@@ -164,7 +181,7 @@ pub fn execute_combat_damage_step(
                 continue;
             }
             let damage_result =
-                calculate_damage_with_game(game, blocker, DamageTarget::Permanent, dmg, true);
+                calculate_damage_with_game(game, &blocker, DamageTarget::Permanent, dmg, true);
             blocker_damage_info.push((blocker_id, attacker_id, controller, dmg, damage_result));
         }
     }
@@ -216,6 +233,11 @@ pub(super) fn creature_assigns_combat_damage_using_toughness(
         };
         for ability in static_abilities_for_object(game, source) {
             match ability.id() {
+                crate::static_abilities::StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness => {
+                    if source_id == creature.id {
+                        return true;
+                    }
+                }
                 crate::static_abilities::StaticAbilityId::CreaturesAssignCombatDamageUsingToughness => {
                     return true;
                 }
@@ -278,6 +300,87 @@ fn combat_damage_amount_to_permanent(result: &DamageResult) -> u32 {
     result.damage_dealt.max(result.minus_counters)
 }
 
+fn distribute_explicit_trample_damage(
+    game: &GameState,
+    attacker: &crate::object::Object,
+    blocker_ids: &[ObjectId],
+    blockers: &[&crate::object::Object],
+    total_damage: u32,
+    explicit_assignments: &std::collections::HashMap<ObjectId, u32>,
+) -> (Vec<(u32, bool)>, u32) {
+    let has_trample = game.object_has_static_ability_id(
+        attacker.id,
+        crate::static_abilities::StaticAbilityId::Trample,
+    );
+    let has_deathtouch = game.object_has_static_ability_id(
+        attacker.id,
+        crate::static_abilities::StaticAbilityId::Deathtouch,
+    );
+    let mut distribution = Vec::with_capacity(blockers.len());
+    let mut remaining_damage = total_damage;
+
+    for (index, blocker) in blockers.iter().enumerate() {
+        let blocker_id = blocker_ids[index];
+        let lethal = if has_deathtouch {
+            1
+        } else if let Some(toughness) = game
+            .calculated_toughness(blocker.id)
+            .or_else(|| blocker.toughness())
+        {
+            let existing_damage = game.damage_on(blocker.id);
+            (toughness - existing_damage as i32).max(0) as u32
+        } else {
+            0
+        };
+        let requested = explicit_assignments
+            .get(&blocker_id)
+            .copied()
+            .unwrap_or(lethal);
+        let damage_to_blocker = requested.min(remaining_damage);
+        distribution.push((damage_to_blocker, damage_to_blocker >= lethal && lethal > 0));
+        remaining_damage = remaining_damage.saturating_sub(damage_to_blocker);
+    }
+
+    if has_trample {
+        (distribution, remaining_damage)
+    } else {
+        (distribution, 0)
+    }
+}
+
+fn distribute_explicit_damage_to_creatures(
+    game: &GameState,
+    recipient_ids: &[ObjectId],
+    recipients: &[&crate::object::Object],
+    total_damage: u32,
+    explicit_assignments: &std::collections::HashMap<ObjectId, u32>,
+) -> Vec<(u32, bool)> {
+    let mut distribution = Vec::with_capacity(recipients.len());
+    let mut remaining_damage = total_damage;
+
+    for (index, recipient) in recipients.iter().enumerate() {
+        let recipient_id = recipient_ids[index];
+        let lethal = if let Some(toughness) = game
+            .calculated_toughness(recipient.id)
+            .or_else(|| recipient.toughness())
+        {
+            let existing_damage = game.damage_on(recipient.id);
+            (toughness - existing_damage as i32).max(0) as u32
+        } else {
+            0
+        };
+        let requested = explicit_assignments
+            .get(&recipient_id)
+            .copied()
+            .unwrap_or(lethal);
+        let damage = requested.min(remaining_damage);
+        distribution.push((damage, damage >= lethal && lethal > 0));
+        remaining_damage = remaining_damage.saturating_sub(damage);
+    }
+
+    distribution
+}
+
 fn combat_damage_amount_to_player(result: &DamageResult) -> u32 {
     result.damage_dealt.max(result.poison_counters)
 }
@@ -297,6 +400,8 @@ pub(super) fn deal_damage_to_blockers(
         return events;
     }
 
+    let explicit_assignments = game.take_combat_damage_assignments(attacker_id);
+
     // Get blocker objects for distribution calculation
     let blockers: Vec<&crate::object::Object> = blocker_ids
         .iter()
@@ -307,8 +412,19 @@ pub(super) fn deal_damage_to_blockers(
         return events;
     };
 
-    // Calculate damage distribution (handles trample)
-    let (distribution, excess) = distribute_trample_damage(attacker, &blockers, total_damage, game);
+    // Calculate damage distribution (handles trample and explicit assignment choices)
+    let (distribution, excess) = if explicit_assignments.is_empty() {
+        distribute_trample_damage(attacker, &blockers, total_damage, game)
+    } else {
+        distribute_explicit_trample_damage(
+            game,
+            attacker,
+            &blocker_ids,
+            &blockers,
+            total_damage,
+            &explicit_assignments,
+        )
+    };
 
     // Get the attack target for potential trample damage
     let attack_target = get_attack_target(combat, attacker_id).cloned();

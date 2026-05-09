@@ -18,7 +18,7 @@ use crate::types::Subtype;
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
-    effects_reference_its_controller,
+    effects_reference_its_controller, effects_reference_tag,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -133,6 +133,16 @@ fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str
             Some("discovered")
         }
         _ => None,
+    }
+}
+
+fn target_is_any_damage_target(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_) => true,
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_is_any_damage_target(inner)
+        }
+        _ => false,
     }
 }
 
@@ -375,10 +385,10 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::DealDistributedDamage { target, .. }
                 | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "damaged")?;
-                    if matches!(
-                        target,
-                        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_)
-                    ) {
+                    if target_is_any_damage_target(target) {
+                        if frame.auto_tag_object_targets {
+                            frame.last_object_tag = Some(next_reference_tag(id_gen, "damaged"));
+                        }
                         frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
                     }
                 }
@@ -1105,8 +1115,9 @@ fn annotate_effect_sequence_with_env_internal(
         } else {
             &[]
         };
-        let auto_tag_object_targets =
-            effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
+        let auto_tag_object_targets = effects_reference_it_tag(remaining)
+            || effects_reference_its_controller(remaining)
+            || effects_reference_tag(remaining, "damaged_0");
         let assigned_effect_id =
             maybe_assign_effect_result_id(effects, idx, id_gen, in_env.allow_life_event_value);
 
@@ -1645,6 +1656,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
@@ -2217,6 +2229,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::RegisterFutureZoneReplacement { filter, .. } => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::DestroyAllAttachedTo { filter, target } => {

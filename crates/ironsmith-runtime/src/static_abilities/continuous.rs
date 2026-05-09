@@ -595,6 +595,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::AttachedToAffected(filter) => {
             format!("{} attached to it", strip_article(filter.description()))
         }
+        AnthemCountExpression::AffectedAttackedThisTurn => {
+            "time it has attacked this turn".to_string()
+        }
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
         }
@@ -658,6 +661,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} attached to it",
             strip_article(filter.description())
         )),
+        AnthemCountExpression::AffectedAttackedThisTurn => {
+            Some("time it has attacked this turn".to_string())
+        }
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }
@@ -1110,6 +1116,9 @@ pub(crate) fn resolve_anthem_count_expression(
                     .count() as i32
             })
             .unwrap_or(0),
+        AnthemCountExpression::AffectedAttackedThisTurn => {
+            game.creature_attack_count_this_turn(source) as i32
+        }
         AnthemCountExpression::CountersOnSource(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }

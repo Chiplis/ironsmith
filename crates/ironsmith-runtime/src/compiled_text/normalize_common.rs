@@ -7538,6 +7538,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, colors } => {
+            let source = match (player, colors) {
+                (PlayerFilter::You, Some(colors))
+                    if colors.contains(crate::color::Color::Red) && colors.count() == 1 =>
+                {
+                    "red sources you controlled"
+                }
+                (PlayerFilter::You, _) => "sources you controlled",
+                (PlayerFilter::Opponent, _) => "sources your opponents controlled",
+                _ => "matching sources",
+            };
+            format!("the total amount of noncombat damage {source} dealt this turn")
+        }
         Value::MaxCardsDrawnThisTurn(filter) => match filter {
             PlayerFilter::You => "the greatest number of cards you've drawn this turn".to_string(),
             PlayerFilter::Opponent => {
@@ -10110,6 +10123,20 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 )
             } else {
                 format!("{object} entered the battlefield this turn")
+            }
+        }
+        Condition::ObjectEnteredBattlefieldLastTurn(filter) => {
+            let mut object_filter = filter.clone();
+            object_filter.zone = None;
+            let controller = object_filter.controller.take();
+            let object = with_indefinite_article(strip_leading_article(&object_filter.description()));
+            if let Some(controller) = controller {
+                format!(
+                    "{object} entered the battlefield under {} control last turn",
+                    describe_possessive_player_filter(&controller)
+                )
+            } else {
+                format!("{object} entered the battlefield last turn")
             }
         }
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {

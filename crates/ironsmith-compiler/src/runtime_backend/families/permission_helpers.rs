@@ -1,7 +1,7 @@
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
 use crate::target::ObjectFilter;
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use winnow::combinator::alt;
 use winnow::error::{ContextError, ErrMode};
@@ -465,6 +465,13 @@ fn parse_permission_subject_filter_tokens_lexed(
     }
 
     let filter_words = token_word_refs(filter_tokens);
+    if matches!(
+        filter_words.as_slice(),
+        ["aura", "spells", "with", "enchant", "creature"]
+            | ["aura", "cards", "with", "enchant", "creature"]
+    ) {
+        return Ok(Some(ObjectFilter::default().with_subtype(Subtype::Aura)));
+    }
     for separator in ["and", "or"] {
         let Some(split_idx) = find_token_index(filter_words.as_slice(), |word| *word == separator)
         else {

@@ -14,6 +14,8 @@ import ArrowOverlay from "@/components/overlays/ArrowOverlay";
 import ZoneMoveEffects from "@/components/overlays/ZoneMoveEffects";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { resolveGameAnimations } from "@/lib/game-animations";
+import { getPlayerAccent } from "@/lib/player-colors";
 import {
   buildStackTargetPresentation,
   getVisibleStackObjects,
@@ -69,27 +71,6 @@ function objectExistsInState(state, objectId) {
 
   if ((state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)) {
     return true;
-  }
-
-  return false;
-}
-
-function shouldExpandInlineInspector(players, objectId) {
-  if (!Array.isArray(players) || objectId == null) return false;
-  const needle = String(objectId);
-
-  for (const player of players) {
-    if ((player?.hand_cards || []).some((card) => String(card?.id) === needle)) {
-      return true;
-    }
-
-    for (const zone of [player?.graveyard_cards || [], player?.exile_cards || [], player?.command_cards || []]) {
-      for (const card of zone) {
-        if (String(card?.id) === needle && card?.show_in_pseudo_hand) {
-          return true;
-        }
-      }
-    }
   }
 
   return false;
@@ -347,7 +328,7 @@ function isResolvingCastToGraveyardPreview(preview) {
 }
 
 function orderZoneTransitionPreviews(previews) {
-  const orderedPreviews = previews
+  return previews
     .map((preview, index) => ({ preview, index }))
     .sort((left, right) => {
       const leftCastToGraveyard = isResolvingCastToGraveyardPreview(left.preview);
@@ -358,16 +339,28 @@ function orderZoneTransitionPreviews(previews) {
       return left.index - right.index;
     })
     .map((entry) => entry.preview);
+}
 
-  let inspectorRevealAssigned = false;
-  return orderedPreviews.map((preview) => {
-    const isBattlefieldToExile = preview?.fromZone === "battlefield" && preview?.toZone === "exile";
-    if (!isBattlefieldToExile || inspectorRevealAssigned) {
-      return { ...preview, inspectorShaderReveal: false };
-    }
-    inspectorRevealAssigned = true;
-    return { ...preview, inspectorShaderReveal: true };
-  });
+function visibleCardRectPriority(el) {
+  if (!el) return 0;
+  if (el.classList.contains("battlefield-row-card--layout-hold")) return 60;
+  if (el.classList.contains("battlefield-row-card")) return 50;
+  if (el.classList.contains("field-card")) return 30;
+  if (el.classList.contains("hand-card")) return 20;
+  return 10;
+}
+
+function sourceCloneHtmlForCardElement(el) {
+  const clone = el.cloneNode(true);
+  clone.classList.remove("battlefield-row-card--layout-hold");
+  return clone.outerHTML;
+}
+
+function setVisibleCardRect(rects, key, snapshot) {
+  if (!key || !snapshot) return;
+  const current = rects.get(key);
+  if (current && (current.rectPriority || 0) >= (snapshot.rectPriority || 0)) return;
+  rects.set(key, snapshot);
 }
 
 function collectVisibleCardRects() {
@@ -378,6 +371,7 @@ function collectVisibleCardRects() {
   for (const el of cardEls) {
     const rect = el.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+    const rectPriority = visibleCardRectPriority(el);
 
     const snapshot = {
       left: rect.left,
@@ -388,7 +382,8 @@ function collectVisibleCardRects() {
       height: rect.height,
       x: rect.x,
       y: rect.y,
-      sourceCloneHtml: el.cloneNode(true).outerHTML,
+      rectPriority,
+      sourceCloneHtml: sourceCloneHtmlForCardElement(el),
       sourceImageUrl: el.querySelector("img")?.currentSrc || el.querySelector("img")?.src || null,
     };
     const objectId = el.getAttribute("data-object-id");
@@ -398,80 +393,14 @@ function collectVisibleCardRects() {
       .map((value) => value.trim())
       .filter(Boolean);
 
-    if (objectId) rects.set(`object:${objectId}`, snapshot);
-    if (stableId) rects.set(`stable:${stableId}`, snapshot);
+    if (objectId) setVisibleCardRect(rects, `object:${objectId}`, snapshot);
+    if (stableId) setVisibleCardRect(rects, `stable:${stableId}`, snapshot);
     for (const memberStableId of memberStableIds) {
-      rects.set(`stable:${memberStableId}`, snapshot);
+      setVisibleCardRect(rects, `stable:${memberStableId}`, snapshot);
     }
   }
 
   return rects;
-}
-
-function rectFromTransitionPreview(preview, previousCardRects) {
-  for (const key of preview?.trackingKeys || []) {
-    const rect = previousCardRects?.get(key);
-    if (rect) return rect;
-  }
-
-  const fallbackObjectId = preview?.fromObjectId ?? preview?.objectId;
-  if (fallbackObjectId != null) {
-    return previousCardRects?.get(`object:${fallbackObjectId}`) || null;
-  }
-
-  return null;
-}
-
-function buildZoneMoveVisualEffects(previews, previousCardRects) {
-  if (!Array.isArray(previews) || previews.length === 0) return [];
-  const inspectorRevealPreview = previews.find((preview) => preview?.inspectorShaderReveal);
-  const exilePreviews = previews.filter((preview) => preview?.fromZone === "battlefield" && preview?.toZone === "exile");
-  if (exilePreviews.length === 0) return [];
-  if (!inspectorRevealPreview) return [];
-
-  const targetToken = inspectorRevealPreview.token;
-  const groupId = `exile-group:${targetToken}`;
-  const effects = [];
-
-  for (const preview of exilePreviews) {
-    const sourceRect = rectFromTransitionPreview(preview, previousCardRects);
-    if (!sourceRect) continue;
-
-    // Phase 1: in-place dissolve. Renders immediately so the card can be seen
-    // dissolving while the inspector's forefront-image rect is being resolved.
-    effects.push({
-      id: `exile-source:${preview.token}`,
-      kind: "angelic-exile",
-      rect: sourceRect,
-      travelsToInspector: false,
-      includeSourceClone: true,
-      sourceCloneHtml: sourceRect.sourceCloneHtml || null,
-      sourceImageUrl: sourceRect.sourceImageUrl || null,
-      card: preview.card,
-      objectId: preview.fromObjectId ?? preview.objectId ?? null,
-      targetToken: null,
-      groupId,
-    });
-
-    // Phase 2: every card flies to the *same* forefront-image container.
-    // Cards farther from the target travel a longer path in the same time, so
-    // they appear to move faster and all arrive simultaneously.
-    effects.push({
-      id: `exile-flight:${preview.token}`,
-      kind: "angelic-exile",
-      rect: sourceRect,
-      travelsToInspector: true,
-      includeSourceClone: false,
-      sourceCloneHtml: null,
-      sourceImageUrl: sourceRect.sourceImageUrl || null,
-      card: preview.card,
-      objectId: preview.fromObjectId ?? preview.objectId ?? null,
-      targetToken,
-      groupId,
-    });
-  }
-
-  return effects;
 }
 
 function buildZoneTransitionPreviews(previousSnapshot, currentSnapshot, playerKey) {
@@ -622,6 +551,7 @@ export default function Workspace({
     setStatus,
     inspectorDebug,
     multiplayer,
+    playerAccentOverrides,
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag } = useDragActions();
@@ -638,7 +568,6 @@ export default function Workspace({
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
-  const inlineInspectorExpanded = shouldExpandInlineInspector(players, selectedObjectId);
   const handLaneOpen = !nonDesktopViewport && handLaneHovered;
   const decision = state?.decision || null;
   const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
@@ -755,6 +684,11 @@ export default function Workspace({
     }
 
     if (previews.some((preview) => preview?.inspectorShaderReveal === true)) {
+      const revealDelayMs = previews.reduce((maxDelay, preview) => (
+        preview?.inspectorShaderReveal
+          ? Math.max(maxDelay, Number(preview?.inspectorRevealDelayMs) || 0)
+          : maxDelay
+      ), 0);
       transitionInspectorRevealTimerRef.current = setTimeout(() => {
         transitionInspectorRevealTimerRef.current = null;
         setTransientInspectorPreviews((currentPreviews) => (
@@ -764,7 +698,7 @@ export default function Workspace({
               : preview
           ))
         ));
-      }, INSPECTOR_SHADER_REVEAL_CONSUME_MS);
+      }, revealDelayMs + INSPECTOR_SHADER_REVEAL_CONSUME_MS);
     }
   }, [focusedStackObjectId, pinnedInspectorObjectId, selectedObjectId, suppressFallbackInspector]);
 
@@ -865,12 +799,25 @@ export default function Workspace({
     }
 
     const orderedPreviews = orderZoneTransitionPreviews(nextPreviews);
+    const animationFrame = resolveGameAnimations({
+      previews: orderedPreviews,
+      state,
+      previousCardRects: previousCardRectsRef.current,
+    });
 
-    if (orderedPreviews.length === 0) {
+    if (animationFrame.previews.length === 0) {
       return;
     }
 
-    const visualEffects = buildZoneMoveVisualEffects(orderedPreviews, previousCardRectsRef.current);
+    const visualEffects = animationFrame.visualEffects.map((effect) => {
+      const accent = getPlayerAccent(players, effect.playerKey, perspective, playerAccentOverrides);
+      return {
+        ...effect,
+        accentColor: accent?.hex || null,
+        accentRgb: accent?.rgb || null,
+      };
+    });
+
     if (visualEffects.length > 0) {
       window.dispatchEvent(
         new CustomEvent("ironsmith:zone-move-effects", {
@@ -881,14 +828,32 @@ export default function Workspace({
 
     queueMicrotask(() => {
       startTransition(() => {
-        showTransitionInspectorPreviews(orderedPreviews);
+        showTransitionInspectorPreviews(animationFrame.previews);
       });
     });
-  }, [deckLoadingMode, players, puzzleSetupMode, showTransitionInspectorPreviews, state?.stack_objects]);
+  }, [
+    deckLoadingMode,
+    players,
+    playerAccentOverrides,
+    perspective,
+    puzzleSetupMode,
+    showTransitionInspectorPreviews,
+    state,
+  ]);
 
   useLayoutEffect(() => {
     previousCardRectsRef.current = collectVisibleCardRects();
   });
+
+  useEffect(() => {
+    const refreshVisibleCardRects = () => {
+      previousCardRectsRef.current = collectVisibleCardRects();
+    };
+    window.addEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
+    return () => {
+      window.removeEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
+    };
+  }, []);
 
   useEffect(() => {
     if (!combatDeclarationActive) return;
@@ -1473,7 +1438,6 @@ export default function Workspace({
                 inlineExpandedMaxHeight={248}
                 expandInlineToZoneViewer
                 allowTopInlinePlacement
-                inlineExpanded={inlineInspectorExpanded}
               />
             ) : null}
           />
@@ -1502,9 +1466,7 @@ export default function Workspace({
               inlineDockPlacement="top"
               inlineExpandedSide="left"
               inlineFillWidth
-              disableInlineExpansion
               allowTopInlinePlacement
-              inlineExpanded={false}
             />
           </div>
         </div>
@@ -1532,7 +1494,6 @@ export default function Workspace({
               inlineHostSide="left"
               inlineExpandedSide="left"
               allowTopInlinePlacement
-              inlineExpanded={inlineInspectorExpanded}
             />
             {inspectorDebug && (
               <RightRail
@@ -1551,7 +1512,6 @@ export default function Workspace({
                 allowTopInlinePlacement
                 dockRole="opposite"
                 inspectorVariant="debug"
-                inlineExpanded={inlineInspectorExpanded}
               />
             )}
           </div>
@@ -1611,7 +1571,6 @@ export default function Workspace({
                 suppressFallback={suppressFallbackInspector}
                 inline
                 allowTopInlinePlacement={showTopLeftInspectorDock}
-                inlineExpanded={inlineInspectorExpanded}
               />
             ) : null}
             {!showMiddleInspectorDock && inspectorDebug && (
@@ -1628,7 +1587,6 @@ export default function Workspace({
                 allowTopInlinePlacement={showTopLeftInspectorDock}
                 dockRole="opposite"
                 inspectorVariant="debug"
-                inlineExpanded={inlineInspectorExpanded}
               />
             )}
           </div>
@@ -1656,7 +1614,6 @@ export default function Workspace({
               inlineHostSide="left"
               inlineExpandedSide="left"
               allowTopInlinePlacement={showTopLeftInspectorDock}
-              inlineExpanded={inlineInspectorExpanded}
             />
             {inspectorDebug && (
               <RightRail
@@ -1674,7 +1631,6 @@ export default function Workspace({
                 allowTopInlinePlacement={showTopLeftInspectorDock}
                 dockRole="opposite"
                 inspectorVariant="debug"
-                inlineExpanded={inlineInspectorExpanded}
               />
             )}
           </div>

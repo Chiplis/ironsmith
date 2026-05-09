@@ -28472,6 +28472,34 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "The next time {target} would go{from}{to}{duration}, it goes to {replacement} instead"
         );
     }
+    if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterDamagedBySourceZoneReplacementEffect>()
+    {
+        if register.filter == ObjectFilter::creature()
+            && register.from_zone == Some(Zone::Battlefield)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+        {
+            return "If a creature dealt damage this way would die this turn, exile it instead"
+                .to_string();
+        }
+
+        let target = register.filter.description();
+        let from = register
+            .from_zone
+            .map(|zone| format!(" from {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let to = register
+            .to_zone
+            .map(|zone| format!(" into {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        return format!(
+            "If {target} dealt damage this way would go{from}{to} this turn, it goes to {replacement} instead"
+        );
+    }
     if let Some(additional_land_plays) =
         effect.downcast_ref::<crate::effects::AdditionalLandPlaysEffect>()
     {

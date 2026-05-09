@@ -6,7 +6,8 @@ use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, StableId};
+use crate::ids::ObjectId;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -18,14 +19,22 @@ pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
 /// Exile objects with an associated duration.
 pub type ExileUntilEffect = ironsmith_core::ExileUntilEffect;
 
-fn source_known_and_not_on_battlefield(game: &GameState, source: ObjectId) -> bool {
+fn source_known_and_not_on_battlefield(
+    game: &GameState,
+    source: ObjectId,
+    source_snapshot: Option<&ObjectSnapshot>,
+) -> bool {
     if let Some(source) = game.object(source) {
         return source.zone != Zone::Battlefield;
     }
 
-    game.find_object_by_stable_id(StableId::from(source))
+    let Some(snapshot) = source_snapshot else {
+        return false;
+    };
+
+    game.find_object_by_stable_id(snapshot.stable_id)
         .and_then(|current_id| game.object(current_id))
-        .is_some_and(|source| source.zone != Zone::Battlefield)
+        .is_none_or(|source| source.zone != Zone::Battlefield)
 }
 
 impl EffectExecutor for ExileUntilEffect {
@@ -35,7 +44,7 @@ impl EffectExecutor for ExileUntilEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if self.duration == ExileUntilDuration::SourceLeavesBattlefield
-            && source_known_and_not_on_battlefield(game, ctx.source)
+            && source_known_and_not_on_battlefield(game, ctx.source, ctx.source_snapshot.as_ref())
         {
             return Ok(EffectOutcome::count(0));
         }
@@ -171,9 +180,15 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = create_creature_on_battlefield(&mut game, "Banisher Priest", alice);
         let creature_id = create_creature_on_battlefield(&mut game, "Elite Vanguard", alice);
+        let source_snapshot = ObjectSnapshot::from_object(
+            game.object(source)
+                .expect("source should exist before it leaves"),
+            &game,
+        );
         game.move_object_by_effect(source, Zone::Graveyard);
 
-        let mut ctx = ExecutionContext::new_default(source, alice);
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_source_snapshot(source_snapshot);
         let effect = ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(creature_id));
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 

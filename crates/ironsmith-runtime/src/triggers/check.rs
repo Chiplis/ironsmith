@@ -1961,6 +1961,40 @@ mod tests {
     }
 
     #[test]
+    fn temporary_next_spell_static_grant_stays_on_stack_object_after_consumption() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell = CardBuilder::new(CardId::from_raw(9003), "Test Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, alice));
+
+        game.add_temporary_spell_ability_grant(
+            alice,
+            spell_id,
+            crate::target::ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
+            StaticAbility::cant_be_countered_ability(),
+            1,
+        );
+
+        game.consume_temporary_spell_ability_grants_for_spell(spell_id, alice);
+
+        let spell = game
+            .object(spell_id)
+            .expect("spell should still exist on the stack");
+        assert!(
+            spell.abilities.iter().any(|ability| matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id() == crate::static_abilities::StaticAbilityId::CantBeCountered
+            )),
+            "consumed next-spell static grant should attach to the spell object"
+        );
+    }
+
+    #[test]
     fn conspire_paid_spell_cast_creates_one_trigger_per_paid_instance() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);

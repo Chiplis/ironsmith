@@ -208,6 +208,9 @@ pub enum EventModification {
     /// Set to a specific value
     SetTo(u32),
 
+    /// Set to a dynamic value if the event amount is lower.
+    SetToAtLeast(crate::effect::Value),
+
     /// Reduce to zero (prevent)
     ReduceToZero,
 }

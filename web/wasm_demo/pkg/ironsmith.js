@@ -176,6 +176,15 @@ export class WasmGame {
         }
     }
     /**
+     * Move directly into an inserted combat phase without rebuilding from a sync checkpoint.
+     */
+    enterAdditionalCombatPhase() {
+        const ret = wasm.wasmgame_enterAdditionalCombatPhase(this.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
      * @returns {any}
      */
@@ -389,6 +398,16 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Record an attacking band for the current combat.
+     * @param {Array<any>} member_ids
+     */
+    setAttackingBand(member_ids) {
+        const ret = wasm.wasmgame_setAttackingBand(this.__wbg_ptr, member_ids);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {boolean} enabled
      */
     setAutoChooseSingleObjectDecisions(enabled) {
@@ -400,6 +419,15 @@ export class WasmGame {
      */
     setAutoCleanupDiscard(enabled) {
         wasm.wasmgame_setAutoCleanupDiscard(this.__wbg_ptr, enabled);
+    }
+    /**
+     * Set an explicit combat damage assignment for the next combat damage step.
+     * @param {bigint} attacker_id
+     * @param {bigint} recipient_id
+     * @param {number} amount
+     */
+    setCombatDamageAssignment(attacker_id, recipient_id, amount) {
+        wasm.wasmgame_setCombatDamageAssignment(this.__wbg_ptr, attacker_id, recipient_id, amount);
     }
     /**
      * Set a player's life total.

@@ -2,11 +2,54 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::MoveAllCountersEffect;
+
+fn source_counter_snapshot(ctx: &ExecutionContext<'_>) -> Option<Vec<(CounterType, u32)>> {
+    if let Some(snapshot) = ctx.source_snapshot.as_ref() {
+        return Some(
+            snapshot
+                .counters
+                .iter()
+                .map(|(ct, &count)| (*ct, count))
+                .collect(),
+        );
+    }
+    ctx.triggering_event
+        .as_ref()
+        .and_then(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+        .and_then(|event| event.snapshot.as_ref())
+        .filter(|snapshot| snapshot.object_id == ctx.source)
+        .map(|snapshot| {
+            snapshot
+                .counters
+                .iter()
+                .map(|(ct, &count)| (*ct, count))
+                .collect()
+        })
+}
+
+fn tagged_counter_snapshot(
+    ctx: &ExecutionContext<'_>,
+    tag: &crate::tag::TagKey,
+    from_id: Option<crate::ids::ObjectId>,
+) -> Option<Vec<(CounterType, u32)>> {
+    let snapshots = ctx.get_tagged_all(tag)?;
+    let snapshot = from_id
+        .and_then(|id| snapshots.iter().find(|snapshot| snapshot.object_id == id))
+        .or_else(|| snapshots.first())?;
+    Some(
+        snapshot
+            .counters
+            .iter()
+            .map(|(ct, &count)| (*ct, count))
+            .collect(),
+    )
+}
 
 /// Effect that moves ALL counters of ALL types from one creature to another.
 ///
@@ -32,21 +75,59 @@ impl EffectExecutor for MoveAllCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Get from and to targets from resolved targets
-        let Some((from_id, to_id)) = ctx.resolve_two_object_targets() else {
+        let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
+            .first()
+            .copied()
+        else {
             return Ok(EffectOutcome::target_invalid());
         };
 
-        // Get all counters from source
-        let counters_to_move: Vec<(CounterType, u32)> = game
-            .object(from_id)
-            .map(|obj| {
-                obj.counters
-                    .iter()
-                    .map(|(ct, &count)| (*ct, count))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let from_id = resolve_objects_for_effect(game, ctx, &self.from)?
+            .first()
+            .copied();
+        let from_is_source = matches!(self.from.base(), ChooseSpec::Source);
+        let from_tag = match self.from.base() {
+            ChooseSpec::Tagged(tag) => Some(tag),
+            _ => None,
+        };
+        let counters_to_move: Vec<(CounterType, u32)> = if let Some(from_id) = from_id {
+            if let Some(obj) = game.object(from_id) {
+                let tagged_snapshot = from_tag.and_then(|tag| {
+                    ctx.get_tagged_all(tag).and_then(|snapshots| {
+                        snapshots
+                            .iter()
+                            .find(|snapshot| snapshot.object_id == from_id)
+                            .or_else(|| snapshots.first())
+                    })
+                });
+                if let Some(snapshot) = tagged_snapshot
+                    && snapshot.zone != obj.zone
+                {
+                    snapshot
+                        .counters
+                        .iter()
+                        .map(|(ct, &count)| (*ct, count))
+                        .collect()
+                } else {
+                    obj.counters
+                        .iter()
+                        .map(|(ct, &count)| (*ct, count))
+                        .collect()
+                }
+            } else if from_is_source {
+                source_counter_snapshot(ctx).unwrap_or_default()
+            } else if let Some(tag) = from_tag {
+                tagged_counter_snapshot(ctx, tag, Some(from_id)).unwrap_or_default()
+            } else {
+                return Ok(EffectOutcome::target_invalid());
+            }
+        } else if from_is_source {
+            source_counter_snapshot(ctx).unwrap_or_default()
+        } else if let Some(tag) = from_tag {
+            tagged_counter_snapshot(ctx, tag, None).unwrap_or_default()
+        } else {
+            return Ok(EffectOutcome::target_invalid());
+        };
 
         if counters_to_move.is_empty() {
             return Ok(EffectOutcome::count(0));
@@ -58,26 +139,49 @@ impl EffectExecutor for MoveAllCountersEffect {
         // Move each counter type using centralized methods
         for (counter_type, count) in counters_to_move {
             // Remove from source
-            if let Some((removed, remove_event)) = game.remove_counters(
-                from_id,
-                counter_type,
-                count,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
-                outcome = outcome.with_event(remove_event);
-                total_moved += removed;
-
-                // Add to destination (only the amount actually removed)
-                if let Some(add_event) = game.add_counters_with_source(
-                    to_id,
+            let removed = if let Some(from_id) = from_id.filter(|id| {
+                game.object(*id).is_some_and(|obj| {
+                    from_tag
+                        .and_then(|tag| {
+                            ctx.get_tagged_all(tag).and_then(|snapshots| {
+                                snapshots
+                                    .iter()
+                                    .find(|snapshot| snapshot.object_id == *id)
+                                    .or_else(|| snapshots.first())
+                            })
+                        })
+                        .is_none_or(|snapshot| snapshot.zone == obj.zone)
+                })
+            }) {
+                if let Some((removed, remove_event)) = game.remove_counters(
+                    from_id,
                     counter_type,
-                    removed,
+                    count,
                     Some(ctx.source),
                     Some(ctx.controller),
                 ) {
-                    outcome = outcome.with_event(add_event);
+                    outcome = outcome.with_event(remove_event);
+                    removed
+                } else {
+                    0
                 }
+            } else {
+                count
+            };
+            if removed == 0 {
+                continue;
+            }
+            total_moved += removed;
+
+            // Add to destination (only the amount actually removed)
+            if let Some(add_event) = game.add_counters_with_source(
+                to_id,
+                counter_type,
+                removed,
+                Some(ctx.source),
+                Some(ctx.controller),
+            ) {
+                outcome = outcome.with_event(add_event);
             }
         }
 
@@ -244,5 +348,73 @@ mod tests {
         let effect = MoveAllCountersEffect::between_creatures();
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("MoveAllCountersEffect"));
+    }
+
+    #[test]
+    fn source_lki_counters_move_to_target_when_source_left_battlefield() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Departed Source", alice);
+        let target = create_creature(&mut game, "Counter Receiver", alice);
+        game.add_counters(source, CounterType::PlusOnePlusOne, 2);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source exists"),
+            &game,
+        );
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("move source");
+
+        let effect =
+            MoveAllCountersEffect::new(ChooseSpec::Source, ChooseSpec::SpecificObject(target));
+        let mut ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
+        let outcome = effect.execute(&mut game, &mut ctx).expect("move counters");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            game.object(target)
+                .expect("target exists")
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied(),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn tagged_lki_counters_move_to_target_when_tagged_object_left_battlefield() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Departed Source", alice);
+        let target = create_creature(&mut game, "Counter Receiver", alice);
+        game.add_counters(source, CounterType::PlusOnePlusOne, 2);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source exists"),
+            &game,
+        );
+        let graveyard_id = game
+            .move_object_by_effect(source, Zone::Graveyard)
+            .expect("move source");
+        assert_ne!(source, graveyard_id);
+
+        let tag = crate::tag::TagKey::from("triggering");
+        let mut tagged_snapshot = snapshot.clone();
+        tagged_snapshot.object_id = graveyard_id;
+        let effect = MoveAllCountersEffect::new(
+            ChooseSpec::Tagged(tag.clone()),
+            ChooseSpec::SpecificObject(target),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects(tag, vec![tagged_snapshot]);
+        let outcome = effect.execute(&mut game, &mut ctx).expect("move counters");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            game.object(target)
+                .expect("target exists")
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied(),
+            Some(2)
+        );
     }
 }

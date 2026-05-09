@@ -670,6 +670,11 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::TagTriggeringSourceEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachToEffect>(&effect) {
         return Ok(converted);
     }
@@ -1109,6 +1114,13 @@ where
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<
+        M,
+        crate::effects::RegisterDamagedBySourceZoneReplacementEffect,
+    >(&effect)
     {
         return Ok(converted);
     }

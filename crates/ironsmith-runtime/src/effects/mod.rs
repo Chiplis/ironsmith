@@ -114,8 +114,9 @@ pub use composition::{
     ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
     SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
-    VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
+    UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption,
+    VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
@@ -171,8 +172,9 @@ pub use player::{
     VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
-    ApplyReplacementEffect, RegisterEnterUnderControlReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
+    ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
+    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
+    RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub use stack::{

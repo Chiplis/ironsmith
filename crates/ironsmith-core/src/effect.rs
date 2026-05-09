@@ -3379,6 +3379,15 @@ pub struct RegisterFutureZoneReplacementEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RegisterDamagedBySourceZoneReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub from_zone: Option<crate::zone::Zone>,
+    pub to_zone: Option<crate::zone::Zone>,
+    pub replacement_zone: crate::zone::Zone,
+    pub mode: ReplacementApplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegisterEnterUnderControlReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub mode: ReplacementApplyMode,
@@ -3417,6 +3426,24 @@ impl RegisterFutureZoneReplacementEffect {
     pub fn requiring_cause_source_match(mut self) -> Self {
         self.require_cause_source_match = true;
         self
+    }
+}
+
+impl RegisterDamagedBySourceZoneReplacementEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        from_zone: Option<crate::zone::Zone>,
+        to_zone: Option<crate::zone::Zone>,
+        replacement_zone: crate::zone::Zone,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            filter,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            mode,
+        }
     }
 }
 
@@ -4187,6 +4214,17 @@ pub struct TagTriggeringObjectEffect {
 }
 
 impl TagTriggeringObjectEffect {
+    pub fn new(tag: impl Into<TagKey>) -> Self {
+        Self { tag: tag.into() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagTriggeringSourceEffect {
+    pub tag: TagKey,
+}
+
+impl TagTriggeringSourceEffect {
     pub fn new(tag: impl Into<TagKey>) -> Self {
         Self { tag: tag.into() }
     }
