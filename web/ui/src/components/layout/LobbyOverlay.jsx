@@ -168,6 +168,8 @@ export default function LobbyOverlay({
       || /(lobby|peerjs|peer connection|signaling)/i.test(status.msg)
     )
   );
+  const connectionWarnings = multiplayer.connectionWarnings || [];
+  const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
   const shareLobbyCode = multiplayer.lobbyId || multiplayer.hostPeerId || "";
   const inviteLink = useMemo(
     () => buildLobbyInviteLink({
@@ -619,17 +621,31 @@ export default function LobbyOverlay({
                   {multiplayer.players.map((player) => (
                     <div
                       key={player.peerId}
-                      className="lobby-sheet-player-row fantasy-sheet-stat flex items-center justify-between px-3 py-2"
+                      className={`lobby-sheet-player-row fantasy-sheet-stat flex items-center justify-between px-3 py-2 ${
+                        player.connected === false ? "border-[#7d302f] bg-[#2b1114]/55" : ""
+                      }`}
                     >
                       <span className="text-[14px] text-foreground">
                         {player.index + 1}. {player.name}
                       </span>
-                      <span className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">
+                      <span
+                        className={`text-[12px] uppercase tracking-[0.18em] ${
+                          player.connected === false ? "text-[#ffb8c0]" : "text-muted-foreground"
+                        }`}
+                      >
                         {formatPlayerStatus(player, multiplayer.localPeerId, activeFormat)}
                       </span>
                     </div>
                   ))}
                 </div>
+
+                {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
+                  <div className="lobby-sheet-status border border-[#7d302f] bg-[#2b1114]/70 px-3 py-2 text-[13px] leading-5 text-[#ffb8c0]">
+                    {offlinePlayers.length === 1
+                      ? `${offlinePlayers[0].name} is disconnected. Peer-to-peer action delivery is paused or degraded until they reconnect.`
+                      : `${offlinePlayers.map((player) => player.name).join(", ")} are disconnected. Peer-to-peer action delivery is paused or degraded until they reconnect.`}
+                  </div>
+                ) : null}
 
                 {!multiplayer.matchStarted && multiplayer.role === "host" ? (
                   <button

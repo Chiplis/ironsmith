@@ -57,7 +57,7 @@ export default function AddCardSheet({
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
   const selectedPlayer = playerIndex ?? perspective;
-  const addLocked = multiplayer.mode !== "idle";
+  const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
 
   const visibleAutocompleteOptions =
     addLocked || !cardName.trim() ? [] : autocompleteOptions;
@@ -141,6 +141,7 @@ export default function AddCardSheet({
       }
       try {
         await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
+        const injectedDuringMatch = Boolean(multiplayer.matchStarted);
         setCardName("");
         setAutocompleteOptions([]);
         setAutocompleteOpen(false);
@@ -149,7 +150,11 @@ export default function AddCardSheet({
         // Keep the add-card critical path limited to the mutation + refresh.
         // Follow-up diagnostics are intentionally omitted here because a hung
         // worker call would leave the shared interaction gate blocked.
-        await refresh(`Added ${name} to ${zone}`);
+        await refresh(
+          injectedDuringMatch
+            ? `Added ${name} locally; peers will reject it if used`
+            : `Added ${name} to ${zone}`
+        );
       } catch (err) {
         const errMsg = String(err?.message || err);
         setStatus(`Add card failed: ${errMsg}`, true);
@@ -176,6 +181,7 @@ export default function AddCardSheet({
     setStatus,
     skipTriggers,
     zone,
+    multiplayer.matchStarted,
   ]);
 
   const handleAutocompletePick = useCallback((name) => {

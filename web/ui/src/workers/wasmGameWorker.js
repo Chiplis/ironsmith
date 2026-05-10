@@ -12,9 +12,15 @@ let lastRegistryLoaded = -1;
 let lastRegistryTotal = -1;
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
+  "applyVerifiedHiddenLibraryShuffle",
   "cancelDecision",
   "dispatch",
+  "forfeitPlayer",
   "importSyncCheckpoint",
+  "injectTranscriptRandomSeeds",
+  "revealHiddenObject",
+  "revealHiddenPosition",
+  "revealHiddenSlot",
   "snapshot",
   "startMatch",
   "switchPerspective",
@@ -24,6 +30,7 @@ const DISPATCH_TRACE_METHODS = new Set([
   "advancePhase",
   "cancelDecision",
   "dispatch",
+  "forfeitPlayer",
 ]);
 
 function nowMs() {

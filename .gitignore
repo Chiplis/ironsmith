@@ -12,6 +12,8 @@ scripts/__pycache__*
 /reports
 *.txt
 *.json
+!/fixtures/audit/*.json
+!/web/ui/package.json
 *.csv
 web/ui/node_modules
 web/ui/.pnpm

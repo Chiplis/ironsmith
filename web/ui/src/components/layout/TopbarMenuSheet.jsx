@@ -81,7 +81,7 @@ export default function TopbarMenuSheet({
   const perspective = state?.perspective;
   const me = players.find((player) => player.id === perspective) || players[0];
   const lobbyBusy = multiplayer.mode !== "idle";
-  const addLocked = multiplayer.mode !== "idle";
+  const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
   const compiledLabel = useMemo(() => {
     if (!Number.isFinite(wasmRegistryCount) || wasmRegistryCount < 0) return "-";
     if (wasmRegistryTotal > 0) {
@@ -92,6 +92,8 @@ export default function TopbarMenuSheet({
   const lobbyLabel = lobbyBusy
     ? `Lobby ${multiplayer.players.length}/${multiplayer.desiredPlayers || 0}`
     : "No lobby";
+  const connectionWarnings = multiplayer.connectionWarnings || [];
+  const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
 
   const handleOpenLobby = () => {
     setOpen(false);
@@ -364,6 +366,16 @@ export default function TopbarMenuSheet({
                   {lobbyLabel}
                 </Badge>
               </div>
+              {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
+                <div className="fantasy-sheet-stat flex items-center justify-between gap-3 border-[#7d302f] bg-[#2b1114]/60 px-3 py-2">
+                  <span className="uppercase tracking-[0.16em] text-[#ffb8c0]">
+                    Disconnected
+                  </span>
+                  <Badge variant="secondary" className="fantasy-sheet-badge max-w-[180px] truncate text-[12px] uppercase text-[#ffb8c0]">
+                    {offlinePlayers.map((player) => player.name).join(", ")}
+                  </Badge>
+                </div>
+              ) : null}
             </div>
             <Button variant="secondary" size="sm" className="stone-pill" asChild>
               <a

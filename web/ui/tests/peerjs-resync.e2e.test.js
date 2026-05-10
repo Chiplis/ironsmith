@@ -13,6 +13,12 @@ const UI_ROOT = path.resolve(__dirname, "..");
 const HARNESS_PATH = "/tests/fixtures/peer-lobby-harness.html";
 const HOST_DECK = "60 Island";
 const GUEST_DECK = "60 Mountain";
+const FOUR_PLAYER_DECKS = [
+  "60 Island",
+  "60 Mountain",
+  "60 Forest",
+  "60 Plains",
+];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -370,6 +376,143 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     await withTimeout(Promise.allSettled([
       hostContext.close(),
       guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS four browser peers join, start, relay actions, and flag a silent add-card cheat", { timeout: 120000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const contexts = [];
+  const pages = [];
+
+  try {
+    for (let index = 0; index < 4; index += 1) {
+      const context = await browser.newContext();
+      const page = await openHarness(context, baseUrl, `p${index + 1}`);
+      contexts.push(context);
+      pages.push(page);
+    }
+
+    await pages[0].evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Player 1",
+        desiredPlayers: 4,
+        startingLife: 20,
+        deckText,
+      });
+    }, FOUR_PLAYER_DECKS[0]);
+
+    const hostLobby = await waitForSnapshot(
+      pages[0],
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "four-player host creates a lobby",
+    );
+    const lobbyId = hostLobby.multiplayer.lobbyId;
+
+    await Promise.all([1, 2, 3].map((seat) =>
+      pages[seat].evaluate(({ lobbyId: targetLobby, deckText, name }) => {
+        window.__peerHarness.joinLobby({
+          name,
+          lobbyId: targetLobby,
+          deckText,
+        });
+      }, {
+        lobbyId,
+        deckText: FOUR_PLAYER_DECKS[seat],
+        name: `Player ${seat + 1}`,
+      })
+    ));
+
+    await waitForSnapshot(
+      pages[0],
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 4
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "all four peers join and are ready",
+      30000,
+    );
+    const guestLobbySnapshots = await Promise.all([1, 2, 3].map((seat) =>
+      waitForSnapshot(
+        pages[seat],
+        (snap) => Number.isInteger(snap.multiplayer.localPlayerIndex)
+          && snap.multiplayer.mode === "lobby",
+        `player ${seat + 1} is assigned a seat`,
+        30000,
+      )
+    ));
+    assert.deepEqual(
+      guestLobbySnapshots
+        .map((snap) => Number(snap.multiplayer.localPlayerIndex))
+        .sort((left, right) => left - right),
+      [1, 2, 3],
+    );
+
+    await pages[0].evaluate(() => window.__peerHarness.startHostedMatch());
+    await Promise.all(pages.map((page, index) =>
+      waitForSnapshot(page, (snap) => snap.multiplayer.matchStarted, `player ${index + 1} receives match start`, 30000)
+    ));
+
+    await pages[0].evaluate(() => {
+      window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      }, "four-player host action");
+    });
+
+    const afterAction = await Promise.all(pages.map((page, index) =>
+      waitForSnapshot(
+        page,
+        (snap) => snap.multiplayer.lastAppliedSequence === 1,
+        `player ${index + 1} receives the signed action`,
+        30000,
+      )
+    ));
+    assert.deepEqual(
+      afterAction.map((snap) => snap.multiplayer.lastAppliedSequence),
+      [1, 1, 1, 1],
+    );
+
+    await pages[1].evaluate(async () => {
+      const playerIndex = window.__peerHarness.snapshot().multiplayer.localPlayerIndex;
+      const state = await window.__peerHarness.silentlyAddCard({
+        playerIndex,
+        cardName: "Black Lotus",
+        zone: "hand",
+      });
+      const forgedAction = state.decision.actions.find((action) =>
+        action.kind === "cast_spell"
+        && action.action_ref?.kind === "cast_spell"
+        && action.action_ref?.from_zone === "hand"
+      );
+      await window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: forgedAction.action_ref,
+      }, "silent add-card cheat");
+    });
+    const cheatDetected = await waitForSnapshot(
+      pages[0],
+      (snap) => snap.statusEvents.some((event) =>
+        event.isError && /Cheat detected from Player 2/.test(event.message)
+      ),
+      "host detects silent local add-card cheat when the forged card is played",
+      30000,
+    );
+    assert.equal(cheatDetected.multiplayer.lastAppliedSequence, 1);
+
+    assertNoPageErrors(...pages);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      ...contexts.map((context) => context.close()),
       browser.close(),
     ]), 10000);
     await withTimeout(vite.close(), 10000);

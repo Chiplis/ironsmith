@@ -1359,6 +1359,12 @@ impl WasmGame {
         let decks = config.decks.as_ref();
         let sideboards = config.sideboards.as_ref();
         let commanders = config.commanders.as_ref();
+        let hidden_manifests = config.hidden_deck_manifests.as_deref().unwrap_or(&[]);
+        let hidden_manifest_for_player = |player_index: usize| {
+            hidden_manifests
+                .iter()
+                .find(|manifest| usize::from(manifest.owner) == player_index)
+        };
 
         if let Some(decks) = decks
             && decks.len() != player_count
@@ -1394,7 +1400,9 @@ impl WasmGame {
                 ));
             };
 
-            for (deck, commander_list) in decks.iter().zip(commanders.iter()) {
+            for (player_index, (deck, commander_list)) in
+                decks.iter().zip(commanders.iter()).enumerate()
+            {
                 if !(commander_list.len() == 1 || commander_list.len() == 2) {
                     return Err(JsValue::from_str(
                         "commander matches require exactly 1 or 2 commanders per player",
@@ -1402,6 +1410,17 @@ impl WasmGame {
                 }
 
                 let expected_deck_size = if commander_list.len() == 2 { 98 } else { 99 };
+                if let Some(manifest) = hidden_manifest_for_player(player_index)
+                    && deck.is_empty()
+                {
+                    if manifest.deck_count != expected_deck_size {
+                        return Err(JsValue::from_str(&format!(
+                            "commander committed main decks must contain {expected_deck_size} cards for {count} commander(s)",
+                            count = commander_list.len()
+                        )));
+                    }
+                    continue;
+                }
                 if deck.len() != expected_deck_size {
                     return Err(JsValue::from_str(&format!(
                         "commander main decks must contain {expected_deck_size} cards for {count} commander(s)",
@@ -1416,6 +1435,9 @@ impl WasmGame {
 
         if let Some(decks) = decks {
             for (player_index, deck) in decks.iter().enumerate() {
+                if deck.is_empty() && hidden_manifest_for_player(player_index).is_some() {
+                    continue;
+                }
                 self.collect_match_validation_issues(
                     player_index,
                     &config.player_names[player_index],

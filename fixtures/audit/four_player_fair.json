@@ -1,0 +1,457 @@
+{
+  "version": 1,
+  "match_id": "fixture-four-player-audit-v1",
+  "players": [
+    {
+      "seat": 0,
+      "name": "Player 1",
+      "verifying_key": "2cb9265b254e4d082d7f9308837cdde111a4021a040c77fc4824caa9c7ce366c"
+    },
+    {
+      "seat": 1,
+      "name": "Player 2",
+      "verifying_key": "bf6d3a3a05b01084621f414dc64d974efe023677c75d1ce2cb432aeebb60d7e2"
+    },
+    {
+      "seat": 2,
+      "name": "Player 3",
+      "verifying_key": "b03c084cc3253659d25685486b3906f3c4083eaa639eacdda8f630715c63d39f"
+    },
+    {
+      "seat": 3,
+      "name": "Player 4",
+      "verifying_key": "5ef2fc75f05cc51a58855abb0497019cad13ef1d83823eecb13c4ef907b8fd95"
+    }
+  ],
+  "initial_state_hash": "b0f5771d49ac307cdf0245efd5c5ed465926257db32d21d53a0a0e0324427899",
+  "deck_ceremonies": [
+    {
+      "owner": 0,
+      "deck_id": "p0-library",
+      "declared_decklist_hash": "70516385a1513b7387ac5247e60904c5d84323ba5687dd51c65f468d7cfbd521",
+      "initial_encrypted_deck_hash": "2e897f326d5477d26558c1d6bbc15cea708d87c245cc6183e577efd5541fbfc0",
+      "required_shufflers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "steps": [
+        {
+          "shuffler": 0,
+          "input_deck_hash": "2e897f326d5477d26558c1d6bbc15cea708d87c245cc6183e577efd5541fbfc0",
+          "output_deck_hash": "4f1945e32b0840c7536a053e7a2848ed9e01bfe956d203ae31c310752f688c70",
+          "entropy_commitment": "5595e02ab3604be9025a960612d5780392daf8d414cf4598b8ea942e09e4dd2f",
+          "entropy_opening": "shuffle-open-p0-deck-owner-0",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "8186d6ad3ad4c592807aefd5aaa887f410b2c65cae21c6e9fd5f115c3bed8b4c",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 1,
+          "input_deck_hash": "4f1945e32b0840c7536a053e7a2848ed9e01bfe956d203ae31c310752f688c70",
+          "output_deck_hash": "5361a899a011ae4b50693e8d4d5e72443d650491bf482dbbe3e210b22f7b458e",
+          "entropy_commitment": "f50dc743c87cbfc84bbb92fd63dd54b1f7ffef1093eca0a969ba0201dd0a8657",
+          "entropy_opening": "shuffle-open-p1-deck-owner-0",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "21bce8df8ead1c33d5bd8a8cf2923a9b3e46d9fbf4999e524d41a8e306e6d4a3",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 2,
+          "input_deck_hash": "5361a899a011ae4b50693e8d4d5e72443d650491bf482dbbe3e210b22f7b458e",
+          "output_deck_hash": "4f01fb596b6d3f36d58c676ec6acbbe6f1111a0ed8f81a81d67276f06fef64fe",
+          "entropy_commitment": "55de6734a695a7c6ebc545e65bf4ce880eb0cae6dd41d388c7e6508d84161acf",
+          "entropy_opening": "shuffle-open-p2-deck-owner-0",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "d0173d8a4633306ea9ffbbe1140a2cd60b97ff1c4dd583e093b71d3969963852",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 3,
+          "input_deck_hash": "4f01fb596b6d3f36d58c676ec6acbbe6f1111a0ed8f81a81d67276f06fef64fe",
+          "output_deck_hash": "5d438ae7736ac7065a41cfad56657227324405f64b9df8eb09d0970e1ab95c7a",
+          "entropy_commitment": "6c7750df9744b704ea93fd9e6da9f80f1a21fc2d7cdfa58e110407c51cfb745d",
+          "entropy_opening": "shuffle-open-p3-deck-owner-0",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "e517936d7163afd35522c32185dcf9232630e9f3f578bbea5583771efe73d45a",
+            "backend": "ziffle-0.1"
+          }
+        }
+      ],
+      "final_encrypted_deck_hash": "5d438ae7736ac7065a41cfad56657227324405f64b9df8eb09d0970e1ab95c7a",
+      "slot_commitments": [
+        "dcee31bba0f9d1b1f2019a3093cdea638c960152fd243767949916f2a12b8276",
+        "fd0155b9a909058ebd43d9bdc42d9260dcfadec2d2765259613d65e6c5bfed5c",
+        "0a59bd0513ba13266abdaac18e5265598f63e19ce5a1ce7f8086af7ab21bf78c",
+        "1e3b1679c314b12863fc81477725644b8fd7d1b62f6276f061be8a85c8186207"
+      ]
+    },
+    {
+      "owner": 1,
+      "deck_id": "p1-library",
+      "declared_decklist_hash": "8f8164ba6528ed1cca6146f76f3a33a296cc7d5c3e3fa6094a9e9015d918dec8",
+      "initial_encrypted_deck_hash": "b974da1fba4f5e39b38de7259733dae70e2d873b6d0716e738931873ef5e13e7",
+      "required_shufflers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "steps": [
+        {
+          "shuffler": 0,
+          "input_deck_hash": "b974da1fba4f5e39b38de7259733dae70e2d873b6d0716e738931873ef5e13e7",
+          "output_deck_hash": "5ec6f36ed36891cc55287c929dc76c4da516c18c32b0970f7d6c794c3589113a",
+          "entropy_commitment": "7571231249a48af5cb285489ac2ebe23691e0a8a1b95e074e084357b1ec87e62",
+          "entropy_opening": "shuffle-open-p0-deck-owner-1",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "0c706c517f757afb7199aaf38a4bb31e8b6c5443a4e594af2eb1511b26aed58b",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 1,
+          "input_deck_hash": "5ec6f36ed36891cc55287c929dc76c4da516c18c32b0970f7d6c794c3589113a",
+          "output_deck_hash": "730b4d498b4dcb8b6fe7dd28bdb4bf10a45de77bf923cee5477ab3fbf4cdd51f",
+          "entropy_commitment": "82790a31636871068919981b82beafd13af61939a1a70fc16e33637292371b2c",
+          "entropy_opening": "shuffle-open-p1-deck-owner-1",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "c7d7903a094b3b78add619a5db137081eeae8de45e84a905debe4171e7edf1d3",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 2,
+          "input_deck_hash": "730b4d498b4dcb8b6fe7dd28bdb4bf10a45de77bf923cee5477ab3fbf4cdd51f",
+          "output_deck_hash": "beb23df57c15ccb1caed649efecb97241e8302e6bf45ff387da830b35423085e",
+          "entropy_commitment": "f79cf96eb4cba19520a938155de11f319aeede0508b9444d105e2f927eb74c23",
+          "entropy_opening": "shuffle-open-p2-deck-owner-1",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "01ce4bb55bb1302961bc6c88791d428cd6f61107ddd217bfd1bb2d60e4966b5a",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 3,
+          "input_deck_hash": "beb23df57c15ccb1caed649efecb97241e8302e6bf45ff387da830b35423085e",
+          "output_deck_hash": "711b0bbad295cc73f3e051698a5e5b5620bae6681dedab2d46b6e6f9b0fdb051",
+          "entropy_commitment": "89634121edc8eb01008d7944745b5440fff05e0f75018e9de02330229852910d",
+          "entropy_opening": "shuffle-open-p3-deck-owner-1",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "f083b17e467cb23770d3b2b39e26d25b215d2e8f10fbf3e43c308a88d7fa143d",
+            "backend": "ziffle-0.1"
+          }
+        }
+      ],
+      "final_encrypted_deck_hash": "711b0bbad295cc73f3e051698a5e5b5620bae6681dedab2d46b6e6f9b0fdb051",
+      "slot_commitments": [
+        "11b7477c66705534f66a60e755f4719b882e5efd3d7ab2145bd8c336f10186d3",
+        "2fabb41e35a30d1de3e27166250677c2248b7db46c8444f2031be903852f5dec",
+        "afbddd7ed711a57551583d6f0b80b8aa022c76e333ae2fbf5f8cfcd207041a35",
+        "e978894969d3ac042c5ddce38946bd4aab08f9942ca7f2510140d08835fa7987"
+      ]
+    },
+    {
+      "owner": 2,
+      "deck_id": "p2-library",
+      "declared_decklist_hash": "4badc06bec844e8a36e6021d1a41050bc51573179da3e9525ac6be563ebbbec9",
+      "initial_encrypted_deck_hash": "12b7ba1592407b25510b8a6f0dace6ef0d2c6d799fdc372f76033043d40e7cab",
+      "required_shufflers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "steps": [
+        {
+          "shuffler": 0,
+          "input_deck_hash": "12b7ba1592407b25510b8a6f0dace6ef0d2c6d799fdc372f76033043d40e7cab",
+          "output_deck_hash": "3efb72b7aaa7a888d09738a2f29bdaa7f2f98be91f7632284418748302cecdc6",
+          "entropy_commitment": "8a91cec7f6a30304bd1595112ea179e9ae5122b4956a8234fc796eeac454b25a",
+          "entropy_opening": "shuffle-open-p0-deck-owner-2",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "f1422cc6f0ed0fc623831697523b8b596977f4718db9d0abd3af7643fa37aec1",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 1,
+          "input_deck_hash": "3efb72b7aaa7a888d09738a2f29bdaa7f2f98be91f7632284418748302cecdc6",
+          "output_deck_hash": "ca907682f4a349efc1f312dce0bc5e9322858562638c9ab637358a1304457d3d",
+          "entropy_commitment": "0597462f863e1f8fdbecee334c78f139bf25833af10b409d3e3e860ca29e4df2",
+          "entropy_opening": "shuffle-open-p1-deck-owner-2",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "55a81ee7f6bcbb015b1c7325079c7bc7ca413747d29ded7ee1049670579bb768",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 2,
+          "input_deck_hash": "ca907682f4a349efc1f312dce0bc5e9322858562638c9ab637358a1304457d3d",
+          "output_deck_hash": "6913cbc4f62833cc693c258ff2b6734ef4e9bcc5448236ee7b2aaaba7e9dcd17",
+          "entropy_commitment": "28dc3573c3094b4070a0026dce910ac1e4f2f720bd4ce0c765653d65822abfe7",
+          "entropy_opening": "shuffle-open-p2-deck-owner-2",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "fd1bf278e7b18d84d58431b06a5d06ebcae0effe666b5d322bdda43658d8c4a1",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 3,
+          "input_deck_hash": "6913cbc4f62833cc693c258ff2b6734ef4e9bcc5448236ee7b2aaaba7e9dcd17",
+          "output_deck_hash": "54f78998dfe903e560a5a5169dbc6037588be27c295355d0ce428ecfbf2925d0",
+          "entropy_commitment": "34b76ce52a3d087154b282f71a31989dcaabdb59369e713ad2d4f0f0c409c82b",
+          "entropy_opening": "shuffle-open-p3-deck-owner-2",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "7726d84a4a08350a694cc0b09e23aa55bf87786164d7d398fefc9aaaf9175f2c",
+            "backend": "ziffle-0.1"
+          }
+        }
+      ],
+      "final_encrypted_deck_hash": "54f78998dfe903e560a5a5169dbc6037588be27c295355d0ce428ecfbf2925d0",
+      "slot_commitments": [
+        "45cb4c005838b919dd9f6f8b922647f498823035b43a8c45a7ac7119a4ccd6b7",
+        "9de2a3c255c3009abf6191276efb87fe13414dcfa9f226f92f585876174aaa72",
+        "e41b7916a19d580149018142fefc728971f999dbbf3fa4c4daa3c3643a7682bc",
+        "f31aca38b49eb945ff938cbbf1747d9310155574cc70bdfddcb31f865b589da3"
+      ]
+    },
+    {
+      "owner": 3,
+      "deck_id": "p3-library",
+      "declared_decklist_hash": "9ee30745dea77933f70a96bf875b8dab74cb0bf5b28101c307979d7c18672184",
+      "initial_encrypted_deck_hash": "f922c4f9890b91c0c262dec6d8e5eccc06ddec390f49b64175146e51720c3378",
+      "required_shufflers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "steps": [
+        {
+          "shuffler": 0,
+          "input_deck_hash": "f922c4f9890b91c0c262dec6d8e5eccc06ddec390f49b64175146e51720c3378",
+          "output_deck_hash": "e8d6406a26fa493515e9ad49610bcb8458471e2a1b3a4e8975daef182bb066ea",
+          "entropy_commitment": "e3c6bc1216216e3ed75634c803874e29f7927c01529152c5e0caa67777b15b6c",
+          "entropy_opening": "shuffle-open-p0-deck-owner-3",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "80c71966121a9f6e1f26905bb51b266deb5302d359375a5810f7efc1ca547519",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 1,
+          "input_deck_hash": "e8d6406a26fa493515e9ad49610bcb8458471e2a1b3a4e8975daef182bb066ea",
+          "output_deck_hash": "4844d0233b6d039dcf573483f5f02b9e951f5c547383353a6b02e0ed050580df",
+          "entropy_commitment": "285a85f533f59f7553465e90a934e6bd9c51937cb428483cbd547ac3cebee9c0",
+          "entropy_opening": "shuffle-open-p1-deck-owner-3",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "ccd7bdf4f25269d2d226581cc60f8bb0af5193b0b60d44ed241bfbeee43c543a",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 2,
+          "input_deck_hash": "4844d0233b6d039dcf573483f5f02b9e951f5c547383353a6b02e0ed050580df",
+          "output_deck_hash": "6bc008231738088f4bd5a94e92ef078193f3a139ca9d29fd2a4a05e7c51b8e29",
+          "entropy_commitment": "01784eb52191125fd5524d3149514c9bc0de8dca3ad7588e3282d25c750858e4",
+          "entropy_opening": "shuffle-open-p2-deck-owner-3",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "5de14e18c9acca580d4f878709bafa6b1db6818fc28b8e5b86cdc46cb9b2f7a4",
+            "backend": "ziffle-0.1"
+          }
+        },
+        {
+          "shuffler": 3,
+          "input_deck_hash": "6bc008231738088f4bd5a94e92ef078193f3a139ca9d29fd2a4a05e7c51b8e29",
+          "output_deck_hash": "ed069802c791876b476e1ab9202ab06135480b717238b8151ffb7d251335ba9f",
+          "entropy_commitment": "7fd742e0e08252d8c9c1279c8fb93a70cc2d390381bba1389f74a04a85ec758c",
+          "entropy_opening": "shuffle-open-p3-deck-owner-3",
+          "shuffle_proof": {
+            "scheme": "bayer_groth_mental_poker_v1",
+            "proof_transcript_hash": "8b351391ed66991f10e8af3aa7bea1c550e7bb80c58040cdae25ce22f044f227",
+            "backend": "ziffle-0.1"
+          }
+        }
+      ],
+      "final_encrypted_deck_hash": "ed069802c791876b476e1ab9202ab06135480b717238b8151ffb7d251335ba9f",
+      "slot_commitments": [
+        "7d2cc950be47cceaa3fb31b0de0f3db610c98080c5a756affa3486cee078646b",
+        "93200d95359a717bf2a1d9741f786ae6610d9efed956953c4472cad3fbc56781",
+        "b68fbb131126bf4136b6c4b9663b57fa6da4de4db478d76bf6e4775ccdcb273d",
+        "f788c274efbf47cb6f8d12d8c6eecc01aad32a96d10f7eac22610954ae6eb002"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "seq": 1,
+      "actor": 0,
+      "prev_state_hash": "b0f5771d49ac307cdf0245efd5c5ed465926257db32d21d53a0a0e0324427899",
+      "command": {
+        "type": "pass_priority"
+      },
+      "openings": [],
+      "rng_reveals": [],
+      "next_state_hash": "e9fd1cc081e6438bb0e3fa207789376c77362ac7e3abae43c5de760d76027fbe",
+      "signature": "70c13eb39b507d9cd042e7d45a1bec767c3903a0e15d6b76d287b9bf341ef96fbf5ed45d618e20bade9ab9b26a8bdcca1f74b05596aa0fb3ebc96cf9a3e5290e"
+    },
+    {
+      "seq": 2,
+      "actor": 1,
+      "prev_state_hash": "e9fd1cc081e6438bb0e3fa207789376c77362ac7e3abae43c5de760d76027fbe",
+      "command": {
+        "type": "draw_cards",
+        "player": 1,
+        "count": 1
+      },
+      "openings": [
+        {
+          "owner": 1,
+          "slot": 0,
+          "card": "Island",
+          "salt": "fixture-card-salt-p1-slot0",
+          "commitment": "11b7477c66705534f66a60e755f4719b882e5efd3d7ab2145bd8c336f10186d3",
+          "visibility": "owner_only"
+        }
+      ],
+      "rng_reveals": [],
+      "next_state_hash": "1671ebe1c46e68bfcc401e171249fdd148c40811adce64bce76f2621f61d2d8b",
+      "signature": "95a0c984f45b0424bcda9848882e0c8720f94f0903aebdf551bdeaf794a813b5e9f0530b8377a1d49b2b4820e52c338779be72f09c4a20764cbe809060f2330a"
+    },
+    {
+      "seq": 3,
+      "actor": 2,
+      "prev_state_hash": "1671ebe1c46e68bfcc401e171249fdd148c40811adce64bce76f2621f61d2d8b",
+      "command": {
+        "type": "draw_cards",
+        "player": 2,
+        "count": 1
+      },
+      "openings": [
+        {
+          "owner": 2,
+          "slot": 0,
+          "card": "Mountain",
+          "salt": "fixture-card-salt-p2-slot0",
+          "commitment": "45cb4c005838b919dd9f6f8b922647f498823035b43a8c45a7ac7119a4ccd6b7",
+          "visibility": "owner_only"
+        }
+      ],
+      "rng_reveals": [],
+      "next_state_hash": "62d50c2fbed7ba2ff6f509da95f1f2f0f72f909ffd2e37e7233a6335a5474568",
+      "signature": "128ff003fdec50644ae7bd9705eada0bc9b2b5090b71806458fd7b08c36af3718751d5c794c230b14e00f2bfe4f60050aac7f7132894c693626230d5d5d8f104"
+    },
+    {
+      "seq": 4,
+      "actor": 3,
+      "prev_state_hash": "62d50c2fbed7ba2ff6f509da95f1f2f0f72f909ffd2e37e7233a6335a5474568",
+      "command": {
+        "type": "shuffle_library",
+        "player": 3
+      },
+      "openings": [],
+      "rng_reveals": [
+        {
+          "event_id": "shuffle-p3-library-seq4",
+          "player": 0,
+          "commitment": "e20b7629a42a28671c7c938fb8ffc3c62135d7ed585852f3cc92ffd98b4a78f7",
+          "opening": "rng-open-p0-seq4"
+        },
+        {
+          "event_id": "shuffle-p3-library-seq4",
+          "player": 1,
+          "commitment": "b77fc0bafcd1a88235649e56a8bfe24ad42515b5f6b9fcebb573bfc97b1d6b79",
+          "opening": "rng-open-p1-seq4"
+        },
+        {
+          "event_id": "shuffle-p3-library-seq4",
+          "player": 2,
+          "commitment": "845167c6ee8eae5dfb1227b59e62f85dc912dfdb7e274441e1d5edccbe202fa3",
+          "opening": "rng-open-p2-seq4"
+        },
+        {
+          "event_id": "shuffle-p3-library-seq4",
+          "player": 3,
+          "commitment": "91bc8df60ba9e6463e32465c702fd7216d531a75f9483e168b91c3e6216edb1d",
+          "opening": "rng-open-p3-seq4"
+        }
+      ],
+      "next_state_hash": "e672f47547b2f3f31c3e9b6f02dea60e9245a06f385f4b838a1b1d74abb8277c",
+      "signature": "58e1624207ec5c4b1b89b72f5f5770a19b357eccbc402087090efd6656be46a68f1b443a1b83153e3ec608b048ac72903492e5c818cc763c75d2f8edcbda0c0b"
+    },
+    {
+      "seq": 5,
+      "actor": 0,
+      "prev_state_hash": "e672f47547b2f3f31c3e9b6f02dea60e9245a06f385f4b838a1b1d74abb8277c",
+      "command": {
+        "type": "search_library",
+        "searcher": 0,
+        "library_owner": 0,
+        "filter": "creature",
+        "selected_slot": 1
+      },
+      "openings": [
+        {
+          "owner": 0,
+          "slot": 1,
+          "card": "Llanowar Elves",
+          "salt": "fixture-card-salt-p0-slot1",
+          "commitment": "fd0155b9a909058ebd43d9bdc42d9260dcfadec2d2765259613d65e6c5bfed5c",
+          "visibility": {
+            "viewer": {
+              "viewer": 0
+            }
+          }
+        }
+      ],
+      "rng_reveals": [
+        {
+          "event_id": "search-p0-library-seq5",
+          "player": 0,
+          "commitment": "819f4b850ef4c69c79eed0ee6f7b532e0c44c793591b5095fc2e8819d50b0786",
+          "opening": "rng-open-p0-seq5"
+        },
+        {
+          "event_id": "search-p0-library-seq5",
+          "player": 1,
+          "commitment": "5cb0a2c37efdf6de45e48c3d12c4a014d8251d188b4a9f5eb74ad97f9e1b25c8",
+          "opening": "rng-open-p1-seq5"
+        },
+        {
+          "event_id": "search-p0-library-seq5",
+          "player": 2,
+          "commitment": "5d8e6248c43d604c6019f727dbdf2699778080b87170b5f84a42d0a803d3acea",
+          "opening": "rng-open-p2-seq5"
+        },
+        {
+          "event_id": "search-p0-library-seq5",
+          "player": 3,
+          "commitment": "a8b95f3f7e139231a4f182e2c07afdfd07651542f149d2ec5d57bd47c8b16fa8",
+          "opening": "rng-open-p3-seq5"
+        }
+      ],
+      "next_state_hash": "5a6c2af28152bc02ec58f6af750ed5c8d458c2ad012326366b74b98f0fe4a04f",
+      "signature": "4eb65259bc346e78f35032a04edfc711b477936194ca95a45ee6b129c872b54d63ab938fa81e5da4704ad75e167c08bba88819a0f71d8859a6679be130fdca0e"
+    }
+  ]
+}
