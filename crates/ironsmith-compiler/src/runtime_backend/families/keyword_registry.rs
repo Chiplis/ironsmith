@@ -28,7 +28,7 @@ use super::token_primitives::{
 };
 use super::util::{
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
-    parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
+    parse_blitz_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
     parse_escape_line_lexed, parse_flash_with_additional_cost_line_lexed,
     parse_flashback_line_lexed, parse_harmonize_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
@@ -207,6 +207,14 @@ pub(super) fn lower_alternative_cast(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    let line_text = line.text.to_ascii_lowercase();
+    if line_text.contains("from your graveyard")
+        && line_text.contains("using its blitz ability")
+    {
+        return Ok(LineAst::Abilities(vec![
+            crate::cards::builders::KeywordAction::BlitzFromGraveyard,
+        ]));
+    }
     if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(tokens) {
         return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
@@ -235,6 +243,15 @@ pub(super) fn lower_bestow(
 ) -> Result<LineAst, CardTextError> {
     Ok(LineAst::AlternativeCastingMethod(
         require_keyword_parse(line, "bestow", parse_bestow_line_lexed(tokens)?)?.into(),
+    ))
+}
+
+pub(super) fn lower_blitz(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "blitz", parse_blitz_line_lexed(tokens)?)?.into(),
     ))
 }
 
@@ -507,9 +524,16 @@ pub(super) fn matches_additional_cost(
 }
 
 pub(super) fn matches_alternative_cast(
-    _line: &PreprocessedLine,
+    line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
+    let line_text = line.info.raw_line.to_ascii_lowercase();
+    if line_text.contains("from your graveyard")
+        && line_text.contains("using its blitz ability")
+    {
+        return Ok(true);
+    }
+
     parse_alternative_cast_kind(tokens)
 }
 
@@ -518,6 +542,13 @@ pub(super) fn matches_bestow(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_bestow_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_blitz(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_blitz_line_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_bargain(

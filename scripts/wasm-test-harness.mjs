@@ -154,6 +154,8 @@ export function normalizePlayerId(player) {
     const lowered = player.trim().toLowerCase();
     if (lowered === "alice" || lowered === "playera" || lowered === "player a") return 0;
     if (lowered === "bob" || lowered === "playerb" || lowered === "player b") return 1;
+    if (lowered === "charlie" || lowered === "playerc" || lowered === "player c") return 2;
+    if (lowered === "dana" || lowered === "playerd" || lowered === "player d") return 3;
     const numeric = Number(player);
     if (Number.isInteger(numeric)) return numeric;
   }

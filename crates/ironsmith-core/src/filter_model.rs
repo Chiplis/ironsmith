@@ -82,6 +82,7 @@ pub enum TaggedOpbjectRelation {
 /// Alternative casting capability qualifier for card filters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlternativeCastKind {
+    Blitz,
     Dash,
     Flashback,
     JumpStart,
@@ -2330,6 +2331,7 @@ fn describe_counter_constraint(constraint: CounterConstraint) -> String {
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
+        AlternativeCastKind::Blitz => "blitz",
         AlternativeCastKind::Dash => "dash",
         AlternativeCastKind::Flashback => "flashback",
         AlternativeCastKind::JumpStart => "jump-start",

@@ -767,6 +767,27 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     _ => false,
                 };
+                let cast_with_blitz = match &entry.casting_method {
+                    CastingMethod::Alternative(idx) => matches!(
+                        obj.alternative_casts.get(*idx),
+                        Some(crate::alternative_cast::AlternativeCastingMethod::Blitz { .. })
+                    ),
+                    CastingMethod::PlayFrom {
+                        use_alternative: Some(idx),
+                        zone,
+                        ..
+                    } => matches!(
+                        crate::decision::resolve_play_from_alternative_method(
+                            game,
+                            entry.controller,
+                            obj,
+                            *zone,
+                            *idx,
+                        ),
+                        Some(crate::alternative_cast::AlternativeCastingMethod::Blitz { .. })
+                    ),
+                    _ => false,
+                } || entry.optional_costs_paid.was_paid_label("Blitz");
                 let cast_with_warp = match &entry.casting_method {
                     CastingMethod::Alternative(idx) => matches!(
                         obj.alternative_casts.get(*idx),
@@ -845,6 +866,67 @@ pub(super) fn resolve_stack_entry_full(
                     let _ = crate::effects::execute_effect(
                         game,
                         &crate::effect::Effect::new(return_to_hand),
+                        &mut crate::effects::ExecutionContext::new_default(
+                            result.new_id,
+                            entry.controller,
+                        ),
+                    );
+                }
+                if cast_with_blitz {
+                    let blitz_haste = crate::effects::ApplyContinuousEffect::new(
+                        crate::continuous::EffectTarget::Specific(result.new_id),
+                        crate::continuous::Modification::AddAbility(
+                            crate::static_abilities::StaticAbility::haste(),
+                        ),
+                        crate::effect::Until::YouStopControllingThis,
+                    )
+                    .with_source_type(
+                        crate::continuous::EffectSourceType::Resolution {
+                            locked_targets: vec![result.new_id],
+                        },
+                    );
+                    let _ = crate::effects::execute_effect(
+                        game,
+                        &crate::effect::Effect::new(blitz_haste),
+                        &mut crate::effects::ExecutionContext::new_default(
+                            result.new_id,
+                            entry.controller,
+                        ),
+                    );
+
+                    let draw_when_dies = crate::effects::ScheduleDelayedTriggerEffect::new(
+                        Trigger::this_dies(),
+                        vec![crate::effect::Effect::target_draws(
+                            1,
+                            crate::target::PlayerFilter::Specific(entry.controller),
+                        )],
+                        true,
+                        vec![result.new_id],
+                        crate::target::PlayerFilter::Specific(entry.controller),
+                    );
+                    let _ = crate::effects::execute_effect(
+                        game,
+                        &crate::effect::Effect::new(draw_when_dies),
+                        &mut crate::effects::ExecutionContext::new_default(
+                            result.new_id,
+                            entry.controller,
+                        ),
+                    );
+
+                    let sacrifice_at_end_step = crate::effects::ScheduleDelayedTriggerEffect::new(
+                        Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
+                        vec![crate::effect::Effect::new(
+                            crate::effects::SacrificeTargetEffect::new(
+                                crate::target::ChooseSpec::SpecificObject(result.new_id),
+                            ),
+                        )],
+                        true,
+                        vec![result.new_id],
+                        crate::target::PlayerFilter::Specific(entry.controller),
+                    );
+                    let _ = crate::effects::execute_effect(
+                        game,
+                        &crate::effect::Effect::new(sacrifice_at_end_step),
                         &mut crate::effects::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,

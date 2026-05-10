@@ -347,6 +347,13 @@ pub(super) fn format_alternative_method(
             let cost_desc = format_mana_cost_simple(cost);
             ("Dash".to_string(), cost_desc)
         }
+        AlternativeCastingMethod::Blitz { total_cost } => {
+            let cost_desc = total_cost
+                .mana_cost()
+                .map(format_mana_cost_simple)
+                .unwrap_or_else(|| "0".to_string());
+            ("Blitz".to_string(), cost_desc)
+        }
         AlternativeCastingMethod::Warp { cost } => {
             let cost_desc = format_mana_cost_simple(cost);
             (

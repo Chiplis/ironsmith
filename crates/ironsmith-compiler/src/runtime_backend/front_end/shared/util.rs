@@ -3766,6 +3766,7 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
     matches!(
         first,
         "buyback"
+            | "blitz"
             | "bestow"
             | "cumulative"
             | "cycling"
@@ -4536,6 +4537,61 @@ pub(crate) fn parse_bestow_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_bestow_line(tokens)
+}
+
+pub(crate) fn parse_blitz_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("blitz")) {
+        return Ok(None);
+    }
+
+    let (mana_cost, consumed_mana_tokens) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("blitz keyword missing mana cost".to_string()))?;
+    let mut total_cost = TotalCost::mana(mana_cost.clone());
+    let consumed_mana_tokens = consumed_mana_tokens.min(tokens.len().saturating_sub(1));
+    let mut cost_tokens = tokens
+        .get(1..1 + consumed_mana_tokens)
+        .unwrap_or_default()
+        .to_vec();
+    let tail_tokens = tokens.get(1 + consumed_mana_tokens..).unwrap_or_default();
+    if tail_tokens.first().is_some_and(|token| token.is_comma()) {
+        let clause_end = tail_tokens
+            .iter()
+            .enumerate()
+            .find_map(|(idx, token)| token.is_period().then_some(idx))
+            .unwrap_or(tail_tokens.len());
+        cost_tokens.extend(tail_tokens[..clause_end].iter().cloned());
+    }
+    if let Ok(parsed_total_cost) = parse_activation_cost(&cost_tokens) {
+        total_cost = parsed_total_cost;
+        if total_cost.mana_cost().is_none() {
+            let mut components = total_cost.costs().to_vec();
+            components.insert(0, crate::costs::Cost::mana(mana_cost));
+            total_cost = TotalCost::from_costs(components);
+        }
+    }
+    let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+    if let Some(pay_idx) = tail_words.iter().position(|word| *word == "pay")
+        && tail_words.get(pay_idx + 2).copied() == Some("life")
+        && !total_cost
+            .costs()
+            .iter()
+            .any(|cost| matches!(cost, Cost::Life(_)))
+        && let Some(amount_word) = tail_words.get(pay_idx + 1)
+        && let Ok(amount) = amount_word.parse::<u32>()
+    {
+        let mut components = total_cost.costs().to_vec();
+        components.push(Cost::life(Value::Fixed(amount as i32)));
+        total_cost = TotalCost::from_costs(components);
+    }
+    Ok(Some(AlternativeCastingMethod::Blitz { total_cost }))
+}
+
+pub(crate) fn parse_blitz_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_blitz_line(tokens)
 }
 
 pub(crate) fn parse_transmute_line(

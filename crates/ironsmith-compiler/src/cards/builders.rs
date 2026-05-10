@@ -308,6 +308,14 @@ impl CardDefinitionBuilder {
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
             KeywordAction::Backup(amount) => self.backup(amount),
             KeywordAction::Dash(cost) => self.dash(cost),
+            KeywordAction::Blitz(cost) => self.blitz(cost),
+            KeywordAction::BlitzFromGraveyard => self.with_ability(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_marker(
+                        KeywordAction::BlitzFromGraveyard.display_text(),
+                    ),
+                ),
+            ),
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
             KeywordAction::Disturb(cost) => self.disturb(cost),
@@ -1065,6 +1073,14 @@ impl CardDefinitionBuilder {
     pub fn dash(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Dash { cost });
+        self
+    }
+
+    pub fn blitz(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Blitz {
+                total_cost: TotalCost::mana(cost),
+            });
         self
     }
 

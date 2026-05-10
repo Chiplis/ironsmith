@@ -499,6 +499,8 @@ pub(crate) enum KeywordAction {
     Backup(u32),
     Cipher,
     Dash(ManaCost),
+    Blitz(ManaCost),
+    BlitzFromGraveyard,
     Warp(ManaCost),
     Plot(ManaCost),
     Melee,
@@ -758,6 +760,10 @@ impl KeywordAction {
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
             Self::Dash(cost) => format!("Dash {}", cost.to_oracle()),
+            Self::Blitz(cost) => format!("Blitz {}", cost.to_oracle()),
+            Self::BlitzFromGraveyard => {
+                "You may cast this card from your graveyard using its blitz ability.".to_string()
+            }
             Self::Warp(cost) => format!("Warp {}", cost.to_oracle()),
             Self::Plot(cost) => format!("Plot {}", cost.to_oracle()),
             Self::Melee => "Melee".to_string(),
@@ -1609,6 +1615,12 @@ impl CardDefinitionBuilder {
             KeywordAction::Backup(amount) => self.backup(amount),
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Dash(cost) => self.dash(cost),
+            KeywordAction::Blitz(cost) => self.blitz(cost),
+            KeywordAction::BlitzFromGraveyard => self.with_ability(
+                Ability::static_ability(StaticAbility::keyword_marker(
+                    KeywordAction::BlitzFromGraveyard.display_text(),
+                )),
+            ),
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
             KeywordAction::Melee => self.melee(),
@@ -3872,6 +3884,15 @@ impl CardDefinitionBuilder {
     pub fn dash(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Dash { cost });
+        self
+    }
+
+    /// Add blitz with the given cost.
+    pub fn blitz(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(AlternativeCastingMethod::Blitz {
+                total_cost: TotalCost::mana(cost),
+            });
         self
     }
 

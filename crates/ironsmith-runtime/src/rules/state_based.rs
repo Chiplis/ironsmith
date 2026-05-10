@@ -113,7 +113,10 @@ impl StateBasedActionContext {
 /// This should be called whenever a player would receive priority.
 /// State-based actions happen simultaneously.
 pub fn check_state_based_actions(game: &GameState) -> Vec<StateBasedAction> {
-    let view = crate::derived_view::DerivedGameView::new(game);
+    let view = crate::derived_view::DerivedGameView::from_effects(
+        game,
+        crate::static_ability_processor::get_all_continuous_effects(game),
+    );
     check_state_based_actions_with_view(game, &view)
 }
 
@@ -606,7 +609,7 @@ pub fn apply_state_based_actions_with(
     game: &mut GameState,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = crate::static_ability_processor::get_all_continuous_effects(game);
     let actions = check_state_based_actions_with_effects(game, &all_effects);
     apply_state_based_actions_from_actions_with(game, actions, &all_effects, decision_maker)
 }

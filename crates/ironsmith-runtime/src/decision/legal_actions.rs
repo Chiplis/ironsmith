@@ -108,7 +108,13 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     view: &DerivedGameView<'_>,
 ) {
     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
-        if alt_cast.cast_from_zone() == from_zone
+        let graveyard_blitz_allowed = from_zone == Zone::Graveyard
+            && matches!(
+                alt_cast,
+                crate::alternative_cast::AlternativeCastingMethod::Blitz { .. }
+            )
+            && card_has_graveyard_blitz_permission(card);
+        if (alt_cast.cast_from_zone() == from_zone || graveyard_blitz_allowed)
             && can_cast_with_alternative_with_view(game, player, card, alt_cast, view)
         {
             actions.push(LegalAction::CastSpell {
@@ -118,6 +124,18 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
             });
         }
     }
+}
+
+fn card_has_graveyard_blitz_permission(card: &crate::object::Object) -> bool {
+    let permission_text = "from your graveyard using its blitz ability";
+    card.compiled_card_text
+        .to_ascii_lowercase()
+        .contains(permission_text)
+        || card.abilities.iter().any(|ability| {
+            crate::compiled_text::ability_surface_text(ability)
+                .to_ascii_lowercase()
+                .contains(permission_text)
+        })
 }
 
 fn append_graveyard_granted_alternative_cast_actions_for_card(

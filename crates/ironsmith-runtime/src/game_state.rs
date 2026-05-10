@@ -3186,6 +3186,12 @@ impl GameState {
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;
+        if old_zone == Zone::Stack
+            && new_zone == Zone::Battlefield
+            && matches!(new_object.kind, crate::object::ObjectKind::SpellCopy)
+        {
+            new_object.kind = crate::object::ObjectKind::Token;
+        }
         // Counters are tied to the object instance, not to the physical card.
         // `move_object` always creates the new object for the destination.
         new_object.counters.clear();

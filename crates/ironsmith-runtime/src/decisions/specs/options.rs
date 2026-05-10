@@ -300,6 +300,8 @@ pub struct ReplacementOption {
     pub index: usize,
     /// Source of the replacement effect.
     pub source: ObjectId,
+    /// Objects directly referenced by this replacement option.
+    pub related_object_ids: Vec<ObjectId>,
     /// Description of what this replacement does.
     pub description: String,
 }
@@ -310,8 +312,14 @@ impl ReplacementOption {
         Self {
             index,
             source,
+            related_object_ids: Vec::new(),
             description: description.into(),
         }
+    }
+
+    pub fn with_related_objects(mut self, object_ids: Vec<ObjectId>) -> Self {
+        self.related_object_ids = object_ids;
+        self
     }
 }
 
@@ -359,7 +367,13 @@ impl DecisionSpec for ReplacementSpec {
         let options: Vec<SelectableOption> = self
             .options
             .iter()
-            .map(|o| SelectableOption::new(o.index, &o.description).with_object(o.source))
+            .map(|o| {
+                let mut option = SelectableOption::new(o.index, &o.description).with_object(o.source);
+                if !o.related_object_ids.is_empty() {
+                    option = option.with_related_objects(o.related_object_ids.clone());
+                }
+                option
+            })
             .collect();
 
         DecisionContext::SelectOptions(SelectOptionsContext::new(

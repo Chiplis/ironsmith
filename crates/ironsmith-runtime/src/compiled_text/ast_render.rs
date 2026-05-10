@@ -1670,6 +1670,10 @@ pub(super) fn describe_alternative_cast_line(
             }
         }
         AlternativeCastingMethod::Dash { cost } => format!("Dash {}", cost.to_oracle()),
+        AlternativeCastingMethod::Blitz { total_cost } => total_cost
+            .mana_cost()
+            .map(|cost| format!("Blitz {}", cost.to_oracle()))
+            .unwrap_or_else(|| "Blitz".to_string()),
         AlternativeCastingMethod::Bestow { total_cost } => {
             let costs = method.non_mana_costs();
             let mana_cost = total_cost

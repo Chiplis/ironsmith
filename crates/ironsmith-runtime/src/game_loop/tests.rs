@@ -14824,6 +14824,71 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     );
 }
 
+#[test]
+fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers() {
+    use crate::cards::CardDefinitionBuilder;
+    use crate::effects::{CopySpellEffect, EffectExecutor, ExecutionContext};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::triggers::TriggerQueue;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 4);
+
+    let blitz_def = CardDefinitionBuilder::new(CardId::new(), "Blitz Runtime Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .blitz(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .build();
+    let blitz_id = game.create_object_from_definition(&blitz_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: blitz_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Alternative(0),
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("blitz cast should succeed");
+
+    let original_entry = game.stack.last().expect("blitz spell should be on stack").clone();
+    CopySpellEffect::new(
+        crate::target::ChooseSpec::SpecificObject(original_entry.object_id),
+        1,
+    )
+    .execute(
+        &mut game,
+        &mut ExecutionContext::new_default(original_entry.object_id, alice)
+            .with_casting_method(CastingMethod::Alternative(0)),
+    )
+    .expect("copying blitz spell should succeed");
+
+    resolve_stack_entry(&mut game).expect("copied blitz spell should resolve");
+    resolve_stack_entry(&mut game).expect("original blitz spell should resolve");
+
+    assert_eq!(
+        game.effect_store.delayed_triggers.len(),
+        4,
+        "copy and original should each schedule dies-draw plus end-step sacrifice triggers"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_dash_cost_reduction_applies_only_to_dash_casts() {

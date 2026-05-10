@@ -3590,6 +3590,18 @@ pub(super) fn finalize_spell_cast(
     if escaped {
         optional_costs_paid.mark_label_paid("Escape");
     }
+    let blitzed = game.object(new_id).is_some_and(|spell_obj| {
+        crate::decision::casting_method_matches_alternative_kind(
+            game,
+            caster,
+            spell_obj,
+            &casting_method,
+            crate::filter::AlternativeCastKind::Blitz,
+        )
+    });
+    if blitzed {
+        optional_costs_paid.mark_label_paid("Blitz");
+    }
 
     if let CastingMethod::PlayFrom {
         source,

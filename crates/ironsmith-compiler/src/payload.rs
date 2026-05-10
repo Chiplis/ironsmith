@@ -66,6 +66,8 @@ pub enum KeywordAction {
     Backup(u32),
     Cipher,
     Dash(ManaCost),
+    Blitz(ManaCost),
+    BlitzFromGraveyard,
     Warp(ManaCost),
     Plot(ManaCost),
     Melee,
@@ -326,6 +328,10 @@ impl KeywordAction {
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
             Self::Dash(cost) => format!("Dash {}", cost.to_oracle()),
+            Self::Blitz(cost) => format!("Blitz {}", cost.to_oracle()),
+            Self::BlitzFromGraveyard => {
+                "You may cast this card from your graveyard using its blitz ability.".to_string()
+            }
             Self::Warp(cost) => format!("Warp {}", cost.to_oracle()),
             Self::Plot(cost) => format!("Plot {}", cost.to_oracle()),
             Self::Melee => "Melee".to_string(),

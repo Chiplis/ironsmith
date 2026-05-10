@@ -32,6 +32,9 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Dash {
         cost: ManaCost,
     },
+    Blitz {
+        total_cost: TotalCost<C>,
+    },
     Warp {
         cost: ManaCost,
     },
@@ -111,7 +114,7 @@ where
 {
     pub fn cast_from_zone(&self) -> Zone {
         match self {
-            Self::Dash { .. } => Zone::Hand,
+            Self::Dash { .. } | Self::Blitz { .. } => Zone::Hand,
             Self::Warp { .. } => Zone::Hand,
             Self::Plot { .. } | Self::Suspend { .. } => Zone::Exile,
             Self::Flashback { .. }
@@ -151,6 +154,7 @@ where
     pub fn mana_cost(&self) -> Option<&ManaCost> {
         match self {
             Self::Dash { cost } => Some(cost),
+            Self::Blitz { total_cost } => total_cost.mana_cost(),
             Self::Warp { cost } => Some(cost),
             Self::Plot { cost } => Some(cost),
             Self::Suspend { cost, .. } => Some(cost),
@@ -180,6 +184,7 @@ where
 
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
+            Self::Blitz { total_cost } => non_mana_components(total_cost),
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => non_mana_components(total_cost),
@@ -193,6 +198,7 @@ where
     pub fn total_cost(&self) -> Option<&TotalCost<C>> {
         match self {
             Self::Flashback { total_cost } => Some(total_cost),
+            Self::Blitz { total_cost } => Some(total_cost),
             Self::Harmonize { total_cost } => Some(total_cost),
             Self::Retrace { total_cost } => Some(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
@@ -243,6 +249,7 @@ where
     pub fn name(&self) -> &'static str {
         match self {
             Self::Dash { .. } => "Dash",
+            Self::Blitz { .. } => "Blitz",
             Self::Warp { .. } => "Warp",
             Self::Plot { .. } => "Plot",
             Self::Suspend { .. } => "Suspend",
@@ -435,6 +442,9 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
 
         Ok(match self {
             Self::Dash { cost } => AlternativeCastingMethod::Dash { cost },
+            Self::Blitz { total_cost } => AlternativeCastingMethod::Blitz {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
             Self::Warp { cost } => AlternativeCastingMethod::Warp { cost },
             Self::Plot { cost } => AlternativeCastingMethod::Plot { cost },
             Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },

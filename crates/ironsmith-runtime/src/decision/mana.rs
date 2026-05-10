@@ -337,6 +337,7 @@ pub(crate) fn alternative_cast_method_matches_kind(
     use crate::filter::AlternativeCastKind;
 
     match (kind, method) {
+        (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
         (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
         (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
         (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,

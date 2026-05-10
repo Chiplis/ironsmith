@@ -46,6 +46,13 @@ fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementE
     }
 }
 
+fn replacement_effect_related_objects(effect: &ReplacementEffect) -> Vec<crate::ids::ObjectId> {
+    match &effect.replacement {
+        ReplacementAction::EnterAsCopy { source, .. } => vec![*source],
+        _ => Vec::new(),
+    }
+}
+
 /// Priority order for replacement effects per Rule 616.1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReplacementPriority {
@@ -1524,6 +1531,7 @@ fn process_with_dm_and_additional_effects(
                                         e.source,
                                         replacement_effect_choice_description(game, e),
                                     )
+                                    .with_related_objects(replacement_effect_related_objects(e))
                                 })
                         })
                         .collect();
@@ -2370,6 +2378,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                                 e.source,
                                 replacement_effect_choice_description(game, &e),
                             )
+                            .with_related_objects(replacement_effect_related_objects(&e))
                         })
                     })
                     .collect();

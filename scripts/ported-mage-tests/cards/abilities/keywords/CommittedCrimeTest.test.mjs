@@ -2,6 +2,17 @@ import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
 
 registerPortedMageTests({
   "sourcePath": "scripts/cards/abilities/keywords/CommittedCrimeTest.java",
+  "setupOperations": [
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "tester",
+      "custom": true,
+      "typeLine": "Enchantment",
+      "oracleText": "Whenever you commit a crime, you gain 1 life."
+    }
+  ],
   "tests": [
     {
       "name": "testSpikeOpponent",

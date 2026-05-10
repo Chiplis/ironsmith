@@ -83,6 +83,7 @@ fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
+        AlternativeCastKind::Blitz => "blitz",
         AlternativeCastKind::Dash => "dash",
         AlternativeCastKind::Flashback => "flashback",
         AlternativeCastKind::JumpStart => "jump-start",
@@ -526,7 +527,8 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
     let kind = filter.alternative_cast?;
     if !matches!(
         kind,
-        AlternativeCastKind::Dash
+        AlternativeCastKind::Blitz
+            | AlternativeCastKind::Dash
             | AlternativeCastKind::Flashback
             | AlternativeCastKind::JumpStart
             | AlternativeCastKind::Escape
@@ -546,6 +548,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
     }
 
     let subject = match kind {
+        AlternativeCastKind::Blitz => "Blitz",
         AlternativeCastKind::Dash => "Dash",
         AlternativeCastKind::Flashback => "Flashback",
         AlternativeCastKind::JumpStart => "Jump-start",

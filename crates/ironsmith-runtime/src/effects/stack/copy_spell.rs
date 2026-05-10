@@ -102,7 +102,7 @@ pub(crate) fn create_stack_copy(
     let target = game
         .object(target_id)
         .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-    let mut copy_obj = Object::token_copy_of(target, copy_id, copier);
+    let mut copy_obj = Object::spell_copy_of(target, copy_id, copier);
     if !removed_supertypes.is_empty() {
         copy_obj
             .supertypes

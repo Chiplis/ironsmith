@@ -597,6 +597,59 @@ impl Object {
         token
     }
 
+    /// Creates a copy of a spell on the stack.
+    ///
+    /// Unlike token copies of permanents, spell copies copy the spell's current
+    /// copiable characteristics on the stack, including temporary cast overlays
+    /// such as bestow.
+    pub fn spell_copy_of(source: &Object, id: ObjectId, owner: PlayerId) -> Self {
+        let mut copy = Self {
+            id,
+            stable_id: StableId::from(id),
+            kind: ObjectKind::SpellCopy,
+            card: None,
+            zone: Zone::Stack,
+            owner,
+            name: source.name.clone(),
+            mana_cost: source.mana_cost.clone(),
+            color_override: source.color_override,
+            supertypes: source.supertypes.clone(),
+            card_types: source.card_types.clone(),
+            subtypes: source.subtypes.clone(),
+            compiled_card_text: source.compiled_card_text.clone(),
+            rules_text_color_identity: source.rules_text_color_identity,
+            other_face: source.other_face,
+            other_face_name: source.other_face_name.clone(),
+            linked_face_layout: source.linked_face_layout,
+            base_power: source.base_power,
+            base_toughness: source.base_toughness,
+            base_loyalty: source.base_loyalty,
+            base_defense: source.base_defense,
+            abilities: source.abilities.clone(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: source.spell_effect.clone(),
+            aura_attach_filter: source.aura_attach_filter.clone(),
+            bestow_cast_state: source.bestow_cast_state.clone(),
+            face_down_cast_state: source.face_down_cast_state.clone(),
+            alternative_casts: source.alternative_casts.clone(),
+            has_fuse: source.has_fuse,
+            optional_costs: source.optional_costs.clone(),
+            optional_costs_paid: source.optional_costs_paid.clone(),
+            mana_spent_to_cast: source.mana_spent_to_cast.clone(),
+            temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
+            x_value: source.x_value,
+            keyword_payment_contributions_to_cast: source.keyword_payment_contributions_to_cast.clone(),
+            cast_tagged_objects: source.cast_tagged_objects.clone(),
+            additional_cost: source.additional_cost.clone(),
+        };
+        if let Some(loyalty) = source.base_loyalty {
+            copy.add_counters(CounterType::Loyalty, loyalty);
+        }
+        copy
+    }
+
     /// Creates a token using last-known-information copiable values.
     ///
     /// This is used when the source object no longer exists, but a resolving effect

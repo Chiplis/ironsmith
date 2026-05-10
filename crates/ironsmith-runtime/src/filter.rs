@@ -4004,6 +4004,7 @@ fn alternative_cast_matches_kind(
 ) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
     match (kind, method) {
+        (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
         (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
         (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
         (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,
@@ -4228,6 +4229,7 @@ fn describe_counter_constraint(constraint: CounterConstraint) -> String {
 #[allow(dead_code)]
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
+        AlternativeCastKind::Blitz => "blitz",
         AlternativeCastKind::Dash => "dash",
         AlternativeCastKind::Flashback => "flashback",
         AlternativeCastKind::JumpStart => "jump-start",

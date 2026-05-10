@@ -103,6 +103,12 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
 
   float targetFillProgress = smoothstep(0.74, 0.94, progress) * smoothstep(1.0, 0.82, progress);
   float clipMask = rectMask(p, clip, 5.0);
+  vec2 clipC = clip.xy + clip.zw * 0.5;
+  vec2 landingSpace = vec2((p.x - dstC.x) / max(clip.z, 1.0), (p.y - dstC.y) / max(clip.w, 1.0));
+  float landingEnvelope = exp(-dot(landingSpace, landingSpace) * 7.5);
+  float inspectorEnvelope = rectMask(p, clip, 22.0);
+  float arrivalFade = mix(1.0, 0.08, smoothstep(0.68, 0.98, pathT));
+  float inspectorAbsorb = mix(1.0, 0.12, inspectorEnvelope * smoothstep(0.58, 0.92, progress));
 
   float streamWidth = mix(src.z * 0.72, max(dst.z * 0.42, 42.0), pathT);
   float lateralNorm = abs(lateral) / max(streamWidth, 1.0);
@@ -135,12 +141,18 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
                        * fireflyPath
                        * lateralEnvelope
                        * pathEnvelope
-                       * streamActive;
-  float haloStream = (fireflyGlow * fireflyPath * lateralEnvelope + exp(-lateralNorm * lateralNorm * 0.18) * 0.18)
+                       * streamActive
+                       * arrivalFade
+                       * inspectorAbsorb;
+  float haloStream = fireflyGlow
+                   * fireflyPath
+                   * lateralEnvelope
                    * pathEnvelope
                    * smoothstep(0.1, 0.28, progress)
                    * smoothstep(0.94, 0.7, progress)
-                   * streamActive;
+                   * streamActive
+                   * arrivalFade
+                   * inspectorAbsorb;
 
   float sourceMask = rectMask(p, src, 8.0);
   float sourceBreak = saturate((progress - 0.10) / 0.72);
@@ -149,11 +161,6 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
                         + sin((p.x + seed * 71.0) * 0.17) * 0.028;
   float sourceCut = smoothstep(sourceBreak - 0.16 + sourceEdgeNoise, sourceBreak + 0.10 + sourceEdgeNoise, sourceCoord);
   float sourceAsh = sourceMask * sourceCut * smoothstep(0.08, 0.22, progress) * smoothstep(0.94, 0.72, progress);
-
-  vec2 clipC = clip.xy + clip.zw * 0.5;
-  vec2 landingSpace = vec2((p.x - dstC.x) / max(clip.z, 1.0), (p.y - dstC.y) / max(clip.w, 1.0));
-  float landingEnvelope = exp(-dot(landingSpace, landingSpace) * 7.5);
-  float inspectorEnvelope = rectMask(p, clip, 22.0);
 
   vec2 cloudSpace = (p - clipC) + seed * 73.0;
   vec2 cloudCell = floor(cloudSpace / 9.0);
@@ -165,7 +172,8 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
                  * targetFillProgress
                  * clipMask
                  * inspectorEnvelope
-                 * mix(landingEnvelope, 1.0, 0.22);
+                 * mix(landingEnvelope, 1.0, 0.22)
+                 * 0.14;
 
   vec3 white = vec3(1.0);
   vec3 pearl = vec3(1.0, 0.96, 0.82);
@@ -952,6 +960,7 @@ function ParticleExileCard({ effect }) {
 
 function AngelicDestroyCard({ effect }) {
   const rect = effect.rect;
+  const name = String(effect.card?.name || "");
   const targetRect = effect.targetRect || rect;
   const sourceCenterX = rect.left + rect.width / 2;
   const sourceCenterY = rect.top + rect.height / 2;
@@ -970,6 +979,7 @@ function AngelicDestroyCard({ effect }) {
     "--destroy-target-y": `${targetOffsetY}px`,
     "--destroy-flight-angle": `${Math.atan2(targetOffsetY, targetOffsetX)}rad`,
     "--destroy-trail-length": `${Math.max(42, Math.min(190, flightDistance * 0.24))}px`,
+    "--destroy-accent-rgb": effect.accentRgb || "142, 211, 255",
     "--exile-rise": `${rise}px`,
     "--exile-tilt": `${hashText(effect.id) % 2 === 0 ? -5 : 5}deg`,
     "--exile-start-delay": `${effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0}ms`,
@@ -978,6 +988,7 @@ function AngelicDestroyCard({ effect }) {
     "--exile-wing-flap-phase-right": `-${hashText(`${effect.id}:right`) % 280}ms`,
   }), [
     effect.cssAnimationDelayMs,
+    effect.accentRgb,
     effect.id,
     effect.startDelayMs,
     rect.height,
@@ -999,19 +1010,11 @@ function AngelicDestroyCard({ effect }) {
       aria-hidden="true"
     >
       <div className="zone-exile-halo" />
-      <div className="zone-exile-wings">
-        <div className="zone-exile-wing zone-exile-wing--left">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="zone-exile-wing zone-exile-wing--right">
-          <span />
-          <span />
-          <span />
+      <div className="zone-destroy-tombstone-flight">
+        <div className="zone-destroy-tombstone">
+          <div className="zone-destroy-tombstone-name">{name}</div>
         </div>
       </div>
-      <div className="zone-angelic-destroy-shooting-star" />
     </div>
   );
 }

@@ -17,7 +17,7 @@ const INLINE_EXPANDED_DEFAULT_HEIGHT = 248;
 const INLINE_EXPANDED_MIN_HEIGHT = 152;
 const INLINE_EXPANDED_SAFE_GAP = 12;
 const INLINE_EXPANDED_BOTTOM_GAP = 4;
-const INLINE_EXPANDED_RIGHT_BLEED = 8;
+const INLINE_EXPANDED_RIGHT_BLEED = 14;
 
 /* Viewport-tier overrides for inspector sizing */
 const TABLET_COMPACT_QUERY = "(min-width: 721px) and (max-width: 1023px)";

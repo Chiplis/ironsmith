@@ -28,6 +28,7 @@ pub(super) enum KeywordDispatchHint {
     AdditionalCostFamily,
     AlternativeOrExertFamily,
     Bestow,
+    Blitz,
     Bargain,
     Buyback,
     Channel,
@@ -149,6 +150,12 @@ mod spell_keywords {
             hints: &[KeywordDispatchHint::Bestow],
             matches: registry::matches_bestow,
             lower: registry::lower_bestow,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Blitz,
+            hints: &[KeywordDispatchHint::Blitz],
+            matches: registry::matches_blitz,
+            lower: registry::lower_blitz,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Bargain,
@@ -276,6 +283,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("you").value(KeywordDispatchHint::AlternativeOrExertFamily),
                 grammar::kw("if").value(KeywordDispatchHint::AlternativeOrExertFamily),
                 grammar::kw("bestow").value(KeywordDispatchHint::Bestow),
+                grammar::kw("blitz").value(KeywordDispatchHint::Blitz),
                 grammar::kw("bargain").value(KeywordDispatchHint::Bargain),
                 grammar::kw("buyback").value(KeywordDispatchHint::Buyback),
                 grammar::kw("channel").value(KeywordDispatchHint::Channel),

@@ -948,6 +948,15 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     if let Some(action) = parse_cost_keyword_action(
         &words,
+        "blitz",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Blitz,
+    ) {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        &words,
         "warp",
         KeywordCostFallback::MarkerOrText,
         KeywordAction::Warp,

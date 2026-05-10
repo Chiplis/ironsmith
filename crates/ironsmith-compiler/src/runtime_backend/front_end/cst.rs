@@ -41,6 +41,7 @@ pub(crate) enum KeywordLineKindCst {
     AdditionalCostChoice,
     AlternativeCast,
     Bestow,
+    Blitz,
     Bargain,
     Buyback,
     Channel,

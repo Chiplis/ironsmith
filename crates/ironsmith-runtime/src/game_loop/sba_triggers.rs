@@ -40,7 +40,13 @@ pub fn check_and_apply_sbas_with(
     game.refresh_continuous_state();
 
     loop {
-        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+        if restore_unattached_bestow_creatures(game) {
+            game.refresh_continuous_state();
+        }
+        let view = crate::derived_view::DerivedGameView::from_effects(
+            game,
+            crate::static_ability_processor::get_all_continuous_effects(game),
+        );
         let all_effects = view.effects().to_vec();
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
         let actions = check_state_based_actions_with_context(game, &view, &context);
@@ -61,7 +67,10 @@ pub fn check_and_apply_sbas_with(
         // Apply the SBAs (legend rule already handled above)
         // Use the decision maker version to allow interactive replacement effect choices
         let applied = if had_legend_decisions {
-            let post_legend_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+            let post_legend_view = crate::derived_view::DerivedGameView::from_effects(
+                game,
+                crate::static_ability_processor::get_all_continuous_effects(game),
+            );
             let post_legend_effects = post_legend_view.effects().to_vec();
             let post_legend_context = StateBasedActionContext::from_trigger_queue(trigger_queue);
             let post_legend_actions = check_state_based_actions_with_context(
@@ -94,6 +103,47 @@ pub fn check_and_apply_sbas_with(
     }
 
     Ok(())
+}
+
+fn restore_unattached_bestow_creatures(game: &mut GameState) -> bool {
+    let candidates = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|&object_id| {
+            let Some(object) = game.object(object_id) else {
+                return false;
+            };
+            if !object.is_bestow_overlay_active() {
+                return false;
+            }
+            match object.attached_to {
+                None => true,
+                Some(target) => {
+                    !crate::effects::permanents::attachment_can_attach_to_target(
+                        game, object_id, target,
+                    ) || matches!(
+                        target,
+                        crate::object::AttachmentTarget::Object(attached_id)
+                            if crate::targeting::has_protection_from_source(
+                                game,
+                                attached_id,
+                                object_id,
+                            )
+                    )
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for object_id in &candidates {
+        game.detach_object_from_current_target(*object_id);
+        if let Some(object) = game.object_mut(*object_id) {
+            object.end_bestow_cast_overlay();
+        }
+    }
+
+    !candidates.is_empty()
 }
 
 /// Put triggered abilities from the queue onto the stack.
