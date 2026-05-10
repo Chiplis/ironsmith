@@ -178,7 +178,97 @@ if [[ "$OPTIMIZE_WASM" -eq 0 ]]; then
 fi
 WASM_PACK_ARGS+=(--features "$FEATURES")
 
-wasm-pack "${WASM_PACK_ARGS[@]}"
+find_cached_wasm_bindgen() {
+  local cache_root="${WASM_PACK_CACHE:-$HOME/Library/Caches/.wasm-pack}"
+  local candidate
+  local required_version
+  if [[ ! -d "$cache_root" ]]; then
+    return 1
+  fi
+  required_version="$(
+    awk '
+      /^name = "wasm-bindgen"$/ { found = 1; next }
+      found && /^version = / {
+        gsub(/"/, "", $3)
+        print $3
+        exit
+      }
+    ' "$ROOT_DIR/Cargo.lock"
+  )"
+  while IFS= read -r candidate; do
+    if [[ -x "$candidate" && -n "$required_version" ]] \
+      && "$candidate" --version 2>/dev/null | grep -q "wasm-bindgen $required_version"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(find "$cache_root" -maxdepth 2 -type f -name wasm-bindgen | sort -r)
+  while IFS= read -r candidate; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(find "$cache_root" -maxdepth 2 -type f -name wasm-bindgen | sort -r)
+  return 1
+}
+
+find_cached_wasm_opt() {
+  local cache_root="${WASM_PACK_CACHE:-$HOME/Library/Caches/.wasm-pack}"
+  local candidate
+  if [[ ! -d "$cache_root" ]]; then
+    return 1
+  fi
+  while IFS= read -r candidate; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(find "$cache_root" -maxdepth 4 -type f -path '*/bin/wasm-opt' | sort -r)
+  return 1
+}
+
+build_wasm_with_cached_bindgen() {
+  local bindgen
+  local wasm_opt
+  bindgen="$(find_cached_wasm_bindgen)" || {
+    echo "[ERROR] wasm-pack failed and no cached wasm-bindgen binary was found" >&2
+    return 1
+  }
+
+  echo "[WARN] wasm-pack failed; falling back to cargo build with cached wasm-bindgen: $bindgen" >&2
+  cargo build \
+    -p ironsmith-wasm \
+    --target wasm32-unknown-unknown \
+    --release \
+    --features "$FEATURES"
+
+  mkdir -p "$PKG_DIR"
+  "$bindgen" \
+    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_wasm.wasm" \
+    --target web \
+    --out-dir "$PKG_DIR" \
+    --out-name ironsmith
+
+  if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
+    if wasm_opt="$(find_cached_wasm_opt)"; then
+      echo "[INFO] optimizing fallback WASM with cached wasm-opt: $wasm_opt"
+      "$wasm_opt" -Oz "$PKG_DIR/ironsmith_bg.wasm" -o "$PKG_DIR/ironsmith_bg.wasm"
+    else
+      echo "[WARN] wasm-pack failed and no cached wasm-opt binary was found; fallback WASM is unoptimized" >&2
+    fi
+  fi
+
+  if [[ -f "$DEMO_PKG_DIR/package.json" ]]; then
+    cp -f "$DEMO_PKG_DIR/package.json" "$PKG_DIR/package.json"
+  elif [[ ! -f "$PKG_DIR/package.json" ]]; then
+    cat > "$PKG_DIR/package.json" <<'JSON'
+{"name":"ironsmith","type":"module","files":["ironsmith.js","ironsmith_bg.wasm","ironsmith.d.ts","ironsmith_bg.wasm.d.ts"]}
+JSON
+  fi
+}
+
+if ! wasm-pack "${WASM_PACK_ARGS[@]}"; then
+  build_wasm_with_cached_bindgen
+fi
 
 mkdir -p "$DEMO_PKG_DIR"
 cp -f \
