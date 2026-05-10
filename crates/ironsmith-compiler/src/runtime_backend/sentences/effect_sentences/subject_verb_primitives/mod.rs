@@ -59,7 +59,7 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
+    CardTextError, ClashOpponentAst, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };

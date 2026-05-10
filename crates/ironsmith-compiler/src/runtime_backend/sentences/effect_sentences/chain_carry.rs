@@ -1217,6 +1217,8 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
                 | SubjectVerbActionAst::AddCardTypes { duration, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
                 | SubjectVerbActionAst::AddSubtypes { duration, .. }
+                | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
+                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
                 | SubjectVerbActionAst::SetColors { duration, .. }
                 | SubjectVerbActionAst::MakeColorless { duration, .. }
                 | SubjectVerbActionAst::BecomeBasicLandType { duration, .. }
@@ -1278,6 +1280,14 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
                     ..
                 }
                 | SubjectVerbActionAst::AddSubtypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddAllSubtypesOfFamily {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..
                 }
@@ -1455,6 +1465,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasInitiative { .. }
             | PredicateAst::PlayerHasCitysBlessing { .. }
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
+            | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")
 }
 

@@ -79,6 +79,9 @@ impl TriggerMatcher for YouDiscardCardTrigger {
             }
         }
         if let Some(filter) = &self.filter {
+            if filter.source && e.card == ctx.source_id {
+                return true;
+            }
             let Some(card) = ctx.game.object(e.card) else {
                 return false;
             };

@@ -162,7 +162,19 @@ pub(crate) fn parse_subject_cant_be_blocked_line(
         )));
     }
 
-    let subject = parse_anthem_subject(&subject_tokens)?;
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    let subject = if subject_words.as_slice()
+        == ["the", "first", "spell", "you", "cast", "each", "turn"]
+        || subject_words.as_slice() == ["first", "spell", "you", "cast", "each", "turn"]
+    {
+        AnthemSubjectAst::Filter(
+            ObjectFilter::spell()
+                .cast_by(PlayerFilter::You)
+                .first_spell_cast_each_turn(),
+        )
+    } else {
+        parse_anthem_subject(&subject_tokens)?
+    };
     let ability = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::KeywordAction(KeywordAction::Unblockable),
         AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
@@ -302,7 +314,19 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     }
     let condition = parse_static_condition_clause(&condition_tokens)?;
 
-    let subject = parse_anthem_subject(&subject_tokens)?;
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    let subject = if subject_words.as_slice()
+        == ["the", "first", "spell", "you", "cast", "each", "turn"]
+        || subject_words.as_slice() == ["first", "spell", "you", "cast", "each", "turn"]
+    {
+        AnthemSubjectAst::Filter(
+            ObjectFilter::spell()
+                .cast_by(PlayerFilter::You)
+                .first_spell_cast_each_turn(),
+        )
+    } else {
+        parse_anthem_subject(&subject_tokens)?
+    };
     let granted = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::ConditionalKeywordAction {
             action: KeywordAction::Unblockable,
@@ -378,7 +402,19 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls
         return Ok(None);
     }
 
-    let subject = parse_anthem_subject(&subject_tokens)?;
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    let subject = if subject_words.as_slice()
+        == ["the", "first", "spell", "you", "cast", "each", "turn"]
+        || subject_words.as_slice() == ["first", "spell", "you", "cast", "each", "turn"]
+    {
+        AnthemSubjectAst::Filter(
+            ObjectFilter::spell()
+                .cast_by(PlayerFilter::You)
+                .first_spell_cast_each_turn(),
+        )
+    } else {
+        parse_anthem_subject(&subject_tokens)?
+    };
     let unblockable = if card_types.len() == 1 {
         StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_type(card_types[0])
     } else {
@@ -696,7 +732,8 @@ pub(crate) fn parse_granted_keyword_static_line(
         }
 
         let keyword_words = crate::runtime_backend::token_word_refs(&keyword_tokens);
-        let ignore_keyword_reminder = matches!(keyword_words.first().copied(), Some("unearth"));
+        let ignore_keyword_reminder =
+            matches!(keyword_words.first().copied(), Some("unearth" | "conspire"));
         if !ignore_keyword_reminder {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing granted-keyword clause (clause: '{}')",
@@ -729,6 +766,54 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    let subject = if subject_words.as_slice()
+        == ["the", "first", "spell", "you", "cast", "each", "turn"]
+        || subject_words.as_slice() == ["first", "spell", "you", "cast", "each", "turn"]
+    {
+        AnthemSubjectAst::Filter(
+            ObjectFilter::spell()
+                .cast_by(PlayerFilter::You)
+                .first_spell_cast_each_turn(),
+        )
+    } else {
+        parse_anthem_subject(&subject_tokens)?
+    };
+
+    let grants_conspire = actions
+        .iter()
+        .filter(|action| matches!(action, KeywordAction::Conspire))
+        .count();
+    if grants_conspire > 0 {
+        let mut compiled = Vec::new();
+        for _ in 0..grants_conspire {
+            match &subject {
+                AnthemSubjectAst::Source => {
+                    let ability =
+                        StaticAbilityAst::Static(StaticAbility::keyword_marker("Conspire"));
+                    if let Some(condition) = &condition {
+                        compiled.push(StaticAbilityAst::ConditionalStaticAbility {
+                            ability: Box::new(ability),
+                            condition: condition.clone(),
+                        });
+                    } else {
+                        compiled.push(ability);
+                    }
+                }
+                AnthemSubjectAst::Filter(filter) => {
+                    compiled.push(StaticAbilityAst::GrantStaticAbility {
+                        filter: filter.clone(),
+                        ability: Box::new(StaticAbilityAst::Static(StaticAbility::keyword_marker(
+                            "Conspire",
+                        ))),
+                        condition: condition.clone(),
+                    });
+                }
+            }
+        }
+        return Ok(Some(compiled));
+    }
+
     let mapped = actions
         .into_iter()
         .filter(|action| action.lowers_to_static_ability())
@@ -737,7 +822,6 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
-    let subject = parse_anthem_subject(&subject_tokens)?;
     let mut compiled = Vec::new();
     if grants_must_attack {
         match &subject {
@@ -1446,6 +1530,15 @@ pub(crate) fn parse_anthem_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemSubjectAst, CardTextError> {
     let subject_words = crate::runtime_backend::token_word_refs(tokens);
+    if subject_words.as_slice() == ["the", "first", "spell", "you", "cast", "each", "turn"]
+        || subject_words.as_slice() == ["first", "spell", "you", "cast", "each", "turn"]
+    {
+        return Ok(AnthemSubjectAst::Filter(
+            ObjectFilter::spell()
+                .cast_by(PlayerFilter::You)
+                .first_spell_cast_each_turn(),
+        ));
+    }
     if subject_words.as_slice() == ["it"] {
         return Ok(AnthemSubjectAst::Source);
     }
@@ -1727,6 +1820,22 @@ pub(crate) fn parse_static_condition_clause(
         || clause_words == ["its", "monstrous"]
     {
         return Ok(crate::ConditionExpr::SourceIsMonstrous);
+    }
+    if clause_words == ["it", "devoured", "a", "creature"]
+        || clause_words == ["it", "devoured", "one", "or", "more", "creatures"]
+        || clause_words == ["this", "creature", "devoured", "a", "creature"]
+        || clause_words
+            == [
+                "this",
+                "creature",
+                "devoured",
+                "one",
+                "or",
+                "more",
+                "creatures",
+            ]
+    {
+        return Ok(crate::ConditionExpr::SourceDevouredCreaturesOrMore(1));
     }
     if clause_words == ["this", "is", "paired", "with", "another", "creature"]
         || clause_words
@@ -2065,15 +2174,19 @@ pub(crate) fn parse_static_condition_clause(
     }
 
     if anthem_contains_word(&clause_words, "entered")
+        && let Ok((comparison, used)) = parse_static_quantity_prefix(&tokens, true)
         && let Ok(filter) = parse_object_filter(
-            &tokens,
-            matches!(clause_words.first().copied(), Some("another" | "other")),
+            &tokens[used..],
+            matches!(
+                tokens.get(used).and_then(OwnedLexToken::as_word),
+                Some("another" | "other")
+            ),
         )
         && (filter.entered_battlefield_this_turn || filter.entered_battlefield_controller.is_some())
     {
         return Ok(crate::ConditionExpr::CountComparison {
             count: AnthemCountExpression::MatchingFilter(filter),
-            comparison: crate::effect::Comparison::GreaterThan(0),
+            comparison,
             display: Some(clause_words.join(" ")),
         });
     }
@@ -5367,10 +5480,7 @@ pub(crate) fn parse_anthem_line(
 
 fn trim_multi_anthem_subject_segment(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut segment = trim_edge_punctuation(tokens);
-    while segment
-        .last()
-        .is_some_and(|token| token.is_word("each"))
-    {
+    while segment.last().is_some_and(|token| token.is_word("each")) {
         segment = trim_edge_punctuation(&segment[..segment.len() - 1]);
     }
     segment
@@ -5411,11 +5521,7 @@ pub(crate) fn parse_multi_subject_anthem_line(
         return Ok(None);
     };
     let subject_tokens = trim_commas(&tokens[subject_start..get_idx]);
-    if subject_tokens.is_empty()
-        || !subject_tokens
-            .iter()
-            .any(|token| token.is_word("and"))
-    {
+    if subject_tokens.is_empty() || !subject_tokens.iter().any(|token| token.is_word("and")) {
         return Ok(None);
     }
 
@@ -5447,11 +5553,11 @@ pub(crate) fn parse_multi_subject_anthem_line(
         clause_tokens.extend_from_slice(&segment);
         clause_tokens.extend_from_slice(&tokens[get_idx..]);
         let adjusted_get_idx = subject_start + segment.len();
-        let clause = match parse_anthem_clause(&clause_tokens, adjusted_get_idx, clause_tokens.len())
-        {
-            Ok(clause) => clause,
-            Err(_) => return Ok(None),
-        };
+        let clause =
+            match parse_anthem_clause(&clause_tokens, adjusted_get_idx, clause_tokens.len()) {
+                Ok(clause) => clause,
+                Err(_) => return Ok(None),
+            };
         abilities.push(build_anthem_static_ability(&clause));
     }
 
@@ -5753,6 +5859,84 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         if subject_tokens.is_empty() {
             continue;
         }
+        let subject_tokens_for_type_addition = if subject_tokens
+            .last()
+            .is_some_and(|token| token.is_word("and"))
+        {
+            trim_commas(&subject_tokens[..subject_tokens.len().saturating_sub(1)])
+        } else {
+            subject_tokens.clone()
+        };
+        if let Some(is_idx) = subject_tokens_for_type_addition
+            .iter()
+            .enumerate()
+            .find_map(|(idx, token)| {
+                (idx > 0 && (token.is_word("is") || token.is_word("are"))).then_some(idx)
+            })
+        {
+            let base_subject_tokens = trim_commas(&subject_tokens_for_type_addition[..is_idx]);
+            let addition_tokens = trim_commas(&subject_tokens_for_type_addition[is_idx..]);
+            if !base_subject_tokens.is_empty()
+                && let Some(additions) = parse_type_color_addition_clause(&addition_tokens)?
+            {
+                let base_subject = match parse_anthem_subject(&base_subject_tokens) {
+                    Ok(subject) => subject,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                };
+                let AnthemSubjectAst::Filter(filter) = &base_subject else {
+                    continue;
+                };
+                let ability_tokens = trim_commas(&tokens[has_idx + 1..]);
+                let attached_subject =
+                    crate::runtime_backend::token_word_refs(&base_subject_tokens)
+                        .first()
+                        .is_some_and(|word| *word == "enchanted" || *word == "equipped");
+                let granted_tail = match parse_heterogeneous_granted_tail(
+                    &ability_tokens,
+                    &clause_words,
+                    attached_subject,
+                ) {
+                    Ok(Some(tail)) => tail,
+                    Ok(None) => continue,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                };
+                let mut result = Vec::new();
+                if !additions.set_colors.is_empty() {
+                    result.push(
+                        StaticAbility::set_colors(filter.clone(), additions.set_colors).into(),
+                    );
+                }
+                if !additions.added_colors.is_empty() {
+                    result.push(
+                        StaticAbility::add_colors(filter.clone(), additions.added_colors).into(),
+                    );
+                }
+                if !additions.card_types.is_empty() {
+                    result.push(
+                        StaticAbility::add_card_types(filter.clone(), additions.card_types).into(),
+                    );
+                }
+                if !additions.subtypes.is_empty() {
+                    result.push(
+                        StaticAbility::add_subtypes(filter.clone(), additions.subtypes).into(),
+                    );
+                }
+                result.extend(lower_granted_tail_for_anthem_subject(
+                    &base_subject,
+                    &condition,
+                    granted_tail,
+                ));
+                if !result.is_empty() {
+                    return Ok(Some(result));
+                }
+            }
+        }
         let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
         if subject_words.iter().any(|word| {
             matches!(
@@ -5803,6 +5987,29 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 token_index_for_word_index(&ability_tokens, as_long_as_idx)
         {
             let condition_tokens = trim_commas(&ability_tokens[condition_start + 3..]);
+            if !condition_tokens.is_empty() {
+                let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
+                    Ok(condition) => condition,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                };
+                condition = Some(match condition {
+                    Some(existing) => {
+                        crate::ConditionExpr::And(Box::new(existing), Box::new(parsed_condition))
+                    }
+                    None => parsed_condition,
+                });
+                ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+            }
+        }
+        let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        if let Some(if_idx) = anthem_find_word_index(&ability_words, |word| word == "if")
+            && if_idx > 0
+            && let Some(condition_start) = token_index_for_word_index(&ability_tokens, if_idx)
+        {
+            let condition_tokens = trim_commas(&ability_tokens[condition_start + 1..]);
             if !condition_tokens.is_empty() {
                 let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
                     Ok(condition) => condition,

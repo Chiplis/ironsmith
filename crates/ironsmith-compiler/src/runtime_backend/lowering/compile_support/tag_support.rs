@@ -149,6 +149,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
             | SubjectVerbActionAst::SetColors { target, .. }
             | SubjectVerbActionAst::MakeColorless { target, .. }
@@ -683,6 +685,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::AddCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
+        | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
+        | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
         | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
         | SubjectVerbActionAst::BecomeBasicLandType { .. }
         | SubjectVerbActionAst::SetColors { .. }

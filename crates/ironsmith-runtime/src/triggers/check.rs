@@ -1063,6 +1063,68 @@ pub(crate) fn check_triggers_with_view(
         }
     }
 
+    // Some discard triggers function from hand and must be checked using the
+    // card's last-known information from immediately before it was discarded.
+    if trigger_event.kind() == crate::events::traits::EventKind::CardDiscarded
+        && let Some(snapshot) = trigger_event.snapshot()
+    {
+        for ability in &snapshot.abilities {
+            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&Zone::Hand) {
+                continue;
+            }
+
+            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
+            if trigger_ability.trigger.matches(trigger_event, &ctx) {
+                let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                if trigger_count == 0 {
+                    continue;
+                }
+                let event_value_amount = trigger_ability
+                    .trigger
+                    .event_value_amount(trigger_event, &ctx);
+                let trigger_identity = compute_trigger_identity(trigger_ability);
+                if let Some(ref condition) = trigger_ability.intervening_if
+                    && !verify_intervening_if(
+                        game,
+                        condition,
+                        snapshot.controller,
+                        trigger_event,
+                        snapshot.object_id,
+                        Some(trigger_identity),
+                    )
+                {
+                    continue;
+                }
+
+                let entry = TriggeredAbilityEntry {
+                    source: snapshot.object_id,
+                    controller: snapshot.controller,
+                    x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                    event_value_amount,
+                    ability: TriggeredAbility {
+                        trigger: trigger_ability.trigger.clone(),
+                        effects: trigger_ability.effects.clone(),
+                        choices: trigger_ability.choices.clone(),
+                        intervening_if: trigger_ability.intervening_if.clone(),
+                        presentation_label: None,
+                    },
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: snapshot.stable_id,
+                    source_name: snapshot.name.clone(),
+                    source_snapshot: Some(snapshot.clone()),
+                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                    trigger_identity,
+                };
+                for _ in 0..trigger_count {
+                    triggered.push(entry.clone());
+                }
+            }
+        }
+    }
+
     // Check objects in all public non-battlefield zones.
     for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
         check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
@@ -1084,31 +1146,32 @@ pub(crate) fn check_triggers_with_view(
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
         && let Some(obj) = game.object(cast.spell)
     {
-        let native_cascade_count = obj
-            .abilities
-            .iter()
-            .filter(|ability| {
-                if !ability.functions_in(&Zone::Stack) {
-                    return false;
-                }
-                let AbilityKind::Static(static_ability) = &ability.kind else {
-                    return false;
-                };
-                if static_ability.id() == crate::static_abilities::StaticAbilityId::Cascade {
-                    return true;
-                }
-                if let Some(spec) = static_ability.conditional_spell_keyword_spec()
-                    && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Cascade
-                {
-                    return crate::static_abilities::conditional_spell_keyword_active(
-                        spec,
-                        game,
-                        cast.caster,
-                    );
-                }
-                false
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+        let native_cascade_count = view
+            .static_abilities_rc(cast.spell)
+            .map(|abilities| {
+                abilities
+                    .iter()
+                    .filter(|static_ability| {
+                        if static_ability.id() == crate::static_abilities::StaticAbilityId::Cascade
+                        {
+                            return true;
+                        }
+                        if let Some(spec) = static_ability.conditional_spell_keyword_spec()
+                            && spec.keyword
+                                == crate::static_abilities::ConditionalSpellKeywordKind::Cascade
+                        {
+                            return crate::static_abilities::conditional_spell_keyword_active(
+                                spec,
+                                game,
+                                cast.caster,
+                            );
+                        }
+                        false
+                    })
+                    .count()
             })
-            .count();
+            .unwrap_or(0);
         let granted_cascade_count = game
             .temporary_granted_spell_abilities(cast.spell, cast.caster)
             .into_iter()
@@ -1153,6 +1216,52 @@ pub(crate) fn check_triggers_with_view(
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
     {
         let times = entry.optional_costs_paid.times_paid_label("Replicate");
+        if times > 0
+            && let Some(obj) = game.object(cast.spell)
+        {
+            let copy_effect_id = crate::effect::EffectId(0);
+            let effects = vec![
+                Effect::with_id(
+                    copy_effect_id.0,
+                    Effect::copy_spell_n(crate::target::ChooseSpec::Source, times as i32),
+                ),
+                Effect::may_choose_new_targets(copy_effect_id),
+            ];
+            let ability = TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: ResolutionProgram::from_effects(effects),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            };
+            let trigger_identity = compute_trigger_identity(&ability);
+
+            triggered.push(TriggeredAbilityEntry {
+                source: cast.spell,
+                controller: cast.caster,
+                x_value: entry.x_value,
+                event_value_amount: None,
+                ability,
+                triggering_event: trigger_event.clone(),
+                source_stable_id: obj.stable_id,
+                source_name: obj.name.clone(),
+                source_snapshot: None,
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                trigger_identity,
+            });
+        }
+    }
+
+    // Conspire granted by a static ability is modeled as a dynamic optional cost.
+    // Printed conspire cards already carry their own trigger, so only the
+    // granted-cost label is handled here.
+    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
+        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
+        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+    {
+        let times = entry
+            .optional_costs_paid
+            .times_paid_label("Granted Conspire");
         if times > 0
             && let Some(obj) = game.object(cast.spell)
         {

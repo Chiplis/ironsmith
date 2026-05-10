@@ -152,6 +152,7 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,
+            name_override,
             added_card_types,
             added_subtypes,
             added_abilities,
@@ -160,6 +161,7 @@ pub(super) fn apply_trait_replacement(
                 &event,
                 *source,
                 *enters_tapped,
+                name_override.clone(),
                 added_card_types,
                 added_subtypes,
                 added_abilities,
@@ -572,9 +574,13 @@ fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>)
 }
 
 fn apply_trait_change_destination(event: &Event, new_zone: Zone) -> Option<Event> {
-    use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+    use crate::events::{DiscardEvent, EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     match event.kind() {
+        EventKind::Discard => {
+            let discard = downcast_event::<DiscardEvent>(event.inner())?;
+            Some(event.rewrap(discard.with_destination(new_zone)))
+        }
         EventKind::ZoneChange => {
             let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
             Some(event.rewrap(zone_change.with_destination(new_zone)))
@@ -684,6 +690,7 @@ fn apply_trait_enter_as_copy(
     event: &Event,
     source_id: crate::ids::ObjectId,
     enters_tapped: bool,
+    name_override: Option<String>,
     added_card_types: &[crate::types::CardType],
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
@@ -695,6 +702,7 @@ fn apply_trait_enter_as_copy(
             let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
             let mut copied = etb
                 .with_copy_of(source_id)
+                .with_copy_name_override(name_override.clone())
                 .with_added_card_types(added_card_types)
                 .with_added_subtypes(added_subtypes)
                 .with_added_abilities(added_abilities);
@@ -710,6 +718,7 @@ fn apply_trait_enter_as_copy(
                     EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from);
                 etb = etb
                     .with_copy_of(source_id)
+                    .with_copy_name_override(name_override.clone())
                     .with_added_card_types(added_card_types)
                     .with_added_subtypes(added_subtypes)
                     .with_added_abilities(added_abilities);

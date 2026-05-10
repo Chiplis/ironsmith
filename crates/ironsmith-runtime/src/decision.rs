@@ -4197,7 +4197,10 @@ mod tests {
         );
 
         let bestow_def = CardDefinitionBuilder::new(CardId::from_raw(884), "Bestow Cost Probe")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)], vec![ManaSymbol::Green]]))
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Green],
+            ]))
             .card_types(vec![CardType::Enchantment, CardType::Creature])
             .power_toughness(PowerToughness::fixed(3, 3))
             .parse_text("Bestow {5}{G}\nEnchanted creature gets +3/+3.")

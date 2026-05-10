@@ -17,11 +17,11 @@ pub use ironsmith_core::{
     CreateTokenEffect as CoreCreateTokenEffect, CrewCostEffect,
     CumulativeUpkeepEffect as CoreCumulativeUpkeepEffect, DealDamageEffect,
     DealDistributedDamageEffect, DelayedTriggerSpec, DestroyEffect, DestroyNoRegenerationEffect,
-    DetainEffect, DiscardEffect, DiscardHandEffect, DiscoverEffect, DoubleManaPoolEffect,
-    DrawCardsEffect, DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect,
-    EmitGiftGivenEffect, EmitKeywordActionEffect, EmptyManaPoolEffect, EnergyCountersEffect,
-    EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect, ExchangeTextBoxesEffect,
-    ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
+    DetainEffect, DevourEffect, DiscardEffect, DiscardHandEffect, DiscoverEffect,
+    DoubleManaPoolEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect, EachPlayerScryEffect,
+    EarthbendEffect, EmitGiftGivenEffect, EmitKeywordActionEffect, EmptyManaPoolEffect,
+    EnergyCountersEffect, EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect,
+    ExchangeTextBoxesEffect, ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
     ExecuteWithSourceEffect as CoreExecuteWithSourceEffect, ExertCostEffect, ExileEffect,
     ExileInsteadOfGraveyardEffect, ExileTaggedWhenSourceLeavesEffect, ExileTopOfLibraryEffect,
     ExileUntilDuration, ExileUntilEffect, ExploreEffect, ExtraTurnAfterNextTurnEffect,
@@ -72,8 +72,9 @@ pub use ironsmith_core::{
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
-    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect, VentureIntoDungeonEffect,
-    WinTheGameEffect, WithIdEffect as CoreWithIdEffect,
+    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    WithIdEffect as CoreWithIdEffect,
 };
 
 pub type ChooseModeEffect = CoreChooseModeEffect<Effect>;

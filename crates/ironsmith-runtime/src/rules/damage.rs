@@ -535,6 +535,7 @@ mod tests {
             spell_effect: None,
             aura_attach_filter: None,
             alternative_casts: vec![],
+            cast_alternative_method: None,
             has_fuse: false,
             optional_costs: vec![],
             optional_costs_paid: OptionalCostsPaid::default(),

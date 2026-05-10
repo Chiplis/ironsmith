@@ -93,6 +93,7 @@ pub enum KeywordAction {
         text: String,
     },
     Casualty(u32),
+    VariableCasualtyPlaneswalkerCopy,
     Conspire,
     Amplify(u32),
     AuraSwap(ManaCost),
@@ -345,6 +346,9 @@ impl KeywordAction {
             Self::Echo { text, .. } => text.clone(),
             Self::CumulativeUpkeep { text, .. } => text.clone(),
             Self::Casualty(amount) => format!("Casualty {amount}"),
+            Self::VariableCasualtyPlaneswalkerCopy => {
+                "Casualty X. The copy isn't legendary and has starting loyalty X.".to_string()
+            }
             Self::Conspire => "Conspire".to_string(),
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),

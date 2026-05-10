@@ -15,7 +15,9 @@ use crate::ability::{Ability, AbilityKind, LevelAbility};
 use crate::color::Color;
 use crate::compiled_text::describe_value;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
+use crate::events::cards::DiscardEvent;
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
+use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
     DamageFromSelfMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
@@ -23,7 +25,9 @@ use crate::events::damage::matchers::{
     DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
-use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
+use crate::events::traits::{
+    EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
+};
 use crate::events::zones::matchers::{
     ThisWouldEnterBattlefieldMatcher, WouldDieDamagedBySourceThisTurnMatcher,
     WouldEnterBattlefieldMatcher,
@@ -71,7 +75,10 @@ fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
     let unhinted = count.unhinted();
     if matches!(
         unhinted,
-        Value::Fixed(_) | Value::X | Value::ColorsOfManaSpentToCastThisSpell
+        Value::Fixed(_)
+            | Value::X
+            | Value::ManaSpentToCastThisSpell
+            | Value::ColorsOfManaSpentToCastThisSpell
     ) {
         return None;
     }
@@ -974,6 +981,11 @@ impl StaticAbilityKind for EntersWithCounters {
             Value::ColorsOfManaSpentToCastThisSpell => {
                 format!(
                     "Enters the battlefield with a {counter} counter on it for each color of mana spent to cast it"
+                )
+            }
+            Value::ManaSpentToCastThisSpell => {
+                format!(
+                    "Enters the battlefield with a number of {counter} counters on it equal to the amount of mana spent to cast it"
                 )
             }
             Value::Count(filter) => {
@@ -3571,6 +3583,116 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
             ))])
             .build(source, controller),
         )
+    }
+}
+
+/// "If [objects] would be put into a graveyard from anywhere, exile them instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExileToExileInsteadOfGraveyard {
+    pub filter: ObjectFilter,
+    pub graveyard_owner: PlayerFilter,
+}
+
+impl ExileToExileInsteadOfGraveyard {
+    pub fn new(filter: ObjectFilter, graveyard_owner: PlayerFilter) -> Self {
+        Self {
+            filter,
+            graveyard_owner,
+        }
+    }
+
+    fn graveyard_owner_phrase(&self) -> &'static str {
+        match self.graveyard_owner {
+            PlayerFilter::You => "your",
+            PlayerFilter::Opponent => "an opponent's",
+            _ => "a",
+        }
+    }
+}
+
+impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ExileToExileInsteadOfGraveyard
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "If {} would be put into {} graveyard from anywhere, exile it instead.",
+            self.filter.description(),
+            self.graveyard_owner_phrase()
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let mut filter = self.filter.clone();
+        if filter.owner.is_none() {
+            filter.owner = Some(self.graveyard_owner.clone());
+        }
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldGoToGraveyardFromAnywhereMatcher::new(filter),
+            ReplacementAction::ChangeDestination(Zone::Exile),
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WouldGoToGraveyardFromAnywhereMatcher {
+    filter: ObjectFilter,
+}
+
+impl WouldGoToGraveyardFromAnywhereMatcher {
+    fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        match event.event_kind() {
+            EventKind::Discard => {
+                let Some(discard) = downcast_event::<DiscardEvent>(event) else {
+                    return false;
+                };
+                if discard.destination != Zone::Graveyard {
+                    return false;
+                }
+                ctx.game
+                    .object(discard.card)
+                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            }
+            EventKind::ZoneChange => {
+                let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
+                    return false;
+                };
+                if zone_change.to != Zone::Graveyard {
+                    return false;
+                }
+                if let Some(snapshot) = zone_change.snapshot.as_ref().or(ctx.event_source_snapshot)
+                {
+                    let mut filter_ctx = ctx.filter_ctx.clone();
+                    filter_ctx.caster.get_or_insert(snapshot.controller);
+                    return self
+                        .filter
+                        .matches_snapshot(snapshot, &filter_ctx, ctx.game);
+                }
+                zone_change
+                    .objects
+                    .first()
+                    .and_then(|id| ctx.game.object(*id))
+                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            }
+            _ => false,
+        }
+    }
+
+    fn display(&self) -> String {
+        "If an object would be put into a graveyard from anywhere".to_string()
     }
 }
 

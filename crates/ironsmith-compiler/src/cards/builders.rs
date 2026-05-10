@@ -309,13 +309,13 @@ impl CardDefinitionBuilder {
             KeywordAction::Backup(amount) => self.backup(amount),
             KeywordAction::Dash(cost) => self.dash(cost),
             KeywordAction::Blitz(cost) => self.blitz(cost),
-            KeywordAction::BlitzFromGraveyard => self.with_ability(
-                crate::ability::Ability::static_ability(
+            KeywordAction::BlitzFromGraveyard => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::keyword_marker(
                         KeywordAction::BlitzFromGraveyard.display_text(),
                     ),
-                ),
-            ),
+                ))
+            }
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
             KeywordAction::Disturb(cost) => self.disturb(cost),
@@ -338,8 +338,12 @@ impl CardDefinitionBuilder {
                 self.cumulative_upkeep(total_cost)
             }
             KeywordAction::Casualty(amount) => self.casualty(amount),
+            KeywordAction::VariableCasualtyPlaneswalkerCopy => {
+                self.variable_casualty_planeswalker_copy()
+            }
             KeywordAction::Conspire => self.conspire(),
             KeywordAction::Amplify(amount) => self.amplify(amount),
+            KeywordAction::Devour(multiplier) => self.devour(multiplier),
             KeywordAction::AuraSwap(cost) => self.aura_swap(cost),
             KeywordAction::Ravenous => self.ravenous(),
             KeywordAction::Ascend => self.ascend(),
@@ -641,6 +645,13 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![crate::effect::Effect::amplify(amount)],
+        ))
+    }
+
+    pub fn devour(self, multiplier: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![crate::effect::Effect::devour(multiplier)],
         ))
     }
 
@@ -1293,6 +1304,18 @@ impl CardDefinitionBuilder {
                         crate::target::PlayerFilter::You,
                     ),
                 ])],
+            )
+            .in_zones(vec![crate::zone::Zone::Stack]),
+        )
+    }
+
+    pub fn variable_casualty_planeswalker_copy(self) -> Self {
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::you_cast_this_spell(),
+                vec![crate::effect::Effect::new(
+                    crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
+                )],
             )
             .in_zones(vec![crate::zone::Zone::Stack]),
         )

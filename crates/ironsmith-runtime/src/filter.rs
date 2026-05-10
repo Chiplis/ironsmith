@@ -1600,7 +1600,9 @@ impl ObjectFilterExt for ObjectFilter {
                 })
                 .or_else(|| game.current_characteristics(object.id))
         {
-            expand_semantic_subtypes(&mut chars);
+            if object.zone != Zone::Battlefield {
+                expand_semantic_subtypes(&mut chars);
+            }
             let mut adjusted = object.clone();
             adjusted.name = chars.name;
             adjusted.card_types = chars.card_types;
@@ -1682,6 +1684,12 @@ impl ObjectFilterExt for ObjectFilter {
             if !caster_filter.matches_player(cast_player, ctx) {
                 return false;
             }
+        }
+
+        if self.first_spell_cast_each_turn
+            && game.turn_store.turn_history.spell_cast_order(object.id) != Some(1)
+        {
+            return false;
         }
 
         // Owner check
@@ -2152,7 +2160,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Has mana cost check (must have a non-empty mana cost)
-        if self.has_mana_cost {
+        if self.has_mana_cost
+            && !(object.zone == Zone::Stack
+                && (self.zone == Some(Zone::Stack)
+                    || self.stack_kind == Some(StackObjectKind::Spell)))
+        {
             match &object.mana_cost {
                 Some(mc) if !mc.is_empty() => {} // Has a mana cost, OK
                 _ => return false,               // No mana cost or empty
@@ -2267,6 +2279,16 @@ impl ObjectFilterExt for ObjectFilter {
             if !caster_filter.matches_player(cast_player, ctx) {
                 return false;
             }
+        }
+
+        if self.first_spell_cast_each_turn
+            && game
+                .turn_store
+                .turn_history
+                .spell_cast_order(snapshot.object_id)
+                != Some(1)
+        {
+            return false;
         }
 
         // Owner check
@@ -2647,7 +2669,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Has mana cost check (must have a non-empty mana cost)
-        if self.has_mana_cost {
+        if self.has_mana_cost
+            && !(snapshot.zone == Zone::Stack
+                && (self.zone == Some(Zone::Stack)
+                    || self.stack_kind == Some(StackObjectKind::Spell)))
+        {
             match &snapshot.mana_cost {
                 Some(mc) if !mc.is_empty() => {}
                 _ => return false,

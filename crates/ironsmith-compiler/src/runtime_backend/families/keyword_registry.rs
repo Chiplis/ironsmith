@@ -28,8 +28,8 @@ use super::token_primitives::{
 };
 use super::util::{
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
-    parse_blitz_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
-    parse_escape_line_lexed, parse_flash_with_additional_cost_line_lexed,
+    parse_blitz_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed,
+    parse_entwine_line_lexed, parse_escape_line_lexed, parse_flash_with_additional_cost_line_lexed,
     parse_flashback_line_lexed, parse_harmonize_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_madness_line_lexed, parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
@@ -208,9 +208,7 @@ pub(super) fn lower_alternative_cast(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     let line_text = line.text.to_ascii_lowercase();
-    if line_text.contains("from your graveyard")
-        && line_text.contains("using its blitz ability")
-    {
+    if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
         return Ok(LineAst::Abilities(vec![
             crate::cards::builders::KeywordAction::BlitzFromGraveyard,
         ]));
@@ -528,9 +526,7 @@ pub(super) fn matches_alternative_cast(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     let line_text = line.info.raw_line.to_ascii_lowercase();
-    if line_text.contains("from your graveyard")
-        && line_text.contains("using its blitz ability")
-    {
+    if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
         return Ok(true);
     }
 

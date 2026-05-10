@@ -1449,6 +1449,7 @@ where
     clone_direct!(
         crate::effects::AmassEffect,
         crate::effects::AmplifyEffect,
+        crate::effects::DevourEffect,
         crate::effects::AuraSwapEffect,
         crate::effects::IncubateEffect,
         crate::effects::LearnEffect,
@@ -1504,6 +1505,7 @@ where
         crate::effects::TargetOnlyEffect,
         crate::effects::TapEffect,
         crate::effects::UntapEffect,
+        crate::effects::VariableCasualtyPlaneswalkerCopyEffect,
         crate::effects::AddManaOfChosenColorEffect,
         crate::effects::mana::AddManaOfImprintedColorsEffect,
         crate::effects::AddScaledManaEffect,

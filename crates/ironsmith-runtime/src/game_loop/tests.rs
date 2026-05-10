@@ -1,7 +1,7 @@
 use super::*;
 use crate::ability::Ability;
 use crate::ability::AbilityKind;
-use crate::card::{CardBuilder, PowerToughness};
+use crate::card::{CardBuilder, PowerToughness, PtValue};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::emrakul_the_promised_end;
 use crate::combat_state::AttackTarget;
@@ -516,6 +516,117 @@ fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader
     assert_eq!(
         treasure_count, 2,
         "expected two Treasure tokens after resolution"
+    );
+}
+
+#[test]
+fn attack_trigger_with_countered_attacker_taps_defending_creature() {
+    use crate::object::CounterType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let scaleguard = CardDefinitionBuilder::new(CardId::new(), "Elite Scaleguard Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Whenever a creature you control with a +1/+1 counter on it attacks, tap target creature defending player controls.",
+        )
+        .expect("attack trigger should parse");
+    game.create_object_from_definition(&scaleguard, alice, Zone::Battlefield);
+
+    let attacker = create_creature(&mut game, "Countered Attacker", alice, 2, 2);
+    game.object_mut(attacker)
+        .expect("attacker should exist")
+        .add_counters(CounterType::PlusOnePlusOne, 1);
+    game.remove_summoning_sickness(attacker);
+
+    let defender = create_creature(&mut game, "Defending Creature", bob, 2, 4);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: attacker,
+        target: AttackTarget::Player(bob),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("countered creature should be able to attack");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "countered attacker should queue Elite Scaleguard-style trigger"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("targeted trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("tap trigger should resolve");
+
+    assert!(
+        game.is_tapped(defender),
+        "defending player's targeted creature should be tapped"
+    );
+}
+
+#[test]
+fn bought_back_instant_returns_to_owners_hand_after_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Buyback Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Buyback {4}")
+        .expect("buyback line should parse");
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    paid.mark_label_paid("Buyback");
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_optional_costs_paid(paid)
+            .with_source_info(
+                game.object(spell_id).expect("spell should exist").stable_id,
+                "Buyback Probe".to_string(),
+            ),
+    );
+
+    resolve_stack_entry(&mut game).expect("bought-back spell should resolve");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .hand
+            .iter()
+            .filter(|&&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Buyback Probe"))
+            .count(),
+        1,
+        "resolved bought-back spell should return to its owner's hand"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .graveyard
+            .iter()
+            .filter(|&&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Buyback Probe"))
+            .count(),
+        0,
+        "resolved bought-back spell should not go to its owner's graveyard"
     );
 }
 
@@ -7078,6 +7189,67 @@ fn test_goddric_celebration_grants_dragon_stats_flying_and_activation() {
                 crate::decision::LegalAction::ActivateAbility { source, .. } if *source == goddric_id
             )),
         "Goddric should expose the granted red activation once celebration is active"
+    );
+}
+
+#[test]
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_celebration_nonland_count_uses_current_type_effects_for_current_permanents() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let ashaya = CardDefinitionBuilder::new(CardId::new(), "Ashaya, Soul of the Wild")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "Ashaya's power and toughness are each equal to the number of lands you control.\nNontoken creatures you control are Forest lands in addition to their other types.",
+        )
+        .expect("Ashaya should compile");
+    let ashaya_id = game.create_object_from_definition(&ashaya, alice, Zone::Battlefield);
+    record_battlefield_entry_this_turn(&mut game, ashaya_id);
+
+    let lotus = CardDefinitionBuilder::new(CardId::new(), "Black Lotus")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}, Sacrifice this artifact: Add three mana of any one color.")
+        .expect("Black Lotus should compile");
+    let lotus_id = game.create_object_from_definition(&lotus, alice, Zone::Graveyard);
+    record_battlefield_entry_this_turn(&mut game, lotus_id);
+
+    let mice = CardDefinitionBuilder::new(CardId::new(), "Armory Mice")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Mouse])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Celebration — This creature gets +0/+2 as long as two or more nonland permanents entered the battlefield under your control this turn.",
+        )
+        .expect("Armory Mice should compile");
+    let mice_id = game.create_object_from_definition(&mice, alice, Zone::Battlefield);
+    record_battlefield_entry_this_turn(&mut game, mice_id);
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_card_type(ashaya_id, CardType::Land),
+        "Ashaya should count its own type-changing effect and become a land"
+    );
+    assert_eq!(
+        game.calculated_toughness(ashaya_id),
+        Some(2),
+        "Ashaya's characteristic-defining toughness should count lands after layer-4 effects"
+    );
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+    assert!(
+        game.object(ashaya_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "Ashaya should survive state-based actions once it counts itself as a land"
+    );
+    assert!(
+        game.object_has_card_type(mice_id, CardType::Land),
+        "Ashaya should make Armory Mice a land"
+    );
+    assert_eq!(
+        game.calculated_toughness(mice_id),
+        Some(1),
+        "Armory Mice should not count itself as a nonland permanent while Ashaya makes it a land"
     );
 }
 
@@ -14867,7 +15039,11 @@ fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers() {
     apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
         .expect("blitz cast should succeed");
 
-    let original_entry = game.stack.last().expect("blitz spell should be on stack").clone();
+    let original_entry = game
+        .stack
+        .last()
+        .expect("blitz spell should be on stack")
+        .clone();
     CopySpellEffect::new(
         crate::target::ChooseSpec::SpecificObject(original_entry.object_id),
         1,
@@ -14886,6 +15062,26 @@ fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers() {
         game.effect_store.delayed_triggers.len(),
         4,
         "copy and original should each schedule dies-draw plus end-step sacrifice triggers"
+    );
+
+    let end_step_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_step_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put blitz sacrifice triggers on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve blitz sacrifice trigger");
+    }
+
+    assert!(
+        game.battlefield.iter().all(|&id| game
+            .object(id)
+            .is_none_or(|obj| obj.name != "Blitz Runtime Probe")),
+        "both blitzed permanents should be sacrificed at the beginning of the end step"
     );
 }
 

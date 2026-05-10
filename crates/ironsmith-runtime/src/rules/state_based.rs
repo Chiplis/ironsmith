@@ -630,20 +630,22 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     let pre_captured_snapshots: std::collections::HashMap<ObjectId, ObjectSnapshot> = actions
         .iter()
         .filter_map(|action| {
-            if let StateBasedAction::ObjectDies(obj_id) = action {
-                game.object(*obj_id).map(|obj| {
-                    (
-                        *obj_id,
-                        ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                            obj,
-                            game,
-                            &all_effects,
-                        ),
-                    )
-                })
-            } else {
-                None
-            }
+            let obj_id = match action {
+                StateBasedAction::ObjectDies(obj_id) | StateBasedAction::AuraFallsOff(obj_id) => {
+                    *obj_id
+                }
+                _ => return None,
+            };
+            game.object(obj_id).map(|obj| {
+                (
+                    obj_id,
+                    ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                        obj,
+                        game,
+                        &all_effects,
+                    ),
+                )
+            })
         })
         .collect();
 
@@ -848,7 +850,20 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::AuraFallsOff(obj_id) => {
-            game.move_object_by_sba(obj_id, Zone::Graveyard);
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
+            let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned();
+            let outcome = process_zone_change_with_snapshot(
+                game,
+                obj_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                decision_maker,
+                pre_snapshot.clone(),
+            );
+            if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
+                game.move_object_by_sba_with_snapshot(obj_id, final_zone, pre_snapshot);
+            }
         }
 
         StateBasedAction::AttachmentBecomesUnattached(obj_id) => {

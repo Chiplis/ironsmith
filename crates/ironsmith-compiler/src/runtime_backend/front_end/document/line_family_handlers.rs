@@ -22,6 +22,29 @@ pub(super) fn run_triggered_line_family(
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
 }
 
+pub(super) fn run_championed_with_this_trigger_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+    if !lower.starts_with("when ") || !lower.contains(" is championed with this ") {
+        return Ok(None);
+    }
+    let Some((_, effect_text)) = raw.split_once(',') else {
+        return Ok(None);
+    };
+    let triggered_text = format!(
+        "When this creature enters, {}",
+        effect_text.trim_start().trim_end_matches('.')
+    );
+    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    let triggered = parse_triggered_line_cst(&triggered_line)?;
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Triggered(triggered),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -154,6 +177,47 @@ pub(super) fn run_learn_line_family(
             parse_tokens: learn_line.tokens.clone(),
             parse_groups: vec![learn_line.tokens],
         }),
+        ctx.idx + 1,
+    )))
+}
+
+pub(super) fn run_champion_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+    if !lower.starts_with("champion ") {
+        return Ok(None);
+    }
+
+    let without_reminder = raw
+        .split_once('(')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(raw)
+        .trim()
+        .trim_end_matches('.');
+    let Some(filter_text) = without_reminder.strip_prefix("Champion ") else {
+        return Ok(None);
+    };
+    let filter_text = filter_text
+        .strip_prefix("a ")
+        .or_else(|| filter_text.strip_prefix("an "))
+        .unwrap_or(filter_text)
+        .trim();
+    if filter_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "champion keyword missing object filter: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let triggered_text = format!(
+        "When this creature enters, exile another {filter_text} you control until this creature leaves the battlefield."
+    );
+    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    let triggered = parse_triggered_line_cst(&triggered_line)?;
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Triggered(triggered),
         ctx.idx + 1,
     )))
 }

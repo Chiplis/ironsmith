@@ -713,6 +713,9 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { player, .. } => {
                     track_effect_player(*player, frame, true, true)?;
                 }
+                SubjectVerbActionAst::RevealHand => {
+                    frame.last_object_tag = None;
+                }
                 SubjectVerbActionAst::RevealTop => {
                     frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
                 }
@@ -792,7 +795,9 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::BecomeBasicLandType { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "typed")?;
                 }
-                SubjectVerbActionAst::AddSubtypes { target, .. } => {
+                SubjectVerbActionAst::AddSubtypes { target, .. }
+                | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
+                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "subtyped")?;
                 }
                 SubjectVerbActionAst::SetColors { target, .. } => {
@@ -1677,6 +1682,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
@@ -2500,6 +2507,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
             | SubjectVerbActionAst::SetColors { target, .. }

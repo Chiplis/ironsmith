@@ -187,6 +187,8 @@ pub struct Object {
     pub face_down_cast_state: Option<Box<FaceDownCastState>>,
     /// Alternative casting methods (flashback, escape, etc.)
     pub alternative_casts: Vec<AlternativeCastingMethod>,
+    /// Alternative method chosen for the current spell cast.
+    pub cast_alternative_method: Option<AlternativeCastingMethod>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -318,6 +320,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             alternative_casts: Vec::new(),
+            cast_alternative_method: None,
             has_fuse: false,
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -345,6 +348,7 @@ impl Object {
         obj.bestow_cast_state = None;
         obj.face_down_cast_state = None;
         obj.alternative_casts = def.alternative_casts.clone();
+        obj.cast_alternative_method = None;
         obj.has_fuse = def.has_fuse;
         obj.optional_costs = def.optional_costs.clone();
         obj.additional_cost = def.additional_cost.clone();
@@ -511,6 +515,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             alternative_casts: Vec::new(),
+            cast_alternative_method: None,
             has_fuse: false,
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -575,6 +580,7 @@ impl Object {
             face_down_cast_state: source.face_down_cast_state.clone(),
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),
+            cast_alternative_method: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -634,13 +640,16 @@ impl Object {
             bestow_cast_state: source.bestow_cast_state.clone(),
             face_down_cast_state: source.face_down_cast_state.clone(),
             alternative_casts: source.alternative_casts.clone(),
+            cast_alternative_method: source.cast_alternative_method.clone(),
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
             mana_spent_to_cast: source.mana_spent_to_cast.clone(),
             temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
             x_value: source.x_value,
-            keyword_payment_contributions_to_cast: source.keyword_payment_contributions_to_cast.clone(),
+            keyword_payment_contributions_to_cast: source
+                .keyword_payment_contributions_to_cast
+                .clone(),
             cast_tagged_objects: source.cast_tagged_objects.clone(),
             additional_cost: source.additional_cost.clone(),
         };
@@ -690,6 +699,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             alternative_casts: Vec::new(),
+            cast_alternative_method: None,
             has_fuse: false,
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -748,6 +758,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             alternative_casts: Vec::new(),
+            cast_alternative_method: None,
             has_fuse: false,
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -765,12 +776,17 @@ impl Object {
     /// subtypes, supertypes, rules text, power, toughness, loyalty, and abilities.
     /// Non-copiable state (counters, damage, etc.) is NOT copied.
     pub fn copy_copiable_values_from(&mut self, source: &Object) {
+        let bestow_restore = source.bestow_cast_state.as_ref();
         self.name = source.name.clone();
         self.mana_cost = source.mana_cost.clone();
         self.color_override = source.color_override;
         self.supertypes = source.supertypes.clone();
-        self.card_types = source.card_types.clone();
-        self.subtypes = source.subtypes.clone();
+        self.card_types = bestow_restore
+            .map(|restore| restore.card_types.clone())
+            .unwrap_or_else(|| source.card_types.clone());
+        self.subtypes = bestow_restore
+            .map(|restore| restore.subtypes.clone())
+            .unwrap_or_else(|| source.subtypes.clone());
         self.compiled_card_text = source.compiled_card_text.clone();
         self.rules_text_color_identity = source.rules_text_color_identity;
         self.other_face = source.other_face;
@@ -781,7 +797,9 @@ impl Object {
         self.base_loyalty = source.base_loyalty;
         self.base_defense = source.base_defense;
         self.abilities = source.abilities.clone();
-        self.aura_attach_filter = source.aura_attach_filter.clone();
+        self.aura_attach_filter = bestow_restore
+            .map(|restore| restore.aura_attach_filter.clone())
+            .unwrap_or_else(|| source.aura_attach_filter.clone());
         self.has_fuse = source.has_fuse;
     }
 
@@ -1285,6 +1303,7 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             alternative_casts: def.alternative_casts.clone(),
+            cast_alternative_method: None,
             has_fuse: def.has_fuse,
             optional_costs: def.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),

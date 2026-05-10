@@ -368,7 +368,8 @@ impl DecisionSpec for ReplacementSpec {
             .options
             .iter()
             .map(|o| {
-                let mut option = SelectableOption::new(o.index, &o.description).with_object(o.source);
+                let mut option =
+                    SelectableOption::new(o.index, &o.description).with_object(o.source);
                 if !o.related_object_ids.is_empty() {
                     option = option.with_related_objects(o.related_object_ids.clone());
                 }

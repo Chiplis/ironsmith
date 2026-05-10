@@ -138,6 +138,8 @@ mod tests {
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::StaticAbility;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -206,6 +208,65 @@ mod tests {
         assert_eq!(
             game.object(moved_id)
                 .expect("countered spell should still exist after being moved")
+                .zone,
+            Zone::Exile
+        );
+    }
+
+    #[test]
+    fn counter_spell_honors_own_from_anywhere_exile_replacement_on_stack() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let target_spell = create_instant(&mut game, bob, Zone::Stack, "Self Replacing Spell");
+        let stable_id = game
+            .object(target_spell)
+            .expect("target spell should exist")
+            .stable_id;
+        game.object_mut(target_spell)
+            .expect("target spell should exist")
+            .abilities
+            .push(
+                crate::ability::Ability::static_ability(
+                    StaticAbility::exile_to_exile_instead_of_graveyard(
+                        ObjectFilter::source(),
+                        PlayerFilter::Any,
+                    ),
+                )
+                .in_zones(vec![
+                    Zone::Battlefield,
+                    Zone::Stack,
+                    Zone::Graveyard,
+                    Zone::Hand,
+                    Zone::Library,
+                    Zone::Exile,
+                    Zone::Command,
+                ]),
+            );
+        game.stack.push(StackEntry::new(target_spell, bob));
+        game.update_replacement_effects();
+
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(target_spell))),
+            &mut ctx,
+        )
+        .expect("counter should resolve");
+
+        assert!(
+            outcome.status.is_success(),
+            "counter should resolve successfully"
+        );
+        let moved_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("countered spell should still be tracked after moving");
+        assert_eq!(
+            game.object(moved_id)
+                .expect("countered spell should still exist after moving")
                 .zone,
             Zone::Exile
         );

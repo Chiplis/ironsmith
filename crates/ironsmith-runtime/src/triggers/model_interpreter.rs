@@ -162,6 +162,9 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_deals_combat_damage_to_player()
         }
         TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
+        TriggerKind::DealsNoncombatDamageToPlayer { source, player } => {
+            crate::triggers::Trigger::deals_noncombat_damage_to_player(source, player)
+        }
         TriggerKind::DealsCombatDamage { filter } => {
             crate::triggers::Trigger::deals_combat_damage(filter)
         }
@@ -418,13 +421,20 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(filter) => {
                 Self::put_into_graveyard(filter)
             }
-            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone { filter, from } => {
-                Self::new(
-                    super::zone_changes::ZoneChangeTrigger::new()
-                        .from(from)
-                        .to(crate::zone::Zone::Graveyard)
-                        .filter(filter),
-                )
+            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone {
+                filter,
+                from,
+                one_or_more,
+            } => {
+                let trigger = super::zone_changes::ZoneChangeTrigger::new()
+                    .from(from)
+                    .to(crate::zone::Zone::Graveyard)
+                    .filter(filter);
+                if one_or_more {
+                    Self::new(trigger.count(super::zone_changes::CountMode::OneOrMore))
+                } else {
+                    Self::new(trigger)
+                }
             }
             ironsmith_core::DelayedTriggerSpec::SpellCast {
                 filter,

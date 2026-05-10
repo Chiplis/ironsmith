@@ -69,6 +69,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::this_deals_combat_damage_to(filter)
         }
         TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
+        TriggerSpec::DealsNoncombatDamageToPlayer { source, player } => {
+            Trigger::deals_noncombat_damage_to_player(source, player)
+        }
         TriggerSpec::DealsCombatDamage(filter) => Trigger::deals_combat_damage(filter),
         TriggerSpec::DealsCombatDamageTo { source, target } => {
             Trigger::deals_combat_damage_to(source, target)
@@ -142,12 +145,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
-        TriggerSpec::PutIntoGraveyardFromZone { filter, from } => Trigger::new(
-            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+        TriggerSpec::PutIntoGraveyardFromZone {
+            filter,
+            from,
+            one_or_more,
+        } => {
+            let trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .from(from)
                 .to(crate::zone::Zone::Graveyard)
-                .filter(filter),
-        ),
+                .filter(filter);
+            if one_or_more {
+                Trigger::new(trigger.count(crate::triggers::CountMode::OneOrMore))
+            } else {
+                Trigger::new(trigger)
+            }
+        }
         TriggerSpec::CounterPutOn {
             filter,
             counter_type,
@@ -338,6 +350,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
@@ -405,6 +418,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
@@ -469,6 +483,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::DealsDamage(_)
+            | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
             | TriggerSpec::ThisDealsCombatDamage
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsCombatDamage(_)

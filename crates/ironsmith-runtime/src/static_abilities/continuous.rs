@@ -771,6 +771,13 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceIsMonstrous => {
             "as long as this creature is monstrous".to_string()
         }
+        crate::ConditionExpr::SourceDevouredCreaturesOrMore(count) => {
+            if *count == 1 {
+                "if it devoured a creature".to_string()
+            } else {
+                format!("if it devoured {count} or more creatures")
+            }
+        }
         crate::ConditionExpr::EnchantedPermanentIsCreature => {
             "as long as enchanted permanent is a creature".to_string()
         }
@@ -1091,6 +1098,111 @@ fn all_game_object_ids(game: &GameState) -> Vec<ObjectId> {
     ids
 }
 
+fn entered_battlefield_this_turn_count(
+    filter: &ObjectFilter,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> i32 {
+    let filter_ctx = game.filter_context_for(controller, Some(source));
+    let type_effects = game.cached_continuous_effects_snapshot();
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .filter(|record| {
+            record
+                .event
+                .downcast::<crate::events::EnterBattlefieldEvent>()
+                .is_some()
+                || record
+                    .event
+                    .downcast::<crate::events::zones::ZoneChangeEvent>()
+                    .is_some_and(|event| event.is_etb())
+        })
+        .filter(|record| {
+            record.object_snapshot.as_ref().is_some_and(|snapshot| {
+                if filter.other && snapshot.object_id == source {
+                    return false;
+                }
+                let current_id = game
+                    .object(snapshot.object_id)
+                    .map(|object| object.id)
+                    .or_else(|| game.find_object_by_stable_id(snapshot.stable_id))
+                    .or_else(|| {
+                        game.battlefield.iter().copied().find(|id| {
+                            game.object(*id).is_some_and(|object| {
+                                object.name == snapshot.name
+                                    && object.owner == snapshot.owner
+                                    && game.controller_of(object) == snapshot.controller
+                            })
+                        })
+                    });
+                if let Some(current) = current_id.and_then(|id| game.object(id))
+                    && current.zone == Zone::Battlefield
+                {
+                    let mut adjusted = current.clone();
+                    for effect in &type_effects {
+                        if !matches!(
+                            effect.modification,
+                            Modification::AddCardTypes(_)
+                                | Modification::RemoveCardTypes(_)
+                                | Modification::SetCardTypes(_)
+                        ) || !crate::continuous::continuous_effect_duration_and_condition_are_active(
+                            effect, game,
+                        ) {
+                            continue;
+                        }
+                        let applies = match &effect.applies_to {
+                            EffectTarget::Specific(target) => *target == current.id,
+                            EffectTarget::Source => effect.source == current.id,
+                            EffectTarget::AllPermanents => current.zone == Zone::Battlefield,
+                            EffectTarget::Filter(effect_filter) => effect_filter.matches_non_recursive(
+                                current,
+                                &game.filter_context_for(effect.controller, Some(effect.source)),
+                                game,
+                            ),
+                            EffectTarget::AllCreatures => {
+                                current.zone == Zone::Battlefield
+                                    && current.card_types.contains(&CardType::Creature)
+                            }
+                            EffectTarget::AttachedTo(attached_source) => game
+                                .object(*attached_source)
+                                .and_then(|source_obj| source_obj.attached_to)
+                                .and_then(|target| target.object_id())
+                                == Some(current.id),
+                        };
+                        if !applies {
+                            continue;
+                        }
+                        match &effect.modification {
+                            Modification::AddCardTypes(card_types) => {
+                                for card_type in card_types {
+                                    if !adjusted.card_types.contains(card_type) {
+                                        adjusted.card_types.push(*card_type);
+                                    }
+                                }
+                            }
+                            Modification::RemoveCardTypes(card_types) => {
+                                adjusted
+                                    .card_types
+                                    .retain(|card_type| !card_types.contains(card_type));
+                            }
+                            Modification::SetCardTypes(card_types) => {
+                                adjusted.card_types = card_types.clone();
+                            }
+                            _ => {}
+                        }
+                    }
+                    return filter.matches_non_recursive(&adjusted, &filter_ctx, game);
+                }
+                filter.matches_snapshot(snapshot, &filter_ctx, game)
+            })
+        })
+        .count() as i32
+}
+
 pub(crate) fn resolve_anthem_count_expression(
     count: &AnthemCountExpression,
     game: &GameState,
@@ -1099,6 +1211,12 @@ pub(crate) fn resolve_anthem_count_expression(
 ) -> i32 {
     let filter_ctx = game.filter_context_for(controller, Some(source));
     match count {
+        AnthemCountExpression::MatchingFilter(filter)
+            if filter.entered_battlefield_this_turn
+                || filter.entered_battlefield_controller.is_some() =>
+        {
+            entered_battlefield_this_turn_count(filter, game, source, controller)
+        }
         AnthemCountExpression::MatchingFilter(filter) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))

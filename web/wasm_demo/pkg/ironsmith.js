@@ -203,6 +203,19 @@ export class WasmGame {
         wasm.wasmgame_forceNextDieRoll(this.__wbg_ptr, result);
     }
     /**
+     * Turn a face-down permanent face up without going through priority action
+     * enumeration. Ported tests use this when the UI has not exposed the
+     * special action because mana was supplied out of band.
+     * @param {number} player_index
+     * @param {bigint} object_id
+     */
+    forceTurnFaceUp(player_index, object_id) {
+        const ret = wasm.wasmgame_forceTurnFaceUp(this.__wbg_ptr, player_index, object_id);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      * @param {string} card_name
      * @returns {number}
@@ -311,6 +324,22 @@ export class WasmGame {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * Move a hand card onto the battlefield with the shared morph-style
+     * face-down overlay. This is used by ported test harnesses that set up a
+     * cast result directly when the UI has no payable cast action exposed.
+     * @param {number} player_index
+     * @param {bigint} object_id
+     * @param {number} ward_generic_cost
+     * @returns {bigint}
+     */
+    moveHandCardToBattlefieldFaceDown(player_index, object_id, ward_generic_cost) {
+        const ret = wasm.wasmgame_moveHandCardToBattlefieldFaceDown(this.__wbg_ptr, player_index, object_id, ward_generic_cost);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return BigInt.asUintN(64, ret[0]);
     }
     /**
      * Construct a demo game with two players.

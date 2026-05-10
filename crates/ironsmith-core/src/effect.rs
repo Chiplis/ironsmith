@@ -141,6 +141,7 @@ pub enum DelayedTriggerSpec {
     PutIntoGraveyardFromZone {
         filter: ObjectFilter,
         from: crate::zone::Zone,
+        one_or_more: bool,
     },
     SpellCast {
         filter: Option<ObjectFilter>,
@@ -1920,6 +1921,17 @@ impl AmplifyEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DevourEffect {
+    pub multiplier: u32,
+}
+
+impl DevourEffect {
+    pub fn new(multiplier: u32) -> Self {
+        Self { multiplier }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConniveEffect {
     pub target: ChooseSpec,
     pub count: Value,
@@ -2751,6 +2763,21 @@ impl CopySpellForEachTargetEffect {
             self = self.removed_supertype(supertype);
         }
         self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableCasualtyPlaneswalkerCopyEffect;
+
+impl VariableCasualtyPlaneswalkerCopyEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for VariableCasualtyPlaneswalkerCopyEffect {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

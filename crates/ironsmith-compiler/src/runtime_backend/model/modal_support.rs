@@ -463,6 +463,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }

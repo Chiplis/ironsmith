@@ -20,6 +20,8 @@ pub struct CardDiscardedEvent {
     pub card: ObjectId,
     /// What caused the discard, if known.
     pub cause: Option<EventCause>,
+    /// Last-known information for the card as it existed in hand before the discard.
+    pub snapshot: Option<ObjectSnapshot>,
 }
 
 impl CardDiscardedEvent {
@@ -29,6 +31,7 @@ impl CardDiscardedEvent {
             player,
             card,
             cause: None,
+            snapshot: None,
         }
     }
 
@@ -37,7 +40,13 @@ impl CardDiscardedEvent {
             player,
             card,
             cause: Some(cause),
+            snapshot: None,
         }
+    }
+
+    pub fn with_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
+        self.snapshot = Some(snapshot);
+        self
     }
 }
 
@@ -77,7 +86,7 @@ impl GameEventType for CardDiscardedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
 

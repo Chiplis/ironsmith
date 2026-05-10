@@ -808,6 +808,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {}
         Condition::SourceIsTapped => {}
         Condition::SourceIsSaddled => {}
+        Condition::SourceDevouredCreaturesOrMore(..) => {}
         Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
         Condition::SourceMatches(..) => {}
@@ -1548,6 +1549,9 @@ pub fn evaluate_condition_external(
         }
         Condition::SourceIsTapped => game.is_tapped(ctx.source),
         Condition::SourceIsSaddled => game.is_saddled(ctx.source),
+        Condition::SourceDevouredCreaturesOrMore(count) => {
+            game.devoured_count(ctx.source) >= *count
+        }
         Condition::SourceIsMonstrous => game.is_monstrous(ctx.source),
         Condition::SourceIsFaceDown => game.is_face_down(ctx.source),
         Condition::SourceMatches(filter) => {
@@ -2273,6 +2277,7 @@ fn evaluate_condition_simple(
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
         | Condition::SourceIsTapped
         | Condition::SourceIsSaddled
+        | Condition::SourceDevouredCreaturesOrMore(_)
         | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
         | Condition::SourceMatches(_)
@@ -3011,6 +3016,9 @@ fn evaluate_condition(
         }
         Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
         Condition::SourceIsSaddled => Ok(game.is_saddled(ctx.source)),
+        Condition::SourceDevouredCreaturesOrMore(count) => {
+            Ok(game.devoured_count(ctx.source) >= *count)
+        }
         Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
         Condition::SourceIsFaceDown => Ok(game.is_face_down(ctx.source)),
         Condition::SourceMatches(filter) => {
@@ -3053,9 +3061,18 @@ fn evaluate_condition(
         Condition::TaggedObjectMatches(tag, filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
-                return Ok(tagged
-                    .iter()
-                    .any(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game)));
+                return Ok(tagged.iter().any(|snapshot| {
+                    let current_id = game
+                        .object(snapshot.object_id)
+                        .map(|object| object.id)
+                        .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
+                    if let Some(current_id) = current_id
+                        && let Some(object) = game.object(current_id)
+                    {
+                        return filter.matches(object, &filter_ctx, game);
+                    }
+                    filter.matches_snapshot(snapshot, &filter_ctx, game)
+                }));
             }
 
             // Some compile-time conditional lowering paths synthesize a branch-local tag

@@ -1585,6 +1585,10 @@ impl Effect {
         Self::new(crate::effects::AmplifyEffect::new(amount))
     }
 
+    pub fn devour(multiplier: u32) -> Self {
+        Self::new(crate::effects::DevourEffect::new(multiplier))
+    }
+
     pub fn reveal_top(
         player: crate::target::PlayerFilter,
         tag: impl Into<crate::tag::TagKey>,

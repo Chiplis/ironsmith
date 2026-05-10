@@ -1348,7 +1348,7 @@ pub fn perform_activate_mana_ability(
     player: PlayerId,
     permanent_id: ObjectId,
     ability_index: usize,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     perform_activate_mana_ability_restricted_colors(
         game,
@@ -1366,7 +1366,7 @@ pub fn perform_activate_mana_ability_restricted_colors(
     permanent_id: ObjectId,
     ability_index: usize,
     mana_color_restriction: Option<Vec<crate::color::Color>>,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     perform_activate_mana_ability_restricted_colors_with_events(
         game,
@@ -1385,7 +1385,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
     permanent_id: ObjectId,
     ability_index: usize,
     mana_color_restriction: Option<Vec<crate::color::Color>>,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, ActionError> {
     use crate::effects::ExecutionContext;
 

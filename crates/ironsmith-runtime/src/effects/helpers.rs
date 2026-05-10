@@ -1262,6 +1262,13 @@ pub fn resolve_value(
             Ok(devotion as i32)
         }
 
+        Value::ManaSpentToCastThisSpell => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Ok(0);
+            };
+            Ok(source_obj.mana_spent_to_cast.total() as i32)
+        }
+
         Value::ColorsOfManaSpentToCastThisSpell => {
             let Some(source_obj) = game.object(ctx.source) else {
                 return Ok(0);

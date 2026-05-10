@@ -204,6 +204,26 @@ fn delayed_trigger_spec_from_label(
     }
 }
 
+fn ability_with_inherent_functional_zones(ability: Ability) -> Ability {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return ability;
+    };
+    match static_ability.id() {
+        crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+        | crate::static_abilities::StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
+        | crate::static_abilities::StaticAbilityId::ExileWouldDieInstead => ability.in_zones(vec![
+            Zone::Battlefield,
+            Zone::Stack,
+            Zone::Graveyard,
+            Zone::Hand,
+            Zone::Library,
+            Zone::Exile,
+            Zone::Command,
+        ]),
+        _ => ability,
+    }
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     ability: &Ability,
@@ -527,6 +547,7 @@ pub(crate) enum KeywordAction {
         text: String,
     },
     Casualty(u32),
+    VariableCasualtyPlaneswalkerCopy,
     Conspire,
     Amplify(u32),
     AuraSwap(ManaCost),
@@ -777,6 +798,9 @@ impl KeywordAction {
             Self::Echo { text, .. } => text.clone(),
             Self::CumulativeUpkeep { text, .. } => text.clone(),
             Self::Casualty(amount) => format!("Casualty {amount}"),
+            Self::VariableCasualtyPlaneswalkerCopy => {
+                "Casualty X. The copy isn't legendary and has starting loyalty X.".to_string()
+            }
             Self::Conspire => "Conspire".to_string(),
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
@@ -1616,11 +1640,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Dash(cost) => self.dash(cost),
             KeywordAction::Blitz(cost) => self.blitz(cost),
-            KeywordAction::BlitzFromGraveyard => self.with_ability(
-                Ability::static_ability(StaticAbility::keyword_marker(
-                    KeywordAction::BlitzFromGraveyard.display_text(),
-                )),
-            ),
+            KeywordAction::BlitzFromGraveyard => self.with_ability(Ability::static_ability(
+                StaticAbility::keyword_marker(KeywordAction::BlitzFromGraveyard.display_text()),
+            )),
             KeywordAction::Warp(cost) => self.warp(cost),
             KeywordAction::Plot(cost) => self.plot(cost),
             KeywordAction::Melee => self.melee(),
@@ -1638,6 +1660,9 @@ impl CardDefinitionBuilder {
                 ..
             } => self.cumulative_upkeep(mana_symbols_per_counter, life_per_counter),
             KeywordAction::Casualty(power) => self.casualty(power),
+            KeywordAction::VariableCasualtyPlaneswalkerCopy => {
+                self.variable_casualty_planeswalker_copy()
+            }
             KeywordAction::Conspire => self.conspire(),
             KeywordAction::Amplify(amount) => self.amplify(amount),
             KeywordAction::AuraSwap(cost) => self.aura_swap(cost),
@@ -2090,13 +2115,18 @@ impl CardDefinitionBuilder {
 
     /// Add abilities to the card.
     pub fn with_abilities(mut self, abilities: Vec<Ability>) -> Self {
-        self.abilities.extend(abilities);
+        self.abilities.extend(
+            abilities
+                .into_iter()
+                .map(ability_with_inherent_functional_zones),
+        );
         self
     }
 
     /// Add a single ability to the card.
     pub fn with_ability(mut self, ability: Ability) -> Self {
-        self.abilities.push(ability);
+        self.abilities
+            .push(ability_with_inherent_functional_zones(ability));
         self
     }
 
@@ -2803,6 +2833,21 @@ impl CardDefinitionBuilder {
                         Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
                         Effect::may_choose_new_targets(EffectId(0)),
                     ],
+                )]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+        })
+    }
+
+    pub fn variable_casualty_planeswalker_copy(self) -> Self {
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
                 )]),
                 choices: vec![],
                 intervening_if: None,
@@ -4264,7 +4309,7 @@ impl CardDefinitionBuilder {
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
-    text.starts_with("prototype ") || text.starts_with("splice onto ")
+    text == "compleated" || text.starts_with("prototype ") || text.starts_with("splice onto ")
 }
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
@@ -13413,6 +13458,26 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             debug.contains("ClashEffect") && debug.contains("IfEffect"),
             "expected clash effect with conditional follow-up, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_clash_repeat_process_spell() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Clash Repeat Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "You lose 2 life and draw two cards, then clash with an opponent. If you win, repeat this process.",
+            )
+            .expect("clash repeat process should parse");
+
+        let debug = format!("{def:?}");
+        assert!(
+            debug.contains("RepeatProcessEffect")
+                && debug.contains("LoseLifeEffect")
+                && debug.contains("DrawCardsEffect")
+                && debug.contains("ClashEffect"),
+            "expected repeated lose/draw/clash process, got {debug}"
         );
     }
 

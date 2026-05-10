@@ -45,6 +45,282 @@ fn build_target_assignments_for_cast_tagged_copy(
     )
 }
 
+fn choose_targets_for_cast_tagged_spell(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    source_id: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+    card_name: String,
+) -> Option<(Vec<Target>, Vec<TargetAssignment>)> {
+    let requirements = game
+        .object(source_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            crate::game_loop::extract_target_requirements_from_program_with_modes(
+                game,
+                program,
+                caster,
+                Some(source_id),
+                None,
+            )
+        })
+        .unwrap_or_default();
+    let requirement_contexts = requirements
+        .iter()
+        .map(
+            |requirement| crate::decisions::context::TargetRequirementContext {
+                description: requirement.description.clone(),
+                legal_targets: requirement.legal_targets.clone(),
+                min_targets: requirement.min_targets,
+                max_targets: requirement.max_targets,
+            },
+        )
+        .collect::<Vec<_>>();
+    let selected_targets = if requirement_contexts.is_empty() {
+        Vec::new()
+    } else {
+        let targets_ctx = crate::decisions::context::TargetsContext::new(
+            caster,
+            source_id,
+            card_name,
+            requirement_contexts,
+        );
+        let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return None;
+        }
+        crate::targeting::normalize_targets_for_requirements(&targets_ctx.requirements, proposed)?
+    };
+    let target_assignments =
+        build_target_assignments_for_cast_tagged_copy(&requirements, &selected_targets)?;
+    Some((selected_targets, target_assignments))
+}
+
+fn choose_and_pay_optional_costs_for_cast_tagged_spell(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    source_id: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+) -> Result<Option<crate::cost::OptionalCostsPaid>, ExecutionError> {
+    let Some((card_name, optional_costs)) = game
+        .object(source_id)
+        .map(|obj| (obj.name.clone(), obj.optional_costs.clone()))
+    else {
+        return Ok(Some(crate::cost::OptionalCostsPaid::default()));
+    };
+    if optional_costs.is_empty() {
+        return Ok(Some(crate::cost::OptionalCostsPaid::default()));
+    }
+
+    let options = optional_costs
+        .iter()
+        .enumerate()
+        .map(|(index, opt_cost)| {
+            let affordable = if let Some(mana_cost) = opt_cost.cost.mana_cost() {
+                let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+                    caster,
+                    Some(source_id),
+                    mana_cost,
+                    crate::costs::PaymentReason::CastSpell,
+                );
+                crate::decision::can_potentially_pay(game, caster, &adjusted_cost, 0)
+            } else {
+                crate::cost::can_pay_cost_with_reason(
+                    game,
+                    source_id,
+                    caster,
+                    &opt_cost.cost,
+                    crate::costs::PaymentReason::CastSpell,
+                )
+                .is_ok()
+            };
+            let cost_description = opt_cost
+                .cost
+                .mana_cost()
+                .map(|mana| mana.mana_value().to_string())
+                .unwrap_or_else(|| opt_cost.cost.display());
+            crate::decisions::context::SelectableOption::with_legality(
+                index,
+                format!("{}: {}", opt_cost.label, cost_description),
+                affordable,
+            )
+        })
+        .collect::<Vec<_>>();
+    let decision_ctx = crate::decisions::context::SelectOptionsContext::new(
+        caster,
+        Some(source_id),
+        format!("Choose optional costs for {card_name}"),
+        options,
+        0,
+        if optional_costs.iter().any(|cost| cost.repeatable) {
+            64
+        } else {
+            optional_costs.len()
+        },
+    );
+    let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&optional_costs);
+    for index in selected {
+        let Some(optional_cost) = optional_costs.get(index) else {
+            continue;
+        };
+        pay_total_cost_for_cast_tagged_spell(game, ctx, source_id, caster, &optional_cost.cost)?;
+        paid.pay_times(index, 1);
+    }
+    if let Some(obj) = game.object_mut(source_id) {
+        obj.optional_costs_paid = paid.clone();
+    }
+    Ok(Some(paid))
+}
+
+fn pay_total_cost_for_cast_tagged_spell(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    source_id: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+    total_cost: &crate::cost::TotalCost,
+) -> Result<(), ExecutionError> {
+    if let Some(mana_cost) = total_cost.mana_cost() {
+        let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+            caster,
+            Some(source_id),
+            mana_cost,
+            crate::costs::PaymentReason::CastSpell,
+        );
+        auto_add_mana_from_basic_lands_for_cast_tagged_cost(
+            game,
+            source_id,
+            caster,
+            &adjusted_cost,
+        );
+        if !game.try_pay_mana_cost_with_reason(
+            caster,
+            Some(source_id),
+            &adjusted_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ) {
+            return Err(ExecutionError::Impossible(
+                "could not pay optional mana cost".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    for cost in total_cost.costs() {
+        let mut cost_ctx = crate::costs::CostContext::new(source_id, caster, ctx.decision_maker)
+            .with_reason(crate::costs::PaymentReason::CastSpell)
+            .with_provenance(ctx.provenance);
+        match cost
+            .pay(game, &mut cost_ctx)
+            .map_err(|err| ExecutionError::Impossible(err.to_string()))?
+        {
+            crate::costs::CostPaymentResult::Paid => {}
+            crate::costs::CostPaymentResult::NeedsChoice(description) => {
+                return Err(ExecutionError::Impossible(format!(
+                    "optional cost requires an unsupported staged choice: {description}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn auto_add_mana_from_basic_lands_for_cast_tagged_cost(
+    game: &mut GameState,
+    source_id: crate::ids::ObjectId,
+    payer: crate::ids::PlayerId,
+    mana_cost: &crate::mana::ManaCost,
+) {
+    if game.can_pay_mana_cost_with_reason(
+        payer,
+        Some(source_id),
+        mana_cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    ) {
+        return;
+    }
+
+    let mut desired = Vec::new();
+    for pip in mana_cost.pips() {
+        if let Some(symbol) = pip.iter().find_map(|symbol| match symbol {
+            crate::mana::ManaSymbol::White
+            | crate::mana::ManaSymbol::Blue
+            | crate::mana::ManaSymbol::Black
+            | crate::mana::ManaSymbol::Red
+            | crate::mana::ManaSymbol::Green => Some(*symbol),
+            _ => None,
+        }) {
+            desired.push(Some(symbol));
+        } else {
+            let count = pip
+                .iter()
+                .find_map(|symbol| match symbol {
+                    crate::mana::ManaSymbol::Generic(amount) => Some(*amount as usize),
+                    crate::mana::ManaSymbol::Colorless | crate::mana::ManaSymbol::Snow => Some(1),
+                    _ => None,
+                })
+                .unwrap_or(1);
+            for _ in 0..count {
+                desired.push(None);
+            }
+        }
+    }
+
+    for wanted in desired {
+        if game.can_pay_mana_cost_with_reason(
+            payer,
+            Some(source_id),
+            mana_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ) {
+            break;
+        }
+        let Some((land_id, symbol)) = game.battlefield.iter().find_map(|id| {
+            let object = game.object(*id)?;
+            if game.controller_of(object) != payer || game.is_tapped(*id) {
+                return None;
+            }
+            let symbol = basic_land_mana_symbol(object)?;
+            if wanted.is_none_or(|wanted| wanted == symbol) {
+                Some((*id, symbol))
+            } else {
+                None
+            }
+        }) else {
+            continue;
+        };
+        game.tap(land_id);
+        if let Some(player) = game.player_mut(payer) {
+            player.mana_pool.add(symbol, 1);
+        }
+    }
+}
+
+fn basic_land_mana_symbol(object: &crate::object::Object) -> Option<crate::mana::ManaSymbol> {
+    if object.subtypes.contains(&crate::types::Subtype::Plains) || object.name == "Plains" {
+        Some(crate::mana::ManaSymbol::White)
+    } else if object.subtypes.contains(&crate::types::Subtype::Island) || object.name == "Island" {
+        Some(crate::mana::ManaSymbol::Blue)
+    } else if object.subtypes.contains(&crate::types::Subtype::Swamp) || object.name == "Swamp" {
+        Some(crate::mana::ManaSymbol::Black)
+    } else if object.subtypes.contains(&crate::types::Subtype::Mountain)
+        || object.name == "Mountain"
+    {
+        Some(crate::mana::ManaSymbol::Red)
+    } else if object.subtypes.contains(&crate::types::Subtype::Forest) || object.name == "Forest" {
+        Some(crate::mana::ManaSymbol::Green)
+    } else {
+        None
+    }
+}
+
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
     fn execute(
@@ -53,7 +329,6 @@ impl EffectExecutor for CastTaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         use crate::alternative_cast::CastingMethod;
-        use crate::cost::OptionalCostsPaid;
         use crate::effects::helpers::resolve_player_filter;
 
         let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
@@ -243,14 +518,46 @@ impl EffectExecutor for CastTaggedEffect {
             };
         }
 
+        let casting_method = if from_zone == Zone::Hand {
+            CastingMethod::Normal
+        } else {
+            CastingMethod::PlayFrom {
+                source: ctx.source,
+                zone: from_zone,
+                use_alternative: None,
+            }
+        };
+
+        let Some(optional_costs_paid) =
+            choose_and_pay_optional_costs_for_cast_tagged_spell(game, ctx, object_id, caster)?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+
+        let Some((selected_targets, target_assignments)) =
+            choose_targets_for_cast_tagged_spell(game, ctx, object_id, caster, card_name.clone())
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+
         if !self.without_paying_mana_cost
             && let Some(cost) = mana_cost.as_ref()
         {
             let Some(cast_object) = game.object(object_id) else {
                 return Ok(EffectOutcome::impossible());
             };
-            let effective_cost =
-                crate::decision::calculate_effective_mana_cost(game, caster, cast_object, cost);
+            let mut effective_cost =
+                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                    game,
+                    caster,
+                    cast_object,
+                    cost,
+                    &selected_targets,
+                    &casting_method,
+                );
+            if let Some(reduction) = self.cost_reduction.as_ref() {
+                effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
+            }
             if !game.try_pay_mana_cost_with_reason(
                 caster,
                 Some(object_id),
@@ -269,29 +576,19 @@ impl EffectExecutor for CastTaggedEffect {
             obj.x_value = x_value;
         }
 
-        let casting_method = if from_zone == Zone::Hand {
-            CastingMethod::Normal
-        } else {
-            CastingMethod::PlayFrom {
-                source: ctx.source,
-                zone: from_zone,
-                use_alternative: None,
-            }
-        };
-
         let stack_entry = StackEntry {
             object_id: new_id,
             controller: caster,
             provenance: ctx.provenance,
-            targets: vec![],
-            target_assignments: vec![],
+            targets: selected_targets,
+            target_assignments,
             x_value,
             ability_effects: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: false,
             casting_method,
-            optional_costs_paid: OptionalCostsPaid::default(),
+            optional_costs_paid,
             defending_player: None,
             chosen_player: None,
             chapter_ability_source: None,

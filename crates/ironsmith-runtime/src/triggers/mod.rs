@@ -583,6 +583,17 @@ impl Trigger {
         Self::new(DealsDamageTrigger::new(filter))
     }
 
+    /// Create a "when [filter] deals noncombat damage to [player]" trigger.
+    pub fn deals_noncombat_damage_to_player(
+        filter: ObjectFilter,
+        damaged_player: PlayerFilter,
+    ) -> Self {
+        Self::new(DealsDamageTrigger::noncombat_to_player(
+            filter,
+            damaged_player,
+        ))
+    }
+
     // === Life/Damage Triggers ===
 
     /// Create a "whenever you gain life" trigger.

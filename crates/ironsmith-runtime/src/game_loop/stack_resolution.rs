@@ -402,7 +402,7 @@ pub(super) fn resolve_stack_entry_with_dm_and_triggers(
 /// Otherwise, May effects are auto-declined.
 pub fn resolve_stack_entry_with(
     game: &mut GameState,
-    decision_maker: &mut impl DecisionMaker,
+    decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
     resolve_stack_entry_full(game, decision_maker, None)
 }
@@ -413,7 +413,7 @@ pub fn resolve_stack_entry_with(
 /// Otherwise, saga processing must be handled by the caller.
 pub(super) fn resolve_stack_entry_full(
     game: &mut GameState,
-    decision_maker: &mut impl DecisionMaker,
+    decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
     game.refresh_continuous_state();
@@ -423,6 +423,10 @@ pub(super) fn resolve_stack_entry_full(
 
     // Get the object for this stack entry
     let mut obj = game.object(entry.object_id).cloned();
+
+    if stack_entry_is_countered_by_unpaid_ward(game, &entry, decision_maker) {
+        return Ok(());
+    }
 
     // Create execution context
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
@@ -787,7 +791,8 @@ pub(super) fn resolve_stack_entry_full(
                         Some(crate::alternative_cast::AlternativeCastingMethod::Blitz { .. })
                     ),
                     _ => false,
-                } || entry.optional_costs_paid.was_paid_label("Blitz");
+                } || entry.optional_costs_paid.was_paid_label("Blitz")
+                    || obj.optional_costs_paid.was_paid_label("Blitz");
                 let cast_with_warp = match &entry.casting_method {
                     CastingMethod::Alternative(idx) => matches!(
                         obj.alternative_casts.get(*idx),
@@ -1013,6 +1018,11 @@ pub(super) fn resolve_stack_entry_full(
                 }
             }
         } else if obj.zone == Zone::Stack {
+            if obj.kind == crate::object::ObjectKind::SpellCopy {
+                game.remove_object(entry.object_id);
+                return Ok(());
+            }
+
             // It's an instant/sorcery
             let has_rebound = matches!(entry.casting_method, CastingMethod::Normal)
                 && obj.abilities.iter().any(|ability| {
@@ -1117,6 +1127,20 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     &mut *decision_maker,
                 );
+            } else if entry.optional_costs_paid.was_bought_back()
+                || obj.optional_costs_paid.was_bought_back()
+            {
+                let _ = crate::effects::zones::apply_zone_change(
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Hand,
+                    crate::events::cause::EventCause::from_effect(
+                        entry.object_id,
+                        entry.controller,
+                    ),
+                    &mut *decision_maker,
+                );
             } else {
                 // Process zone change through replacement effects
                 // (e.g., Yawgmoth's Will exiles cards going to graveyard)
@@ -1137,6 +1161,54 @@ pub(super) fn resolve_stack_entry_full(
     }
 
     Ok(())
+}
+
+fn stack_entry_is_countered_by_unpaid_ward(
+    game: &mut GameState,
+    entry: &StackEntry,
+    decision_maker: &mut dyn DecisionMaker,
+) -> bool {
+    let target_ids = entry
+        .targets
+        .iter()
+        .filter_map(|target| match target {
+            Target::Object(id) => Some(*id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if target_ids.is_empty() {
+        return false;
+    }
+
+    for ward_cost in crate::targeting::collect_ward_costs(game, &target_ids, entry.controller) {
+        if crate::targeting::handle_ward_payment(
+            game,
+            &ward_cost,
+            entry.controller,
+            entry.object_id,
+            decision_maker,
+        ) == crate::targeting::WardPaymentResult::Paid
+        {
+            continue;
+        }
+
+        if !entry.is_ability
+            && let Some(obj) = game.object(entry.object_id)
+            && obj.zone == Zone::Stack
+        {
+            let _ = crate::effects::zones::apply_zone_change(
+                game,
+                entry.object_id,
+                Zone::Stack,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_game_rule(),
+                decision_maker,
+            );
+        }
+        return true;
+    }
+
+    false
 }
 
 /// Get effects for a stack entry.

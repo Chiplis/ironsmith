@@ -67,6 +67,52 @@ fn test_spell_with_effects() {
     assert_eq!(def.spell_effect.as_ref().unwrap().len(), 1);
 }
 
+#[test]
+fn parse_all_creature_type_gain_and_loss_effects() {
+    let amoeboid = CardDefinitionBuilder::new(CardId::from_raw(1), "Amoeboid Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: Target creature gains all creature types until end of turn.\n\
+             {T}: Target creature loses all creature types until end of turn.",
+        )
+        .expect("parse all-creature-type activated abilities");
+    let amoeboid_debug = format!("{:?}", amoeboid.abilities);
+    assert!(
+        amoeboid_debug.contains("AddAllSubtypesOfFamily")
+            && amoeboid_debug.contains("RemoveAllSubtypesOfFamily"),
+        "expected all-subtype gain and loss continuous effects, got {amoeboid_debug}"
+    );
+
+    let inversion = CardDefinitionBuilder::new(CardId::from_raw(2), "Nameless Probe")
+        .card_types(vec![CardType::Kindred, CardType::Instant])
+        .parse_text("Target creature gets +3/-3 and loses all creature types until end of turn.")
+        .expect("parse pump plus all-creature-type loss spell");
+    let spell_debug = format!("{:?}", inversion.spell_effect);
+    assert!(
+        spell_debug.contains("ModifyPowerToughness")
+            && spell_debug.contains("RemoveAllSubtypesOfFamily"),
+        "expected pump and all-subtype loss effects, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_clash_repeat_process_spell_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(3), "Clash Repeat Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You lose 2 life and draw two cards, then clash with an opponent. If you win, repeat this process.",
+        )
+        .expect("parse repeated clash spell");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("RepeatProcessEffect")
+            && debug.contains("LoseLifeEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("ClashEffect"),
+        "expected repeated lose/draw/clash process, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
@@ -6433,6 +6479,18 @@ fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
         !debug.contains("unsupported"),
         "disturb parse should avoid unsupported placeholders, got {debug}"
     );
+
+    let compact = CardDefinitionBuilder::new(CardId::from_raw(2), "Compact Disturb Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Disturb {1}{W}.")
+        .expect("compact disturb keyword line should parse");
+    assert_eq!(compact.alternative_casts.len(), 1);
+    match &compact.alternative_casts[0] {
+        AlternativeCastingMethod::Disturb { cost } => {
+            assert_eq!(cost.to_oracle(), "{1}{W}");
+        }
+        other => panic!("expected compact disturb alternative cast, got {other:?}"),
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

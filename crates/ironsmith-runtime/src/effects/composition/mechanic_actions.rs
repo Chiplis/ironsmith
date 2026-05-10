@@ -26,7 +26,7 @@ use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
-pub use ironsmith_core::{BolsterEffect, CipherEffect};
+pub use ironsmith_core::{BolsterEffect, CipherEffect, DevourEffect};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackupEffect {
@@ -850,17 +850,6 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DevourEffect {
-    pub multiplier: u32,
-}
-
-impl DevourEffect {
-    pub fn new(multiplier: u32) -> Self {
-        Self { multiplier }
-    }
-}
-
 impl EffectExecutor for DevourEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -954,9 +943,11 @@ impl EffectExecutor for DevourEffect {
         }
 
         if sacrificed_count == 0 {
+            game.set_devoured_count(ctx.source, 0);
             return Ok(EffectOutcome::count(0).with_events(sacrifice_events));
         }
 
+        game.set_devoured_count(ctx.source, sacrificed_count as u32);
         let mut counters = crate::effects::PutCountersEffect::new(
             CounterType::PlusOnePlusOne,
             sacrificed_count.saturating_mul(self.multiplier as i32),

@@ -363,6 +363,22 @@ pub(crate) fn parse_trigger_subject_filter(
     if is_source_reference_words(&subject_words) {
         return Ok(None);
     }
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source", "you", "control"] | ["source", "you", "control"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::You);
+        return Ok(Some(filter));
+    }
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source", "an", "opponent", "controls"] | ["source", "an", "opponent", "controls"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::Opponent);
+        return Ok(Some(filter));
+    }
     if subject_words
         .iter()
         .any(|word| matches!(*word, "that" | "which" | "who" | "whom"))
@@ -504,6 +520,22 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     let subject_words = subject_words.to_word_refs();
     if is_source_reference_words(&subject_words) {
         return Ok(None);
+    }
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source", "you", "control"] | ["source", "you", "control"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::You);
+        return Ok(Some(filter));
+    }
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source", "an", "opponent", "controls"] | ["source", "an", "opponent", "controls"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::Opponent);
+        return Ok(Some(filter));
     }
     if subject_words
         .iter()

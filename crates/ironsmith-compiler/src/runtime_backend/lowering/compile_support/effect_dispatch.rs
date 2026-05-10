@@ -213,6 +213,7 @@ fn compile_subject_verb_effect(
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 _ => player_filter.clone(),
             });
+            ctx.last_object_tag = None;
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
             Ok((vec![effect], choices))
         }
@@ -2336,6 +2337,28 @@ fn compile_subject_verb_effect(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::AddAllSubtypesOfFamily {
+            target,
+            family,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::AddAllSubtypesOfFamily(*family),
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
+            target,
+            family,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::RemoveAllSubtypesOfFamily(*family),
+                duration.clone(),
+            ))
+        }),
         SubjectVerbActionAst::BecomeAuraEnchantment {
             target,
             attachment_filter,
@@ -4402,9 +4425,12 @@ fn compile_subject_verb_effect(
             ))
         }
         SubjectVerbActionAst::ReturnToHand { target, random } => {
-            let (spec, choices) =
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let from_graveyard = target_mentions_graveyard(target);
+            if from_graveyard && format!("{spec:?}").contains("IteratedPlayer") {
+                replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
+            }
             let effect = tag_object_target_effect(
                 if from_graveyard {
                     Effect::return_from_graveyard_to_hand_with_random(spec.clone(), *random)
@@ -5294,5 +5320,47 @@ fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFil
             offset,
         },
         other => other,
+    }
+}
+
+fn replace_iterated_player_with_target_player_in_choose_spec(spec: &mut ChooseSpec) {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            replace_iterated_player_with_target_player_in_choose_spec(spec);
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            replace_iterated_player_with_target_player_in_object_filter(filter);
+        }
+        ChooseSpec::Player(filter)
+        | ChooseSpec::EachPlayer(filter)
+        | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            replace_iterated_player_with_target_player(filter);
+        }
+        _ => {}
+    }
+}
+
+fn replace_iterated_player_with_target_player_in_object_filter(filter: &mut ObjectFilter) {
+    if let Some(owner) = &mut filter.owner {
+        replace_iterated_player_with_target_player(owner);
+    }
+    if let Some(controller) = &mut filter.controller {
+        replace_iterated_player_with_target_player(controller);
+    }
+    for nested in &mut filter.any_of {
+        replace_iterated_player_with_target_player_in_object_filter(nested);
+    }
+}
+
+fn replace_iterated_player_with_target_player(filter: &mut PlayerFilter) {
+    match filter {
+        PlayerFilter::IteratedPlayer => {
+            *filter = PlayerFilter::target_player();
+        }
+        PlayerFilter::Target(inner) => replace_iterated_player_with_target_player(inner),
+        _ => {}
     }
 }

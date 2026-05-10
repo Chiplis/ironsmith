@@ -18,6 +18,111 @@ fn resolve_modal_count_value(
     }
 }
 
+fn static_ability_is_granted_conspire_marker(
+    ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+        && ability.display().eq_ignore_ascii_case("Conspire")
+}
+
+fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId) -> usize {
+    let Some(object) = game.object(spell_id) else {
+        return 0;
+    };
+    let mut object_for_filter = object.clone();
+    if let Some(chars) = game.current_characteristics(spell_id) {
+        object_for_filter.name = chars.name;
+        object_for_filter.card_types = chars.card_types;
+        object_for_filter.subtypes = chars.subtypes;
+        object_for_filter.supertypes = chars.supertypes;
+        object_for_filter.color_override = Some(chars.colors);
+    }
+
+    let effect_count = game
+        .all_continuous_effects()
+        .into_iter()
+        .filter(|effect| match &effect.modification {
+            crate::continuous::Modification::AddAbility(ability) => {
+                static_ability_is_granted_conspire_marker(ability)
+            }
+            _ => false,
+        })
+        .filter(|effect| match &effect.applies_to {
+            crate::continuous::EffectTarget::Specific(id) => *id == spell_id,
+            crate::continuous::EffectTarget::Source => effect.source == spell_id,
+            crate::continuous::EffectTarget::Filter(filter) => {
+                let filter_ctx = game
+                    .filter_context_for(effect.controller, Some(effect.source))
+                    .with_caster(Some(caster));
+                filter.matches_non_recursive(&object_for_filter, &filter_ctx, game)
+            }
+            crate::continuous::EffectTarget::AllPermanents
+            | crate::continuous::EffectTarget::AllCreatures
+            | crate::continuous::EffectTarget::AttachedTo(_) => false,
+        })
+        .count();
+    if effect_count > 0 {
+        return effect_count;
+    }
+
+    if object.zone != Zone::Stack
+        || game.controller_of(object) != caster
+        || !(game.object_has_card_type(spell_id, crate::types::CardType::Instant)
+            || game.object_has_card_type(spell_id, crate::types::CardType::Sorcery))
+    {
+        return 0;
+    }
+
+    let spell_colors = object_for_filter.colors();
+    let is_red_or_green = spell_colors.contains(crate::color::Color::Red)
+        || spell_colors.contains(crate::color::Color::Green);
+    if !is_red_or_green {
+        return 0;
+    }
+
+    game.battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|permanent| game.controller_of(permanent) == caster)
+        .flat_map(|permanent| permanent.abilities.iter())
+        .filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability)
+                if ability.functions_in(&Zone::Battlefield) =>
+            {
+                Some(static_ability.display())
+            }
+            _ => None,
+        })
+        .filter(|display| {
+            let normalized = display.to_ascii_lowercase();
+            normalized.contains("instant")
+                && normalized.contains("sorcery")
+                && normalized.contains("you cast")
+                && normalized.contains("have conspire")
+        })
+        .count()
+}
+
+fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut PendingCast) {
+    let conspire_count = granted_conspire_count(game, pending.spell_id, pending.caster);
+    if conspire_count == 0 {
+        return;
+    }
+
+    let Some(spell) = game.object_mut(pending.spell_id) else {
+        return;
+    };
+    for _ in 0..conspire_count {
+        spell.optional_costs.push(crate::cost::OptionalCost::custom(
+            "Granted Conspire",
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+                crate::effects::ConspireCostEffect::new(),
+            )),
+        ));
+    }
+    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+}
+
 /// Collect all available casting methods for a spell.
 /// Returns a list of CastingMethodOption structs for each method that can be used.
 pub(super) fn collect_available_casting_methods(
@@ -645,9 +750,11 @@ pub(super) fn check_optional_costs_or_continue(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,
-    pending: PendingCast,
+    mut pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    ensure_granted_conspire_optional_costs(game, &mut pending);
+
     // Check if the spell has optional costs
     let optional_costs = if let Some(obj) = game.object(pending.spell_id) {
         obj.optional_costs.clone()
@@ -989,6 +1096,15 @@ pub(super) fn finalize_pending_spell_cast(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mana_spent_to_cast = pending.mana_spent_to_cast.clone();
+    for _ in pending
+        .hybrid_choices
+        .iter()
+        .filter(|(_, symbol)| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
+    {
+        pending
+            .optional_costs_paid
+            .mark_label_paid("CompleatedLifePaid");
+    }
     let spell_cast_provenance =
         game.alloc_child_event_provenance(pending.provenance, crate::events::EventKind::SpellCast);
     let result = finalize_spell_cast(
@@ -1289,6 +1405,24 @@ pub(super) fn continue_spell_cost_payment(
 ///
 /// Called after targets are chosen (or when no targets needed).
 /// Computes the effective mana cost and remaining non-mana payment steps.
+fn mana_cost_with_paid_optional_costs(
+    base_cost: &crate::mana::ManaCost,
+    spell: &crate::object::Object,
+    optional_costs_paid: &OptionalCostsPaid,
+) -> crate::mana::ManaCost {
+    let mut pips = base_cost.pips().to_vec();
+    for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
+        let times = optional_costs_paid.times_paid(index);
+        let Some(mana_cost) = optional_cost.cost.mana_cost() else {
+            continue;
+        };
+        for _ in 0..times {
+            pips.extend(mana_cost.pips().iter().cloned());
+        }
+    }
+    crate::mana::ManaCost::from_pips(pips)
+}
+
 pub(super) fn continue_to_mana_payment(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1314,6 +1448,7 @@ pub(super) fn continue_to_mana_payment(
 
         // Apply cost reductions (affinity, delve, convoke, improvise)
         base_cost.map(|bc| {
+            let bc = mana_cost_with_paid_optional_costs(&bc, obj, &pending.optional_costs_paid);
             calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
                 game,
                 pending.caster,

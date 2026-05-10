@@ -18,7 +18,11 @@ const EACH_OPPONENT_WHO_PREFIXES: &[&[&str]] =
 const EACH_PLAYER_WHO_PREFIXES: &[&[&str]] =
     &[&["each", "player", "who"], &["each", "players", "who"]];
 const THAT_PLAYER_PREFIXES: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
-const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[&["that", "much"], &["that", "many"]];
+const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
+    &["that", "amount", "of"],
+    &["that", "much"],
+    &["that", "many"],
+];
 const DAMAGE_TO_EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["damage", "to", "each", "opponent"]];
 const EACH_OF_PREFIXES: &[&[&str]] = &[&["each", "of"]];
 const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
@@ -45,7 +49,11 @@ pub(crate) fn parse_effect_with_verb(
 ) -> Result<EffectAst, CardTextError> {
     crate::parse_trace::event(format!(
         "effect-route: subject-verb verb={verb:?} subject={}",
-        if subject.is_some() { "explicit" } else { "implicit" }
+        if subject.is_some() {
+            "explicit"
+        } else {
+            "implicit"
+        }
     ));
     match verb {
         Verb::Add => parse_add_mana(tokens, subject),
@@ -131,7 +139,10 @@ fn parse_take(
         words.as_slice(),
         ["an", "extra", "turn", "after", "this", "one"]
     ) {
-        return Ok(EffectAst::subject_verb_extra_turn_after_turn(extract_subject_player(subject).unwrap_or(PlayerAst::You), ExtraTurnAnchorAst::CurrentTurn));
+        return Ok(EffectAst::subject_verb_extra_turn_after_turn(
+            extract_subject_player(subject).unwrap_or(PlayerAst::You),
+            ExtraTurnAnchorAst::CurrentTurn,
+        ));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -468,7 +479,11 @@ pub(crate) fn parse_look(
         });
     }
 
-    Ok(EffectAst::subject_verb_look_at_top_cards(player, count, TagKey::from(IT_TAG)))
+    Ok(EffectAst::subject_verb_look_at_top_cards(
+        player,
+        count,
+        TagKey::from(IT_TAG),
+    ))
 }
 
 pub(crate) fn parse_reorder(
@@ -603,10 +618,7 @@ pub(crate) fn parse_shuffle(
                     tag: TagKey::from(IT_TAG),
                     effects: vec![
                         EffectAst::subject_verb_move_to_zone(
-                            TargetAst::Tagged(
-                                TagKey::from(IT_TAG),
-                                span_from_tokens(tokens),
-                            ),
+                            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
                             Zone::Library,
                             false,
                             ReturnControllerAst::Preserve,
@@ -740,22 +752,18 @@ fn parse_chosen_name_goad_target(
         } else {
             0
         };
-        let chosen_name_tail = tail
-            .get(name_word_idx..)
-            .is_some_and(|tail| {
-                tail.len() >= 5
-                    && matches!(tail[0], "name" | "names")
-                    && tail[1] == "chosen"
-                    && tail[2] == "for"
-                    && tail[3] == "this"
-                    && matches!(
-                        tail[4],
-                        "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
-                    )
-                    && tail[5..]
-                        .iter()
-                        .all(|word| matches!(*word, "this" | "way"))
-            });
+        let chosen_name_tail = tail.get(name_word_idx..).is_some_and(|tail| {
+            tail.len() >= 5
+                && matches!(tail[0], "name" | "names")
+                && tail[1] == "chosen"
+                && tail[2] == "for"
+                && tail[3] == "this"
+                && matches!(
+                    tail[4],
+                    "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
+                )
+                && tail[5..].iter().all(|word| matches!(*word, "this" | "way"))
+        });
         if !chosen_name_tail {
             continue;
         }

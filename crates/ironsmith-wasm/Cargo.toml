@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core" }
-ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime" }
+ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", features = ["handwritten-parse-support"] }
 ironsmith-compiler = { path = "../ironsmith-compiler" }
 ironsmith-registry = { path = "../ironsmith-registry" }
 rand = "0.10.1"

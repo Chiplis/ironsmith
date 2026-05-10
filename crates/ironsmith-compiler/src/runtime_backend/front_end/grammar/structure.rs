@@ -360,6 +360,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "gains"
             | "look"
             | "looks"
+            | "lose"
+            | "loses"
             | "mill"
             | "mills"
             | "put"
@@ -494,12 +496,20 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if words.len() == 2 && words[0] == "you" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
     }
+    if matches!(
+        words,
+        ["it", "connives", "this", "way"] | ["it", "connive", "this", "way"]
+    ) {
+        return Some(IfResultPredicate::Did);
+    }
     if words.len() >= 2
         && words[0] == "you"
         && (words[1] == "win" || words[1] == "won")
         && (words.len() == 2 || words.iter().any(|word| *word == "clash"))
     {
-        return Some(IfResultPredicate::Did);
+        return Some(IfResultPredicate::Value(
+            crate::effect::Comparison::GreaterThan(0),
+        ));
     }
     if words.len() >= 3
         && words[0] == "you"

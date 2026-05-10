@@ -21,6 +21,11 @@ fn run_sentence_rule_family(
 pub(super) fn run_sentence_parse_rules_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words == ["x", "cant", "be", "0"] || words == ["x", "can't", "be", "0"] {
+        return Ok(("x_cant_be_zero_activation_restriction", Vec::new()));
+    }
+
     let view = LexClauseView::from_tokens(tokens);
     for family in [
         &SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,

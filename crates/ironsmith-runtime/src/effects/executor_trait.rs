@@ -246,8 +246,11 @@ pub trait EffectExecutor:
     /// Structured target selection metadata for this effect.
     fn target_selection_profile(&self) -> Option<TargetSelectionProfile<'_>> {
         let spec = self.get_target_spec()?;
+        let spec_count = spec.count();
         let (min_targets, max_targets) = if let Some(target_count) = self.get_target_count() {
             (target_count.min, target_count.max)
+        } else if spec_count != crate::effect::ChoiceCount::default() {
+            (spec_count.min, spec_count.max)
         } else {
             (1, Some(1))
         };

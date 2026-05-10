@@ -16,6 +16,7 @@
 mod application;
 
 use crate::DecisionMaker;
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
 use crate::events::{Event, EventContext};
@@ -614,7 +615,7 @@ pub fn execute_discard(
     cause: crate::events::cause::EventCause,
     _requires_type_verification: bool,
     provenance: crate::provenance::ProvNodeId,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
 ) -> DiscardResult {
     use crate::events::cards::DiscardEvent;
     use crate::events::traits::downcast_event;
@@ -663,6 +664,11 @@ pub fn execute_discard(
                     && let Some(id) = new_id
                 {
                     game.set_madness_exiled(id);
+                    if let Some(result) =
+                        resolve_madness_discard(game, id, player, provenance, decision_maker)
+                    {
+                        return result;
+                    }
                 }
 
                 DiscardResult {
@@ -741,6 +747,138 @@ pub fn execute_discard(
 
         TraitEventResult::NeedsChoice { .. } => DiscardResult::prevented(),
     }
+}
+
+fn resolve_madness_discard(
+    game: &mut GameState,
+    exiled_id: crate::ids::ObjectId,
+    player: crate::ids::PlayerId,
+    provenance: crate::provenance::ProvNodeId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Option<DiscardResult> {
+    let madness_cost = game.object(exiled_id).and_then(|obj| {
+        obj.alternative_casts
+            .iter()
+            .find_map(|method| match method {
+                crate::alternative_cast::AlternativeCastingMethod::Madness { cost } => {
+                    Some(cost.clone())
+                }
+                _ => None,
+            })
+    })?;
+
+    let cast_with_madness = crate::decisions::make_decision(
+        game,
+        decision_maker,
+        player,
+        Some(exiled_id),
+        crate::decisions::specs::MadnessSpec::new(exiled_id, madness_cost.clone()),
+    );
+
+    if !cast_with_madness {
+        game.clear_madness_exiled(exiled_id);
+        let new_id = game.move_object(
+            exiled_id,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_game_rule(),
+        );
+        return Some(DiscardResult {
+            new_id,
+            final_zone: Zone::Graveyard,
+            type_verifiable: true,
+            prevented: false,
+        });
+    }
+
+    if !pay_madness_mana_cost(game, player, exiled_id, &madness_cost, decision_maker) {
+        game.clear_madness_exiled(exiled_id);
+        let new_id = game.move_object(
+            exiled_id,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_game_rule(),
+        );
+        return Some(DiscardResult {
+            new_id,
+            final_zone: Zone::Graveyard,
+            type_verifiable: true,
+            prevented: false,
+        });
+    }
+
+    let stack_id = game.move_object(
+        exiled_id,
+        Zone::Stack,
+        crate::events::cause::EventCause::from_effect(exiled_id, player),
+    )?;
+    game.clear_madness_exiled(stack_id);
+
+    let mut entry =
+        crate::game_state::StackEntry::new(stack_id, player).with_provenance(provenance);
+    if let Some(program) = game
+        .object(stack_id)
+        .and_then(|obj| obj.spell_effect.clone())
+    {
+        let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+            game,
+            &program,
+            player,
+            Some(stack_id),
+            None,
+        );
+        if !requirements.is_empty() {
+            let context = game
+                .object(stack_id)
+                .map(|obj| obj.name.clone())
+                .unwrap_or_else(|| "madness spell".to_string());
+            let target_ctx = crate::decisions::context::TargetsContext::new(
+                player,
+                stack_id,
+                context,
+                requirements
+                    .iter()
+                    .map(
+                        |requirement| crate::decisions::context::TargetRequirementContext {
+                            description: requirement.description.clone(),
+                            legal_targets: requirement.legal_targets.clone(),
+                            min_targets: requirement.min_targets,
+                            max_targets: requirement.max_targets,
+                        },
+                    )
+                    .collect(),
+            );
+            let proposed = decision_maker.decide_targets(game, &target_ctx);
+            let targets = crate::targeting::normalize_targets_for_requirements(
+                &target_ctx.requirements,
+                proposed,
+            )
+            .unwrap_or_default();
+            let target_assignments =
+                crate::targeting::assigned_target_ranges(&target_ctx.requirements, &targets)
+                    .map(|ranges| {
+                        requirements
+                            .iter()
+                            .zip(ranges)
+                            .map(|(requirement, range)| crate::game_state::TargetAssignment {
+                                spec: requirement.spec.clone(),
+                                range,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+            entry = entry
+                .with_targets(targets)
+                .with_target_assignments(target_assignments);
+        }
+    }
+
+    game.push_to_stack(entry);
+    let _ = crate::game_loop::resolve_stack_entry_with(game, decision_maker);
+    Some(DiscardResult {
+        new_id: None,
+        final_zone: Zone::Graveyard,
+        type_verifiable: true,
+        prevented: false,
+    })
 }
 
 /// Move a card to the top of the owner's library.
@@ -1646,6 +1784,7 @@ pub struct EtbEventResult {
     pub new_destination: Option<Zone>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<crate::ids::ObjectId>,
+    pub copy_name_override: Option<String>,
     /// Additional card types granted by an ETB copy choice.
     pub added_card_types: Vec<crate::types::CardType>,
     /// Additional subtypes granted by an ETB copy choice.
@@ -2205,55 +2344,68 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             // Planeswalkers intrinsically enter with loyalty counters equal to
             // their printed loyalty. Model this as ETB counters so replacement
             // effects can modify it (e.g., Doubling Season).
+            let loyalty = loyalty_after_compleated_life_payment(obj, loyalty);
             enters_with_counters.push((CounterType::Loyalty, loyalty));
         }
         let controller = game.controller_of(obj);
-        for ability in &obj.abilities {
-            if let AbilityKind::Static(s) = &ability.kind {
-                // Check for unified replacement effects
-                if let Some(effect) = s.generate_replacement_effect(object, controller) {
-                    object_etb_effects.push(effect);
+        let view = crate::derived_view::DerivedGameView::new(game);
+        let current_static_abilities = view
+            .static_abilities_rc(object)
+            .map(|abilities| abilities.as_ref().clone())
+            .unwrap_or_else(|| {
+                obj.abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for s in &current_static_abilities {
+            // Check for unified replacement effects
+            if let Some(effect) = s.generate_replacement_effect(object, controller) {
+                object_etb_effects.push(effect);
+            }
+            if let Some(spec) = s.enter_as_copy_as_enters() {
+                let filter_ctx = game.filter_context_for(controller, Some(object));
+                let mut candidates = game
+                    .objects_in_deterministic_order()
+                    .into_iter()
+                    .filter(|candidate| candidate.id != object)
+                    .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
+                    .map(|candidate| candidate.id)
+                    .collect::<Vec<_>>();
+                candidates.sort_by_key(|id| id.0);
+
+                if spec.may {
+                    copy_choice_effects.push(
+                        ReplacementEffect::with_matcher(
+                            object,
+                            controller,
+                            crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                            ReplacementAction::Additionally(Vec::new()),
+                        )
+                        .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+                    );
                 }
-                if let Some(spec) = s.enter_as_copy_as_enters() {
-                    let filter_ctx = game.filter_context_for(controller, Some(object));
-                    let mut candidates = game
-                        .objects_in_deterministic_order()
-                        .into_iter()
-                        .filter(|candidate| candidate.id != object)
-                        .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
-                        .map(|candidate| candidate.id)
-                        .collect::<Vec<_>>();
-                    candidates.sort_by_key(|id| id.0);
 
-                    if spec.may {
-                        copy_choice_effects.push(
-                            ReplacementEffect::with_matcher(
-                                object,
-                                controller,
-                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                                ReplacementAction::Additionally(Vec::new()),
-                            )
-                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                        );
-                    }
-
-                    for candidate in candidates {
-                        copy_choice_effects.push(
-                            ReplacementEffect::with_matcher(
-                                object,
-                                controller,
-                                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                                ReplacementAction::EnterAsCopy {
-                                    source: candidate,
-                                    enters_tapped: spec.enters_tapped_if_chosen,
-                                    added_card_types: spec.added_card_types.clone(),
-                                    added_subtypes: spec.added_subtypes.clone(),
-                                    added_abilities: spec.added_abilities.clone(),
-                                },
-                            )
-                            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                        );
-                    }
+                for candidate in candidates {
+                    copy_choice_effects.push(
+                        ReplacementEffect::with_matcher(
+                            object,
+                            controller,
+                            crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                            ReplacementAction::EnterAsCopy {
+                                source: candidate,
+                                enters_tapped: spec.enters_tapped_if_chosen,
+                                name_override: spec.name_override.clone(),
+                                added_card_types: spec.added_card_types.clone(),
+                                added_subtypes: spec.added_subtypes.clone(),
+                                added_abilities: spec.added_abilities.clone(),
+                            },
+                        )
+                        .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+                    );
                 }
             }
         }
@@ -2274,6 +2426,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             enters_tapped,
             enters_with_counters,
             enters_as_copy_of: None,
+            copy_name_override: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -2325,6 +2478,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         prevented: false,
                         new_destination: None,
                         enters_as_copy_of: etb.enters_as_copy_of,
+                        copy_name_override: etb.copy_name_override.clone(),
                         added_card_types: etb.added_card_types.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
                         added_abilities: etb.added_abilities.clone(),
@@ -2562,6 +2716,112 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             }
         }
     }
+}
+
+fn loyalty_after_compleated_life_payment(obj: &crate::object::Object, loyalty: u32) -> u32 {
+    let life_paid_count = obj
+        .optional_costs_paid
+        .times_paid_label("CompleatedLifePaid");
+    if life_paid_count == 0 || !object_has_compleated_marker(obj) {
+        return loyalty;
+    }
+    loyalty.saturating_sub(life_paid_count.saturating_mul(2))
+}
+
+fn object_has_compleated_marker(obj: &crate::object::Object) -> bool {
+    obj.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+            && static_ability.display().eq_ignore_ascii_case("compleated")
+    })
+}
+
+fn pay_madness_mana_cost(
+    game: &mut GameState,
+    player: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+    cost: &crate::mana::ManaCost,
+    decision_maker: &mut dyn DecisionMaker,
+) -> bool {
+    const MAX_MANA_ACTIVATIONS: usize = 32;
+
+    for _ in 0..MAX_MANA_ACTIVATIONS {
+        if game.try_pay_mana_cost_with_reason(
+            player,
+            Some(source),
+            cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ) {
+            return true;
+        }
+
+        let view = crate::derived_view::DerivedGameView::new(game);
+        let next_mana_ability = game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| {
+                object.zone == Zone::Battlefield && game.controller_of(object) == player
+            })
+            .find_map(|object| {
+                let abilities = game.current_abilities(object.id)?;
+                abilities
+                    .into_iter()
+                    .enumerate()
+                    .find_map(|(ability_index, ability)| {
+                        let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+                        else {
+                            return None;
+                        };
+                        if !activated.is_runtime_mana_ability(game, object.id, player) {
+                            return None;
+                        }
+                        if crate::special_actions::can_activate_mana_ability_check_with_view(
+                            game,
+                            player,
+                            object.id,
+                            ability_index,
+                            &ability,
+                            &view,
+                            None,
+                        )
+                        .is_ok()
+                        {
+                            Some((object.id, ability_index))
+                        } else {
+                            None
+                        }
+                    })
+            });
+
+        let Some((permanent_id, ability_index)) = next_mana_ability else {
+            return false;
+        };
+        if crate::special_actions::perform_activate_mana_ability(
+            game,
+            player,
+            permanent_id,
+            ability_index,
+            decision_maker,
+        )
+        .is_err()
+        {
+            return false;
+        }
+        if decision_maker.awaiting_choice() {
+            return false;
+        }
+    }
+
+    game.try_pay_mana_cost_with_reason(
+        player,
+        Some(source),
+        cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    )
 }
 
 /// Result of processing a zone change event with full replacement effect handling.

@@ -350,8 +350,10 @@ impl CardRegistry {
         maybe_register!(ancient_tomb);
         maybe_register!(arcane_signet);
         maybe_register!(arid_mesa);
+        maybe_register!(ashaya_soul_of_the_wild);
         maybe_register!(ashnods_altar);
         maybe_register!(bello_bard_of_the_brambles);
+        maybe_register!(black_lotus);
         maybe_register!(blade_of_the_bloodchief);
         maybe_register!(bleachbone_verge);
         maybe_register!(blood_celebrant);
@@ -904,7 +906,9 @@ pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -
                 }
             }
             StaticAbilityId::KeywordFallbackText => {
-                push_issue("unsupported keyword marker", display);
+                if !display.to_ascii_lowercase().starts_with("craft with") {
+                    push_issue("unsupported keyword marker", display);
+                }
             }
             StaticAbilityId::RuleFallbackText => {
                 push_issue("unsupported rules fallback", display);

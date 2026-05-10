@@ -365,6 +365,7 @@ pub struct ObjectFilter {
     pub zone: Option<Zone>,
     pub controller: Option<PlayerFilter>,
     pub cast_by: Option<PlayerFilter>,
+    pub first_spell_cast_each_turn: bool,
     pub owner: Option<PlayerFilter>,
     pub single_graveyard: bool,
     pub targets_player: Option<PlayerFilter>,
@@ -591,7 +592,6 @@ impl ObjectFilter {
     pub fn spell() -> Self {
         Self {
             zone: Some(Zone::Stack),
-            has_mana_cost: true,
             stack_kind: Some(StackObjectKind::Spell),
             ..Default::default()
         }
@@ -680,6 +680,7 @@ impl ObjectFilter {
         generic.owner = self.owner.clone();
         generic.controller = self.controller.clone();
         generic.cast_by = self.cast_by.clone();
+        generic.first_spell_cast_each_turn = self.first_spell_cast_each_turn;
         generic.single_graveyard = self.single_graveyard;
         self != &generic
     }
@@ -752,6 +753,11 @@ impl ObjectFilter {
 
     pub fn cast_by_you(self) -> Self {
         self.cast_by(PlayerFilter::You)
+    }
+
+    pub fn first_spell_cast_each_turn(mut self) -> Self {
+        self.first_spell_cast_each_turn = true;
+        self
     }
 
     pub fn you_control(self) -> Self {
@@ -1215,6 +1221,9 @@ impl ObjectFilter {
 
         if let Some(cast_by) = &self.cast_by {
             post_noun_qualifiers.push(format!("cast by {}", describe_player_filter(cast_by)));
+        }
+        if self.first_spell_cast_each_turn {
+            post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
 
         let owner_conveyed_by_zone = matches!(

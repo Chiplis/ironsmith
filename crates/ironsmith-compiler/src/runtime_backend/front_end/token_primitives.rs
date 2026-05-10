@@ -290,7 +290,14 @@ pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Ve
     let words = TokenWordView::new(&rewritten);
     if !word_view_has_any_prefix(
         &words,
-        &[&["when", "you", "do"], &["whenever", "you", "do"]],
+        &[
+            &["when", "you", "do"],
+            &["whenever", "you", "do"],
+            &["when", "it", "connives", "this", "way"],
+            &["when", "it", "connive", "this", "way"],
+            &["whenever", "it", "connives", "this", "way"],
+            &["whenever", "it", "connive", "this", "way"],
+        ],
     ) {
         return rewritten;
     }

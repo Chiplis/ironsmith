@@ -1,30 +1,47 @@
 //! "Whenever [filter] deals damage" trigger.
 
 use crate::events::DamageEvent;
+use crate::events::DamageTarget;
 use crate::events::EventKind;
 use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
+use crate::target::{PlayerFilter, PlayerFilterExt};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealsDamageTrigger {
     pub filter: ObjectFilter,
+    pub damaged_player: Option<PlayerFilter>,
     pub combat_only: bool,
+    pub noncombat_only: bool,
 }
 
 impl DealsDamageTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
             filter,
+            damaged_player: None,
             combat_only: false,
+            noncombat_only: false,
         }
     }
 
     pub fn combat_only(filter: ObjectFilter) -> Self {
         Self {
             filter,
+            damaged_player: None,
             combat_only: true,
+            noncombat_only: false,
+        }
+    }
+
+    pub fn noncombat_to_player(filter: ObjectFilter, damaged_player: PlayerFilter) -> Self {
+        Self {
+            filter,
+            damaged_player: Some(damaged_player),
+            combat_only: false,
+            noncombat_only: true,
         }
     }
 }
@@ -40,6 +57,17 @@ impl TriggerMatcher for DealsDamageTrigger {
         if self.combat_only && !e.is_combat {
             return false;
         }
+        if self.noncombat_only && e.is_combat {
+            return false;
+        }
+        if let Some(player_filter) = &self.damaged_player {
+            let DamageTarget::Player(player) = e.target else {
+                return false;
+            };
+            if !player_filter.matches_player(player, &ctx.filter_ctx) {
+                return false;
+            }
+        }
         if let Some(obj) = ctx.game.object(e.source) {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
         } else {
@@ -50,6 +78,18 @@ impl TriggerMatcher for DealsDamageTrigger {
     fn display(&self) -> String {
         if self.combat_only {
             format!("Whenever {} deals combat damage", self.filter.description())
+        } else if self.noncombat_only {
+            if self.damaged_player.is_some() {
+                format!(
+                    "Whenever {} deals noncombat damage to a player",
+                    self.filter.description()
+                )
+            } else {
+                format!(
+                    "Whenever {} deals noncombat damage",
+                    self.filter.description()
+                )
+            }
         } else {
             format!("Whenever {} deals damage", self.filter.description())
         }

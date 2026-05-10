@@ -461,6 +461,12 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::AddSubtypes(subtypes) => {
                 Self::AddSubtypes(subtypes)
             }
+            ironsmith_core::CompiledContinuousModification::AddAllSubtypesOfFamily(family) => {
+                Self::AddAllSubtypesOfFamily(family)
+            }
+            ironsmith_core::CompiledContinuousModification::RemoveAllSubtypesOfFamily(family) => {
+                Self::RemoveAllSubtypesOfFamily(family)
+            }
             ironsmith_core::CompiledContinuousModification::SetColors(colors) => {
                 Self::SetColors(colors)
             }
@@ -1114,6 +1120,18 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
     }
 }
 
+fn retain_active_static_abilities(
+    chars: &mut CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+    source: ObjectId,
+) {
+    chars.abilities.retain(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability) => static_ability.is_active(game, source),
+        _ => true,
+    });
+    chars.static_abilities = extract_static_abilities(&chars.abilities);
+}
+
 fn object_has_reconfigure_ability(object: &Object) -> bool {
     object.abilities.iter().any(|ability| {
         if crate::compiled_text::ability_surface_text(ability).starts_with("Reconfigure ") {
@@ -1601,7 +1619,9 @@ fn calculate_with_layers_direct_internal(
                 effect.controller,
                 effect.source,
                 object,
+                effects,
                 battlefield,
+                commanders,
                 game,
             );
             calc_guard.update(&chars);
@@ -1726,7 +1746,9 @@ fn calculate_with_layers_direct_internal(
                 effect.controller,
                 effect.source,
                 object,
+                effects,
                 battlefield,
+                commanders,
                 game,
             );
             calc_guard.update(&chars);
@@ -1741,6 +1763,9 @@ fn calculate_with_layers_direct_internal(
     calc_guard.update(&chars);
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
+    calc_guard.update(&chars);
+
+    retain_active_static_abilities(&mut chars, game, object.id);
     calc_guard.update(&chars);
 
     chars
@@ -1931,7 +1956,9 @@ fn calculate_with_prepared_layers_for_object(
                 effect.controller,
                 effect.source,
                 object,
+                &[],
                 battlefield,
+                commanders,
                 game,
             );
             calc_guard.update(&chars);
@@ -1976,7 +2003,9 @@ fn calculate_with_prepared_layers_for_object(
                 effect.controller,
                 effect.source,
                 object,
+                &[],
                 battlefield,
+                commanders,
                 game,
             );
             calc_guard.update(&chars);
@@ -1987,6 +2016,9 @@ fn calculate_with_prepared_layers_for_object(
     calc_guard.update(&chars);
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
+    calc_guard.update(&chars);
+
+    retain_active_static_abilities(&mut chars, game, object.id);
     calc_guard.update(&chars);
 
     chars
@@ -2305,7 +2337,9 @@ fn apply_modification_to_chars(
     effect_controller: PlayerId,
     effect_source: ObjectId,
     object: &Object,
+    effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) {
     fn copy_characteristics_from_target(
@@ -2623,7 +2657,9 @@ fn apply_modification_to_chars(
             chars.power = Some(resolve_value_direct(
                 value,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2635,7 +2671,9 @@ fn apply_modification_to_chars(
             chars.toughness = Some(resolve_value_direct(
                 value,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2649,7 +2687,9 @@ fn apply_modification_to_chars(
             chars.power = Some(resolve_value_direct(
                 power,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2657,7 +2697,9 @@ fn apply_modification_to_chars(
             chars.toughness = Some(resolve_value_direct(
                 toughness,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2669,7 +2711,9 @@ fn apply_modification_to_chars(
             chars.power = Some(resolve_value_direct(
                 value,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2679,7 +2723,9 @@ fn apply_modification_to_chars(
             chars.toughness = Some(resolve_value_direct(
                 value,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2693,7 +2739,9 @@ fn apply_modification_to_chars(
             chars.power = Some(resolve_value_direct(
                 power,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2701,7 +2749,9 @@ fn apply_modification_to_chars(
             chars.toughness = Some(resolve_value_direct(
                 toughness,
                 objects,
+                effects,
                 battlefield,
+                commanders,
                 object.id,
                 effect_controller,
                 game,
@@ -2776,11 +2826,69 @@ fn apply_modification_to_chars(
 fn resolve_value_direct(
     value: &Value,
     objects: &ObjectMap,
+    effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
     source: ObjectId,
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
+    fn type_sensitive_filter(filter: &ObjectFilter) -> bool {
+        !filter.card_types.is_empty()
+            || !filter.all_card_types.is_empty()
+            || !filter.excluded_card_types.is_empty()
+            || !filter.subtypes.is_empty()
+            || !filter.excluded_subtypes.is_empty()
+            || !filter.supertypes.is_empty()
+            || !filter.excluded_supertypes.is_empty()
+            || filter
+                .any_of
+                .iter()
+                .any(|candidate| type_sensitive_filter(candidate))
+    }
+
+    fn count_filter_matches_direct(
+        filter: &ObjectFilter,
+        objects: &ObjectMap,
+        effects: &[ContinuousEffect],
+        battlefield: &[ObjectId],
+        commanders: &HashSet<ObjectId>,
+        game: &crate::game_state::GameState,
+        filter_ctx: &crate::target::FilterContext,
+    ) -> i32 {
+        let empty_effects = ContinuousEffectManager::new();
+        let ctx = CalculationContext {
+            objects,
+            effects: &empty_effects,
+            battlefield,
+            game,
+        };
+        if !type_sensitive_filter(filter) {
+            return count_filter_matches(filter, &ctx, filter_ctx);
+        }
+
+        let mut count = 0i32;
+        for_each_filter_candidate(&ctx, filter, |obj| {
+            let mut candidate = obj.clone();
+            if let Some(chars) = calculate_characteristics_with_effects_simple(
+                obj.id,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+            ) {
+                candidate.card_types = chars.card_types;
+                candidate.subtypes = chars.subtypes;
+                candidate.supertypes = chars.supertypes;
+            }
+            if filter.matches_non_recursive(&candidate, filter_ctx, game) {
+                count += 1;
+            }
+        });
+        count
+    }
+
     let empty_effects = ContinuousEffectManager::new();
     let ctx = CalculationContext {
         objects,
@@ -2788,7 +2896,107 @@ fn resolve_value_direct(
         battlefield,
         game,
     };
-    resolve_value_with_context(value, &ctx, source, controller)
+    match value {
+        Value::SurfaceHinted { value, .. } => resolve_value_direct(
+            value,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            source,
+            controller,
+            game,
+        ),
+        Value::Add(left, right) => {
+            resolve_value_direct(
+                left,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                source,
+                controller,
+                game,
+            ) + resolve_value_direct(
+                right,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                source,
+                controller,
+                game,
+            )
+        }
+        Value::Scaled(value, multiplier) => {
+            resolve_value_direct(
+                value,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                source,
+                controller,
+                game,
+            ) * *multiplier
+        }
+        Value::Min(left, right) => resolve_value_direct(
+            left,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            source,
+            controller,
+            game,
+        )
+        .min(resolve_value_direct(
+            right,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            source,
+            controller,
+            game,
+        )),
+        Value::HalfRoundedDown(value) => resolve_value_direct(
+            value,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            source,
+            controller,
+            game,
+        )
+        .div_euclid(2),
+        Value::Count(filter) => {
+            let filter_ctx = continuous_filter_context(controller, source);
+            count_filter_matches_direct(
+                filter,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                &filter_ctx,
+            )
+        }
+        Value::CountScaled(filter, multiplier) => {
+            let filter_ctx = continuous_filter_context(controller, source);
+            count_filter_matches_direct(
+                filter,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                &filter_ctx,
+            ) * *multiplier
+        }
+        _ => resolve_value_with_context(value, &ctx, source, controller),
+    }
 }
 
 /// Apply all layers to calculate final characteristics.
@@ -3322,6 +3530,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
     }
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
+    calc_guard.update(&chars);
+
+    retain_active_static_abilities(&mut chars, ctx.game, object.id);
     calc_guard.update(&chars);
 
     chars
@@ -4111,6 +4322,7 @@ fn resolve_value_with_context(
         | Value::GreatestPower(_)
         | Value::GreatestManaValue(_)
         | Value::Devotion { .. }
+        | Value::ManaSpentToCastThisSpell
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::CountersOn(_, _)
         | Value::PowerOf(_)

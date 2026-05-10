@@ -7663,6 +7663,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ColorsOfManaSpentToCastThisSpell => {
             "the number of colors of mana spent to cast this spell".to_string()
         }
+        Value::ManaSpentToCastThisSpell => "the amount of mana spent to cast this spell".to_string(),
         Value::MagicGamesLostToOpponentsSinceLastWin => {
             "the number of Magic games you've lost to one of your opponents since you last won a game against them".to_string()
         }
@@ -8070,6 +8071,16 @@ pub(super) fn describe_apply_continuous_clauses(
             };
             let verb = if plural_target { "become" } else { "becomes" };
             clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
+        }
+        crate::continuous::Modification::AddAllSubtypesOfFamily(family) => {
+            if *family == crate::types::SubtypeFamily::Creature {
+                clauses.push(format!("{gains} all creature types"));
+            }
+        }
+        crate::continuous::Modification::RemoveAllSubtypesOfFamily(family) => {
+            if *family == crate::types::SubtypeFamily::Creature {
+                clauses.push(format!("{loses} all creature types"));
+            }
         }
         crate::continuous::Modification::RemoveCardTypes(card_types) => {
             let words = card_types
@@ -10235,6 +10246,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsTapped => "this source is tapped".to_string(),
         Condition::SourceIsSaddled => "this source is saddled".to_string(),
+        Condition::SourceDevouredCreaturesOrMore(count) => {
+            if *count == 1 {
+                "this source devoured a creature".to_string()
+            } else {
+                format!("this source devoured {count} or more creatures")
+            }
+        }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
             let desc = filter.description();

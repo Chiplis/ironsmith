@@ -49,6 +49,24 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_fallback_mechanic_marker
     ),
     primitive!(
+        "target-gains-or-loses-all-creature-types",
+        25,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("that")
+        ],
+        parse_sentence_gains_or_loses_all_creature_types
+    ),
+    primitive!(
+        "lose-draw-clash-repeat-process",
+        27,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("you")],
+        parse_sentence_lose_draw_clash_repeat_process
+    ),
+    primitive!(
         "if-sacrifice-then-put-onto-battlefield-with-additional-counters",
         30,
         PreDiagnostic,

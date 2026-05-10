@@ -163,7 +163,9 @@ pub(crate) fn parse_if_result_predicate_lexed(
         && (words[1] == "win" || words[1] == "won")
         && (words.len() == 2 || words.iter().any(|word| *word == "clash"))
     {
-        return Some(IfResultPredicate::Did);
+        return Some(IfResultPredicate::Value(
+            crate::effect::Comparison::GreaterThan(0),
+        ));
     }
     if words.len() == 2 && words[0] == "they" && words[1] == "do" {
         return Some(IfResultPredicate::Did);

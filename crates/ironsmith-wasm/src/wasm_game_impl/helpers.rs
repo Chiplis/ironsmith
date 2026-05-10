@@ -226,7 +226,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             from_zone,
             casting_method,
         } => {
-            let name = object_name(game, *spell_id);
+            let mut name = object_name(game, *spell_id);
             let mut qualifiers = Vec::new();
 
             match casting_method {
@@ -245,10 +245,24 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     qualifiers.push("fuse".to_string());
                 }
                 ironsmith::alternative_cast::CastingMethod::Alternative(index) => {
-                    let method_name = game
-                        .object(*spell_id)
-                        .and_then(|obj| obj.alternative_casts.get(*index))
-                        .map(|m| m.name().to_ascii_lowercase())
+                    let method = game.object(*spell_id).and_then(|obj| {
+                        obj.alternative_casts
+                            .get(*index)
+                            .map(|method| (obj, method))
+                    });
+                    if let Some((
+                        obj,
+                        ironsmith::alternative_cast::AlternativeCastingMethod::Disturb { .. },
+                    )) = method
+                        && let Some(other_def) = game.linked_face_definition_by_name_or_id(
+                            obj.other_face_name.as_deref(),
+                            obj.other_face,
+                        )
+                    {
+                        name = other_def.card.name.clone();
+                    }
+                    let method_name = method
+                        .map(|(_, m)| m.name().to_ascii_lowercase())
                         .unwrap_or_else(|| format!("alternative #{index}"));
                     qualifiers.push(method_name);
                 }
@@ -1109,7 +1123,9 @@ pub(super) fn normalize_select_object_choice_ids(
             ctx.candidates
                 .iter()
                 .enumerate()
-                .find(|(index, candidate)| candidate.legal && redacted_choice_id(*index) == *selected_id)
+                .find(|(index, candidate)| {
+                    candidate.legal && redacted_choice_id(*index) == *selected_id
+                })
                 .map(|(_, candidate)| candidate.id.0)
                 .unwrap_or(*selected_id)
         })

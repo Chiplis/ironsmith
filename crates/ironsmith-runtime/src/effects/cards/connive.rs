@@ -92,11 +92,44 @@ fn connive_snapshot_for_object(
     {
         return Some(snapshot.clone());
     }
+    if let Some(snapshot) = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.snapshot().cloned())
+        && snapshot.object_id == object_id
+    {
+        return Some(snapshot);
+    }
     ctx.tagged_objects
         .values()
         .flat_map(|snapshots| snapshots.iter())
         .find(|snapshot| snapshot.object_id == object_id)
         .cloned()
+}
+
+fn connive_tagged_object_ids(ctx: &ExecutionContext, spec: &ChooseSpec) -> Option<Vec<ObjectId>> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
+            connive_tagged_object_ids(ctx, spec)
+        }
+        ChooseSpec::WithCount(spec, _) | ChooseSpec::WithCountValue(spec, _, _) => {
+            connive_tagged_object_ids(ctx, spec)
+        }
+        ChooseSpec::Tagged(tag) => {
+            if let Some(snapshots) = ctx.get_tagged_all(tag)
+                && !snapshots.is_empty()
+            {
+                return Some(
+                    snapshots
+                        .iter()
+                        .map(|snapshot| snapshot.object_id)
+                        .collect::<Vec<_>>(),
+                );
+            }
+            matches!(tag.as_str(), "triggering" | "__it__" | "it").then_some(vec![ctx.source])
+        }
+        _ => None,
+    }
 }
 
 impl EffectExecutor for ConniveEffect {
@@ -105,7 +138,10 @@ impl EffectExecutor for ConniveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let (target_ids, from_tagged_lki) = match connive_tagged_object_ids(ctx, &self.target) {
+            Some(ids) => (ids, true),
+            None => (resolve_objects_for_effect(game, ctx, &self.target)?, false),
+        };
         if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
@@ -114,7 +150,9 @@ impl EffectExecutor for ConniveEffect {
             .into_iter()
             .filter_map(|object_id| {
                 let snapshot = connive_snapshot_for_object(game, ctx, object_id)?;
-                if !snapshot.has_card_type(CardType::Creature) {
+                if !snapshot.has_card_type(CardType::Creature)
+                    && !(from_tagged_lki && game.object(object_id).is_none())
+                {
                     return None;
                 }
                 Some(ConniveInstruction {

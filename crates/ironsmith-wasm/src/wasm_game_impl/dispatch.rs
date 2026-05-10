@@ -520,6 +520,101 @@ impl WasmGame {
         Ok(drawn.len())
     }
 
+    /// Move a hand card onto the battlefield with the shared morph-style
+    /// face-down overlay. This is used by ported test harnesses that set up a
+    /// cast result directly when the UI has no payable cast action exposed.
+    #[wasm_bindgen(js_name = moveHandCardToBattlefieldFaceDown)]
+    pub fn move_hand_card_to_battlefield_face_down(
+        &mut self,
+        player_index: u8,
+        object_id: u64,
+        ward_generic_cost: u8,
+    ) -> Result<u64, JsValue> {
+        let player_id = PlayerId::from_index(player_index);
+        let id = ObjectId(object_id);
+        let object = self
+            .game
+            .object_mut(id)
+            .ok_or_else(|| JsValue::from_str("object not found"))?;
+        if object.owner != player_id || object.zone != Zone::Hand {
+            return Err(JsValue::from_str("object is not in that player's hand"));
+        }
+        object.apply_face_down_cast_overlay();
+        let new_id = self
+            .game
+            .move_object(
+                id,
+                Zone::Battlefield,
+                ironsmith::events::cause::EventCause::from_game_rule(),
+            )
+            .ok_or_else(|| JsValue::from_str("failed to move object to battlefield"))?;
+        self.game.set_face_down(new_id);
+        self.game.set_summoning_sick(new_id);
+        if ward_generic_cost > 0
+            && let Some(object) = self.game.object_mut(new_id)
+        {
+            let mana_cost = ironsmith::mana::ManaCost::from_symbols(vec![
+                ironsmith::mana::ManaSymbol::Generic(ward_generic_cost),
+            ]);
+            object.abilities.push(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::ward(
+                    ironsmith::cost::TotalCost::mana(mana_cost),
+                ),
+            ));
+        }
+        self.recompute_ui_decision()?;
+        Ok(new_id.0)
+    }
+
+    /// Turn a face-down permanent face up without going through priority action
+    /// enumeration. Ported tests use this when the UI has not exposed the
+    /// special action because mana was supplied out of band.
+    #[wasm_bindgen(js_name = forceTurnFaceUp)]
+    pub fn force_turn_face_up(
+        &mut self,
+        player_index: u8,
+        object_id: u64,
+    ) -> Result<(), JsValue> {
+        let player_id = PlayerId::from_index(player_index);
+        let id = ObjectId(object_id);
+        let controller = self
+            .game
+            .object(id)
+            .map(|object| (self.game.controller_of(object), object.zone))
+            .ok_or_else(|| JsValue::from_str("object not found"))?;
+        if controller.0 != player_id || controller.1 != Zone::Battlefield {
+            return Err(JsValue::from_str("object is not a battlefield permanent controlled by that player"));
+        }
+        let object = self
+            .game
+            .object_mut(id)
+            .ok_or_else(|| JsValue::from_str("object not found"))?;
+        object.end_face_down_cast_overlay();
+        self.game.set_face_up(id);
+
+        let root = self.game.provenance_graph_mut().alloc_root(
+            ironsmith::provenance::ProvenanceNodeKind::EffectExecution {
+                source: id,
+                controller: player_id,
+            },
+        );
+        let event_provenance = self
+            .game
+            .alloc_child_event_provenance(root, ironsmith::events::EventKind::TurnedFaceUp);
+        self.game.queue_trigger_event(
+            root,
+            ironsmith::TriggerEvent::new_with_provenance(
+                ironsmith::events::TurnedFaceUpEvent::new(id, player_id),
+                event_provenance,
+            ),
+        );
+        ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+        ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)
+            .map_err(|err| JsValue::from_str(&format!("failed to put triggers on stack: {err:?}")))?;
+        self.recompute_ui_decision()?;
+        Ok(())
+    }
+
     /// Add a specific card by name to a player's hand.
     #[wasm_bindgen(js_name = addCardToHand)]
     pub fn add_card_to_hand(
@@ -566,6 +661,9 @@ impl WasmGame {
 
         if skip_triggers {
             if zone == Zone::Battlefield {
+                let event_record_len = self.game.turn_store.turn_history.event_records.len();
+                let staged_event_record_len =
+                    self.game.turn_store.turn_history.staged_event_records.len();
                 self.game
                     .register_linked_face_family_from_catalog(definition, &self.registry);
                 let temp_id = self
@@ -580,6 +678,16 @@ impl WasmGame {
                 };
                 align_manual_add_stable_id(&mut self.game, result.new_id);
                 self.game.take_pending_trigger_events();
+                self.game
+                    .turn_store
+                    .turn_history
+                    .event_records
+                    .truncate(event_record_len);
+                self.game
+                    .turn_store
+                    .turn_history
+                    .staged_event_records
+                    .truncate(staged_event_record_len);
                 return Ok(result.new_id.0);
             }
             let object_id = self

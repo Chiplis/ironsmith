@@ -191,7 +191,10 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
-    text.starts_with("prototype ") || text.starts_with("splice onto ")
+    text == "compleated"
+        || text.starts_with("prototype ")
+        || text.starts_with("splice onto ")
+        || text.starts_with("dredge ")
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {

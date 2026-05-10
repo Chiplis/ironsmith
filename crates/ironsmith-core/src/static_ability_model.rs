@@ -355,6 +355,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         player: PlayerFilter,
         counter_type: CounterType,
     },
+    ExileToExileInsteadOfGraveyard {
+        filter: ObjectFilter,
+        graveyard_owner: PlayerFilter,
+    },
     ExileWouldDieInstead {
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
@@ -1047,6 +1051,7 @@ where
                         filter: spec.filter,
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        name_override: spec.name_override,
                         added_card_types: spec.added_card_types,
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
@@ -1086,6 +1091,13 @@ where
             } => StaticAbilityPayload::ExileToCounteredExileInsteadOfGraveyard {
                 player,
                 counter_type,
+            },
+            StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter,
+                graveyard_owner,
+            } => StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter,
+                graveyard_owner,
             },
             StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
                 StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by }
@@ -2971,6 +2983,21 @@ impl<
             },
         }
     }
+
+    pub fn exile_to_exile_instead_of_graveyard(
+        filter: ObjectFilter,
+        graveyard_owner: PlayerFilter,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExileToExileInsteadOfGraveyard),
+            label: "exile instead of graveyard".into(),
+            payload: StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter,
+                graveyard_owner,
+            },
+        }
+    }
+
     pub fn exile_would_die_instead(filter: ObjectFilter) -> Self {
         Self::exile_would_die_instead_with_damage_source(filter, None)
     }
@@ -3640,6 +3667,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub filter: ObjectFilter,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub name_override: Option<String>,
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,

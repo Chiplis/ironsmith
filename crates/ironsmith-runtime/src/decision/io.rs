@@ -2421,6 +2421,20 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                             } else {
                                 format_mana_cost(obj)
                             };
+                            if matches!(
+                                alt_method,
+                                crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
+                            ) && let Some(other_def) = game.linked_face_definition_by_name_or_id(
+                                obj.other_face_name.as_deref(),
+                                obj.other_face,
+                            ) {
+                                return format!(
+                                    "{} [{}] ({})",
+                                    other_def.card.name,
+                                    alt_method.name(),
+                                    cost_desc
+                                );
+                            }
                             format!("{} [{}] ({})", obj.name, alt_method.name(), cost_desc)
                         } else {
                             format!("{} [Alt] ({})", obj.name, format_mana_cost(obj))

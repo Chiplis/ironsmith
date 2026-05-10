@@ -699,6 +699,22 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     let (head, second) = lexed_head_words(phrase_tokens).unwrap_or(("", None));
 
     match words.as_slice() {
+        [
+            "casualty",
+            "x",
+            "the",
+            "copy",
+            "isnt",
+            "legendary",
+            "and",
+            "has",
+            "starting",
+            "loyalty",
+            "x",
+            ..,
+        ] => {
+            return Some(KeywordAction::VariableCasualtyPlaneswalkerCopy);
+        }
         ["start", "your", "engines"] => {
             return Some(KeywordAction::StartYourEngines);
         }
@@ -772,6 +788,12 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         parse_numeric_keyword_action(&words, "annihilator", KeywordAction::Annihilator)
     {
         return Some(action);
+    }
+    if head == "dredge"
+        && let Some(amount) = second
+        && amount.parse::<u32>().is_ok()
+    {
+        return Some(KeywordAction::MarkerText(format!("Dredge {amount}")));
     }
 
     // Crew appears as "Crew N" and is often followed by inline restrictions/reminder text.

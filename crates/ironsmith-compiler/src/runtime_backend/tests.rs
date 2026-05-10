@@ -6726,6 +6726,34 @@ fn rewrite_grammar_exile_to_countered_exile_splitter_accepts_instead_lead_word_o
 }
 
 #[test]
+fn parse_named_source_exile_instead_of_graveyard_from_anywhere() {
+    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Hook-Haunt Drifter",
+        || {
+            let tokens = lex_line(
+                "if hook-haunt drifter would be put into a graveyard from anywhere, exile it instead.",
+                0,
+            )
+            .expect("named source exile-replacement line should lex");
+
+            let parsed =
+                super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
+                    .expect("named source exile-replacement line should parse");
+            let words = crate::runtime_backend::token_word_refs(&tokens);
+            assert!(
+                matches!(
+                    parsed,
+                    Some(ref ability)
+                        if ability.id()
+                            == crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+                ),
+                "parsed={parsed:?} words={words:?}"
+            );
+        },
+    );
+}
+
+#[test]
 fn rewrite_grammar_draw_replace_exile_top_face_down_probe_matches_static_shape() {
     let tokens = lex_line(
         "If you would draw a card, exile the top card of your library face down instead.",

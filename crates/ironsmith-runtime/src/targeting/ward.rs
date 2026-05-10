@@ -96,7 +96,7 @@ pub fn handle_ward_payment(
     ward_cost: &PendingWardCost,
     caster: PlayerId,
     source: ObjectId,
-    decision_maker: &mut impl DecisionMaker,
+    decision_maker: &mut dyn DecisionMaker,
 ) -> WardPaymentResult {
     // Create a description of the ward cost
     let description = format_ward_cost_description(&ward_cost.cost);
@@ -146,7 +146,7 @@ fn pay_ward_cost(
     payer: PlayerId,
     source: ObjectId,
     cost: &TotalCost,
-    decision_maker: &mut impl DecisionMaker,
+    decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
     pay_total_cost_with_choice(
         game,

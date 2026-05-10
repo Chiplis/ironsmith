@@ -2966,6 +2966,28 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    let negative_spell_cast_prefix =
+        if slice_starts_with(&filtered, &["that", "player", "didnt", "cast"]) {
+            Some((4usize, PlayerFilter::Active))
+        } else if slice_starts_with(&filtered, &["that", "player", "did", "not", "cast"]) {
+            Some((5usize, PlayerFilter::Active))
+        } else if slice_starts_with(&filtered, &["you", "didnt", "cast"]) {
+            Some((3usize, PlayerFilter::You))
+        } else if slice_starts_with(&filtered, &["you", "did", "not", "cast"]) {
+            Some((4usize, PlayerFilter::You))
+        } else {
+            None
+        };
+    if let Some((prefix_len, player)) = negative_spell_cast_prefix
+        && filtered.len() > prefix_len + 2
+        && filtered[filtered.len() - 2..] == ["this", "turn"]
+    {
+        let filter_words = &filtered[prefix_len..filtered.len() - 2];
+        if let Ok(predicate) = spell_cast_matching_predicate(player, filter_words) {
+            return Ok(PredicateAst::Not(Box::new(predicate)));
+        }
+    }
+
     let spell_cast_prefix = if slice_starts_with(&filtered, &["opponent", "has", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
     } else if slice_starts_with(&filtered, &["opponents", "have", "cast"]) {

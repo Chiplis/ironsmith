@@ -346,9 +346,31 @@ impl StaticAbilityModelInterpreter {
                 crate::ability::AbilityKind::Activated(activated.clone())
             }
         };
-        crate::ability::Ability {
+        Self::ability_with_inherent_functional_zones(crate::ability::Ability {
             kind,
             functional_zones: ability.functional_zones.clone(),
+        })
+    }
+
+    fn ability_with_inherent_functional_zones(
+        ability: crate::ability::Ability,
+    ) -> crate::ability::Ability {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return ability;
+        };
+        match static_ability.id() {
+            StaticAbilityId::ExileToExileInsteadOfGraveyard
+            | StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
+            | StaticAbilityId::ExileWouldDieInstead => ability.in_zones(vec![
+                crate::zone::Zone::Battlefield,
+                crate::zone::Zone::Stack,
+                crate::zone::Zone::Graveyard,
+                crate::zone::Zone::Hand,
+                crate::zone::Zone::Library,
+                crate::zone::Zone::Exile,
+                crate::zone::Zone::Command,
+            ]),
+            _ => ability,
         }
     }
 
@@ -408,6 +430,7 @@ impl StaticAbilityModelInterpreter {
                     filter: spec.filter.clone(),
                     may: spec.may,
                     enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                    name_override: spec.name_override.clone(),
                     added_card_types: spec.added_card_types.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: spec
@@ -1093,6 +1116,7 @@ impl StaticAbilityModelInterpreter {
                         filter: spec.filter.clone(),
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        name_override: spec.name_override.clone(),
                         added_card_types: spec.added_card_types.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
                         added_abilities: spec
@@ -1122,6 +1146,13 @@ impl StaticAbilityModelInterpreter {
             } => StaticAbility::exile_to_countered_exile_instead_of_graveyard(
                 player.clone(),
                 *counter_type,
+            ),
+            ironsmith_core::StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter,
+                graveyard_owner,
+            } => StaticAbility::exile_to_exile_instead_of_graveyard(
+                filter.clone(),
+                graveyard_owner.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
                 if let Some(damaged_by) = damaged_by {

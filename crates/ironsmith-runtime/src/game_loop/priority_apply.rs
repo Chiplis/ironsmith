@@ -1386,6 +1386,9 @@ pub(super) fn apply_x_value_response(
     if let Some(mut pending) = state.pending_activation.take() {
         // Store the X value
         pending.x_value = Some(x_value as usize);
+        if let Some(obj) = game.object_mut(pending.source) {
+            obj.x_value = Some(x_value);
+        }
 
         // Move to next stage (per MTG rule 602.2b, follows 601.2b-h order)
         // After X: Hybrid/Phyrexian announcement → Targets → non-mana costs → mana payment

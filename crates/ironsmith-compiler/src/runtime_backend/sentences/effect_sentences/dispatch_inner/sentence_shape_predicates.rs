@@ -856,6 +856,8 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
             | SubjectVerbActionAst::SetColors { target, .. }
             | SubjectVerbActionAst::MakeColorless { target, .. }

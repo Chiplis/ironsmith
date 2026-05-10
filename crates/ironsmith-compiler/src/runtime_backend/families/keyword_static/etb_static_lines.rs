@@ -32,26 +32,20 @@ fn etb_find_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-        predicate(token)
-    })
+    crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| predicate(token))
 }
 
 fn etb_find_token_word_sequence_index(
     tokens: &[OwnedLexToken],
     sequence: &[&str],
 ) -> Option<usize> {
-    crate::runtime_backend::token_primitives::find_window_by(
-        tokens,
-        sequence.len(),
-        |window| {
-            window.len() == sequence.len()
-                && window
-                    .iter()
-                    .zip(sequence.iter())
-                    .all(|(token, expected)| token.is_word(expected))
-        },
-    )
+    crate::runtime_backend::token_primitives::find_window_by(tokens, sequence.len(), |window| {
+        window.len() == sequence.len()
+            && window
+                .iter()
+                .zip(sequence.iter())
+                .all(|(token, expected)| token.is_word(expected))
+    })
 }
 
 fn etb_find_word_sequence_index(words: &[&str], sequence: &[&str]) -> Option<usize> {
@@ -462,8 +456,7 @@ fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Ve
     let ability_words = etb_token_words(ability_tokens);
     if ability_words
         == [
-            "this", "creature", "can", "attack", "as", "though", "it", "didnt", "have",
-            "defender",
+            "this", "creature", "can", "attack", "as", "though", "it", "didnt", "have", "defender",
         ]
         || ability_words
             == [
@@ -728,9 +721,7 @@ fn parse_enters_with_counter_condition_clause(
             &condition_words,
         )
     {
-        return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(
-            amount,
-        ));
+        return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(amount));
     }
 
     parse_static_condition_clause(&condition_tokens).ok()
@@ -741,6 +732,17 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
     let words_all = crate::runtime_backend::token_word_refs(&trimmed);
     if !etb_word_slice_starts_with(&words_all, &["equal", "to"]) {
         return None;
+    }
+    if etb_word_slice_starts_with(
+        &words_all,
+        &[
+            "equal", "to", "the", "amount", "of", "mana", "spent", "to", "cast",
+        ],
+    ) && words_all
+        .last()
+        .is_some_and(|word| matches!(*word, "it" | "spell"))
+    {
+        return Some(Value::ManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
 
     if trimmed.len() < 2 {
@@ -823,10 +825,33 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
     }
 
     match words.get(3..) {
-        Some(["the", "number", "of", "times", "this", "ability", "has", "resolved", "this", "turn"])
-        | Some([
-            "number", "of", "times", "this", "ability", "has", "resolved", "this", "turn",
-        ]) => {
+        Some(
+            [
+                "the",
+                "number",
+                "of",
+                "times",
+                "this",
+                "ability",
+                "has",
+                "resolved",
+                "this",
+                "turn",
+            ],
+        )
+        | Some(
+            [
+                "number",
+                "of",
+                "times",
+                "this",
+                "ability",
+                "has",
+                "resolved",
+                "this",
+                "turn",
+            ],
+        ) => {
             return Some(Value::ThisAbilityResolvedThisTurnCount);
         }
         Some(["your", "life", "total"]) => return Some(Value::LifeTotal(PlayerFilter::You)),
@@ -848,10 +873,50 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some(["target", "player", "life", "total"]) => {
             return Some(Value::LifeTotal(PlayerFilter::target_player()));
         }
-        Some(["the", "difference", "between", "those", "players", "life", "totals"])
-        | Some(["difference", "between", "those", "players", "life", "totals"])
-        | Some(["the", "difference", "between", "the", "target", "players", "life", "totals"])
-        | Some(["difference", "between", "the", "target", "players", "life", "totals"]) => {
+        Some(
+            [
+                "the",
+                "difference",
+                "between",
+                "those",
+                "players",
+                "life",
+                "totals",
+            ],
+        )
+        | Some(
+            [
+                "difference",
+                "between",
+                "those",
+                "players",
+                "life",
+                "totals",
+            ],
+        )
+        | Some(
+            [
+                "the",
+                "difference",
+                "between",
+                "the",
+                "target",
+                "players",
+                "life",
+                "totals",
+            ],
+        )
+        | Some(
+            [
+                "difference",
+                "between",
+                "the",
+                "target",
+                "players",
+                "life",
+                "totals",
+            ],
+        ) => {
             return Some(Value::LifeTotalDifference(PlayerFilter::target_player()));
         }
         Some(["that", "players", "life", "total"]) | Some(["that", "player", "life", "total"]) => {
@@ -864,14 +929,62 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some(["the", "discarded", "card", "mana", "value"])
         | Some(["discarded", "cards", "mana", "value"])
         | Some(["discarded", "card", "mana", "value"]) => {
-            return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                "discarded_cost",
-            )))));
+            return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                TagKey::from("discarded_cost"),
+            ))));
         }
-        Some(["the", "total", "mana", "value", "of", "all", "cards", "revealed", "this", "way"])
-        | Some(["the", "total", "mana", "value", "of", "cards", "revealed", "this", "way"])
-        | Some(["total", "mana", "value", "of", "all", "cards", "revealed", "this", "way"])
-        | Some(["total", "mana", "value", "of", "cards", "revealed", "this", "way"]) => {
+        Some(
+            [
+                "the",
+                "total",
+                "mana",
+                "value",
+                "of",
+                "all",
+                "cards",
+                "revealed",
+                "this",
+                "way",
+            ],
+        )
+        | Some(
+            [
+                "the",
+                "total",
+                "mana",
+                "value",
+                "of",
+                "cards",
+                "revealed",
+                "this",
+                "way",
+            ],
+        )
+        | Some(
+            [
+                "total",
+                "mana",
+                "value",
+                "of",
+                "all",
+                "cards",
+                "revealed",
+                "this",
+                "way",
+            ],
+        )
+        | Some(
+            [
+                "total",
+                "mana",
+                "value",
+                "of",
+                "cards",
+                "revealed",
+                "this",
+                "way",
+            ],
+        ) => {
             return Some(Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
                 "__public_revealed",
             ))));
@@ -917,23 +1030,22 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
                 "as",
                 "the",
                 "spell",
+            ] | [
+                "the",
+                "number",
+                "of",
+                "cards",
+                "in",
+                "all",
+                "graveyards",
+                "with",
+                "the",
+                "same",
+                "name",
+                "as",
+                "that",
+                "spell",
             ]
-                | [
-                    "the",
-                    "number",
-                    "of",
-                    "cards",
-                    "in",
-                    "all",
-                    "graveyards",
-                    "with",
-                    "the",
-                    "same",
-                    "name",
-                    "as",
-                    "that",
-                    "spell",
-                ]
         )
     ) {
         return Some(Value::Count(
@@ -980,9 +1092,9 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         } else {
             IT_TAG
         };
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-            tag,
-        )))));
+        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+            TagKey::from(tag),
+        ))));
     }
 
     // where X is the number of cards in your hand
@@ -1040,29 +1152,29 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
     let tail = words.get(3..)?;
     if tail.len() >= 2
         && tail.last().copied() == Some("power")
-        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
+        && let Some(surface) =
+            source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
     {
         return Some(Value::PowerOf(Box::new(
-            ChooseSpec::Source
-                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+            ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
         )));
     }
     if tail.len() >= 2
         && tail.last().copied() == Some("toughness")
-        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
+        && let Some(surface) =
+            source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
     {
         return Some(Value::ToughnessOf(Box::new(
-            ChooseSpec::Source
-                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+            ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
         )));
     }
     if tail.len() >= 3
         && tail[tail.len() - 2..] == ["mana", "value"]
-        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 2])
+        && let Some(surface) =
+            source_reference_surface_for_possessive_words(&tail[..tail.len() - 2])
     {
         return Some(Value::ManaValueOf(Box::new(
-            ChooseSpec::Source
-                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+            ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
         )));
     }
     match Some(tail) {
@@ -1121,12 +1233,10 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
         }
         Some(["that", "spell", "mana", "value"])
         | Some(["that", "spell's", "mana", "value"])
-        | Some(["that", "spells", "mana", "value"]) => {
-            Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                "triggering",
-            )))))
-        }
-        | Some(["that", "card", "mana", "value"])
+        | Some(["that", "spells", "mana", "value"]) => Some(Value::ManaValueOf(Box::new(
+            ChooseSpec::Tagged(TagKey::from("triggering")),
+        ))),
+        Some(["that", "card", "mana", "value"])
         | Some(["that", "card's", "mana", "value"])
         | Some(["that", "cards", "mana", "value"])
         | Some(["the", "sacrificed", "creature", "mana", "value"])
@@ -1500,9 +1610,7 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
             .any(|word| matches!(*word, "control" | "controls" | "own" | "owns"));
     let mut filter = (if should_try_split {
         let segments =
-            crate::runtime_backend::grammar::primitives::split_lexed_slices_on_and(
-                filter_tokens,
-            );
+            crate::runtime_backend::grammar::primitives::split_lexed_slices_on_and(filter_tokens);
         let mut branches = Vec::new();
         for segment in segments {
             let trimmed = trim_commas(segment);
@@ -1533,10 +1641,12 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
                     crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 )
         }) {
-            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-            });
+            filter
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
         }
     }
 
@@ -1664,7 +1774,9 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
     let multiplier = match clause_words.get(3..number_idx) {
         Some([]) | Some(["the"]) | Some(["the", "total"]) => 1,
-        Some(["twice"]) | Some(["twice", "the"]) | Some(["two", "times"])
+        Some(["twice"])
+        | Some(["twice", "the"])
+        | Some(["two", "times"])
         | Some(["two", "times", "the"]) => 2,
         _ => return None,
     };
@@ -1769,8 +1881,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
     if matches!(
         filter_words.as_slice(),
-        ["creature", "those", "players", "control"]
-            | ["creatures", "those", "players", "control"]
+        ["creature", "those", "players", "control"] | ["creatures", "those", "players", "control"]
     ) {
         let mut filter = ObjectFilter::creature();
         filter.controller = Some(PlayerFilter::target_player());
@@ -2284,8 +2395,7 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
     let Some(unless_idx) = etb_find_token_index(tokens, |token| token.is_word("unless")) else {
         return Ok(None);
     };
-    let condition_words =
-        crate::runtime_backend::token_word_refs(&tokens[unless_idx + 1..]);
+    let condition_words = crate::runtime_backend::token_word_refs(&tokens[unless_idx + 1..]);
     if etb_word_slice_starts_with(
         &condition_words,
         &["you", "control", "two", "or", "more", "other", "lands"],
@@ -2558,12 +2668,10 @@ pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
         return Ok(None);
     }
 
-    let subject_start = token_index_for_word_index(tokens, 1).ok_or_else(|| {
-        CardTextError::ParseError("missing as-enters subject".to_string())
-    })?;
-    let enter_token_idx = token_index_for_word_index(tokens, enter_word_idx).ok_or_else(|| {
-        CardTextError::ParseError("missing as-enters enter token".to_string())
-    })?;
+    let subject_start = token_index_for_word_index(tokens, 1)
+        .ok_or_else(|| CardTextError::ParseError("missing as-enters subject".to_string()))?;
+    let enter_token_idx = token_index_for_word_index(tokens, enter_word_idx)
+        .ok_or_else(|| CardTextError::ParseError("missing as-enters enter token".to_string()))?;
     let subject_tokens = trim_commas(&tokens[subject_start..enter_token_idx]);
     let filter = parse_object_filter(&subject_tokens, false)?;
 

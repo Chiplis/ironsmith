@@ -6,13 +6,13 @@
 //! Each card is defined in its own file under `definitions/` for easy tracking.
 
 pub mod builders;
-#[cfg(test)]
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 pub mod definitions;
 mod helper_tags;
 pub mod tokens;
 
 pub(crate) use builders::CardDefinitionBuilder;
-#[cfg(test)]
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 pub use definitions::*;
 pub use helper_tags::is_sentence_helper_tag;
 
@@ -155,8 +155,10 @@ pub(crate) fn register_builtin_handwritten_cards_if_for_runtime_tests<F>(
     maybe_register!(ancient_tomb);
     maybe_register!(arcane_signet);
     maybe_register!(arid_mesa);
+    maybe_register!(ashaya_soul_of_the_wild);
     maybe_register!(ashnods_altar);
     maybe_register!(bello_bard_of_the_brambles);
+    maybe_register!(black_lotus);
     maybe_register!(blade_of_the_bloodchief);
     maybe_register!(bleachbone_verge);
     maybe_register!(blood_celebrant);
@@ -858,6 +860,37 @@ mod tests {
             .expect("adventure front face should load from generated registry");
         assert_eq!(borrower.card.name, "Brazen Borrower");
         assert!(borrower.card.is_creature());
+    }
+
+    #[cfg(feature = "generated-registry")]
+    #[test]
+    fn ensure_cards_loaded_can_load_disturb_transform_front_face() {
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded(["Baithook Angler // Hook-Haunt Drifter"]);
+
+        let angler = registry
+            .get("Baithook Angler")
+            .expect("disturb transform front face should load from generated registry");
+        assert_eq!(angler.card.name, "Baithook Angler");
+        assert_eq!(
+            angler.card.other_face_name.as_deref(),
+            Some("Hook-Haunt Drifter")
+        );
+        assert_eq!(
+            angler.card.linked_face_layout,
+            crate::card::LinkedFaceLayout::TransformLike
+        );
+        assert!(
+            angler.alternative_casts.iter().any(|method| matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
+            )),
+            "disturb front face should expose a Disturb alternative"
+        );
+        assert!(
+            registry.get("Hook-Haunt Drifter").is_some(),
+            "disturb back face should be available after loading the family"
+        );
     }
 
     #[cfg(feature = "generated-registry")]

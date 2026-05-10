@@ -2472,6 +2472,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
+            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
@@ -2898,7 +2900,11 @@ pub(crate) fn rewrite_otherwise_referential_subject(
 }
 
 pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
-    is_activate_only_restriction_sentence(tokens) || is_trigger_only_restriction_sentence(tokens)
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    is_activate_only_restriction_sentence(tokens)
+        || is_trigger_only_restriction_sentence(tokens)
+        || words == ["x", "cant", "be", "0"]
+        || words == ["x", "can't", "be", "0"]
 }
 
 fn token_copy_followup_container_effects_mut(

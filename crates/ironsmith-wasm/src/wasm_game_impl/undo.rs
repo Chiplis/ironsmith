@@ -1518,6 +1518,12 @@ impl WasmGame {
         &mut self,
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, JsValue> {
+        if let Ok(definition) = ironsmith::cards::CardRegistry::try_compile_card(query)
+            && ironsmith::cards::unsupported_generated_definition_error(&definition).is_none()
+        {
+            return Ok(definition);
+        }
+
         if let Some(definition) = self.find_card_definition(query).cloned() {
             if let Some(error) =
                 ironsmith::cards::unsupported_generated_definition_error(&definition)

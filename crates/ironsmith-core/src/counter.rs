@@ -10,6 +10,7 @@ pub enum CounterType {
     PlusOnePlusTwo,
     PlusTwoPlusTwo,
     MinusZeroMinusTwo,
+    MinusTwoMinusOne,
     MinusTwoMinusTwo,
     Deathtouch,
     Decayed,
@@ -160,6 +161,7 @@ impl CounterType {
             CounterType::PlusOnePlusTwo => Some((1, 2)),
             CounterType::PlusTwoPlusTwo => Some((2, 2)),
             CounterType::MinusZeroMinusTwo => Some((0, -2)),
+            CounterType::MinusTwoMinusOne => Some((-2, -1)),
             CounterType::MinusTwoMinusTwo => Some((-2, -2)),
             _ => None,
         }
@@ -174,6 +176,7 @@ impl CounterType {
             CounterType::PlusOnePlusTwo => Cow::Borrowed("+1/+2"),
             CounterType::PlusTwoPlusTwo => Cow::Borrowed("+2/+2"),
             CounterType::MinusZeroMinusTwo => Cow::Borrowed("-0/-2"),
+            CounterType::MinusTwoMinusOne => Cow::Borrowed("-2/-1"),
             CounterType::MinusTwoMinusTwo => Cow::Borrowed("-2/-2"),
             CounterType::DoubleStrike => Cow::Borrowed("double strike"),
             CounterType::FirstStrike => Cow::Borrowed("first strike"),

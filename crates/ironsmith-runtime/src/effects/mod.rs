@@ -180,6 +180,7 @@ pub use restrictions::CantEffect;
 pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
     NewTargetRestriction, RetargetMode, RetargetStackObjectEffect,
+    VariableCasualtyPlaneswalkerCopyEffect,
 };
 pub use tokens::{
     AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,

@@ -393,9 +393,7 @@ fn add_hand_normal_cast_actions(
     actions: &mut Vec<LegalAction>,
     hand_summaries: &[HandCardSummary<'_>],
     cast_ctx: &CastLegalityContext<'_>,
-) -> std::collections::HashSet<ObjectId> {
-    let mut hand_cards_with_normal_cast = std::collections::HashSet::new();
-
+) {
     for summary in hand_summaries {
         if summary.is_land || !summary.has_normal_mana_cost {
             continue;
@@ -408,11 +406,8 @@ fn add_hand_normal_cast_actions(
                 from_zone: Zone::Hand,
                 casting_method: CastingMethod::Normal,
             });
-            hand_cards_with_normal_cast.insert(summary.card_id);
         }
     }
-
-    hand_cards_with_normal_cast
 }
 
 fn add_hand_special_actions(
@@ -510,16 +505,12 @@ fn add_hand_alternative_cast_actions(
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     hand_summaries: &[HandCardSummary<'_>],
-    hand_cards_with_normal_cast: &std::collections::HashSet<ObjectId>,
     hand_has_active_grants: bool,
     view: &DerivedGameView<'_>,
     cast_ctx: &CastLegalityContext<'_>,
 ) {
     for summary in hand_summaries {
-        if hand_cards_with_normal_cast.contains(&summary.card_id)
-            || summary.is_land
-            || !summary.has_any_alternative_branch(hand_has_active_grants)
-        {
+        if summary.is_land || !summary.has_any_alternative_branch(hand_has_active_grants) {
             continue;
         }
         if summary.can_cast_face_down
@@ -829,8 +820,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.lands_ms = lands_started_at.elapsed_ms();
 
     let hand_casts_started_at = PerfTimer::start();
-    let hand_cards_with_normal_cast =
-        add_hand_normal_cast_actions(&mut actions, &hand_summaries, &cast_ctx);
+    add_hand_normal_cast_actions(&mut actions, &hand_summaries, &cast_ctx);
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
 
     let hand_special_actions_started_at = PerfTimer::start();
@@ -858,7 +848,6 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         &mut actions,
         player,
         &hand_summaries,
-        &hand_cards_with_normal_cast,
         hand_has_active_grants,
         &view,
         &cast_ctx,
@@ -1042,8 +1031,70 @@ fn activation_cost_component_precheck_with_view(
         return available >= count as usize;
     }
 
-    game.validate_cost_for_payment_reason(controller, source, cost, reason)
-        .is_ok()
+    if game
+        .validate_cost_for_payment_reason(controller, source, cost, reason)
+        .is_err()
+    {
+        return false;
+    }
+
+    if cost.mana_cost_ref().is_some() {
+        return true;
+    }
+
+    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
+    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+}
+
+fn activation_printed_costs_precheck_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    costs: &[crate::costs::Cost],
+    reason: crate::costs::PaymentReason,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let mut idx = 0usize;
+    while idx < costs.len() {
+        if let Some(choose) = costs[idx]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(next) = costs.get(idx + 1)
+            && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+        {
+            let payable_cost = match &step {
+                crate::game_loop::ActivationCostStep::Cost(cost)
+                | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                crate::game_loop::ActivationCostStep::CardChoice(_) => &costs[idx],
+            };
+            if !activation_cost_component_precheck_with_view(
+                game,
+                controller,
+                source,
+                payable_cost,
+                reason,
+                view,
+            ) {
+                return false;
+            }
+            idx += 2;
+            continue;
+        }
+
+        if !activation_cost_component_precheck_with_view(
+            game,
+            controller,
+            source,
+            &costs[idx],
+            reason,
+            view,
+        ) {
+            return false;
+        }
+        idx += 1;
+    }
+
+    true
 }
 
 fn activation_precheck_with_view(
@@ -1155,20 +1206,19 @@ fn activation_precheck_with_view(
             return None;
         }
 
-        for cost in activated.mana_cost.costs() {
-            if !activation_cost_component_precheck_with_view(
-                game,
-                controller,
-                source,
-                cost,
-                crate::costs::PaymentReason::ActivateAbility,
-                view,
-            ) {
-                if let Some(perf_ctx) = perf_ctx {
-                    perf_ctx.add_precheck_ms(started_at.elapsed_ms());
-                }
-                return None;
+        let costs = activated.mana_cost.costs();
+        if !activation_printed_costs_precheck_with_view(
+            game,
+            controller,
+            source,
+            costs,
+            crate::costs::PaymentReason::ActivateAbility,
+            view,
+        ) {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
+            return None;
         }
 
         if let Some(perf_ctx) = perf_ctx {
@@ -1225,20 +1275,19 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    for cost in activated.mana_cost.costs() {
-        if !activation_cost_component_precheck_with_view(
-            game,
-            controller,
-            source,
-            cost,
-            crate::costs::PaymentReason::ActivateAbility,
-            view,
-        ) {
-            if let Some(perf_ctx) = perf_ctx {
-                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
-            }
-            return None;
+    let costs = activated.mana_cost.costs();
+    if !activation_printed_costs_precheck_with_view(
+        game,
+        controller,
+        source,
+        costs,
+        crate::costs::PaymentReason::ActivateAbility,
+        view,
+    ) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
+        return None;
     }
 
     for condition in &activated.activation_restrictions {

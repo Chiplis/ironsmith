@@ -147,17 +147,20 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     constraint.tag.as_str() == IT_TAG
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 });
-            let chooses_tagged_pool = chooses_tagged_object_pool(filter);
             let mut resolved_filter =
                 if references_revealed_hand && ctx.last_player_filter.is_some() {
                     subject.bind_revealed_hand_choice_filter(filter, ctx)?
-                } else if chooses_tagged_pool {
+                } else if chooses_tagged_object_pool(filter) {
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 } else {
                     subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
                 };
             if references_revealed_hand && ctx.last_player_filter.is_some() {
-                if ctx.last_object_tag.is_none() {
+                let has_revealed_collection_tag = ctx
+                    .last_object_tag
+                    .as_deref()
+                    .is_some_and(|tag| tag.starts_with("revealed"));
+                if !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });
@@ -173,7 +176,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
-            let (effects, choices) = if chooses_tagged_object_pool(&resolved_filter) {
+            let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
+            let (effects, choices) = if chooses_tagged_pool {
                 compile_choose_objects_across_zones_with_subject(
                     subject,
                     resolved_filter,
@@ -233,7 +237,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 };
             if references_revealed_hand && ctx.last_player_filter.is_some() {
-                if ctx.last_object_tag.is_none() {
+                let has_revealed_collection_tag = ctx
+                    .last_object_tag
+                    .as_deref()
+                    .is_some_and(|tag| tag.starts_with("revealed"));
+                if !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });

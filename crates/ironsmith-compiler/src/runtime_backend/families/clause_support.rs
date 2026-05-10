@@ -294,6 +294,22 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return None;
         }
 
+        if words.starts_with(&[
+            "casualty",
+            "x",
+            "the",
+            "copy",
+            "isnt",
+            "legendary",
+            "and",
+            "has",
+            "starting",
+            "loyalty",
+            "x",
+        ]) {
+            return Some(KeywordAction::VariableCasualtyPlaneswalkerCopy);
+        }
+
         if words.len() == 1 {
             return parse_single_word_keyword_action(words[0]);
         }
@@ -364,6 +380,12 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         }
         if let Some(action) = parse_count_keyword("devour", KeywordAction::Devour) {
             return Some(action);
+        }
+        if words.first().copied() == Some("dredge")
+            && let Some(amount) = words.get(1)
+            && amount.parse::<u32>().is_ok()
+        {
+            return Some(KeywordAction::MarkerText(format!("Dredge {amount}")));
         }
 
         if words.starts_with(&["read", "ahead"]) {

@@ -1183,6 +1183,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "+1/+2" => Some(CounterType::PlusOnePlusTwo),
         "+2/+2" => Some(CounterType::PlusTwoPlusTwo),
         "-0/-2" => Some(CounterType::MinusZeroMinusTwo),
+        "-2/-1" => Some(CounterType::MinusTwoMinusOne),
         "-2/-2" => Some(CounterType::MinusTwoMinusTwo),
         "deathtouch" => Some(CounterType::Deathtouch),
         "decayed" => Some(CounterType::Decayed),
@@ -4546,8 +4547,10 @@ pub(crate) fn parse_blitz_line(
         return Ok(None);
     }
 
-    let (mana_cost, consumed_mana_tokens) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
-        .ok_or_else(|| CardTextError::ParseError("blitz keyword missing mana cost".to_string()))?;
+    let (mana_cost, consumed_mana_tokens) =
+        leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError("blitz keyword missing mana cost".to_string())
+        })?;
     let mut total_cost = TotalCost::mana(mana_cost.clone());
     let consumed_mana_tokens = consumed_mana_tokens.min(tokens.len().saturating_sub(1));
     let mut cost_tokens = tokens

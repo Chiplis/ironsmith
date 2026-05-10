@@ -1,6 +1,7 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, ObjectRefAst,
+    OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst,
+    TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -1091,6 +1092,10 @@ pub(crate) fn parse_create(
     }
     let (sacrifice_at_next_end_step, exile_at_next_end_step) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
+    let mut granted_abilities = Vec::new();
+    if word_slice_contains(&modifier_tail_words, "decayed") {
+        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
+    }
     let references_iterated_object = attached_to_target
         .as_ref()
         .is_some_and(target_references_it);
@@ -1109,7 +1114,7 @@ pub(crate) fn parse_create(
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
-            granted_abilities: Vec::new(),
+            granted_abilities,
         },
     );
     Ok(wrap_for_each_player_condition(wrap_delayed_create(

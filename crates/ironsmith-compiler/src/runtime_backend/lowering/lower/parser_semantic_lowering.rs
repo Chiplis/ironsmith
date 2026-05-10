@@ -713,6 +713,8 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
     }
     if str_contains(normalized.as_str(), "return this card from your graveyard") {
         zones = vec![Zone::Graveyard];
+    } else if str_contains(normalized.as_str(), "discard this card") {
+        zones = vec![Zone::Hand];
     }
 
     zones

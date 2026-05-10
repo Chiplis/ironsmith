@@ -3307,6 +3307,7 @@ pub(super) fn propose_spell_cast(
     game.set_current_controller(new_id, caster);
     if let Some(obj) = game.object_mut(new_id) {
         if let Some(method) = selected_method {
+            obj.cast_alternative_method = Some(method.clone());
             if method.is_bestow() {
                 obj.apply_bestow_cast_overlay();
             }
@@ -3315,7 +3316,14 @@ pub(super) fn propose_spell_cast(
                 let other_def = disturb_other_def
                     .as_ref()
                     .expect("disturb linked face should be resolved before mutating the spell");
+                let front_colors = obj.colors();
                 obj.apply_definition_face(&other_def);
+                if obj.mana_cost.is_none()
+                    && obj.color_override.is_none()
+                    && !front_colors.is_empty()
+                {
+                    obj.color_override = Some(front_colors);
+                }
             }
 
             if let crate::alternative_cast::AlternativeCastingMethod::Overload {
@@ -3428,7 +3436,11 @@ pub(super) fn finalize_spell_cast(
                     (base_mana_cost, crate::cost::TotalCost::free(), None)
                 }
                 CastingMethod::Alternative(idx) => {
-                    if let Some(method) = obj.alternative_casts.get(*idx) {
+                    if let Some(method) = obj
+                        .alternative_casts
+                        .get(*idx)
+                        .or(obj.cast_alternative_method.as_ref())
+                    {
                         if let Some(total_cost) = method.total_cost() {
                             (base_mana_cost, total_cost.clone(), None)
                         } else {
@@ -3457,6 +3469,7 @@ pub(super) fn finalize_spell_cast(
                 } => crate::decision::resolve_play_from_alternative_method(
                     game, caster, obj, *zone, *idx,
                 )
+                .or_else(|| obj.cast_alternative_method.clone())
                 .map(|method| {
                     if let Some(total_cost) = method.total_cost() {
                         (base_mana_cost.clone(), total_cost.clone(), None)
@@ -3601,6 +3614,9 @@ pub(super) fn finalize_spell_cast(
     });
     if blitzed {
         optional_costs_paid.mark_label_paid("Blitz");
+        if let Some(spell_obj) = game.object_mut(new_id) {
+            spell_obj.optional_costs_paid.mark_label_paid("Blitz");
+        }
     }
 
     if let CastingMethod::PlayFrom {

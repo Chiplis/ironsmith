@@ -389,7 +389,32 @@ fn runtime_ability_from_core_model(
         }
         ironsmith::ability::AbilityKind::Static(_) => {}
     }
+    converted = runtime_ability_with_inherent_functional_zones(converted);
     Ok(converted)
+}
+
+fn runtime_ability_with_inherent_functional_zones(
+    ability: ironsmith::ability::Ability,
+) -> ironsmith::ability::Ability {
+    let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return ability;
+    };
+    match static_ability.id() {
+        ironsmith::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+        | ironsmith::static_abilities::StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
+        | ironsmith::static_abilities::StaticAbilityId::ExileWouldDieInstead => {
+            ability.in_zones(vec![
+                ironsmith::zone::Zone::Battlefield,
+                ironsmith::zone::Zone::Stack,
+                ironsmith::zone::Zone::Graveyard,
+                ironsmith::zone::Zone::Hand,
+                ironsmith::zone::Zone::Library,
+                ironsmith::zone::Zone::Exile,
+                ironsmith::zone::Zone::Command,
+            ])
+        }
+        _ => ability,
+    }
 }
 
 fn combine_level_ability_statics(

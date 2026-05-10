@@ -1,6 +1,7 @@
 use super::*;
 use crate::filter::PlayerFilterExt;
 use crate::target::PlayerFilter;
+use std::collections::HashSet;
 
 fn resolve_modal_count_value_for_source(
     game: &GameState,
@@ -333,6 +334,7 @@ pub(super) fn apply_keyword_payment_tags_for_resolution(
 /// Drain pending death and custom trigger events and enqueue all matches.
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
     let pending_events = game.take_pending_trigger_events();
+    let mut one_or_more_zone_changes_seen = HashSet::new();
     for event in pending_events {
         let source_leave = event
             .downcast::<crate::events::zones::ZoneChangeEvent>()
@@ -341,13 +343,63 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
                     && zone_change.to != crate::zone::Zone::Battlefield)
                     .then(|| zone_change.objects.clone())
             });
+        let queue_start = trigger_queue.entries.len();
         queue_triggers_from_event(game, trigger_queue, event, true);
+        suppress_duplicate_one_or_more_zone_change_triggers(
+            trigger_queue,
+            queue_start,
+            &mut one_or_more_zone_changes_seen,
+        );
         if let Some(source_ids) = source_leave {
             for source_id in source_ids {
                 game.return_exiled_for_source_leave(source_id);
             }
         }
     }
+}
+
+fn suppress_duplicate_one_or_more_zone_change_triggers(
+    trigger_queue: &mut TriggerQueue,
+    queue_start: usize,
+    seen: &mut HashSet<(
+        crate::ids::StableId,
+        crate::triggers::TriggerIdentity,
+        crate::zone::Zone,
+        crate::zone::Zone,
+        crate::events::cause::CauseType,
+        Option<crate::ids::ObjectId>,
+        Option<crate::ids::PlayerId>,
+    )>,
+) {
+    let mut added = trigger_queue.entries.split_off(queue_start);
+    added.retain(|entry| {
+        let Some(zone_change) = entry
+            .triggering_event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+        else {
+            return true;
+        };
+        if !entry
+            .ability
+            .trigger
+            .display()
+            .to_ascii_lowercase()
+            .contains("one or more")
+        {
+            return true;
+        }
+        let key = (
+            entry.source_stable_id,
+            entry.trigger_identity,
+            zone_change.from,
+            zone_change.to,
+            zone_change.cause.cause_type,
+            zone_change.cause.source,
+            zone_change.cause.source_controller,
+        );
+        seen.insert(key)
+    });
+    trigger_queue.entries.append(&mut added);
 }
 
 pub type ExtractedTarget<'a> = crate::effects::TargetSelectionProfile<'a>;
@@ -380,9 +432,6 @@ fn resolved_target_bounds(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> (usize, Option<usize>) {
-    let Some(count_value) = profile.count_value else {
-        return (profile.min_targets, profile.max_targets);
-    };
     let count = profile.spec.count();
     if !count.is_dynamic_x() {
         return (profile.min_targets, profile.max_targets);
@@ -391,13 +440,19 @@ fn resolved_target_bounds(
     let Some(source_id) = source_id else {
         return (profile.min_targets, profile.max_targets);
     };
-    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-    let mut ctx = crate::effects::ExecutionContext::new(source_id, caster, &mut decision_maker);
-    ctx.x_value = game.object(source_id).and_then(|source| source.x_value);
-    let Ok(resolved) = crate::effects::helpers::resolve_value(game, count_value, &ctx) else {
+    let resolved = if let Some(count_value) = profile.count_value {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source_id, caster, &mut decision_maker);
+        ctx.x_value = game.object(source_id).and_then(|source| source.x_value);
+        match crate::effects::helpers::resolve_value(game, count_value, &ctx) {
+            Ok(value) => value.max(0) as usize,
+            Err(_) => return (profile.min_targets, profile.max_targets),
+        }
+    } else if let Some(x) = game.object(source_id).and_then(|source| source.x_value) {
+        x as usize
+    } else {
         return (profile.min_targets, profile.max_targets);
     };
-    let resolved = resolved.max(0) as usize;
     if count.is_up_to_dynamic_x() {
         (0, Some(resolved))
     } else {
@@ -1390,22 +1445,28 @@ pub fn compute_legal_targets_with_tagged_objects(
     )
 }
 
-pub(crate) fn compute_legal_targets_with_tagged_objects_and_view(
+pub(crate) fn compute_legal_targets_with_tagged_objects_combat_context_and_view(
     game: &GameState,
     spec: &ChooseSpec,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     tagged_objects: Option<
         &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
+    defending_player: Option<PlayerId>,
+    attacking_player: Option<PlayerId>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+    let combat_context = defending_player.zip(attacking_player);
+    crate::targeting::compute_legal_targets_with_tagged_objects_combat_context_with_view(
         game,
         spec,
         caster,
         source_id,
+        source_snapshot,
         tagged_objects,
+        combat_context,
         view,
     )
 }
@@ -1636,6 +1697,88 @@ pub(super) fn validate_stack_entry_targets(
     validate_stack_entry_targets_with_view(game, entry, &view)
 }
 
+fn combat_attacking_player_for_entry(game: &GameState, entry: &StackEntry) -> Option<PlayerId> {
+    entry
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.object_id())
+        .and_then(|attacker| game.object(attacker))
+        .map(|attacker| game.controller_of(attacker))
+}
+
+fn damaged_player_from_event(event: Option<&TriggerEvent>) -> Option<PlayerId> {
+    let damage = event?.downcast::<crate::events::DamageEvent>()?;
+    match damage.target {
+        crate::events::DamageTarget::Player(player) => Some(player),
+        crate::events::DamageTarget::Object(_) => None,
+    }
+}
+
+fn replace_damaged_player_filter(filter: &mut crate::target::PlayerFilter, player: PlayerId) {
+    if matches!(filter, crate::target::PlayerFilter::DamagedPlayer) {
+        *filter = crate::target::PlayerFilter::Specific(player);
+    }
+}
+
+fn replace_damaged_player_object_filter(
+    filter: &mut crate::target::ObjectFilter,
+    player: PlayerId,
+) {
+    if let Some(controller) = &mut filter.controller {
+        replace_damaged_player_filter(controller, player);
+    }
+    if let Some(owner) = &mut filter.owner {
+        replace_damaged_player_filter(owner, player);
+    }
+    if let Some(cast_by) = &mut filter.cast_by {
+        replace_damaged_player_filter(cast_by, player);
+    }
+    if let Some(targets_player) = &mut filter.targets_player {
+        replace_damaged_player_filter(targets_player, player);
+    }
+    if let Some(targets_only_player) = &mut filter.targets_only_player {
+        replace_damaged_player_filter(targets_only_player, player);
+    }
+    if let Some(entered_battlefield_controller) = &mut filter.entered_battlefield_controller {
+        replace_damaged_player_filter(entered_battlefield_controller, player);
+    }
+    for nested in &mut filter.any_of {
+        replace_damaged_player_object_filter(nested, player);
+    }
+}
+
+pub(super) fn choose_spec_with_damaged_player_from_event(
+    spec: &crate::target::ChooseSpec,
+    event: Option<&TriggerEvent>,
+) -> crate::target::ChooseSpec {
+    let Some(player) = damaged_player_from_event(event) else {
+        return spec.clone();
+    };
+    let mut spec = spec.clone();
+    replace_damaged_player_choose_spec(&mut spec, player);
+    spec
+}
+
+fn replace_damaged_player_choose_spec(spec: &mut crate::target::ChooseSpec, player: PlayerId) {
+    use crate::target::ChooseSpec;
+
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            replace_damaged_player_choose_spec(spec, player);
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            replace_damaged_player_object_filter(filter, player);
+        }
+        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            replace_damaged_player_filter(filter, player);
+        }
+        _ => {}
+    }
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
@@ -1655,9 +1798,13 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut invalid_count = 0usize;
 
         for assignment in &entry.target_assignments {
+            let resolved_spec = choose_spec_with_damaged_player_from_event(
+                &assignment.spec,
+                entry.triggering_event.as_ref(),
+            );
             let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
                 game,
-                &assignment.spec,
+                &resolved_spec,
                 entry.controller,
                 Some(entry.object_id),
                 entry.source_snapshot.as_ref(),
@@ -1668,6 +1815,25 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 },
                 view,
             );
+            let legal_targets = if entry.defending_player.is_some() {
+                compute_legal_targets_with_tagged_objects_combat_context_and_view(
+                    game,
+                    &resolved_spec,
+                    entry.controller,
+                    Some(entry.object_id),
+                    entry.source_snapshot.as_ref(),
+                    if entry.tagged_objects.is_empty() {
+                        None
+                    } else {
+                        Some(&entry.tagged_objects)
+                    },
+                    entry.defending_player,
+                    combat_attacking_player_for_entry(game, entry),
+                    view,
+                )
+            } else {
+                legal_targets
+            };
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {
@@ -1695,9 +1861,24 @@ pub(super) fn validate_stack_entry_targets_with_view(
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
         .map(|spec| {
+            let resolved_spec =
+                choose_spec_with_damaged_player_from_event(spec, entry.triggering_event.as_ref());
+            if entry.defending_player.is_some() {
+                return compute_legal_targets_with_tagged_objects_combat_context_and_view(
+                    game,
+                    &resolved_spec,
+                    entry.controller,
+                    Some(entry.object_id),
+                    entry.source_snapshot.as_ref(),
+                    None,
+                    entry.defending_player,
+                    combat_attacking_player_for_entry(game, entry),
+                    view,
+                );
+            }
             compute_legal_targets_with_source_snapshot_and_view(
                 game,
-                spec,
+                &resolved_spec,
                 entry.controller,
                 Some(entry.object_id),
                 entry.source_snapshot.as_ref(),

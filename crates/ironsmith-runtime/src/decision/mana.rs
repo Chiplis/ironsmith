@@ -402,6 +402,59 @@ fn casting_method_is_bestow(
     }
 }
 
+fn spell_view_for_cost_filter_match(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Option<crate::object::Object> {
+    if casting_method_is_bestow(game, caster, spell, casting_method) {
+        let mut view = spell.clone();
+        view.apply_bestow_cast_overlay();
+        return Some(view);
+    }
+
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .cloned()
+            .or_else(|| spell.cast_alternative_method.clone()),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone()),
+        _ => spell.cast_alternative_method.clone(),
+    };
+
+    if matches!(
+        method,
+        Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+    ) {
+        return spell_view_for_disturb_cast(game, spell);
+    }
+
+    None
+}
+
+fn disturb_linked_face_matches_cost_filter(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    filter: &crate::target::ObjectFilter,
+    ctx: &crate::target::FilterContext,
+) -> bool {
+    if !filter.subtypes.contains(&crate::types::Subtype::Aura) {
+        return false;
+    }
+    let Some(view) = spell_view_for_disturb_cast(game, spell) else {
+        return false;
+    };
+    filter.matches_non_recursive(&view, &ctx.clone().with_caster(Some(caster)), game)
+}
+
 pub(crate) fn spell_matches_cast_filter(
     game: &GameState,
     spell: &crate::object::Object,
@@ -883,7 +936,11 @@ pub fn spell_mana_cost_for_cast(
             spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost)
         }
         CastingMethod::Alternative(idx) => {
-            if let Some(method) = spell.alternative_casts.get(*idx) {
+            if let Some(method) = spell
+                .alternative_casts
+                .get(*idx)
+                .or(spell.cast_alternative_method.as_ref())
+            {
                 if matches!(
                     method,
                     crate::alternative_cast::AlternativeCastingMethod::Plot { .. }
@@ -914,6 +971,7 @@ pub fn spell_mana_cost_for_cast(
         } => {
             if let Some(method) =
                 resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+                    .or_else(|| spell.cast_alternative_method.clone())
             {
                 if matches!(
                     method,
@@ -1220,10 +1278,10 @@ pub(crate) fn can_cast_spell_with_context(
             calculate_effective_mana_cost_with_view_for_casting_method(
                 game,
                 player,
-            spell_for_checks,
-            base_cost,
-            casting_method,
-            view,
+                spell_for_checks,
+                base_cost,
+                casting_method,
+                view,
             )
         } else {
             apply_minimum_spell_total_mana(
@@ -1400,8 +1458,13 @@ pub(crate) fn can_cast_with_cost_with_context(
 
     let target_started_at = PerfTimer::start();
     let effects = effects_override.or_else(|| spell_for_checks.spell_effect.as_deref());
-    let has_legal_targets =
-        spell_has_legal_targets_for_cast_with_view(spell_for_checks, spell_id, effects, player, view);
+    let has_legal_targets = spell_has_legal_targets_for_cast_with_view(
+        spell_for_checks,
+        spell_id,
+        effects,
+        player,
+        view,
+    );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
         return false;
@@ -1442,30 +1505,33 @@ pub(crate) fn can_cast_with_cost_with_context(
 
     if let Some(cost) = mana_cost {
         let cost_started_at = PerfTimer::start();
-        let adjusted =
-            if ctx.can_use_printed_cost_directly(spell_has_intrinsic_cost_adjustments(spell_for_checks)) {
-                cost.clone()
-            } else if ctx.spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell_for_checks)) {
-                calculate_effective_mana_cost_with_view_for_casting_method(
+        let adjusted = if ctx
+            .can_use_printed_cost_directly(spell_has_intrinsic_cost_adjustments(spell_for_checks))
+        {
+            cost.clone()
+        } else if ctx
+            .spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell_for_checks))
+        {
+            calculate_effective_mana_cost_with_view_for_casting_method(
+                game,
+                player,
+                spell_for_checks,
+                cost,
+                casting_method,
+                view,
+            )
+        } else {
+            apply_minimum_spell_total_mana(
+                game,
+                &apply_payment_reason_mana_adjustments(
                     game,
                     player,
-                    spell_for_checks,
+                    Some(spell_id),
                     cost,
-                    casting_method,
-                    view,
-                )
-            } else {
-                apply_minimum_spell_total_mana(
-                    game,
-                    &apply_payment_reason_mana_adjustments(
-                        game,
-                        player,
-                        Some(spell_id),
-                        cost,
-                        crate::costs::PaymentReason::CastSpell,
-                    ),
-                )
-            };
+                    crate::costs::PaymentReason::CastSpell,
+                ),
+            )
+        };
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
@@ -1568,10 +1634,29 @@ pub(crate) fn spell_view_for_disturb_cast(
     game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
+    let already_overlaid_disturb_spell = matches!(
+        spell.cast_alternative_method,
+        Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+    ) && !spell.alternative_casts.iter().any(|method| {
+        matches!(
+            method,
+            crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
+        )
+    });
+    if already_overlaid_disturb_spell {
+        let mut view = spell.clone();
+        view.ensure_aura_cast_spell_effect();
+        return Some(view);
+    }
+
     let other_def = game
         .linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)?;
+    let front_colors = spell.colors();
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
+    if view.mana_cost.is_none() && view.color_override.is_none() && !front_colors.is_empty() {
+        view.color_override = Some(front_colors);
+    }
     view.ensure_aura_cast_spell_effect();
     Some(view)
 }
@@ -2363,22 +2448,15 @@ pub(crate) fn apply_spell_cost_modifiers(
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
-        let overlaid_spell;
-        let spell_for_match = if casting_method_is_bestow(game, caster, spell, casting_method) {
-            overlaid_spell = {
-                let mut overlaid = spell.clone();
-                overlaid.apply_bestow_cast_overlay();
-                overlaid
-            };
-            &overlaid_spell
-        } else {
-            spell
-        };
-        cast_filter.matches_non_recursive(
-            spell_for_match,
-            &ctx.clone().with_caster(Some(caster)),
-            game,
-        )
+        let overlaid_spell = spell_view_for_cost_filter_match(game, caster, spell, casting_method);
+        let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
+        let matches =
+            cast_filter.matches_non_recursive(
+                spell_for_match,
+                &ctx.clone().with_caster(Some(caster)),
+                game,
+            ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
+        matches
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })
@@ -2540,22 +2618,15 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
-        let overlaid_spell;
-        let spell_for_match = if casting_method_is_bestow(game, caster, spell, casting_method) {
-            overlaid_spell = {
-                let mut overlaid = spell.clone();
-                overlaid.apply_bestow_cast_overlay();
-                overlaid
-            };
-            &overlaid_spell
-        } else {
-            spell
-        };
-        cast_filter.matches_non_recursive(
-            spell_for_match,
-            &ctx.clone().with_caster(Some(caster)),
-            game,
-        )
+        let overlaid_spell = spell_view_for_cost_filter_match(game, caster, spell, casting_method);
+        let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
+        let matches =
+            cast_filter.matches_non_recursive(
+                spell_for_match,
+                &ctx.clone().with_caster(Some(caster)),
+                game,
+            ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
+        matches
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })

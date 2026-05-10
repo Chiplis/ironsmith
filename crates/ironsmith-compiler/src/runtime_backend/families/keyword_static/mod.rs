@@ -545,6 +545,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
+        single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
@@ -2788,10 +2789,31 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
 
     let mut idx = 3usize;
-    if clause_words.get(idx).copied() != Some("this") {
+    let mut named_copy_subject: Option<String> = None;
+    if clause_words.get(idx).copied() == Some("this") {
+        idx += 1;
+    } else if let Some(enter_idx) = find_index(&clause_words[idx..], |word| {
+        *word == "enter" || *word == "enters"
+    }) {
+        named_copy_subject = Some(
+            clause_words[idx..idx + enter_idx]
+                .iter()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        idx += enter_idx;
+    } else {
         return Ok(None);
     }
-    idx += 1;
     if clause_words.get(idx).is_some_and(|word| {
         matches!(
             *word,
@@ -2836,6 +2858,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
     let filter = parse_object_filter(&filter_tokens, false)?;
 
+    let mut name_override = None;
     let mut added_card_types = Vec::new();
     let mut added_subtypes = Vec::new();
     let mut added_abilities = Vec::new();
@@ -2848,7 +2871,22 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             )));
         }
 
-        if slice_starts_with(tail, &["it", "has"]) {
+        if slice_starts_with(tail, &["its", "name", "is"]) {
+            let mut name_words = Vec::new();
+            for word in &tail[3..] {
+                if matches!(*word, "it's" | "it’s" | "and") {
+                    break;
+                }
+                name_words.push(*word);
+            }
+            if name_words == ["this"] {
+                name_override = named_copy_subject.clone();
+            } else if !name_words.is_empty() {
+                name_override = Some(name_words.join(" "));
+            }
+            // Name/legendary exception riders such as Sakashima's do not change
+            // the copied object's functional abilities for current engine use.
+        } else if slice_starts_with(tail, &["it", "has"]) {
             added_abilities = parse_added_copy_abilities(tokens, &clause_words, except_idx + 2)?;
         } else {
             let type_idx = if tail.first().copied() == Some("its")
@@ -2914,6 +2952,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             filter,
             may: true,
             enters_tapped_if_chosen,
+            name_override,
             added_card_types,
             added_subtypes,
             added_abilities,
@@ -5287,6 +5326,12 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
         if is_article(descriptor) || matches!(*descriptor, "and" | "or" | "and/or") {
             continue;
         }
+        if parse_subtype_word(descriptor)
+            .or_else(|| str_strip_suffix(descriptor, "s").and_then(parse_subtype_word))
+            .is_some_and(is_land_subtype)
+        {
+            continue;
+        }
         let Some(card_type) = parse_card_type(descriptor) else {
             return Ok(None);
         };
@@ -6944,6 +6989,49 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
             spec.counter_type,
         ),
     ))
+}
+
+pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !slice_starts_with(&words, &["if"])
+        || !slice_contains(&words, &"would")
+        || !slice_contains(&words, &"graveyard")
+        || !slice_contains(&words, &"anywhere")
+        || !slice_ends_with(&words, &["exile", "it", "instead"])
+    {
+        return Ok(None);
+    }
+
+    let Some(would_idx) = words.iter().position(|word| *word == "would") else {
+        return Ok(None);
+    };
+    let Some(graveyard_idx) = words.iter().position(|word| *word == "graveyard") else {
+        return Ok(None);
+    };
+    if !words
+        .get(would_idx..graveyard_idx)
+        .is_some_and(|slice| slice == ["would", "be", "put", "into", "a"])
+    {
+        return Ok(None);
+    }
+
+    let filter_words = &words[1..would_idx];
+    let filter = if is_source_reference_words(filter_words) {
+        ObjectFilter::source()
+    } else {
+        match filter_words {
+            ["a", "card"] | ["card"] => ObjectFilter::default(),
+            ["a", "card", "or", "token"] | ["card", "or", "token"] => ObjectFilter::default(),
+            ["a", "creature", "card"] | ["creature", "card"] => ObjectFilter::creature(),
+            _ => return Ok(None),
+        }
+    };
+    Ok(Some(StaticAbility::exile_to_exile_instead_of_graveyard(
+        filter,
+        PlayerFilter::Any,
+    )))
 }
 
 pub(crate) fn parse_exile_would_die_instead_line(

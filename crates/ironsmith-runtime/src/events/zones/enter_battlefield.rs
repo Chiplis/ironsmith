@@ -27,6 +27,8 @@ pub struct EnterBattlefieldEvent {
     pub enters_with_counters: Vec<(CounterType, u32)>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<ObjectId>,
+    /// If set, overrides the copied object's name as it enters.
+    pub copy_name_override: Option<String>,
     /// Additional card types granted by the copy-as-enters replacement.
     pub added_card_types: Vec<CardType>,
     /// Additional subtypes granted by the copy-as-enters replacement.
@@ -48,6 +50,7 @@ impl EnterBattlefieldEvent {
             enters_tapped: false,
             enters_with_counters: Vec::new(),
             enters_as_copy_of: None,
+            copy_name_override: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -64,6 +67,7 @@ impl EnterBattlefieldEvent {
             enters_tapped: true,
             enters_with_counters: Vec::new(),
             enters_as_copy_of: None,
+            copy_name_override: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -101,6 +105,13 @@ impl EnterBattlefieldEvent {
     pub fn with_copy_of(&self, source_id: ObjectId) -> Self {
         Self {
             enters_as_copy_of: Some(source_id),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_copy_name_override(&self, name: Option<String>) -> Self {
+        Self {
+            copy_name_override: name,
             ..self.clone()
         }
     }

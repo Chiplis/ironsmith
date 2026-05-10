@@ -1181,6 +1181,64 @@ pub(crate) fn parse_trigger_clause_lexed(
             "your",
             "graveyard",
             "from",
+            "your",
+            "library",
+        ]
+        .as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
+            "your",
+            "library",
+        ]
+        .as_slice(),
+    ] {
+        if slice_ends_with(&words, tail) {
+            let subject_word_len = words.len().saturating_sub(tail.len());
+            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
+            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported card filter in put-into-your-graveyard-from-library trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            filter.zone = None;
+            filter.controller = None;
+            if filter.owner.is_none() {
+                filter.owner = Some(PlayerFilter::You);
+            }
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(TriggerSpec::PutIntoGraveyardFromZone {
+                filter,
+                from: Zone::Library,
+                one_or_more,
+            });
+        }
+    }
+
+    for tail in [
+        [
+            "is",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
             "the",
             "battlefield",
         ]
@@ -1205,10 +1263,12 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .unwrap_or_default();
             let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
             let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             if is_source_reference_words(&subject_words) {
                 return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                     filter: ObjectFilter::source(),
                     from: Zone::Battlefield,
+                    one_or_more,
                 });
             }
             let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1231,6 +1291,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                 filter,
                 from: Zone::Battlefield,
+                one_or_more,
             });
         }
     }
@@ -1300,10 +1361,12 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .unwrap_or_default();
             let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
             let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             if is_source_reference_words(&subject_words) {
                 return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                     filter: ObjectFilter::source(),
                     from: Zone::Battlefield,
+                    one_or_more,
                 });
             }
             let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1323,6 +1386,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                 filter,
                 from: Zone::Battlefield,
+                one_or_more,
             });
         }
     }
@@ -1361,12 +1425,14 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .unwrap_or_default();
             let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
             let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             if is_source_reference_words(&subject_words) {
                 let mut filter = ObjectFilter::source();
                 filter.owner = Some(PlayerFilter::Opponent);
                 return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                     filter,
                     from: Zone::Battlefield,
+                    one_or_more,
                 });
             }
             let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1381,6 +1447,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                 filter,
                 from: Zone::Battlefield,
+                one_or_more,
             });
         }
     }
@@ -1892,6 +1959,28 @@ pub(crate) fn parse_trigger_clause_lexed(
         })
     {
         let subject_tokens = &tokens[..deals_idx];
+        if let Some(damage_idx_rel) =
+            find_index(&tokens[deals_idx + 1..], |token| token.is_word("damage"))
+            && let Some(to_idx_rel) =
+                find_index(&tokens[deals_idx + 1 + damage_idx_rel + 1..], |token| {
+                    token.is_word("to")
+                })
+        {
+            let damage_idx = deals_idx + 1 + damage_idx_rel;
+            let to_idx = damage_idx + 1 + to_idx_rel;
+            let amount_words =
+                ActivationRestrictionCompatWords::new(&tokens[deals_idx + 1..damage_idx])
+                    .to_word_refs();
+            let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
+            let target_view = ActivationRestrictionCompatWords::new(&target_tokens);
+            let target_words = target_view.to_word_refs();
+            if amount_words.contains(&"noncombat")
+                && let Some(player) = parse_trigger_subject_player_filter(&target_words)
+                && let Some(source) = parse_trigger_subject_filter_lexed(subject_tokens)?
+            {
+                return Ok(TriggerSpec::DealsNoncombatDamageToPlayer { source, player });
+            }
+        }
         return Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
             Some(filter) => TriggerSpec::DealsDamage(filter),
             None => TriggerSpec::ThisDealsDamage,

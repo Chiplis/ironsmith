@@ -115,6 +115,7 @@ pub enum ReplacementAction {
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
+        name_override: Option<String>,
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,

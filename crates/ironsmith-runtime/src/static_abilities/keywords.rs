@@ -4,11 +4,13 @@
 //! continuous effects. They're just flags that are checked when relevant.
 
 use super::{StaticAbilityId, StaticAbilityKind};
+use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Modification};
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
+use crate::types::SubtypeFamily;
 
 /// Macro to define simple keyword abilities.
 ///
@@ -292,5 +294,22 @@ impl StaticAbilityKind for Changeling {
 
     fn is_changeling(&self) -> bool {
         true
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::AddAllSubtypesOfFamily(SubtypeFamily::Creature),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
     }
 }

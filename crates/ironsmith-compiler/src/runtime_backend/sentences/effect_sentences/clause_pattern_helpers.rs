@@ -1979,6 +1979,16 @@ pub(crate) fn parse_connive_clause(
         }));
     }
 
-    let target = parse_target_phrase(subject_tokens)?;
+    let target_tokens = if subject_words.len() >= 4
+        && subject_words[0] == "each"
+        && subject_words[1] == "of"
+        && (subject_words[2] == "x" || subject_words[2] == "X")
+        && subject_words[3] == "target"
+    {
+        &subject_tokens[2..]
+    } else {
+        subject_tokens
+    };
+    let target = parse_target_phrase(target_tokens)?;
     Ok(Some(EffectAst::subject_verb_connive(target, count)))
 }

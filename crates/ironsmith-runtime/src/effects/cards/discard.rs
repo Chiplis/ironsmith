@@ -224,6 +224,9 @@ impl EffectExecutor for DiscardEffect {
         let mut affected_memory = Vec::new();
         for card_id in cards_to_discard {
             let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
+            let pre_discard_snapshot = game
+                .object(card_id)
+                .map(|obj| ObjectSnapshot::from_object(obj, game));
             let result = execute_discard(
                 game,
                 card_id,
@@ -255,7 +258,15 @@ impl EffectExecutor for DiscardEffect {
                     ctx.provenance,
                 ));
                 discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                    CardDiscardedEvent::with_cause(player_id, card_id, cause.clone()),
+                    {
+                        let event =
+                            CardDiscardedEvent::with_cause(player_id, card_id, cause.clone());
+                        if let Some(snapshot) = pre_discard_snapshot {
+                            event.with_snapshot(snapshot)
+                        } else {
+                            event
+                        }
+                    },
                     ctx.provenance,
                 ));
                 let snapshot_id = result.new_id.unwrap_or(card_id);

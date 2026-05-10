@@ -174,9 +174,8 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             )],
         });
     }
-    let is_divided_as_you_choose_clause = grammar::contains_word(tokens, "divided")
-        && grammar::contains_word(tokens, "choose")
-        && grammar::contains_word(tokens, "among");
+    let is_divided_as_you_choose_clause =
+        grammar::contains_word(tokens, "divided") && grammar::contains_word(tokens, "among");
     if is_divided_as_you_choose_clause {
         if let Some((value, used)) = parse_value(tokens) {
             return parse_divided_damage_with_amount(tokens, value, used);

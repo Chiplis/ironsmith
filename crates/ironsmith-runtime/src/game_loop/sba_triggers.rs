@@ -798,22 +798,35 @@ fn target_requirements_from_explicit_choices(
         Some(&tagged_objects)
     };
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    let attacking_player = entry
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.object_id())
+        .and_then(|attacker| game.object(attacker))
+        .map(|attacker| game.controller_of(attacker));
 
     target_choices
         .into_iter()
         .map(|target_spec| {
             let count = target_spec.count();
-            let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
-                game,
+            let resolved_target_spec = super::targeting::choose_spec_with_damaged_player_from_event(
                 target_spec,
+                entry.triggering_event.as_ref(),
+            );
+            let legal_targets = compute_legal_targets_with_tagged_objects_combat_context_and_view(
+                game,
+                &resolved_target_spec,
                 trigger.controller,
                 Some(trigger.source),
+                None,
                 tagged_objects_ref,
+                entry.defending_player,
+                attacking_player,
                 &view,
             );
 
             TargetRequirement {
-                spec: (*target_spec).clone(),
+                spec: resolved_target_spec,
                 legal_targets,
                 description: format!("target for {}", trigger.source_name),
                 min_targets: count.min,

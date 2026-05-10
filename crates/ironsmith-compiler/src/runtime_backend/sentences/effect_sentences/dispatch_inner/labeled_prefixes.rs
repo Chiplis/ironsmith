@@ -125,7 +125,42 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return Ok(vec![
             EffectAst::ChooseObjects {
                 filter,
-                count: ChoiceCount::up_to(1),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen.clone(),
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::You,
+                },
+                action: SubjectVerbActionAst::CastTagged {
+                    tag: chosen,
+                    player: PlayerAst::You,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    cost_reduction: None,
+                },
+            }),
+        ]);
+    }
+    if slice_starts_with(
+        sentence_words.as_slice(),
+        &["you", "may", "cast", "a", "spell", "from", "your", "hand"],
+    ) && sentence_words
+        .windows(5)
+        .any(|window| window == ["without", "paying", "its", "mana", "cost"])
+    {
+        let chosen = TagKey::from("__chosen_hand_spell_to_cast");
+        let filter = ObjectFilter::nonland()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You);
+        return Ok(vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: chosen.clone(),

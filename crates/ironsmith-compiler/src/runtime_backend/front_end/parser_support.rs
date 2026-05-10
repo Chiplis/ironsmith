@@ -52,6 +52,7 @@ pub(crate) fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLe
 
 pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
+        || looks_like_when_it_connives_this_way_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
 }
@@ -192,6 +193,28 @@ fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'sta
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
         && token_slice_contains_phrase(tokens, &["this", "way"])
+}
+
+fn parse_when_it_connives_this_way_followup_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        alt((grammar::kw("when"), grammar::kw("whenever"))),
+        grammar::kw("it"),
+        alt((grammar::kw("connive"), grammar::kw("connives"))),
+        grammar::kw("this"),
+        grammar::kw("way"),
+    )
+        .void()
+        .parse_next(input)
+}
+
+fn looks_like_when_it_connives_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    starts_with_lexed_parser(
+        tokens,
+        0,
+        parse_when_it_connives_this_way_followup_intro_inner,
+    )
 }
 
 fn parse_when_you_do_followup_intro_inner<'a>(

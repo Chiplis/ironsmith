@@ -36,6 +36,19 @@ use crate::turn_history::TurnHistory;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+fn parse_dredge_amount(text: &str) -> Option<usize> {
+    let mut words = text.split_whitespace();
+    let head = words.next()?;
+    if !head.eq_ignore_ascii_case("dredge") {
+        return None;
+    }
+    words
+        .next()?
+        .trim_matches(|ch: char| !ch.is_ascii_digit())
+        .parse::<usize>()
+        .ok()
+}
+
 /// Pending replacement effect choice when multiple effects apply to the same event.
 ///
 /// Per Rule 616.1e, when multiple replacement effects at the same priority level
@@ -1834,6 +1847,9 @@ pub struct GameState {
     /// Creatures that are renowned.
     pub renowned: HashSet<ObjectId>,
 
+    /// Number of permanents sacrificed as a result of this permanent's devour ability.
+    pub devoured_counts: HashMap<ObjectId, u32>,
+
     /// Permanents that are suspected.
     pub suspected: HashSet<ObjectId>,
 
@@ -1974,6 +1990,7 @@ impl GameState {
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
             renowned: HashSet::new(),
+            devoured_counts: HashMap::new(),
             suspected: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
@@ -2920,10 +2937,17 @@ impl GameState {
         &mut self,
         player: PlayerId,
         count: usize,
-        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
+            if self
+                .try_replace_draw_with_dredge(player, decision_maker)
+                .is_some()
+            {
+                continue;
+            }
+
             let card_id = if let Some(player_obj) = self.player(player) {
                 player_obj.library.last().copied()
             } else {
@@ -2943,6 +2967,80 @@ impl GameState {
             }
         }
         drawn
+    }
+
+    fn try_replace_draw_with_dredge(
+        &mut self,
+        player: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<Vec<ObjectId>> {
+        let candidate = self
+            .player(player)?
+            .graveyard
+            .iter()
+            .copied()
+            .find_map(|object_id| {
+                let amount = self.dredge_amount_for_object(object_id)?;
+                (self.player(player)?.library.len() >= amount).then_some((object_id, amount))
+            })?;
+
+        let (dredge_card, amount) = candidate;
+        let description = self
+            .current_name(dredge_card)
+            .map(|name| format!("mill {amount} cards instead of drawing a card to return {name} to your hand"))
+            .unwrap_or_else(|| format!("mill {amount} cards instead of drawing a card to return this card to your hand"));
+        let spec = crate::decisions::MaySpec::new(dredge_card, description);
+        if !crate::decisions::make_decision_with_fallback(
+            self,
+            decision_maker,
+            player,
+            Some(dredge_card),
+            spec,
+            crate::decision::FallbackStrategy::Decline,
+        ) {
+            return None;
+        }
+
+        let cause = crate::events::cause::EventCause::from_effect(dredge_card, player);
+        let cards_to_mill: Vec<ObjectId> = self
+            .player(player)
+            .map(|p| p.library.iter().rev().take(amount).copied().collect())
+            .unwrap_or_default();
+        if cards_to_mill.len() < amount {
+            return None;
+        }
+
+        for card_id in cards_to_mill {
+            let Some(from_zone) = self.object(card_id).map(|obj| obj.zone) else {
+                continue;
+            };
+            let outcome = crate::events::processing::process_zone_change(
+                self,
+                card_id,
+                from_zone,
+                Zone::Graveyard,
+                cause.clone(),
+                decision_maker,
+            );
+            if let crate::events::processing::ZoneChangeOutcome::Proceed(final_zone) = outcome
+                && final_zone == Zone::Graveyard
+            {
+                let _ = self.move_object(card_id, Zone::Graveyard, cause.clone());
+            }
+        }
+
+        self.move_object(dredge_card, Zone::Hand, cause)
+            .map(|new_id| vec![new_id])
+    }
+
+    fn dredge_amount_for_object(&self, object_id: ObjectId) -> Option<usize> {
+        let object = self.object(object_id)?;
+        object.abilities.iter().find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            parse_dredge_amount(&static_ability.display())
+        })
     }
 
     /// Moves an object to a new zone.
@@ -3224,6 +3322,7 @@ impl GameState {
         if !preserve_optional_costs_paid {
             new_object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
         }
+        new_object.cast_alternative_method = None;
 
         if old_zone != Zone::Stack
             && new_zone == Zone::Battlefield
@@ -3370,7 +3469,7 @@ impl GameState {
         &mut self,
         old_id: ObjectId,
         new_zone: Zone,
-        decision_maker: &mut impl crate::decision::DecisionMaker,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<EntersResult> {
         self.move_object_with_etb_processing_with_dm_and_cause(
             old_id,
@@ -3386,7 +3485,7 @@ impl GameState {
         old_id: ObjectId,
         new_zone: Zone,
         cause: crate::events::cause::EventCause,
-        decision_maker: &mut impl crate::decision::DecisionMaker,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<EntersResult> {
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
@@ -3403,7 +3502,7 @@ impl GameState {
         old_id: ObjectId,
         new_zone: Zone,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
-        decision_maker: &mut impl crate::decision::DecisionMaker,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<EntersResult> {
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
@@ -3419,7 +3518,7 @@ impl GameState {
         &mut self,
         old_id: ObjectId,
         new_zone: Zone,
-        decision_maker: &mut impl crate::decision::DecisionMaker,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<EntersResult> {
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
@@ -3436,7 +3535,7 @@ impl GameState {
         old_id: ObjectId,
         new_zone: Zone,
         cause: crate::events::cause::EventCause,
-        decision_maker: &mut impl crate::decision::DecisionMaker,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
     ) -> Option<EntersResult> {
@@ -3484,6 +3583,9 @@ impl GameState {
             let copy_source = self.object(copy_source_id).cloned();
             if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
                 new_obj.copy_copiable_values_from(&source_obj);
+                if let Some(name) = &result.copy_name_override {
+                    new_obj.name = name.clone();
+                }
             }
         }
         if !result.added_card_types.is_empty()
@@ -4647,7 +4749,10 @@ impl GameState {
                 crate::types::CardType::Creature | crate::types::CardType::Kindred
             )
         });
-        if has_changeling && can_have_creature_subtypes {
+        if object.zone != crate::zone::Zone::Battlefield
+            && has_changeling
+            && can_have_creature_subtypes
+        {
             for subtype in crate::types::Subtype::all_creature_types() {
                 if !chars.subtypes.contains(subtype) {
                     chars.subtypes.push(*subtype);
@@ -6655,6 +6760,7 @@ impl GameState {
             entry.source_snapshot = Some(snapshot);
         }
         self.stack.push(entry);
+        self.update_replacement_effects();
     }
 
     /// Pops and returns the top item from the stack.
@@ -7070,6 +7176,21 @@ impl GameState {
         self.renowned.insert(id);
     }
 
+    /// Return how many permanents this object devoured as it entered.
+    pub fn devoured_count(&self, id: ObjectId) -> u32 {
+        self.devoured_counts.get(&id).copied().unwrap_or(0)
+    }
+
+    /// Record how many permanents this object devoured as it entered.
+    pub fn set_devoured_count(&mut self, id: ObjectId, count: u32) {
+        self.mark_continuous_state_dirty();
+        if count == 0 {
+            self.devoured_counts.remove(&id);
+        } else {
+            self.devoured_counts.insert(id, count);
+        }
+    }
+
     /// Check if a permanent is suspected.
     pub fn is_suspected(&self, id: ObjectId) -> bool {
         self.suspected.contains(&id)
@@ -7266,6 +7387,7 @@ impl GameState {
         self.regeneration_shields.remove(&id);
         self.monstrous.remove(&id);
         self.renowned.remove(&id);
+        self.devoured_counts.remove(&id);
         self.suspected.remove(&id);
         self.flipped.remove(&id);
         self.face_down.remove(&id);
@@ -8054,6 +8176,91 @@ mod tests {
         assert!(
             game.current_subtypes(changeling_spell_id)
                 .is_some_and(|subtypes| subtypes.contains(&Subtype::Wizard))
+        );
+    }
+
+    #[test]
+    fn battlefield_changeling_uses_layered_type_effects() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use crate::effect::Until;
+        use crate::static_abilities::{StaticAbility, StaticAbilityId};
+        use crate::types::{Subtype, SubtypeFamily};
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(205), "Layer Source")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let changeling_id = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(206), "Changeling Probe")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Shapeshifter])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .with_ability(Ability::static_ability(StaticAbility::changeling()))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        assert!(game.current_has_subtype(changeling_id, Subtype::Goblin));
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                source_id,
+                alice,
+                EffectTarget::Specific(changeling_id),
+                Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
+            )
+            .until(Until::EndOfTurn),
+        );
+
+        assert!(!game.current_has_subtype(changeling_id, Subtype::Shapeshifter));
+        assert!(game.current_has_static_ability_id(changeling_id, StaticAbilityId::Changeling));
+
+        let mut ability_loss_game = GameState::new(vec!["Alice".to_string()], 20);
+        let source_id = ability_loss_game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(207), "Ability Loss Source")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let changeling_id = ability_loss_game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(208), "Ability Loss Changeling")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Shapeshifter])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .with_ability(Ability::static_ability(StaticAbility::changeling()))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        ability_loss_game
+            .effect_store
+            .continuous_effects
+            .add_effect(
+                ContinuousEffect::new(
+                    source_id,
+                    alice,
+                    EffectTarget::Specific(changeling_id),
+                    Modification::RemoveAllAbilities,
+                )
+                .until(Until::EndOfTurn),
+            );
+
+        assert!(ability_loss_game.current_has_subtype(changeling_id, Subtype::Goblin));
+        assert!(
+            !ability_loss_game
+                .current_has_static_ability_id(changeling_id, StaticAbilityId::Changeling)
         );
     }
 

@@ -8,7 +8,7 @@ use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype, Supertype};
+use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 use super::super::{
@@ -150,6 +150,10 @@ pub(crate) enum TriggerSpec {
     ThisDealsCombatDamage,
     ThisDealsCombatDamageTo(ObjectFilter),
     DealsDamage(ObjectFilter),
+    DealsNoncombatDamageToPlayer {
+        source: ObjectFilter,
+        player: PlayerFilter,
+    },
     DealsCombatDamage(ObjectFilter),
     DealsCombatDamageTo {
         source: ObjectFilter,
@@ -216,6 +220,7 @@ pub(crate) enum TriggerSpec {
     PutIntoGraveyardFromZone {
         filter: ObjectFilter,
         from: Zone,
+        one_or_more: bool,
     },
     CounterPutOn {
         filter: ObjectFilter,
@@ -1061,6 +1066,16 @@ pub(crate) enum SubjectVerbActionAst {
     AddSubtypes {
         target: TargetAst,
         subtypes: Vec<Subtype>,
+        duration: Until,
+    },
+    AddAllSubtypesOfFamily {
+        target: TargetAst,
+        family: SubtypeFamily,
+        duration: Until,
+    },
+    RemoveAllSubtypesOfFamily {
+        target: TargetAst,
+        family: SubtypeFamily,
         duration: Until,
     },
     BecomeAuraEnchantment {
@@ -2270,6 +2285,26 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("AddSubtypes")
                 .field("target", target)
                 .field("subtypes", subtypes)
+                .field("duration", duration)
+                .finish(),
+            Self::AddAllSubtypesOfFamily {
+                target,
+                family,
+                duration,
+            } => f
+                .debug_struct("AddAllSubtypesOfFamily")
+                .field("target", target)
+                .field("family", family)
+                .field("duration", duration)
+                .finish(),
+            Self::RemoveAllSubtypesOfFamily {
+                target,
+                family,
+                duration,
+            } => f
+                .debug_struct("RemoveAllSubtypesOfFamily")
+                .field("target", target)
+                .field("family", family)
                 .field("duration", duration)
                 .finish(),
             Self::BecomeAuraEnchantment {
@@ -3694,6 +3729,38 @@ impl EffectAst {
             SubjectVerbActionAst::AddSubtypes {
                 target,
                 subtypes,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_add_all_subtypes_of_family(
+        target: TargetAst,
+        family: SubtypeFamily,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AddAllSubtypesOfFamily {
+                target,
+                family,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_remove_all_subtypes_of_family(
+        target: TargetAst,
+        family: SubtypeFamily,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
+                target,
+                family,
                 duration,
             },
         )

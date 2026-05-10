@@ -929,6 +929,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub filter: crate::target::ObjectFilter,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub name_override: Option<String>,
     pub added_card_types: Vec<crate::types::CardType>,
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
@@ -2586,6 +2587,13 @@ impl StaticAbility {
             player,
             counter_type,
         ))
+    }
+
+    pub fn exile_to_exile_instead_of_graveyard(
+        filter: crate::target::ObjectFilter,
+        graveyard_owner: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(ExileToExileInsteadOfGraveyard::new(filter, graveyard_owner))
     }
 
     pub fn exile_would_die_instead(filter: crate::target::ObjectFilter) -> Self {

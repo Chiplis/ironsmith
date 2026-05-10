@@ -443,7 +443,7 @@ pub fn execute_draw_step(game: &mut GameState) -> Vec<crate::triggers::TriggerEv
 /// Executes the draw step for the active player with an explicit decision maker.
 pub fn execute_draw_step_with(
     game: &mut GameState,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
 ) -> Vec<crate::triggers::TriggerEvent> {
     use crate::events::other::CardsDrawnEvent;
     use crate::triggers::TriggerEvent;

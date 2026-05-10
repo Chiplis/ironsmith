@@ -23,10 +23,15 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::PutIntoGraveyard(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(filter.clone()),
         ),
-        TriggerSpec::PutIntoGraveyardFromZone { filter, from } => Ok(
+        TriggerSpec::PutIntoGraveyardFromZone {
+            filter,
+            from,
+            one_or_more,
+        } => Ok(
             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone {
                 filter: filter.clone(),
                 from: *from,
+                one_or_more: *one_or_more,
             },
         ),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
@@ -345,13 +350,18 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
-                TriggerSpec::PutIntoGraveyardFromZone { filter, from } => {
+                TriggerSpec::PutIntoGraveyardFromZone {
+                    filter,
+                    from,
+                    one_or_more,
+                } => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let effect = Effect::new(
                         crate::effects::ScheduleDelayedTriggerEffect::new(
                             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone {
                                 filter: resolved_filter,
                                 from: *from,
+                                one_or_more: *one_or_more,
                             },
                             delayed_effects,
                             false,

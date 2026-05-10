@@ -409,6 +409,56 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
     )
 }
 
+pub(crate) fn compute_legal_targets_with_tagged_objects_combat_context_with_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
+    tagged_objects: Option<
+        &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    combat_context: Option<(PlayerId, PlayerId)>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            compute_legal_targets_with_tagged_objects_combat_context_with_view(
+                game,
+                spec,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                combat_context,
+                view,
+            )
+        }
+        ChooseSpec::Object(filter) => compute_object_targets_with_view(
+            game,
+            filter,
+            caster,
+            source_id,
+            source_snapshot,
+            tagged_objects,
+            combat_context,
+            view,
+        ),
+        _ => compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+            game,
+            spec,
+            caster,
+            source_id,
+            source_snapshot,
+            tagged_objects,
+            view,
+        ),
+    }
+}
+
 pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
     game: &GameState,
     spec: &ChooseSpec,
@@ -483,6 +533,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
             source_id,
             source_snapshot,
             tagged_objects,
+            None,
             view,
         ),
         // These don't require selection - they're resolved at execution time
@@ -680,12 +731,17 @@ fn compute_object_targets_with_view(
     tagged_objects: Option<
         &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
+    combat_context: Option<(PlayerId, PlayerId)>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
     let mut targets = Vec::new();
 
     // Build filter context
     let mut filter_ctx = target_filter_context(game, caster, source_id);
+    if let Some((defending_player, attacking_player)) = combat_context {
+        filter_ctx.defending_player = Some(defending_player);
+        filter_ctx.attacking_player = Some(attacking_player);
+    }
     if let Some(tagged) = tagged_objects {
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }

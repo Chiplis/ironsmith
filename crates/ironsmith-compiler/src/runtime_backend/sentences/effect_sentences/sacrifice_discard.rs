@@ -292,6 +292,19 @@ pub(crate) fn parse_discard(
         ));
     }
 
+    if matches!(clause_words.as_slice(), ["those", "cards"]) {
+        let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        tagged_filter.zone = Some(Zone::Hand);
+        return Ok(EffectAst::subject_verb_discard(
+            player,
+            Value::Count(tagged_filter.clone()),
+            false,
+            false,
+            Some(tagged_filter),
+            None,
+        ));
+    }
+
     let any_number = clause_words
         .as_slice()
         .starts_with(&["any", "number", "of"]);
@@ -382,6 +395,10 @@ pub(crate) fn parse_discard(
     let random = trailing_words.as_slice() == ["at", "random"];
     if !trailing_words.is_empty() && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
+            Some(filter)
+        } else if trailing_words.as_slice() == ["with", "that", "name"] {
+            let mut filter = ObjectFilter::default();
+            filter.name = Some("{chosen name}".to_string());
             Some(filter)
         } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(trailing_tokens) {
             Some(filter)

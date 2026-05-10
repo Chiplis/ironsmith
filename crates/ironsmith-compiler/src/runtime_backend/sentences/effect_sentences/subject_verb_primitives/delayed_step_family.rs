@@ -945,3 +945,154 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         target, subtypes, duration,
     )]))
 }
+
+pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let Some(verb_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "gain" | "gains" | "lose" | "loses"))
+    else {
+        return Ok(None);
+    };
+    let is_gain = matches!(words[verb_idx], "gain" | "gains");
+    let tail = &words[verb_idx + 1..];
+    if tail != ["all", "creature", "types", "until", "end", "of", "turn"]
+        && tail != ["every", "creature", "type", "until", "end", "of", "turn"]
+    {
+        return Ok(None);
+    }
+
+    if !is_gain
+        && let Some(get_word_idx) = words[..verb_idx]
+            .iter()
+            .position(|word| matches!(*word, "get" | "gets"))
+    {
+        let Some(get_token_idx) = token_index_for_word_index(tokens, get_word_idx) else {
+            return Ok(None);
+        };
+        let Some(modifier_word) = words.get(get_word_idx + 1).copied() else {
+            return Ok(None);
+        };
+        let Ok((power, toughness)) = parse_pt_modifier_values(modifier_word) else {
+            return Ok(None);
+        };
+        let target_tokens = trim_commas(&tokens[..get_token_idx]);
+        if target_tokens.is_empty() {
+            return Ok(None);
+        }
+        let target = parse_target_phrase(&target_tokens)?;
+        return Ok(Some(vec![
+            EffectAst::subject_verb_pump(power, toughness, target.clone(), Until::EndOfTurn, None),
+            EffectAst::subject_verb_remove_all_subtypes_of_family(
+                target,
+                crate::types::SubtypeFamily::Creature,
+                Until::EndOfTurn,
+            ),
+        ]));
+    }
+
+    let verb_token_idx = token_index_for_word_index(tokens, verb_idx).unwrap_or(tokens.len());
+    let target_tokens = trim_commas(&tokens[..verb_token_idx]);
+    let target = if words[..verb_idx] == ["it"] || words[..verb_idx] == ["that", "creature"] {
+        TargetAst::Tagged(TagKey::from(IT_TAG), None)
+    } else {
+        parse_target_phrase(&target_tokens)?
+    };
+    let effect = if is_gain {
+        EffectAst::subject_verb_add_all_subtypes_of_family(
+            target,
+            crate::types::SubtypeFamily::Creature,
+            Until::EndOfTurn,
+        )
+    } else {
+        EffectAst::subject_verb_remove_all_subtypes_of_family(
+            target,
+            crate::types::SubtypeFamily::Creature,
+            Until::EndOfTurn,
+        )
+    };
+    Ok(Some(vec![effect]))
+}
+
+fn fixed_count_word(word: &str) -> Option<i32> {
+    match word {
+        "a" | "an" | "one" | "1" => Some(1),
+        "two" | "2" => Some(2),
+        "three" | "3" => Some(3),
+        "four" | "4" => Some(4),
+        "five" | "5" => Some(5),
+        "six" | "6" => Some(6),
+        "seven" | "7" => Some(7),
+        "eight" | "8" => Some(8),
+        "nine" | "9" => Some(9),
+        "ten" | "10" => Some(10),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let if_idx = words
+        .windows(3)
+        .position(|window| window == ["if", "you", "win"]);
+    let body_words = if let Some(if_idx) = if_idx {
+        if words.get(if_idx + 3..) != Some(&["repeat", "this", "process"][..]) {
+            return Ok(None);
+        }
+        &words[..if_idx]
+    } else {
+        &words[..]
+    };
+    if body_words.len() != 13
+        || words[0] != "you"
+        || words[1] != "lose"
+        || words[3] != "life"
+        || words[4] != "and"
+        || words[5] != "draw"
+        || !matches!(words[7], "card" | "cards")
+        || body_words[8] != "then"
+        || body_words[9] != "clash"
+        || body_words[10] != "with"
+        || body_words[11] != "an"
+        || body_words[12] != "opponent"
+    {
+        return Ok(None);
+    }
+    let Some(life_count) = fixed_count_word(body_words[2]) else {
+        return Ok(None);
+    };
+    let Some(draw_count) = fixed_count_word(body_words[6]) else {
+        return Ok(None);
+    };
+
+    let effects = vec![
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::LoseLife {
+                amount: Value::Fixed(life_count),
+            },
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::Fixed(draw_count),
+            },
+        ),
+        EffectAst::subject_verb_clash(ClashOpponentAst::Opponent),
+    ];
+    if if_idx.is_none() {
+        return Ok(Some(effects));
+    }
+
+    Ok(Some(vec![EffectAst::RepeatProcess {
+        effects,
+        continue_effect_index: 2,
+        continue_predicate: IfResultPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
+    }]))
+}

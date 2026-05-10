@@ -5,6 +5,60 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "testClashYouWin",
+      "setupOperations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Paperfin Rascal",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Sylvan Echoes",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "skipInitShuffling"
+        }
+      ],
       "operations": [
         {
           "op": "addCard",
@@ -12,6 +66,28 @@ registerPortedMageTests({
           "player": 0,
           "name": "Divination",
           "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Paperfin Rascal"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "PlayerB"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -32,6 +108,60 @@ registerPortedMageTests({
     },
     {
       "name": "testClashOppWin",
+      "setupOperations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Paperfin Rascal",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Sylvan Echoes",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "skipInitShuffling"
+        }
+      ],
       "operations": [
         {
           "op": "addCard",
@@ -39,6 +169,28 @@ registerPortedMageTests({
           "player": 1,
           "name": "Divination",
           "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Paperfin Rascal"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "PlayerB"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": true
         },
         {
           "op": "setChoice",
@@ -70,7 +222,83 @@ registerPortedMageTests({
     },
     {
       "name": "testClashNoWin",
+      "setupOperations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Paperfin Rascal",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Sylvan Echoes",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Island",
+          "count": 4
+        },
+        {
+          "op": "skipInitShuffling"
+        }
+      ],
       "operations": [
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Paperfin Rascal"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "PlayerB"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": true
+        },
         {
           "op": "setStopAt",
           "turn": 1,

@@ -74,6 +74,12 @@ export class WasmGame {
      */
     forceNextDieRoll(result: number): void;
     /**
+     * Turn a face-down permanent face up without going through priority action
+     * enumeration. Ported tests use this when the UI has not exposed the
+     * special action because mana was supplied out of band.
+     */
+    forceTurnFaceUp(player_index: number, object_id: bigint): void;
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      */
     getCardSemanticScore(card_name: string): number;
@@ -107,6 +113,12 @@ export class WasmGame {
      * Replace game state with demo decks and no battlefield/stack state.
      */
     loadDemoDecks(): void;
+    /**
+     * Move a hand card onto the battlefield with the shared morph-style
+     * face-down overlay. This is used by ported test harnesses that set up a
+     * cast result directly when the UI has no payable cast action exposed.
+     */
+    moveHandCardToBattlefieldFaceDown(player_index: number, object_id: bigint, ward_generic_cost: number): bigint;
     /**
      * Construct a demo game with two players.
      */
@@ -210,6 +222,8 @@ export interface InitOutput {
     readonly wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_forceNextDieRoll: (a: number, b: number) => void;
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];
+    readonly wasmgame_moveHandCardToBattlefieldFaceDown: (a: number, b: number, c: bigint, d: number) => [bigint, number, number];
+    readonly wasmgame_forceTurnFaceUp: (a: number, b: number, c: bigint) => [number, number];
     readonly wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];
     readonly wasmgame_setCombatDamageAssignment: (a: number, b: bigint, c: bigint, d: number) => void;
