@@ -73,6 +73,17 @@ export class WasmGame {
         }
     }
     /**
+     * @param {any} input
+     * @returns {any}
+     */
+    applyVerifiedHiddenLibraryShuffle(input) {
+        const ret = wasm.wasmgame_applyVerifiedHiddenLibraryShuffle(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Return locally-known card name suggestions from the generated registry.
      * @param {string} query
      * @param {number | null} [limit]
@@ -185,6 +196,40 @@ export class WasmGame {
         }
     }
     /**
+     * @param {bigint} object_id
+     * @returns {any}
+     */
+    exportHiddenCardOpening(object_id) {
+        const ret = wasm.wasmgame_exportHiddenCardOpening(this.__wbg_ptr, object_id);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Export a redacted checkpoint suitable for peer audit logs.
+     * @returns {any}
+     */
+    exportPublicAuditCheckpoint() {
+        const ret = wasm.wasmgame_exportPublicAuditCheckpoint(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Export an importable checkpoint redacted for one peer's legal knowledge.
+     * @param {number} perspective_index
+     * @returns {any}
+     */
+    exportRedactedSyncCheckpoint(perspective_index) {
+        const ret = wasm.wasmgame_exportRedactedSyncCheckpoint(this.__wbg_ptr, perspective_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
      * @returns {any}
      */
@@ -214,6 +259,18 @@ export class WasmGame {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * Mark a player as having forfeited the match.
+     * @param {number} player_index
+     * @returns {any}
+     */
+    forfeitPlayer(player_index) {
+        const ret = wasm.wasmgame_forfeitPlayer(this.__wbg_ptr, player_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
@@ -246,6 +303,15 @@ export class WasmGame {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     */
+    injectTranscriptRandomSeeds(input) {
+        const ret = wasm.wasmgame_injectTranscriptRandomSeeds(this.__wbg_ptr, input);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Return whether the query resolves to a locally known card name.
@@ -386,6 +452,17 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {any} command
+     * @returns {any}
+     */
+    previewCryptoRequirements(command) {
+        const ret = wasm.wasmgame_previewCryptoRequirements(this.__wbg_ptr, command);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * @param {any} draft_js
      * @returns {any}
      */
@@ -414,6 +491,39 @@ export class WasmGame {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    revealHiddenObject(input) {
+        const ret = wasm.wasmgame_revealHiddenObject(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    revealHiddenPosition(input) {
+        const ret = wasm.wasmgame_revealHiddenPosition(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    revealHiddenSlot(input) {
+        const ret = wasm.wasmgame_revealHiddenSlot(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * @param {number} player_index
@@ -559,6 +669,61 @@ export class WasmGame {
      */
     validateMatchConfig(config) {
         const ret = wasm.wasmgame_validateMatchConfig(this.__wbg_ptr, config);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleBuildRevealToken(input) {
+        const ret = wasm.wasmgame_ziffleBuildRevealToken(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleBuildShuffleStep(input) {
+        const ret = wasm.wasmgame_ziffleBuildShuffleStep(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleKeygen(input) {
+        const ret = wasm.wasmgame_ziffleKeygen(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleRevealCard(input) {
+        const ret = wasm.wasmgame_ziffleRevealCard(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleVerifyShuffle(input) {
+        const ret = wasm.wasmgame_ziffleVerifyShuffle(this.__wbg_ptr, input);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

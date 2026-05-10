@@ -369,6 +369,100 @@ struct ActiveViewedCards {
     description: String,
 }
 
+#[derive(Debug, Clone, Default)]
+struct CryptoAuditState {
+    hidden_by_id: HashMap<ObjectId, HiddenAuditCard>,
+    hidden_by_key: HashMap<(u8, u16, String), HiddenAuditCard>,
+    libraries: HashMap<PlayerId, Vec<ObjectId>>,
+    random_count: u64,
+}
+
+#[derive(Debug, Clone)]
+struct HiddenAuditCard {
+    object_id: ObjectId,
+    owner: PlayerId,
+    zone: Zone,
+    slot: u16,
+    commitment: String,
+    card: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CryptoRequirementView {
+    id: String,
+    #[serde(rename = "type")]
+    requirement_type: String,
+    owner: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    viewer: Option<u8>,
+    zone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slot: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commitment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    card: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    visibility: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    count: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    before_order: Option<Vec<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after_order: Option<Vec<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    random_count_before: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    random_count_after: Option<u64>,
+}
+
+impl CryptoRequirementView {
+    fn hidden_open(
+        requirement_type: &str,
+        card: &HiddenAuditCard,
+        viewer: Option<PlayerId>,
+        visibility: &str,
+        reason: &str,
+    ) -> Self {
+        Self {
+            id: format!(
+                "{}:{}:{}:{}:{}",
+                requirement_type,
+                card.owner.index(),
+                zone_crypto_kind(card.zone),
+                card.slot,
+                card.object_id.0
+            ),
+            requirement_type: requirement_type.to_string(),
+            owner: card.owner.index() as u8,
+            viewer: viewer.map(|viewer| viewer.index() as u8),
+            zone: zone_crypto_kind(card.zone).to_string(),
+            slot: Some(card.slot),
+            object_id: Some(card.object_id.0),
+            commitment: (!card.commitment.is_empty()).then(|| card.commitment.clone()),
+            card: card.card.clone(),
+            visibility: Some(visibility.to_string()),
+            reason: Some(reason.to_string()),
+            count: None,
+            from: None,
+            to: None,
+            before_order: None,
+            after_order: None,
+            random_count_before: None,
+            random_count_after: None,
+        }
+    }
+}
+
 fn mana_symbol_display_code(symbol: &ManaSymbol) -> String {
     match symbol {
         ManaSymbol::White => "W".to_string(),
@@ -554,6 +648,310 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
     }
 
     None
+}
+
+fn zone_crypto_kind(zone: Zone) -> &'static str {
+    match zone {
+        Zone::Library => "library",
+        Zone::Hand => "hand",
+        Zone::Exile => "face_down_exile",
+        Zone::Battlefield => "face_down_permanent",
+        _ => "hidden_zone",
+    }
+}
+
+fn hidden_audit_key(card: &HiddenAuditCard) -> (u8, u16, String) {
+    (
+        card.owner.index() as u8,
+        card.slot,
+        card.commitment.clone(),
+    )
+}
+
+fn push_requirement_unique(
+    requirements: &mut Vec<CryptoRequirementView>,
+    seen: &mut HashSet<String>,
+    requirement: CryptoRequirementView,
+) {
+    if seen.insert(requirement.id.clone()) {
+        requirements.push(requirement);
+    }
+}
+
+fn library_relative_order_changed(before: &[ObjectId], after: &[ObjectId]) -> bool {
+    let after_set: HashSet<_> = after.iter().copied().collect();
+    let before_common: Vec<_> = before
+        .iter()
+        .copied()
+        .filter(|id| after_set.contains(id))
+        .collect();
+    let before_set: HashSet<_> = before.iter().copied().collect();
+    let after_common: Vec<_> = after
+        .iter()
+        .copied()
+        .filter(|id| before_set.contains(id))
+        .collect();
+    before_common.len() > 1 && before_common != after_common
+}
+
+impl WasmGame {
+    fn capture_crypto_audit_state(&self) -> CryptoAuditState {
+        let mut state = CryptoAuditState {
+            random_count: self.game.irreversible_random_count(),
+            ..CryptoAuditState::default()
+        };
+        for (&object_id, info) in &self.game.hidden_cards {
+            let Some(object) = self.game.object(object_id) else {
+                continue;
+            };
+            let card = HiddenAuditCard {
+                object_id,
+                owner: info.owner,
+                zone: object.zone,
+                slot: info.slot,
+                commitment: info.commitment.clone(),
+                card: object.card.as_ref().map(|_| object.name.clone()),
+            };
+            state.hidden_by_key.insert(hidden_audit_key(&card), card.clone());
+            state.hidden_by_id.insert(object_id, card);
+        }
+        for player in &self.game.players {
+            state.libraries.insert(player.id, player.library.clone());
+        }
+        state
+    }
+
+    fn update_crypto_requirements_from(&mut self, before: CryptoAuditState) {
+        let after = self.capture_crypto_audit_state();
+        let mut requirements = Vec::new();
+        let mut seen = HashSet::new();
+
+        for before_card in before.hidden_by_id.values() {
+            let after_card = after
+                .hidden_by_id
+                .get(&before_card.object_id)
+                .or_else(|| after.hidden_by_key.get(&hidden_audit_key(before_card)));
+
+            if let Some(after_card) = after_card {
+                if before_card.zone != after_card.zone {
+                    let moved = CryptoRequirementView {
+                        id: format!(
+                            "hidden_move:{}:{}:{}:{}:{}",
+                            before_card.owner.index(),
+                            zone_crypto_kind(before_card.zone),
+                            zone_crypto_kind(after_card.zone),
+                            before_card.slot,
+                            after_card.object_id.0
+                        ),
+                        requirement_type: "hidden_move".to_string(),
+                        owner: before_card.owner.index() as u8,
+                        viewer: None,
+                        zone: zone_crypto_kind(after_card.zone).to_string(),
+                        slot: Some(before_card.slot),
+                        object_id: Some(after_card.object_id.0),
+                        commitment: (!after_card.commitment.is_empty())
+                            .then(|| after_card.commitment.clone()),
+                        card: after_card.card.clone(),
+                        visibility: None,
+                        reason: Some("hidden object moved between zones".to_string()),
+                        count: None,
+                        from: Some(zone_crypto_kind(before_card.zone).to_string()),
+                        to: Some(zone_crypto_kind(after_card.zone).to_string()),
+                        before_order: None,
+                        after_order: None,
+                        random_count_before: None,
+                        random_count_after: None,
+                    };
+                    push_requirement_unique(&mut requirements, &mut seen, moved);
+
+                    if before_card.zone == Zone::Library && after_card.zone == Zone::Hand {
+                        push_requirement_unique(
+                            &mut requirements,
+                            &mut seen,
+                            CryptoRequirementView::hidden_open(
+                                "private_open",
+                                after_card,
+                                Some(after_card.owner),
+                                "owner_only",
+                                "hidden library card moved to hand",
+                            ),
+                        );
+                    }
+
+                    if after_card.card.is_some()
+                        && !matches!(after_card.zone, Zone::Library | Zone::Hand | Zone::Exile)
+                    {
+                        push_requirement_unique(
+                            &mut requirements,
+                            &mut seen,
+                            CryptoRequirementView::hidden_open(
+                                "public_open",
+                                after_card,
+                                None,
+                                "public",
+                                "hidden card moved to a public zone",
+                            ),
+                        );
+                    }
+                }
+                continue;
+            }
+
+            if let Some(object) = self.game.object(before_card.object_id)
+                && object.card.is_some()
+            {
+                let mut opened = before_card.clone();
+                opened.card = Some(object.name.clone());
+                let is_public = !object.zone.is_hidden();
+                push_requirement_unique(
+                    &mut requirements,
+                    &mut seen,
+                    CryptoRequirementView::hidden_open(
+                        if is_public {
+                            "public_open"
+                        } else {
+                            "private_open"
+                        },
+                        &opened,
+                        (!is_public).then_some(opened.owner),
+                        if is_public { "public" } else { "owner_only" },
+                        "hidden card identity became known",
+                    ),
+                );
+            }
+        }
+
+        if let Some(view) = self.active_viewed_cards.as_ref() {
+            let count = view.cards.len().min(u16::MAX as usize) as u16;
+            let view_requirement = CryptoRequirementView {
+                id: format!(
+                    "{}_view:{}:{}:{}:{}",
+                    if view.public { "public" } else { "private" },
+                    view.viewer.index(),
+                    view.subject.index(),
+                    zone_crypto_kind(view.zone),
+                    count
+                ),
+                requirement_type: if view.public {
+                    "public_view_window".to_string()
+                } else {
+                    "private_view_window".to_string()
+                },
+                owner: view.subject.index() as u8,
+                viewer: Some(view.viewer.index() as u8),
+                zone: zone_crypto_kind(view.zone).to_string(),
+                slot: None,
+                object_id: None,
+                commitment: None,
+                card: None,
+                visibility: Some(if view.public { "public" } else { "viewer" }.to_string()),
+                reason: Some(view.description.clone()),
+                count: Some(count),
+                from: None,
+                to: None,
+                before_order: None,
+                after_order: None,
+                random_count_before: None,
+                random_count_after: None,
+            };
+            push_requirement_unique(&mut requirements, &mut seen, view_requirement);
+
+            for &object_id in &view.cards {
+                let Some(card) = before
+                    .hidden_by_id
+                    .get(&object_id)
+                    .or_else(|| after.hidden_by_id.get(&object_id))
+                else {
+                    continue;
+                };
+                push_requirement_unique(
+                    &mut requirements,
+                    &mut seen,
+                    CryptoRequirementView::hidden_open(
+                        if view.public {
+                            "public_open"
+                        } else {
+                            "private_open"
+                        },
+                        card,
+                        (!view.public).then_some(view.viewer),
+                        if view.public { "public" } else { "viewer" },
+                        &view.description,
+                    ),
+                );
+            }
+        }
+
+        let mut shuffle_requirements = 0u64;
+        for (player, before_order) in &before.libraries {
+            let Some(after_order) = after.libraries.get(player) else {
+                continue;
+            };
+            if !library_relative_order_changed(before_order, after_order) {
+                continue;
+            }
+            shuffle_requirements = shuffle_requirements.saturating_add(1);
+            push_requirement_unique(
+                &mut requirements,
+                &mut seen,
+                CryptoRequirementView {
+                    id: format!("verifiable_shuffle:{}:library", player.index()),
+                    requirement_type: "verifiable_shuffle".to_string(),
+                    owner: player.index() as u8,
+                    viewer: None,
+                    zone: "library".to_string(),
+                    slot: None,
+                    object_id: None,
+                    commitment: None,
+                    card: None,
+                    visibility: None,
+                    reason: Some("library order changed".to_string()),
+                    count: None,
+                    from: None,
+                    to: None,
+                    before_order: Some(before_order.iter().map(|id| id.0).collect()),
+                    after_order: Some(after_order.iter().map(|id| id.0).collect()),
+                    random_count_before: Some(before.random_count),
+                    random_count_after: Some(after.random_count),
+                },
+            );
+        }
+
+        let random_delta = after.random_count.saturating_sub(before.random_count);
+        if random_delta > shuffle_requirements {
+            let owner = self
+                .game
+                .turn
+                .priority_player
+                .unwrap_or(self.game.turn.active_player);
+            push_requirement_unique(
+                &mut requirements,
+                &mut seen,
+                CryptoRequirementView {
+                    id: format!("fair_random:{}:{}", owner.index(), after.random_count),
+                    requirement_type: "fair_random".to_string(),
+                    owner: owner.index() as u8,
+                    viewer: None,
+                    zone: "game".to_string(),
+                    slot: None,
+                    object_id: None,
+                    commitment: None,
+                    card: None,
+                    visibility: None,
+                    reason: Some("runtime consumed irreversible random output".to_string()),
+                    count: Some((random_delta - shuffle_requirements).min(u16::MAX as u64) as u16),
+                    from: None,
+                    to: None,
+                    before_order: None,
+                    after_order: None,
+                    random_count_before: Some(before.random_count),
+                    random_count_after: Some(after.random_count),
+                },
+            );
+        }
+
+        self.last_crypto_requirements = requirements;
+    }
 }
 
 fn normalize_stack_display_text(text: &str) -> Option<String> {
@@ -2088,6 +2486,11 @@ pub struct WasmGame {
     snapshot_serial: u64,
     /// Most recent transient card-view event visible to the current perspective.
     active_viewed_cards: Option<ActiveViewedCards>,
+    /// Crypto material required by the most recent resolved command.
+    last_crypto_requirements: Vec<CryptoRequirementView>,
+    /// Hidden/random snapshot captured immediately before the command currently
+    /// being resolved. Consumed by the next snapshot after dispatch.
+    pending_crypto_audit_before: Option<CryptoAuditState>,
     /// UI-only top stack entry that is currently resolving while a prompt is open.
     active_resolving_stack_object: Option<StackObjectSnapshot>,
     /// Last decklists loaded into the current session, indexed by player.
@@ -2260,6 +2663,210 @@ struct MatchSetupInput {
     commanders: Option<Vec<Vec<String>>>,
     #[serde(default)]
     opening_hand_size: Option<usize>,
+    #[serde(default)]
+    hidden_deck_manifests: Option<Vec<HiddenDeckManifestInput>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HiddenDeckManifestInput {
+    owner: u8,
+    #[serde(default)]
+    deck_count: usize,
+    #[serde(default)]
+    sideboard_count: usize,
+    #[serde(default)]
+    commander_count: usize,
+    #[serde(default)]
+    decklist_hash: String,
+    #[serde(default)]
+    commitment_root: String,
+    #[serde(default)]
+    slot_commitments: Vec<HiddenDeckSlotInput>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HiddenDeckSlotInput {
+    slot: u16,
+    commitment: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RevealHiddenObjectInput {
+    object_id: u64,
+    card_name: String,
+    #[serde(default)]
+    slot: Option<u16>,
+    #[serde(default)]
+    commitment: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RevealHiddenSlotInput {
+    owner: u8,
+    slot: u16,
+    card_name: String,
+    #[serde(default)]
+    commitment: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RevealHiddenPositionInput {
+    owner: u8,
+    position: u16,
+    original_slot: u16,
+    card_name: String,
+    #[serde(default)]
+    position_commitment: Option<String>,
+    #[serde(default)]
+    commitment: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscriptRandomSeedsInput {
+    #[serde(default)]
+    seeds: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyHiddenLibraryShuffleInput {
+    owner: u8,
+    deck_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HiddenCardOpeningExport {
+    object_id: u64,
+    owner: u8,
+    slot: u16,
+    card: String,
+    commitment: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleEntropyInput {
+    deck_count: usize,
+    context: String,
+    entropy_hex: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleKeygenOutput {
+    deck_count: usize,
+    public_key_hex: String,
+    secret_key_hex: String,
+    ownership_proof_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZifflePublicKeyInput {
+    player: u8,
+    public_key_hex: String,
+    ownership_proof_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleShuffleStepInput {
+    shuffler: u8,
+    deck_hex: String,
+    proof_hex: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleShuffleStepOutput {
+    shuffler: u8,
+    deck_hex: String,
+    proof_hex: String,
+    deck_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleBuildShuffleStepInput {
+    deck_count: usize,
+    context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+    shuffler: u8,
+    entropy_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleVerifyShuffleInput {
+    deck_count: usize,
+    context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleVerifyShuffleOutput {
+    deck_count: usize,
+    deck_hex: String,
+    deck_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleBuildRevealTokenInput {
+    deck_count: usize,
+    context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+    card_position: usize,
+    public_key_hex: String,
+    secret_key_hex: String,
+    entropy_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealTokenInput {
+    player: u8,
+    public_key_hex: String,
+    token_hex: String,
+    proof_hex: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealTokenOutput {
+    player: u8,
+    public_key_hex: String,
+    token_hex: String,
+    proof_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealCardInput {
+    deck_count: usize,
+    context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+    card_position: usize,
+    tokens: Vec<ZiffleRevealTokenInput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealCardOutput {
+    card_position: usize,
+    original_slot: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]

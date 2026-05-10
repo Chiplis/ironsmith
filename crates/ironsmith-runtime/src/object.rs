@@ -355,6 +355,68 @@ impl Object {
         obj
     }
 
+    /// Creates a hidden physical card placeholder for cryptographic deck custody.
+    ///
+    /// The object can move through hidden zones before its printed identity is
+    /// opened. A verified reveal should call `apply_card_definition` on the same
+    /// object instance rather than replacing zone membership by hand.
+    pub fn new_hidden_card(id: ObjectId, owner: PlayerId, zone: Zone) -> Self {
+        Self {
+            id,
+            stable_id: StableId::from(id),
+            kind: ObjectKind::Card,
+            card: None,
+            zone,
+            owner,
+            name: "Hidden Card".to_string(),
+            mana_cost: None,
+            color_override: None,
+            supertypes: Vec::new(),
+            card_types: Vec::new(),
+            subtypes: Vec::new(),
+            compiled_card_text: String::new(),
+            rules_text_color_identity: ColorSet::COLORLESS,
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::None,
+            base_power: None,
+            base_toughness: None,
+            base_loyalty: None,
+            base_defense: None,
+            abilities: Vec::new(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: None,
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: Vec::new(),
+            cast_alternative_method: None,
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
+            additional_cost: TotalCost::free(),
+        }
+    }
+
+    pub fn apply_card_definition(&mut self, def: &crate::cards::CardDefinition) {
+        self.kind = ObjectKind::Card;
+        self.card = Some(def.card.id);
+        self.apply_definition_face(def);
+        self.spell_effect = def.spell_effect.clone();
+        self.aura_attach_filter = def.aura_attach_filter.clone();
+        self.alternative_casts = def.alternative_casts.clone();
+        self.has_fuse = def.has_fuse;
+        self.optional_costs = def.optional_costs.clone();
+        self.additional_cost = def.additional_cost.clone();
+    }
+
     /// Apply the printed/copied characteristics of another card definition.
     ///
     /// Used for flip cards and similar "becomes this other face" mechanics.
@@ -388,6 +450,7 @@ impl Object {
         self.bestow_cast_state = None;
         self.face_down_cast_state = None;
         self.alternative_casts = def.alternative_casts.clone();
+        self.cast_alternative_method = None;
         self.has_fuse = def.has_fuse;
         self.optional_costs = def.optional_costs.clone();
         self.additional_cost = def.additional_cost.clone();

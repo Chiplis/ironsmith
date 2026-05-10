@@ -4,7 +4,7 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import PhaseTrack from "@/components/board/PhaseTrack";
-import { Bug, ChevronLeft, ChevronRight, Github, ScrollText } from "lucide-react";
+import { Bug, ChevronLeft, ChevronRight, Clock3, Github, ScrollText, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 
 function dispatchPlayerTargetChoice(player, legalTargetPlayerIds) {
@@ -18,6 +18,13 @@ function dispatchPlayerTargetChoice(player, legalTargetPlayerIds) {
       detail: { target: { kind: "player", player: targetPlayer } },
     })
   );
+}
+
+function formatTimerRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 export default function Topbar({
@@ -41,6 +48,7 @@ export default function Topbar({
 }) {
   const {
     inspectorDebug,
+    multiplayer,
     setInspectorDebug,
     state,
   } = useGame();
@@ -79,6 +87,22 @@ export default function Topbar({
   };
   const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
   const compactPhaseLabel = formatStep(state?.step) || formatPhase(state?.phase) || "Phase";
+  const connectionWarnings = multiplayer?.connectionWarnings || [];
+  const actionTimer = multiplayer?.actionTimer || null;
+  const timerPlayer = players.find((player) =>
+    Number(player.id) === Number(actionTimer?.currentPlayerIndex)
+    || Number(player.index) === Number(actionTimer?.currentPlayerIndex)
+  );
+  const showActionTimer = Boolean(
+    multiplayer?.matchStarted
+    && actionTimer?.enabled
+    && actionTimer.currentPlayerIndex != null
+    && actionTimer.remainingMs != null
+  );
+  const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
+  const connectionWarningLabel = offlinePlayers.length > 0
+    ? offlinePlayers.map((warning) => warning.name).join(", ")
+    : "";
   const legalTargetPlayerIds = new Set();
   if (state?.decision?.kind === "targets") {
     for (const req of state.decision.requirements || []) {
@@ -238,6 +262,38 @@ export default function Topbar({
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
           Ironsmith
         </h1>
+        {multiplayer?.matchStarted && offlinePlayers.length > 0 ? (
+          <button
+            type="button"
+            className="stone-pill inline-flex min-h-8 max-w-[240px] items-center gap-2 rounded-none border border-[#7d302f] bg-[#2b1114]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffb8c0]"
+            onClick={onOpenLobby}
+            title={`Disconnected: ${connectionWarningLabel}`}
+            aria-label={`Disconnected players: ${connectionWarningLabel}`}
+          >
+            <WifiOff className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {offlinePlayers.length === 1
+                ? `${offlinePlayers[0].name} offline`
+                : `${offlinePlayers.length} offline`}
+            </span>
+          </button>
+        ) : null}
+        {showActionTimer ? (
+          <div
+            className={`stone-pill inline-flex min-h-8 max-w-[260px] items-center gap-2 rounded-none border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+              actionTimer.expired
+                ? "border-[#7d302f] bg-[#2b1114]/90 text-[#ffb8c0]"
+                : "border-[#5f4a22] bg-[#231c0e]/90 text-[#ffd98a]"
+            }`}
+            title={`${timerPlayer?.name || "Current player"} action timer`}
+            aria-label={`${timerPlayer?.name || "Current player"} action timer ${formatTimerRemaining(actionTimer.remainingMs)}`}
+          >
+            <Clock3 className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {timerPlayer?.name || "Player"} {formatTimerRemaining(actionTimer.remainingMs)}
+            </span>
+          </div>
+        ) : null}
         {showInlineControls ? utilityControls : null}
         {showCenterLane ? (
           <div className="topbar-phase-shell">

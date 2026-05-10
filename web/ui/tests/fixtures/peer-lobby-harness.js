@@ -6,14 +6,49 @@ function createFakeGame() {
   let matchConfig = null;
   let perspective = 0;
   let actionSequence = 0;
+  let nextObjectId = 1000;
   let battlefield = [];
+  let addedHands = new Map();
   const syncEvents = [];
+
+  const fakeHex = (label) => Array.from(String(label || "fixture"))
+    .map((char) => char.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("")
+    .padEnd(64, "0")
+    .slice(0, 64);
 
   const buildState = () => {
     const playerNames = matchConfig?.playerNames?.length
       ? matchConfig.playerNames
       : ["Host", "Guest"];
     const actor = actionSequence % Math.max(1, playerNames.length);
+    const handCardsByPlayer = playerNames.map((_, index) =>
+      (addedHands.get(index) || []).map((card) => ({ ...card }))
+    );
+    const actions = [
+      {
+        index: 0,
+        kind: "test_priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor,
+          sequence: actionSequence,
+        },
+      },
+    ];
+    for (const card of handCardsByPlayer[actor] || []) {
+      actions.push({
+        index: actions.length,
+        kind: "cast_spell",
+        object_id: card.id,
+        action_ref: {
+          kind: "cast_spell",
+          spell_id: card.id,
+          from_zone: "hand",
+          casting_method: { kind: "normal" },
+        },
+      });
+    }
     return {
       snapshot_id: actionSequence,
       perspective,
@@ -21,7 +56,7 @@ function createFakeGame() {
         id: index,
         name,
         life: Number(matchConfig?.startingLife || 20),
-        hand_cards: [],
+        hand_cards: handCardsByPlayer[index] || [],
         graveyard_cards: [],
         exile_cards: [],
         command_cards: [],
@@ -33,27 +68,47 @@ function createFakeGame() {
       decision: {
         kind: "priority",
         player: actor,
-        actions: [
-          {
-            index: 0,
-            kind: "test_priority_action",
-            action_ref: {
-              kind: "test_priority_action",
-              actor,
-              sequence: actionSequence,
-            },
-          },
-        ],
+        actions,
       },
     };
   };
 
+  const stableStringify = (value) => {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  };
+
+  const actionRefAvailable = (command) => {
+    if (command?.type !== "priority_action" || !command.action_ref) return true;
+    const state = buildState();
+    return (state.decision?.actions || []).some((action) =>
+      stableStringify(action.action_ref) === stableStringify(command.action_ref)
+    );
+  };
+
   return {
     validateMatchConfig: async () => ({ valid: true, issues: [] }),
+    ziffleKeygen: async ({ context = "fixture", deckCount = 60 }) => ({
+      publicKeyHex: fakeHex(`public:${context}:${deckCount}`),
+      secretKeyHex: fakeHex(`secret:${context}:${deckCount}`),
+      ownershipProofHex: fakeHex(`proof:${context}:${deckCount}`),
+    }),
+    ziffleBuildShuffleStep: async ({ context = "fixture", deckCount = 60, shuffler = 0 }) => ({
+      shuffler: Number(shuffler || 0),
+      deckHex: fakeHex(`deck:${context}:${deckCount}:${shuffler}`),
+      proofHex: fakeHex(`shuffle:${context}:${deckCount}:${shuffler}`),
+    }),
+    ziffleVerifyShuffle: async ({ context = "fixture", deckCount = 60, steps = [] }) => ({
+      deckHash: fakeHex(`verified:${context}:${deckCount}:${steps.length}`),
+    }),
     startMatch: async (config) => {
       matchConfig = JSON.parse(JSON.stringify(config || {}));
       actionSequence = 0;
+      nextObjectId = 1000;
       battlefield = [];
+      addedHands = new Map();
       return buildState();
     },
     setPerspective: async (index) => {
@@ -61,7 +116,10 @@ function createFakeGame() {
       return buildState();
     },
     uiState: async () => buildState(),
-    dispatch: async () => {
+    dispatch: async (command) => {
+      if (!actionRefAvailable(command)) {
+        throw new Error(`invalid priority action ref: ${JSON.stringify(command?.action_ref || null)}`);
+      }
       actionSequence += 1;
       battlefield = [
         ...battlefield,
@@ -80,8 +138,32 @@ function createFakeGame() {
       ];
       return buildState();
     },
+    addCardToZone: async (playerIndex, cardName, zone = "hand") => {
+      if (String(zone || "hand") !== "hand") {
+        throw new Error("fixture only supports adding to hand");
+      }
+      const owner = Number(playerIndex || 0);
+      const card = {
+        id: nextObjectId,
+        stable_id: nextObjectId,
+        name: String(cardName || "Fixture Card"),
+        tapped: false,
+        count: 1,
+        member_ids: [nextObjectId],
+        member_stable_ids: [nextObjectId],
+      };
+      nextObjectId += 1;
+      addedHands.set(owner, [...(addedHands.get(owner) || []), card]);
+      return card.id;
+    },
     cancelDecision: async () => buildState(),
     exportSyncCheckpoint: async () => ({
+      matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
+      perspective,
+      actionSequence,
+      battlefield: JSON.parse(JSON.stringify(battlefield)),
+    }),
+    exportRedactedSyncCheckpoint: async () => ({
       matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
       perspective,
       actionSequence,
@@ -92,6 +174,7 @@ function createFakeGame() {
       perspective = Number(perspectiveIndex ?? checkpoint?.perspective ?? 0);
       actionSequence = Number(checkpoint?.actionSequence || 0);
       battlefield = JSON.parse(JSON.stringify(checkpoint?.battlefield || []));
+      addedHands = new Map();
       const nextState = buildState();
       syncEvents.push({
         type: "sync_checkpoint_import",
@@ -140,6 +223,7 @@ function Harness() {
 
   const lobby = usePeerLobby({
     game,
+    state: visibleState,
     setState,
     setStatus,
     applySyncedCommand,
@@ -153,6 +237,17 @@ function Harness() {
       leaveLobby: lobby.leaveLobby,
       startHostedMatch: lobby.startHostedMatch,
       submitMultiplayerCommand: lobby.submitMultiplayerCommand,
+      submitMultiplayerAddCardCheat: lobby.submitMultiplayerAddCardCheat,
+      silentlyAddCard: async ({ playerIndex, cardName, zone = "hand" } = {}) => {
+        await game.addCardToZone(
+          Number(playerIndex ?? lobby.multiplayer.localPlayerIndex ?? 0),
+          String(cardName || "Black Lotus"),
+          zone
+        );
+        const nextState = await game.uiState();
+        setVisibleState(nextState);
+        return nextState;
+      },
       snapshot: () => ({
         multiplayer: lobby.multiplayer,
         canStartHostedMatch: lobby.canStartHostedMatch,

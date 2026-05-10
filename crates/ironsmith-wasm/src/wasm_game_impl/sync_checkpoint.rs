@@ -1,4 +1,4 @@
-use ironsmith::game_state::{Phase, Step, TurnState};
+use ironsmith::game_state::{HiddenCardInfo, Phase, Step, TurnState};
 use ironsmith::ids::{IdCountersSnapshot, StableId};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
@@ -155,6 +155,111 @@ struct SyncObject {
     plotted_turn: Option<u32>,
     damage_marked: u32,
     commander: bool,
+    #[serde(default)]
+    hidden_card: Option<SyncHiddenCard>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncHiddenCard {
+    owner: u8,
+    slot: u16,
+    commitment: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditPlayer {
+    id: u8,
+    name: String,
+    starting_life: i32,
+    life: i32,
+    mana_pool: SyncManaPool,
+    poison_counters: u32,
+    energy_counters: u32,
+    experience_counters: u32,
+    ring_temptations: u32,
+    lands_played_this_turn: u32,
+    land_plays_per_turn: u32,
+    max_hand_size: i32,
+    has_lost: bool,
+    has_won: bool,
+    has_left_game: bool,
+    library_count: usize,
+    hand_count: usize,
+    sideboard_count: usize,
+    graveyard: Vec<u64>,
+    commanders: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditObjectIdentity {
+    name: String,
+    card_types: Vec<String>,
+    subtypes: Vec<String>,
+    oracle_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditObject {
+    id: u64,
+    stable_id: u64,
+    owner: u8,
+    controller: u8,
+    zone: String,
+    identity: Option<PublicAuditObjectIdentity>,
+    token: bool,
+    power: Option<i32>,
+    toughness: Option<i32>,
+    loyalty: Option<u32>,
+    defense: Option<u32>,
+    counters: Vec<SyncCounter>,
+    attached_to: Option<SyncAttachmentTarget>,
+    attachments: Vec<u64>,
+    tapped: bool,
+    summoning_sick: bool,
+    monstrous: bool,
+    renowned: bool,
+    saddled: bool,
+    flipped: bool,
+    face_down: bool,
+    manifested: bool,
+    phased_out: bool,
+    madness_exiled: bool,
+    foretold: bool,
+    plotted_by: Option<u8>,
+    plotted_turn: Option<u32>,
+    damage_marked: u32,
+    commander: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditHiddenZone {
+    owner: u8,
+    zone: String,
+    count: usize,
+    protocol: String,
+    commitment_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditCheckpoint {
+    version: u32,
+    format: MatchFormatInput,
+    perspective: u8,
+    snapshot_serial: u64,
+    turn: SyncTurn,
+    players: Vec<PublicAuditPlayer>,
+    objects: Vec<PublicAuditObject>,
+    battlefield: Vec<u64>,
+    public_exile: Vec<u64>,
+    command: Vec<u64>,
+    stack: Vec<SyncStackEntry>,
+    hidden_zones: Vec<PublicAuditHiddenZone>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -517,6 +622,10 @@ fn object_ids(ids: Vec<u64>) -> Vec<ObjectId> {
     ids.into_iter().map(ObjectId::from_raw).collect()
 }
 
+fn public_audit_protocol_name() -> String {
+    "mental_poker_bayer_groth_v1".to_string()
+}
+
 #[wasm_bindgen]
 impl WasmGame {
     fn sync_checkpoint_object_ids(&self) -> Vec<ObjectId> {
@@ -624,6 +733,13 @@ impl WasmGame {
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_marked.get(&id).copied().unwrap_or(0),
                     commander: self.game.is_commander_object(id),
+                    hidden_card: object.card.is_none().then(|| {
+                        self.game.hidden_card_info(id).map(|info| SyncHiddenCard {
+                            owner: info.owner.0,
+                            slot: info.slot,
+                            commitment: info.commitment.clone(),
+                        })
+                    }).flatten(),
                 })
             })
             .collect();
@@ -678,6 +794,272 @@ impl WasmGame {
         }
     }
 
+    fn public_audit_exile_ids(&self) -> Vec<ObjectId> {
+        self.game
+            .exile
+            .iter()
+            .copied()
+            .filter(|id| self.public_audit_object_identity_is_public(*id))
+            .collect()
+    }
+
+    fn public_audit_object_ids(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        for player in &self.game.players {
+            ids.extend(player.graveyard.iter().copied());
+            ids.extend(player.attachments.iter().copied());
+            ids.extend(player.commanders.iter().copied());
+        }
+        ids.extend(self.game.battlefield.iter().copied());
+        ids.extend(self.public_audit_exile_ids());
+        ids.extend(self.game.command_zone.iter().copied());
+        ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    fn public_audit_object_identity_is_public(&self, id: ObjectId) -> bool {
+        let Some(object) = self.game.object(id) else {
+            return false;
+        };
+        if matches!(object.zone, Zone::Library | Zone::Hand | Zone::OutsideGame) {
+            return false;
+        }
+        if self.game.is_face_down(id) || self.game.is_foretold(id) {
+            return false;
+        }
+        true
+    }
+
+    fn public_audit_object_identity(&self, id: ObjectId, object: &Object) -> Option<PublicAuditObjectIdentity> {
+        self.public_audit_object_identity_is_public(id)
+            .then(|| PublicAuditObjectIdentity {
+                name: object.name.clone(),
+                card_types: object
+                    .card_types
+                    .iter()
+                    .map(|card_type| card_type.name().to_string())
+                    .collect(),
+                subtypes: object
+                    .subtypes
+                    .iter()
+                    .map(|subtype| subtype.display_name())
+                    .collect(),
+                oracle_text: object.compiled_card_text.clone(),
+            })
+    }
+
+    fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
+        let players = self
+            .game
+            .players
+            .iter()
+            .map(|player| PublicAuditPlayer {
+                id: player.id.0,
+                name: player.name.clone(),
+                starting_life: player.starting_life,
+                life: player.life,
+                mana_pool: SyncManaPool::from(&player.mana_pool),
+                poison_counters: player.poison_counters,
+                energy_counters: player.energy_counters,
+                experience_counters: player.experience_counters,
+                ring_temptations: player.ring_temptations,
+                lands_played_this_turn: player.lands_played_this_turn,
+                land_plays_per_turn: player.land_plays_per_turn,
+                max_hand_size: player.max_hand_size,
+                has_lost: player.has_lost,
+                has_won: player.has_won,
+                has_left_game: player.has_left_game,
+                library_count: player.library.len(),
+                hand_count: player.hand.len(),
+                sideboard_count: player.sideboard.len(),
+                graveyard: raw_ids(&player.graveyard),
+                commanders: raw_ids(&player.commanders),
+            })
+            .collect();
+
+        let objects = self
+            .public_audit_object_ids()
+            .into_iter()
+            .filter_map(|id| {
+                let object = self.game.object(id)?;
+                Some(PublicAuditObject {
+                    id: object.id.0,
+                    stable_id: object.stable_id.0.0,
+                    owner: object.owner.0,
+                    controller: self.game.controller_of(object).0,
+                    zone: sync_zone_name(object.zone).to_string(),
+                    identity: self.public_audit_object_identity(id, object),
+                    token: matches!(object.kind, ironsmith::object::ObjectKind::Token),
+                    power: object.power(),
+                    toughness: object.toughness(),
+                    loyalty: object.loyalty(),
+                    defense: object.defense(),
+                    counters: object
+                        .counters
+                        .iter()
+                        .map(|(kind, amount)| SyncCounter {
+                            kind: sync_counter_kind(*kind),
+                            amount: *amount,
+                        })
+                        .collect(),
+                    attached_to: object.attached_to.map(sync_attachment_target),
+                    attachments: raw_ids(&object.attachments),
+                    tapped: self.game.is_tapped(id),
+                    summoning_sick: self.game.is_summoning_sick(id),
+                    monstrous: self.game.is_monstrous(id),
+                    renowned: self.game.is_renowned(id),
+                    saddled: self.game.is_saddled(id),
+                    flipped: self.game.is_flipped(id),
+                    face_down: self.game.is_face_down(id),
+                    manifested: self.game.is_manifested(id),
+                    phased_out: self.game.is_phased_out(id),
+                    madness_exiled: self.game.is_madness_exiled(id),
+                    foretold: self.game.is_foretold(id),
+                    plotted_by: self
+                        .game
+                        .plotted_cards
+                        .get(&id)
+                        .map(|(player, _)| player.0),
+                    plotted_turn: self.game.plotted_turn(id),
+                    damage_marked: self.game.damage_marked.get(&id).copied().unwrap_or(0),
+                    commander: self.game.is_commander_object(id),
+                })
+            })
+            .collect();
+
+        let mut hidden_zones = Vec::new();
+        for player in &self.game.players {
+            hidden_zones.push(PublicAuditHiddenZone {
+                owner: player.id.0,
+                zone: "library".to_string(),
+                count: player.library.len(),
+                protocol: public_audit_protocol_name(),
+                commitment_root: None,
+            });
+            hidden_zones.push(PublicAuditHiddenZone {
+                owner: player.id.0,
+                zone: "hand".to_string(),
+                count: player.hand.len(),
+                protocol: public_audit_protocol_name(),
+                commitment_root: None,
+            });
+            if !player.sideboard.is_empty() {
+                hidden_zones.push(PublicAuditHiddenZone {
+                    owner: player.id.0,
+                    zone: "outside_game".to_string(),
+                    count: player.sideboard.len(),
+                    protocol: public_audit_protocol_name(),
+                    commitment_root: None,
+                });
+            }
+            let hidden_exile_count = self
+                .game
+                .exile
+                .iter()
+                .filter_map(|id| self.game.object(*id).map(|object| (*id, object)))
+                .filter(|(_, object)| object.owner == player.id)
+                .filter(|(id, _)| !self.public_audit_object_identity_is_public(*id))
+                .count();
+            if hidden_exile_count > 0 {
+                hidden_zones.push(PublicAuditHiddenZone {
+                    owner: player.id.0,
+                    zone: "hidden_exile".to_string(),
+                    count: hidden_exile_count,
+                    protocol: public_audit_protocol_name(),
+                    commitment_root: None,
+                });
+            }
+        }
+
+        PublicAuditCheckpoint {
+            version: SYNC_CHECKPOINT_VERSION,
+            format: self.match_format,
+            perspective: self.perspective.0,
+            snapshot_serial: self.snapshot_serial,
+            turn: SyncTurn {
+                active_player: self.game.turn.active_player.0,
+                priority_player: self.game.turn.priority_player.map(|player| player.0),
+                turn_number: self.game.turn.turn_number,
+                phase: sync_phase_name(self.game.turn.phase).to_string(),
+                step: self.game.turn.step.map(sync_step_name).map(str::to_string),
+            },
+            players,
+            objects,
+            battlefield: raw_ids(&self.game.battlefield),
+            public_exile: raw_ids(&self.public_audit_exile_ids()),
+            command: raw_ids(&self.game.command_zone),
+            stack: self
+                .game
+                .stack
+                .iter()
+                .map(|entry| SyncStackEntry {
+                    object_id: entry.object_id.0,
+                    controller: entry.controller.0,
+                    targets: entry.targets.iter().copied().map(sync_target_input).collect(),
+                    is_ability: entry.is_ability,
+                    x_value: entry.x_value,
+                    source_stable_id: entry.source_stable_id.map(|id| id.0.0),
+                    source_name: entry.source_name.clone(),
+                })
+                .collect(),
+            hidden_zones,
+        }
+    }
+
+    fn should_redact_for_perspective(
+        &self,
+        object: &SyncObject,
+        perspective: PlayerId,
+    ) -> bool {
+        let owner = PlayerId::from_index(object.owner);
+        match object.zone.as_str() {
+            "library" => true,
+            "hand" | "outside_game" => owner != perspective,
+            _ => object.face_down || object.foretold,
+        }
+    }
+
+    fn redact_sync_object(&self, object: &mut SyncObject) -> Result<(), JsValue> {
+        let object_id = ObjectId::from_raw(object.id);
+        let Some(info) = self.game.hidden_card_info(object_id) else {
+            return Err(JsValue::from_str(&format!(
+                "cannot redact object {} without hidden-card commitment metadata",
+                object.id
+            )));
+        };
+        object.name = "Hidden Card".to_string();
+        object.token = false;
+        object.card_types.clear();
+        object.subtypes.clear();
+        object.power = None;
+        object.toughness = None;
+        object.loyalty = None;
+        object.defense = None;
+        object.oracle_text.clear();
+        object.hidden_card = Some(SyncHiddenCard {
+            owner: info.owner.0,
+            slot: info.slot,
+            commitment: info.commitment.clone(),
+        });
+        Ok(())
+    }
+
+    fn build_redacted_sync_checkpoint(
+        &self,
+        perspective: PlayerId,
+    ) -> Result<SyncCheckpoint, JsValue> {
+        let mut checkpoint = self.build_sync_checkpoint();
+        checkpoint.perspective = perspective.0;
+        for object in &mut checkpoint.objects {
+            if self.should_redact_for_perspective(object, perspective) {
+                self.redact_sync_object(object)?;
+            }
+        }
+        Ok(checkpoint)
+    }
+
     fn reset_runtime_for_sync_checkpoint(&mut self, checkpoint: &SyncCheckpoint) {
         let player_names = checkpoint
             .players
@@ -717,6 +1099,8 @@ impl WasmGame {
         self.snapshot_serial = checkpoint.snapshot_serial;
         self.active_viewed_cards = None;
         self.active_resolving_stack_object = None;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.loaded_decks = Vec::new();
         self.last_snapshot_perf = None;
         self.last_replay_execution_perf = None;
@@ -729,7 +1113,9 @@ impl WasmGame {
         let owner = PlayerId::from_index(object.owner);
         let zone = sync_zone_from_name(&object.zone)?;
 
-        let mut restored = if object.token {
+        let mut restored = if object.hidden_card.is_some() {
+            Object::new_hidden_card(id, owner, zone)
+        } else if object.token {
             let card_types = object
                 .card_types
                 .iter()
@@ -798,7 +1184,20 @@ impl WasmGame {
 
         for object in checkpoint.objects.iter() {
             let restored = self.sync_object_from_checkpoint(object)?;
+            let restored_id = restored.id;
+            let restored_zone = restored.zone;
             self.game.add_object(restored);
+            if let Some(hidden) = &object.hidden_card {
+                self.game.hidden_cards.insert(
+                    restored_id,
+                    HiddenCardInfo {
+                        owner: PlayerId::from_index(hidden.owner),
+                        zone: restored_zone,
+                        slot: hidden.slot,
+                        commitment: hidden.commitment.clone(),
+                    },
+                );
+            }
         }
 
         for player_checkpoint in checkpoint.players.iter() {
@@ -944,6 +1343,24 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("sync checkpoint encode failed: {e}")))
     }
 
+    /// Export an importable checkpoint redacted for one peer's legal knowledge.
+    #[wasm_bindgen(js_name = exportRedactedSyncCheckpoint)]
+    pub fn export_redacted_sync_checkpoint(
+        &self,
+        perspective_index: u8,
+    ) -> Result<JsValue, JsValue> {
+        let checkpoint = self.build_redacted_sync_checkpoint(PlayerId::from_index(perspective_index))?;
+        serde_wasm_bindgen::to_value(&checkpoint)
+            .map_err(|e| JsValue::from_str(&format!("redacted sync checkpoint encode failed: {e}")))
+    }
+
+    /// Export a redacted checkpoint suitable for peer audit logs.
+    #[wasm_bindgen(js_name = exportPublicAuditCheckpoint)]
+    pub fn export_public_audit_checkpoint(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.build_public_audit_checkpoint())
+            .map_err(|e| JsValue::from_str(&format!("public audit checkpoint encode failed: {e}")))
+    }
+
     /// Replace this WASM engine with a checkpoint from the current authoritative host.
     #[wasm_bindgen(js_name = importSyncCheckpoint)]
     pub fn import_sync_checkpoint(
@@ -1011,5 +1428,271 @@ mod sync_checkpoint_tests {
                 .unwrap_or(0),
             2
         );
+    }
+
+    #[test]
+    fn public_audit_checkpoint_redacts_hidden_zone_card_identities() {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.add_card_to_zone(0, "Ornithopter".to_string(), "battlefield".to_string(), true)
+            .expect("host should add a public battlefield card");
+        host.add_card_to_zone(0, "Forest".to_string(), "graveyard".to_string(), true)
+            .expect("host should add a public graveyard card");
+        host.add_card_to_zone(1, "Lightning Bolt".to_string(), "library".to_string(), true)
+            .expect("host should add a hidden library card");
+        host.add_card_to_zone(1, "Counterspell".to_string(), "hand".to_string(), true)
+            .expect("host should add a hidden hand card");
+
+        let checkpoint = host.build_public_audit_checkpoint();
+        let bob = checkpoint
+            .players
+            .iter()
+            .find(|player| player.id == 1)
+            .expect("Bob should be present");
+        assert_eq!(bob.library_count, 1);
+        assert_eq!(bob.hand_count, 1);
+
+        let public_names = checkpoint
+            .objects
+            .iter()
+            .filter_map(|object| object.identity.as_ref().map(|identity| identity.name.as_str()))
+            .collect::<Vec<_>>();
+        assert!(public_names.contains(&"Ornithopter"));
+        assert!(public_names.contains(&"Forest"));
+        assert!(!public_names.contains(&"Lightning Bolt"));
+        assert!(!public_names.contains(&"Counterspell"));
+
+        assert!(checkpoint
+            .hidden_zones
+            .iter()
+            .any(|zone| zone.owner == 1 && zone.zone == "library" && zone.count == 1));
+        assert!(checkpoint
+            .hidden_zones
+            .iter()
+            .any(|zone| zone.owner == 1 && zone.zone == "hand" && zone.count == 1));
+    }
+
+    #[test]
+    fn hidden_card_placeholder_moves_and_reveals_in_place() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let hidden_id = game.game.create_hidden_card_placeholder(
+            PlayerId::from_index(1),
+            Zone::Library,
+            0,
+            "commitment-0".to_string(),
+        );
+        assert!(game.game.is_hidden_card_placeholder(hidden_id));
+
+        let drawn = game.game.draw_cards(PlayerId::from_index(1), 1);
+        assert_eq!(drawn.len(), 1);
+        let hand_id = drawn[0];
+        assert!(game.game.is_hidden_card_placeholder(hand_id));
+        assert_eq!(
+            game.game
+                .hidden_card_info(hand_id)
+                .expect("hidden metadata follows zone changes")
+                .slot,
+            0
+        );
+
+        game.registry.ensure_cards_loaded(["Lightning Bolt"]);
+        let definition = game
+            .find_card_definition("Lightning Bolt")
+            .expect("fixture card should load")
+            .clone();
+        game.game
+            .reveal_hidden_card_with_definition(hand_id, &definition)
+            .expect("hidden card should reveal");
+        assert!(!game.game.is_hidden_card_placeholder(hand_id));
+        assert_eq!(
+            game.game
+                .object(hand_id)
+                .expect("revealed object should exist")
+                .name,
+            "Lightning Bolt"
+        );
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_hidden_card_placeholders() {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.game.create_hidden_card_placeholder(
+            PlayerId::from_index(1),
+            Zone::Library,
+            3,
+            "commitment-3".to_string(),
+        );
+
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should import hidden placeholders");
+        let bob = guest
+            .game
+            .player(PlayerId::from_index(1))
+            .expect("Bob should exist");
+        assert_eq!(bob.library.len(), 1);
+        let hidden_id = bob.library[0];
+        let info = guest
+            .game
+            .hidden_card_info(hidden_id)
+            .expect("hidden metadata should be restored");
+        assert_eq!(info.slot, 3);
+        assert_eq!(info.commitment, "commitment-3");
+        assert_eq!(
+            guest
+                .game
+                .object(hidden_id)
+                .expect("hidden object should exist")
+                .name,
+            "Hidden Card"
+        );
+    }
+
+    #[test]
+    fn hidden_deck_manifest_populates_committed_library_placeholders() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        game.populate_libraries_with_hidden_manifests(
+            &[vec!["Forest".to_string()], Vec::new()],
+            &[HiddenDeckManifestInput {
+                owner: 1,
+                deck_count: 2,
+                sideboard_count: 0,
+                commander_count: 0,
+                decklist_hash: "deck-hash".to_string(),
+                commitment_root: "root".to_string(),
+                slot_commitments: vec![
+                    HiddenDeckSlotInput {
+                        slot: 0,
+                        commitment: "commitment-0".to_string(),
+                    },
+                    HiddenDeckSlotInput {
+                        slot: 1,
+                        commitment: "commitment-1".to_string(),
+                    },
+                ],
+            }],
+        )
+        .expect("manifest should populate hidden placeholders");
+
+        let bob = game
+            .game
+            .player(PlayerId::from_index(1))
+            .expect("Bob should exist");
+        assert_eq!(bob.library.len(), 2);
+        assert!(bob.library.iter().all(|id| game.game.is_hidden_card_placeholder(*id)));
+    }
+
+    #[test]
+    fn local_committed_card_exports_opening_metadata() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        game.populate_libraries_with_hidden_manifests(
+            &[vec!["Lightning Bolt".to_string()], Vec::new()],
+            &[HiddenDeckManifestInput {
+                owner: 0,
+                deck_count: 1,
+                sideboard_count: 0,
+                commander_count: 0,
+                decklist_hash: "alice-deck".to_string(),
+                commitment_root: "alice-root".to_string(),
+                slot_commitments: vec![HiddenDeckSlotInput {
+                    slot: 0,
+                    commitment: "alice-slot-0".to_string(),
+                }],
+            }],
+        )
+        .expect("local manifest should tag real cards");
+
+        let alice = game
+            .game
+            .player(PlayerId::from_index(0))
+            .expect("Alice should exist");
+        let object_id = alice.library[0];
+        let opening = game
+            .hidden_card_opening_export(object_id)
+            .expect("local committed card should export opening metadata");
+
+        assert_eq!(opening.object_id, object_id.0);
+        assert_eq!(opening.owner, 0);
+        assert_eq!(opening.slot, 0);
+        assert_eq!(opening.card, "Lightning Bolt");
+        assert_eq!(opening.commitment, "alice-slot-0");
+    }
+
+    #[test]
+    fn redacted_sync_checkpoint_hides_opponent_hidden_zones_and_imports() {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.populate_libraries_with_hidden_manifests(
+            &[
+                vec!["Forest".to_string()],
+                vec!["Lightning Bolt".to_string(), "Counterspell".to_string()],
+            ],
+            &[
+                HiddenDeckManifestInput {
+                    owner: 0,
+                    deck_count: 1,
+                    sideboard_count: 0,
+                    commander_count: 0,
+                    decklist_hash: "alice-deck".to_string(),
+                    commitment_root: "alice-root".to_string(),
+                    slot_commitments: vec![HiddenDeckSlotInput {
+                        slot: 0,
+                        commitment: "alice-slot-0".to_string(),
+                    }],
+                },
+                HiddenDeckManifestInput {
+                    owner: 1,
+                    deck_count: 2,
+                    sideboard_count: 0,
+                    commander_count: 0,
+                    decklist_hash: "bob-deck".to_string(),
+                    commitment_root: "bob-root".to_string(),
+                    slot_commitments: vec![
+                        HiddenDeckSlotInput {
+                            slot: 0,
+                            commitment: "bob-slot-0".to_string(),
+                        },
+                        HiddenDeckSlotInput {
+                            slot: 1,
+                            commitment: "bob-slot-1".to_string(),
+                        },
+                    ],
+                },
+            ],
+        )
+        .expect("host should populate committed decks");
+        let _ = host.game.draw_cards(PlayerId::from_index(1), 1);
+
+        let checkpoint = host
+            .build_redacted_sync_checkpoint(PlayerId::from_index(0))
+            .expect("redacted checkpoint should build");
+        assert!(checkpoint
+            .objects
+            .iter()
+            .filter(|object| object.owner == 1 && (object.zone == "hand" || object.zone == "library"))
+            .all(|object| object.name == "Hidden Card" && object.hidden_card.is_some()));
+        assert!(!checkpoint
+            .objects
+            .iter()
+            .any(|object| object.name == "Lightning Bolt" || object.name == "Counterspell"));
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("redacted checkpoint should import");
+        let bob = guest
+            .game
+            .player(PlayerId::from_index(1))
+            .expect("Bob should exist");
+        assert_eq!(bob.hand.len() + bob.library.len(), 2);
+        for id in bob.hand.iter().chain(bob.library.iter()) {
+            assert!(guest.game.is_hidden_card_placeholder(*id));
+        }
     }
 }

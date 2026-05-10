@@ -34,6 +34,77 @@ impl WasmGame {
         Ok(())
     }
 
+    fn populate_libraries_with_hidden_manifests(
+        &mut self,
+        decks: &[Vec<String>],
+        hidden_manifests: &[HiddenDeckManifestInput],
+    ) -> Result<(), JsValue> {
+        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for (player_index, (&player_id, deck)) in player_ids.iter().zip(decks.iter()).enumerate() {
+            let manifest = hidden_manifests
+                .iter()
+                .find(|manifest| usize::from(manifest.owner) == player_index);
+
+            if let Some(manifest) = manifest
+                && manifest.slot_commitments.is_empty()
+                && manifest.deck_count > 0
+            {
+                return Err(JsValue::from_str(&format!(
+                    "hidden deck manifest for player {} has no slot commitments",
+                    player_index + 1
+                )));
+            }
+
+            if !deck.is_empty() {
+                self.registry
+                    .ensure_cards_loaded(deck.iter().map(|name| name.as_str()));
+                let mut slots = manifest
+                    .map(|manifest| manifest.slot_commitments.clone())
+                    .unwrap_or_default();
+                slots.sort_by_key(|slot| slot.slot);
+                for (slot_index, name) in deck.iter().enumerate() {
+                    let Some(definition) = self.find_card_definition(name).cloned() else {
+                        return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                    };
+                    let object_id = self.game.create_object_from_catalog_definition(
+                        &definition,
+                        &self.registry,
+                        player_id,
+                        ironsmith::zone::Zone::Library,
+                    );
+                    if let Some(slot) = slots.get(slot_index) {
+                        self.game.set_hidden_card_info(
+                            object_id,
+                            ironsmith::game_state::HiddenCardInfo {
+                                owner: player_id,
+                                zone: ironsmith::zone::Zone::Library,
+                                slot: slot.slot,
+                                commitment: slot.commitment.clone(),
+                            },
+                        );
+                    }
+                }
+                self.game.shuffle_player_library(player_id);
+                continue;
+            }
+
+            if let Some(manifest) = manifest {
+                let mut slots = manifest.slot_commitments.clone();
+                slots.sort_by_key(|slot| slot.slot);
+                for slot in slots {
+                    self.game.create_hidden_card_placeholder(
+                        player_id,
+                        ironsmith::zone::Zone::Library,
+                        slot.slot,
+                        slot.commitment,
+                    );
+                }
+            }
+        }
+        self.loaded_decks = decks.to_vec();
+        Ok(())
+    }
+
     fn populate_explicit_sideboards(&mut self, sideboards: &[Vec<String>]) -> Result<(), JsValue> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, sideboard) in player_ids.iter().zip(sideboards.iter()) {
@@ -851,6 +922,8 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.clear_active_resolving_stack_object();
         self.game_over = None;
         self.last_snapshot_perf = None;

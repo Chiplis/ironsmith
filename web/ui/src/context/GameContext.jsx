@@ -307,6 +307,21 @@ function serializeMultiplayerCommand(command, _currentState) {
     return { type: "cancel_decision" };
   }
 
+  if (command.type === "forfeit_player") {
+    return {
+      type: "forfeit_player",
+      player: Number(command.player),
+      reason: String(command.reason || "forfeit"),
+      timeout_ms: command.timeout_ms == null ? undefined : Number(command.timeout_ms),
+      deadline_started_at_ms: command.deadline_started_at_ms == null
+        ? undefined
+        : Number(command.deadline_started_at_ms),
+      deadline_at_ms: command.deadline_at_ms == null ? undefined : Number(command.deadline_at_ms),
+      claimed_at_ms: command.claimed_at_ms == null ? undefined : Number(command.claimed_at_ms),
+      basis_sequence: command.basis_sequence == null ? undefined : Number(command.basis_sequence),
+    };
+  }
+
   return command;
 }
 
@@ -371,6 +386,21 @@ function resolveSyncedCommand(command) {
 
   if (command.type === "cancel_decision") {
     return { type: "cancel_decision" };
+  }
+
+  if (command.type === "forfeit_player") {
+    return {
+      type: "forfeit_player",
+      player: Number(command.player),
+      reason: String(command.reason || "forfeit"),
+      timeout_ms: command.timeout_ms == null ? undefined : Number(command.timeout_ms),
+      deadline_started_at_ms: command.deadline_started_at_ms == null
+        ? undefined
+        : Number(command.deadline_started_at_ms),
+      deadline_at_ms: command.deadline_at_ms == null ? undefined : Number(command.deadline_at_ms),
+      claimed_at_ms: command.claimed_at_ms == null ? undefined : Number(command.claimed_at_ms),
+      basis_sequence: command.basis_sequence == null ? undefined : Number(command.basis_sequence),
+    };
   }
 
   return command;
@@ -443,6 +473,12 @@ function summarizeCommand(command) {
   }
   if (command.value != null) {
     summary.value = Number(command.value);
+  }
+  if (command.player != null) {
+    summary.player = Number(command.player);
+  }
+  if (command.reason != null) {
+    summary.reason = String(command.reason);
   }
 
   return summary;
@@ -1228,9 +1264,17 @@ export function GameProvider({ children }) {
           throw err;
         }
 
-        const st = resolvedCommand?.type === "cancel_decision"
-          ? await currentGame.cancelDecision()
-          : await currentGame.dispatch(resolvedCommand);
+        let st;
+        if (resolvedCommand?.type === "cancel_decision") {
+          st = await currentGame.cancelDecision();
+        } else if (resolvedCommand?.type === "forfeit_player") {
+          if (typeof currentGame.forfeitPlayer !== "function") {
+            throw new Error("WASM game does not support forfeits");
+          }
+          st = await currentGame.forfeitPlayer(Number(resolvedCommand.player));
+        } else {
+          st = await currentGame.dispatch(resolvedCommand);
+        }
         const workerRoundTripMs = performance.now() - dispatchStartedAt;
         const workerPerf = readDispatchPerf(st);
         const syncedDispatchSuccessPayload = {
@@ -1339,8 +1383,10 @@ export function GameProvider({ children }) {
     updateRematchDecks,
     readyForRematch,
     submitMultiplayerCommand,
+    submitMultiplayerAddCardCheat,
   } = usePeerLobby({
     game,
+    state,
     setState,
     setStatus,
     applySyncedCommand,
@@ -1780,6 +1826,7 @@ export function GameProvider({ children }) {
       startRematchSideboarding,
       updateRematchDecks,
       readyForRematch,
+      submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     }),
     [
@@ -1801,6 +1848,7 @@ export function GameProvider({ children }) {
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
       startRematchSideboarding, updateRematchDecks, readyForRematch,
+      submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     ]
   );

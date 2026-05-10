@@ -15,8 +15,8 @@ use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
 
 use super::{
-    ActiveViewedCards, DecisionView, GameOverView, ManaPaymentView, WasmGame, hidden_object_label,
-    object_visible_to_perspective,
+    ActiveViewedCards, CryptoRequirementView, DecisionView, GameOverView, ManaPaymentView,
+    WasmGame, hidden_object_label, object_visible_to_perspective,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -735,6 +735,7 @@ pub(super) struct GameSnapshot {
     pub(super) exile_size: usize,
     pub(super) players: Vec<PlayerSnapshot>,
     pub(super) battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
+    pub(super) crypto_requirements: Vec<CryptoRequirementView>,
     pub(super) viewed_cards: Option<ViewedCardsSnapshot>,
     pub(super) decision: Option<DecisionView>,
     pub(super) mana_payment: Option<ManaPaymentView>,
@@ -1108,6 +1109,7 @@ impl GameSnapshot {
             exile_size: game.exile.len(),
             players,
             battlefield_transitions,
+            crypto_requirements: Vec::new(),
             viewed_cards: viewed_cards
                 .filter(|view| view.public || view.viewer == perspective)
                 .map(|view| ViewedCardsSnapshot {

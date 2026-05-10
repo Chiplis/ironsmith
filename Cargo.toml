@@ -7,6 +7,7 @@ members = [
     "crates/ironsmith-wasm",
     "crates/ironsmith-cli",
     "crates/ironsmith-tools",
+    "crates/ironsmith-audit",
 ]
 default-members = [
     "crates/ironsmith-core",

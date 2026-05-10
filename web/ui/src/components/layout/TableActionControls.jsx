@@ -28,7 +28,7 @@ export default function TableActionControls({
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
   const selectedPlayer = playerIndex ?? perspective;
-  const addLocked = multiplayer.mode !== "idle";
+  const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
   const lobbyBusy = multiplayer.mode !== "idle";
 
   const handleShareCurrentTable = async () => {

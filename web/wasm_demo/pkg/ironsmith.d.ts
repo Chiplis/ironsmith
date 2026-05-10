@@ -27,6 +27,7 @@ export class WasmGame {
      * Resets the TurnRunner so it picks up from the new game state.
      */
     advancePhase(): void;
+    applyVerifiedHiddenLibraryShuffle(input: any): any;
     /**
      * Return locally-known card name suggestions from the generated registry.
      */
@@ -65,6 +66,15 @@ export class WasmGame {
      * Move directly into an inserted combat phase without rebuilding from a sync checkpoint.
      */
     enterAdditionalCombatPhase(): void;
+    exportHiddenCardOpening(object_id: bigint): any;
+    /**
+     * Export a redacted checkpoint suitable for peer audit logs.
+     */
+    exportPublicAuditCheckpoint(): any;
+    /**
+     * Export an importable checkpoint redacted for one peer's legal knowledge.
+     */
+    exportRedactedSyncCheckpoint(perspective_index: number): any;
     /**
      * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
      */
@@ -80,6 +90,10 @@ export class WasmGame {
      */
     forceTurnFaceUp(player_index: number, object_id: bigint): void;
     /**
+     * Mark a player as having forfeited the match.
+     */
+    forfeitPlayer(player_index: number): any;
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      */
     getCardSemanticScore(card_name: string): number;
@@ -91,6 +105,7 @@ export class WasmGame {
      * Replace this WASM engine with a checkpoint from the current authoritative host.
      */
     importSyncCheckpoint(checkpoint: any, perspective_index: number): any;
+    injectTranscriptRandomSeeds(input: any): void;
     /**
      * Return whether the query resolves to a locally known card name.
      */
@@ -135,6 +150,7 @@ export class WasmGame {
      * Incremental generated-registry preload status.
      */
     preloadRegistryStatus(): any;
+    previewCryptoRequirements(command: any): any;
     previewCustomCard(draft_js: any): any;
     /**
      * Number of cards currently available in the registry.
@@ -144,6 +160,9 @@ export class WasmGame {
      * Reset game with custom player names and starting life.
      */
     reset(player_names: any, starting_life: number): void;
+    revealHiddenObject(input: any): any;
+    revealHiddenPosition(input: any): any;
+    revealHiddenSlot(input: any): any;
     sampleLoadedDeckSeed(player_index: number): any;
     /**
      * Record an attacking band for the current combat.
@@ -191,6 +210,11 @@ export class WasmGame {
      */
     uiState(): any;
     validateMatchConfig(config: any): any;
+    ziffleBuildRevealToken(input: any): any;
+    ziffleBuildShuffleStep(input: any): any;
+    ziffleKeygen(input: any): any;
+    ziffleRevealCard(input: any): any;
+    ziffleVerifyShuffle(input: any): any;
 }
 
 export function wasm_start(): void;
@@ -199,12 +223,18 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly wasm_start: () => void;
     readonly wasmgame_new: () => number;
     readonly wasmgame_setAutoChooseSingleObjectDecisions: (a: number, b: number) => void;
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_revealHiddenObject: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_revealHiddenSlot: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_revealHiddenPosition: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_exportHiddenCardOpening: (a: number, b: bigint) => [number, number, number];
+    readonly wasmgame_previewCryptoRequirements: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_injectTranscriptRandomSeeds: (a: number, b: any) => [number, number];
+    readonly wasmgame_applyVerifiedHiddenLibraryShuffle: (a: number, b: any) => [number, number, number];
     readonly wasmgame_validateMatchConfig: (a: number, b: any) => [number, number, number];
     readonly wasmgame_snapshot: (a: number) => [number, number, number];
     readonly wasmgame_lastSnapshotPerf: (a: number) => [number, number, number];
@@ -220,6 +250,7 @@ export interface InitOutput {
     readonly wasmgame_isKnownCardName: (a: number, b: number, c: number) => number;
     readonly wasmgame_setLife: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
+    readonly wasmgame_forfeitPlayer: (a: number, b: number) => [number, number, number];
     readonly wasmgame_forceNextDieRoll: (a: number, b: number) => void;
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];
     readonly wasmgame_moveHandCardToBattlefieldFaceDown: (a: number, b: number, c: bigint, d: number) => [bigint, number, number];
@@ -247,8 +278,16 @@ export interface InitOutput {
     readonly wasmgame_cancelDecision: (a: number) => [number, number, number];
     readonly wasmgame_dispatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_exportSyncCheckpoint: (a: number) => [number, number, number];
+    readonly wasmgame_exportRedactedSyncCheckpoint: (a: number, b: number) => [number, number, number];
+    readonly wasmgame_exportPublicAuditCheckpoint: (a: number) => [number, number, number];
     readonly wasmgame_importSyncCheckpoint: (a: number, b: any, c: number) => [number, number, number];
+    readonly wasmgame_ziffleKeygen: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleBuildShuffleStep: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleVerifyShuffle: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleBuildRevealToken: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleRevealCard: (a: number, b: any) => [number, number, number];
     readonly wasmgame_uiState: (a: number) => [number, number, number];
+    readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

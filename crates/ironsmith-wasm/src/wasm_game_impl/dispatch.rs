@@ -127,6 +127,8 @@ impl WasmGame {
             semantic_threshold: 0.0,
             snapshot_serial: 0,
             active_viewed_cards: None,
+            last_crypto_requirements: Vec::new(),
+            pending_crypto_audit_before: None,
             active_resolving_stack_object: None,
             loaded_decks: Vec::new(),
             last_snapshot_perf: None,
@@ -181,6 +183,7 @@ impl WasmGame {
         let opening_hand_size = config.opening_hand_size.unwrap_or(7);
         self.initialize_empty_match(config.player_names, config.starting_life, config.seed);
         self.match_format = config.format;
+        let hidden_manifests = config.hidden_deck_manifests.unwrap_or_default();
 
         if let MatchFormatInput::Commander = config.format {
             let Some(decks) = config.decks.as_ref() else {
@@ -193,7 +196,9 @@ impl WasmGame {
                     "commander matches require commander lists",
                 ));
             };
-            self.validate_commander_setup(decks, commanders)?;
+            if hidden_manifests.is_empty() {
+                self.validate_commander_setup(decks, commanders)?;
+            }
         }
 
         if let Some(decks) = config.decks {
@@ -202,7 +207,11 @@ impl WasmGame {
                     "deck count must match number of players in game",
                 ));
             }
-            self.populate_explicit_libraries(&decks)?;
+            if hidden_manifests.is_empty() {
+                self.populate_explicit_libraries(&decks)?;
+            } else {
+                self.populate_libraries_with_hidden_manifests(&decks, &hidden_manifests)?;
+            }
         } else {
             self.populate_demo_libraries()?;
         }
@@ -227,6 +236,269 @@ impl WasmGame {
 
         self.finish_match_setup(opening_hand_size)?;
         self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = revealHiddenObject)]
+    pub fn reveal_hidden_object(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: RevealHiddenObjectInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
+        let object_id = ObjectId::from_raw(input.object_id);
+        let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
+            return Err(JsValue::from_str("object is not a hidden card placeholder"));
+        };
+        if let Some(slot) = input.slot
+            && slot != info.slot
+        {
+            return Err(JsValue::from_str("hidden card slot does not match reveal"));
+        }
+        if let Some(commitment) = input.commitment.as_deref()
+            && commitment != info.commitment
+        {
+            return Err(JsValue::from_str(
+                "hidden card commitment does not match reveal",
+            ));
+        }
+        self.registry
+            .ensure_cards_loaded([input.card_name.as_str()]);
+        let definition = self
+            .find_card_definition(&input.card_name)
+            .cloned()
+            .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
+        self.game
+            .register_linked_face_family_from_catalog(&definition, &self.registry);
+        self.game
+            .reveal_hidden_card_with_definition(object_id, &definition)
+            .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = revealHiddenSlot)]
+    pub fn reveal_hidden_slot(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: RevealHiddenSlotInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
+        let owner = PlayerId::from_index(input.owner);
+        let Some((&object_id, info)) = self
+            .game
+            .hidden_cards
+            .iter()
+            .find(|(_, info)| info.owner == owner && info.slot == input.slot)
+        else {
+            return Err(JsValue::from_str(
+                "hidden slot is not present in this engine",
+            ));
+        };
+        if let Some(commitment) = input.commitment.as_deref()
+            && commitment != info.commitment
+        {
+            return Err(JsValue::from_str(
+                "hidden card commitment does not match reveal",
+            ));
+        }
+        self.registry
+            .ensure_cards_loaded([input.card_name.as_str()]);
+        let definition = self
+            .find_card_definition(&input.card_name)
+            .cloned()
+            .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
+        self.game
+            .register_linked_face_family_from_catalog(&definition, &self.registry);
+        self.game
+            .reveal_hidden_card_with_definition(object_id, &definition)
+            .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = revealHiddenPosition)]
+    pub fn reveal_hidden_position(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: RevealHiddenPositionInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
+        let owner = PlayerId::from_index(input.owner);
+        let Some((&object_id, info)) = self
+            .game
+            .hidden_cards
+            .iter()
+            .find(|(_, info)| info.owner == owner && info.slot == input.position)
+        else {
+            return Err(JsValue::from_str(
+                "hidden ziffle position is not present in this engine",
+            ));
+        };
+        if let Some(position_commitment) = input.position_commitment.as_deref()
+            && position_commitment != info.commitment
+        {
+            return Err(JsValue::from_str(
+                "hidden ziffle position commitment does not match reveal",
+            ));
+        }
+        let zone = info.zone;
+        self.game.set_hidden_card_info(
+            object_id,
+            ironsmith::game_state::HiddenCardInfo {
+                owner,
+                zone,
+                slot: input.original_slot,
+                commitment: input.commitment.clone().unwrap_or_default(),
+            },
+        );
+        self.registry
+            .ensure_cards_loaded([input.card_name.as_str()]);
+        let definition = self
+            .find_card_definition(&input.card_name)
+            .cloned()
+            .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
+        self.game
+            .register_linked_face_family_from_catalog(&definition, &self.registry);
+        self.game
+            .reveal_hidden_card_with_definition(object_id, &definition)
+            .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = exportHiddenCardOpening)]
+    pub fn export_hidden_card_opening(&self, object_id: u64) -> Result<JsValue, JsValue> {
+        let opening = self.hidden_card_opening_export(ObjectId::from_raw(object_id))?;
+        serde_wasm_bindgen::to_value(&opening)
+            .map_err(|e| JsValue::from_str(&format!("failed to serialize hidden opening: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = previewCryptoRequirements)]
+    pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let checkpoint = self.capture_replay_checkpoint();
+        let pending_decision = self.pending_decision.clone();
+        let pending_replay_action = self.pending_replay_action.clone();
+        let pending_action_checkpoint = self.pending_action_checkpoint.clone();
+        let pending_live_action_root = self.pending_live_action_root.clone();
+        let pending_live_continuation = self.pending_live_continuation.clone();
+        let runner = self.runner.clone();
+        let runner_awaiting_priority = self.runner_awaiting_priority;
+        let runner_pending_decision = self.runner_pending_decision;
+        let priority_epoch_checkpoint = self.priority_epoch_checkpoint.clone();
+        let priority_epoch_has_undoable_action = self.priority_epoch_has_undoable_action;
+        let priority_epoch_undo_locked_by_mana = self.priority_epoch_undo_locked_by_mana;
+        let priority_epoch_undo_land_stable_id = self.priority_epoch_undo_land_stable_id;
+        let active_viewed_cards = self.active_viewed_cards.clone();
+        let active_resolving_stack_object = self.active_resolving_stack_object.clone();
+        let snapshot_serial = self.snapshot_serial;
+        let last_snapshot_perf = self.last_snapshot_perf.clone();
+        let last_replay_execution_perf = self.last_replay_execution_perf.clone();
+        let last_advance_until_decision_perf = self.last_advance_until_decision_perf.clone();
+        let last_dispatch_perf = self.last_dispatch_perf.clone();
+
+        let preview_result = self.dispatch(command);
+        let requirements = match preview_result {
+            Ok(_) => Ok(self.last_crypto_requirements.clone()),
+            Err(err) => Err(err),
+        };
+
+        self.restore_replay_checkpoint(&checkpoint);
+        self.pending_decision = pending_decision;
+        self.pending_replay_action = pending_replay_action;
+        self.pending_action_checkpoint = pending_action_checkpoint;
+        self.pending_live_action_root = pending_live_action_root;
+        self.pending_live_continuation = pending_live_continuation;
+        self.runner = runner;
+        self.runner_awaiting_priority = runner_awaiting_priority;
+        self.runner_pending_decision = runner_pending_decision;
+        self.priority_epoch_checkpoint = priority_epoch_checkpoint;
+        self.priority_epoch_has_undoable_action = priority_epoch_has_undoable_action;
+        self.priority_epoch_undo_locked_by_mana = priority_epoch_undo_locked_by_mana;
+        self.priority_epoch_undo_land_stable_id = priority_epoch_undo_land_stable_id;
+        self.active_viewed_cards = active_viewed_cards;
+        self.active_resolving_stack_object = active_resolving_stack_object;
+        self.snapshot_serial = snapshot_serial;
+        self.last_snapshot_perf = last_snapshot_perf;
+        self.last_replay_execution_perf = last_replay_execution_perf;
+        self.last_advance_until_decision_perf = last_advance_until_decision_perf;
+        self.last_dispatch_perf = last_dispatch_perf;
+
+        let requirements = requirements?;
+        serde_wasm_bindgen::to_value(&requirements).map_err(|e| {
+            JsValue::from_str(&format!("failed to serialize crypto requirements: {e}"))
+        })
+    }
+
+    #[wasm_bindgen(js_name = injectTranscriptRandomSeeds)]
+    pub fn inject_transcript_random_seeds(&mut self, input: JsValue) -> Result<(), JsValue> {
+        let input: TranscriptRandomSeedsInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid random seed input: {e}")))?;
+        let mut seeds = Vec::with_capacity(input.seeds.len());
+        for seed in input.seeds {
+            let normalized = seed.trim().trim_start_matches("0x");
+            let trimmed = if normalized.len() > 16 {
+                &normalized[normalized.len() - 16..]
+            } else {
+                normalized
+            };
+            let value = u64::from_str_radix(trimmed, 16)
+                .map_err(|e| JsValue::from_str(&format!("invalid random seed hex: {e}")))?;
+            seeds.push(value);
+        }
+        self.game.queue_transcript_random_seeds(seeds);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = applyVerifiedHiddenLibraryShuffle)]
+    pub fn apply_verified_hidden_library_shuffle(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: ApplyHiddenLibraryShuffleInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid hidden shuffle input: {e}")))?;
+        let owner = PlayerId::from_index(input.owner);
+        let library = self
+            .game
+            .player(owner)
+            .ok_or_else(|| JsValue::from_str("hidden shuffle owner is not present"))?
+            .library
+            .clone();
+        for (position, object_id) in library.iter().copied().enumerate() {
+            if position > u16::MAX as usize {
+                return Err(JsValue::from_str("hidden shuffle library is too large"));
+            }
+            let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
+                return Err(JsValue::from_str(
+                    "cannot reseal library shuffle with non-hidden cards",
+                ));
+            };
+            if info.owner != owner {
+                return Err(JsValue::from_str("hidden shuffle library owner mismatch"));
+            }
+            self.game.set_hidden_card_info(
+                object_id,
+                ironsmith::game_state::HiddenCardInfo {
+                    owner,
+                    zone: Zone::Library,
+                    slot: position as u16,
+                    commitment: format!("ziffle:{}:{}", input.deck_hash, position),
+                },
+            );
+        }
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
+    fn hidden_card_opening_export(
+        &self,
+        object_id: ObjectId,
+    ) -> Result<HiddenCardOpeningExport, JsValue> {
+        let info = self
+            .game
+            .hidden_card_info(object_id)
+            .ok_or_else(|| JsValue::from_str("object is not tracked as a hidden card"))?;
+        let object = self
+            .game
+            .object(object_id)
+            .ok_or_else(|| JsValue::from_str("hidden card object is not present"))?;
+        let Some(_card) = object.card.as_ref() else {
+            return Err(JsValue::from_str("hidden card is not open in this engine"));
+        };
+        Ok(HiddenCardOpeningExport {
+            object_id: object_id.0,
+            owner: info.owner.index() as u8,
+            slot: info.slot,
+            card: object.name.clone(),
+            commitment: info.commitment.clone(),
+        })
     }
 
     #[wasm_bindgen(js_name = validateMatchConfig)]
@@ -257,6 +529,9 @@ impl WasmGame {
         let battlefield_transition_ms = transitions_started_at.elapsed_ms();
         self.game.refresh_continuous_state();
         let build_started_at = PerfTimer::start();
+        if let Some(before) = self.pending_crypto_audit_before.take() {
+            self.update_crypto_requirements_from(before);
+        }
         let mut snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,
@@ -271,6 +546,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
         );
+        snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
         let pending_insert_started_at = PerfTimer::start();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -394,6 +670,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
         );
+        snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
         serde_json::to_string_pretty(&snap)
             .map_err(|e| JsValue::from_str(&format!("json encode failed: {e}")))
@@ -488,6 +765,36 @@ impl WasmGame {
         player.life += delta;
         self.recompute_ui_decision()?;
         Ok(())
+    }
+
+    /// Mark a player as having forfeited the match.
+    #[wasm_bindgen(js_name = forfeitPlayer)]
+    pub fn forfeit_player(&mut self, player_index: u8) -> Result<JsValue, JsValue> {
+        let player_id = PlayerId::from_index(player_index);
+        let Some(player) = self.game.player_mut(player_id) else {
+            return Err(JsValue::from_str("invalid player index"));
+        };
+
+        player.has_lost = true;
+        player.has_left_game = true;
+
+        let remaining: Vec<_> = self
+            .game
+            .players
+            .iter()
+            .filter(|candidate| candidate.is_in_game())
+            .map(|candidate| candidate.id)
+            .collect();
+        self.game_over = if remaining.is_empty() {
+            Some(GameResult::Draw)
+        } else if remaining.len() == 1 {
+            Some(GameResult::Winner(remaining[0]))
+        } else {
+            None
+        };
+
+        self.recompute_ui_decision()?;
+        self.snapshot()
     }
 
     /// Queue a forced die result for deterministic test harness scenarios.
@@ -666,13 +973,14 @@ impl WasmGame {
                     self.game.turn_store.turn_history.staged_event_records.len();
                 self.game
                     .register_linked_face_family_from_catalog(definition, &self.registry);
-                let temp_id = self
-                    .game
-                    .create_object_from_definition(definition, player_id, Zone::Command);
-                let Some(result) = self
-                    .game
-                    .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
-                else {
+                let temp_id =
+                    self.game
+                        .create_object_from_definition(definition, player_id, Zone::Command);
+                let Some(result) = self.game.move_object_with_etb_processing_with_dm(
+                    temp_id,
+                    Zone::Battlefield,
+                    dm,
+                ) else {
                     self.game.remove_object(temp_id);
                     return Err("battlefield entry was prevented by replacement effect".to_string());
                 };
@@ -690,9 +998,12 @@ impl WasmGame {
                     .truncate(staged_event_record_len);
                 return Ok(result.new_id.0);
             }
-            let object_id = self
-                .game
-                .create_object_from_catalog_definition(definition, &self.registry, player_id, zone);
+            let object_id = self.game.create_object_from_catalog_definition(
+                definition,
+                &self.registry,
+                player_id,
+                zone,
+            );
             return Ok(object_id.0);
         }
 
@@ -865,14 +1176,19 @@ impl WasmGame {
         let mut members = Vec::with_capacity(member_ids.length() as usize);
         for value in member_ids.iter() {
             let Some(id) = value.as_f64() else {
-                return Err(JsValue::from_str("attacking band member id must be numeric"));
+                return Err(JsValue::from_str(
+                    "attacking band member id must be numeric",
+                ));
             };
             members.push(ObjectId::from_raw(id as u64));
         }
 
         if let Some(runner) = self.runner.as_mut() {
-            let result =
-                ironsmith::combat_state::set_attacking_band(&self.game, runner.combat_mut(), members);
+            let result = ironsmith::combat_state::set_attacking_band(
+                &self.game,
+                runner.combat_mut(),
+                members,
+            );
             self.game.combat = Some(runner.combat().clone());
             return result.map_err(|err| JsValue::from_str(&err.to_string()));
         }
@@ -1102,9 +1418,12 @@ impl WasmGame {
         };
 
         let object_id = if payload.skip_triggers {
-            let object_id =
-                self.game
-                    .create_object_from_catalog_definition(front, &self.registry, player_id, zone);
+            let object_id = self.game.create_object_from_catalog_definition(
+                front,
+                &self.registry,
+                player_id,
+                zone,
+            );
             self.recompute_ui_decision()?;
             object_id
         } else {
@@ -1248,6 +1567,8 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("invalid command payload: {e}")))?;
         let command_decode_ms = command_decode_started_at.elapsed_ms();
         self.clear_active_resolving_stack_object();
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = Some(self.capture_crypto_audit_state());
 
         let pending_ctx = self
             .pending_decision

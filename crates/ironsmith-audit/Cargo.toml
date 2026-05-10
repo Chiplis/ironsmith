@@ -1,0 +1,21 @@
+[package]
+name = "ironsmith-audit"
+version = "0.1.0"
+edition = "2024"
+autobins = false
+
+[dependencies]
+ark-std = { version = "0.5.0", features = ["std"] }
+ed25519-dalek = "2.2.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.11"
+ziffle = "0.1.0"
+
+[dev-dependencies]
+ironsmith-registry = { path = "../ironsmith-registry" }
+
+[[bin]]
+name = "ironsmith-audit"
+path = "src/main.rs"
+test = false

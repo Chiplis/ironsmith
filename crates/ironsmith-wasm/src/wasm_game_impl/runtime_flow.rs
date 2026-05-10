@@ -757,6 +757,8 @@ impl WasmGame {
         self.trigger_queue = checkpoint.trigger_queue.clone();
         self.priority_state = checkpoint.priority_state.clone();
         self.game_over = checkpoint.game_over.clone();
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
     }
 
     pub(super) fn clear_active_resolving_stack_object(&mut self) {

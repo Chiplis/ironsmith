@@ -46,6 +46,7 @@ export function priorityCommandForAction(action) {
 export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
   if (command.type === "cancel_decision") return true;
+  if (command.type === "forfeit_player") return true;
   if (!decision) return false;
 
   switch (decision.kind) {

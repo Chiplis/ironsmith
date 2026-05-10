@@ -116,6 +116,14 @@ pub struct UiBattlefieldTransition {
     pub kind: UiBattlefieldTransitionKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenCardInfo {
+    pub owner: PlayerId,
+    pub zone: Zone,
+    pub slot: u16,
+    pub commitment: String,
+}
+
 #[derive(Debug, Clone, Default)]
 struct MetadataStateStore {
     ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
@@ -285,6 +293,7 @@ struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
+    transcript_random_seeds: RefCell<VecDeque<u64>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
     continuous_state_turn_number: Cell<u32>,
@@ -301,6 +310,7 @@ impl Clone for RuntimeCacheState {
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
+            transcript_random_seeds: RefCell::new(self.transcript_random_seeds.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
@@ -321,6 +331,7 @@ impl RuntimeCacheState {
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
+            transcript_random_seeds: RefCell::new(VecDeque::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
@@ -1914,6 +1925,8 @@ pub struct GameState {
     /// Component-card identity for battlefield melded permanents, keyed by the
     /// melded permanent's stable ID.
     pub melded_permanents: HashMap<StableId, MeldedPermanentState>,
+    /// Cryptographic hidden-card slots that have not been opened on this peer.
+    pub hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
     /// Whether required single-object choices with exactly one legal candidate
     /// may be resolved by the generic decision layer without surfacing a prompt.
     auto_choose_single_object_decisions: bool,
@@ -2010,6 +2023,7 @@ impl GameState {
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
             melded_permanents: HashMap::new(),
+            hidden_cards: HashMap::new(),
             auto_choose_single_object_decisions: true,
             runtime_cache: RuntimeCacheState::new(active_player),
         }
@@ -2117,6 +2131,18 @@ impl GameState {
         self.runtime_cache.forced_die_rolls.borrow_mut().pop_front()
     }
 
+    /// Queue transcript-derived random seeds supplied by the multiplayer audit
+    /// protocol. These seeds are consumed before deterministic local RNG output.
+    pub fn queue_transcript_random_seeds<I>(&self, seeds: I)
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.runtime_cache
+            .transcript_random_seeds
+            .borrow_mut()
+            .extend(seeds.into_iter().map(Self::normalize_random_seed));
+    }
+
     fn record_irreversible_random(&self) {
         self.runtime_cache.irreversible_random_count.set(
             self.runtime_cache
@@ -2128,6 +2154,15 @@ impl GameState {
 
     /// Advance the deterministic RNG and return the next 64 random bits.
     pub fn next_random_u64(&self) -> u64 {
+        if let Some(seed) = self
+            .runtime_cache
+            .transcript_random_seeds
+            .borrow_mut()
+            .pop_front()
+        {
+            self.runtime_cache.random_state.set(seed);
+            return seed;
+        }
         let mut z = self
             .runtime_cache
             .random_state
@@ -2904,6 +2939,61 @@ impl GameState {
         self.create_object_from_definition(def, owner, zone)
     }
 
+    pub fn create_hidden_card_placeholder(
+        &mut self,
+        owner: PlayerId,
+        zone: Zone,
+        slot: u16,
+        commitment: String,
+    ) -> ObjectId {
+        let id = self.new_object_id();
+        let object = Object::new_hidden_card(id, owner, zone);
+        self.add_object(object);
+        self.hidden_cards.insert(
+            id,
+            HiddenCardInfo {
+                owner,
+                zone,
+                slot,
+                commitment,
+            },
+        );
+        id
+    }
+
+    pub fn hidden_card_info(&self, id: ObjectId) -> Option<&HiddenCardInfo> {
+        self.hidden_cards.get(&id)
+    }
+
+    pub fn set_hidden_card_info(&mut self, id: ObjectId, info: HiddenCardInfo) {
+        self.hidden_cards.insert(id, info);
+    }
+
+    pub fn is_hidden_card_placeholder(&self, id: ObjectId) -> bool {
+        self.hidden_cards.contains_key(&id)
+            && self.object(id).is_some_and(|object| object.card.is_none())
+    }
+
+    pub fn reveal_hidden_card_with_definition(
+        &mut self,
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+    ) -> Option<HiddenCardInfo> {
+        self.prime_linked_face_definitions(def);
+        let info = self.hidden_cards.remove(&id)?;
+        let zone = self.object(id)?.zone;
+        let object = self.object_mut(id)?;
+        object.apply_card_definition(def);
+        if zone == Zone::Battlefield
+            && let Some(loyalty) = object.base_loyalty
+            && loyalty > 0
+        {
+            object.add_counters(crate::object::CounterType::Loyalty, loyalty);
+        }
+        self.mark_continuous_state_dirty();
+        Some(info)
+    }
+
     /// Draws cards for a player, moving them from library to hand.
     /// Uses move_object to properly update the object's zone.
     /// Returns the new ObjectIds of the drawn cards.
@@ -3208,6 +3298,7 @@ impl GameState {
         }
 
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
+        let hidden_card_info = self.hidden_cards.remove(&old_id);
         self.stable_id_index.remove(&old_object.stable_id);
         self.declined_commander_command_zone_moves.remove(&old_id);
         let old_zone = old_object.zone;
@@ -3343,6 +3434,10 @@ impl GameState {
         }
 
         self.add_object(new_object);
+        if let Some(mut info) = hidden_card_info {
+            info.zone = new_zone;
+            self.hidden_cards.insert(new_id, info);
+        }
 
         if new_zone == Zone::Battlefield
             && (was_face_down
