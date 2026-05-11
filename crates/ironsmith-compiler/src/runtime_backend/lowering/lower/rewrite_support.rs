@@ -96,7 +96,7 @@ pub(super) fn infer_triggered_ability_functional_zones(
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::PutIntoGraveyard(filter) => {
+        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }
         TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {

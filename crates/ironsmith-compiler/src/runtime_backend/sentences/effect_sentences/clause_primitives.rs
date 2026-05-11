@@ -122,7 +122,10 @@ pub(crate) fn parse_choose_new_targets_clause(
         let reference_words = token_word_refs(split.target_tokens);
         let reference_tag = if matches!(
             reference_words.as_slice(),
-            ["the", "copy", ..] | ["that", "copy", ..]
+            ["the", "copy", ..]
+                | ["the", "copies", ..]
+                | ["that", "copy", ..]
+                | ["those", "copies", ..]
         ) {
             COPIED_STACK_OBJECT_TAG
         } else {

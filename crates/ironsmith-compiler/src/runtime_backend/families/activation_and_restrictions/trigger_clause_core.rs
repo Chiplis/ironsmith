@@ -1121,10 +1121,12 @@ pub(crate) fn parse_trigger_clause_lexed(
     ] {
         if slice_ends_with(&words, tail) {
             let subject_word_len = words.len().saturating_sub(tail.len());
-            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+            let mut subject_tokens = ActivationRestrictionCompatWords::new(tokens)
                 .token_index_for_word_index(subject_word_len)
                 .map(|idx| &tokens[..idx])
                 .unwrap_or_default();
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
             let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
             let subject_words = subject_view.to_word_refs();
             let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1140,11 +1142,21 @@ pub(crate) fn parse_trigger_clause_lexed(
             }
             if subject_words
                 .iter()
+                .any(|word| matches!(*word, "permanent" | "permanents"))
+            {
+                filter.card_types = ObjectFilter::permanent_card().card_types;
+            }
+            if subject_words
+                .iter()
                 .any(|word| matches!(*word, "card" | "cards"))
             {
                 filter.nontoken = true;
             }
-            return Ok(TriggerSpec::PutIntoGraveyard(filter));
+            return Ok(if one_or_more {
+                TriggerSpec::PutIntoGraveyardOneOrMore(filter)
+            } else {
+                TriggerSpec::PutIntoGraveyard(filter)
+            });
         }
     }
 

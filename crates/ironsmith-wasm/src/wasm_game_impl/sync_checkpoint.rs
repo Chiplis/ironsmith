@@ -3,6 +3,7 @@ use ironsmith::ids::{IdCountersSnapshot, StableId};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
+use sha2::{Digest, Sha256};
 
 const SYNC_CHECKPOINT_VERSION: u32 = 1;
 
@@ -165,6 +166,10 @@ struct SyncHiddenCard {
     owner: u8,
     slot: u16,
     commitment: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    public_slot: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    public_commitment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -628,6 +633,46 @@ fn public_audit_protocol_name() -> String {
 
 #[wasm_bindgen]
 impl WasmGame {
+    fn public_audit_commitment_root(
+        &self,
+        owner: PlayerId,
+        zone_name: &str,
+        ids: &[ObjectId],
+    ) -> Option<String> {
+        let entries = ids
+            .iter()
+            .enumerate()
+            .map(|(position, id)| {
+                self.game.hidden_card_info(*id).map(|info| {
+                    let public_slot = info.public_slot.unwrap_or(info.slot);
+                    let public_commitment = info
+                        .public_commitment
+                        .as_deref()
+                        .unwrap_or(info.commitment.as_str());
+                    serde_json::json!({
+                        "position": position,
+                        "owner": info.owner.0,
+                        "slot": public_slot,
+                        "commitment": public_commitment,
+                    })
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "domain": "ironsmith-public-hidden-zone-root-v1",
+            "owner": owner.0,
+            "zone": zone_name,
+            "entries": entries,
+        }))
+        .ok()?;
+        Some(
+            Sha256::digest(&bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+        )
+    }
+
     fn sync_checkpoint_object_ids(&self) -> Vec<ObjectId> {
         let mut ids = Vec::new();
         for player in &self.game.players {
@@ -733,13 +778,16 @@ impl WasmGame {
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_marked.get(&id).copied().unwrap_or(0),
                     commander: self.game.is_commander_object(id),
-                    hidden_card: object.card.is_none().then(|| {
-                        self.game.hidden_card_info(id).map(|info| SyncHiddenCard {
+                    hidden_card: self
+                        .game
+                        .hidden_card_info(id)
+                        .map(|info| SyncHiddenCard {
                             owner: info.owner.0,
                             slot: info.slot,
                             commitment: info.commitment.clone(),
-                        })
-                    }).flatten(),
+                            public_slot: info.public_slot,
+                            public_commitment: info.public_commitment.clone(),
+                        }),
                 })
             })
             .collect();
@@ -936,14 +984,22 @@ impl WasmGame {
                 zone: "library".to_string(),
                 count: player.library.len(),
                 protocol: public_audit_protocol_name(),
-                commitment_root: None,
+                commitment_root: self.public_audit_commitment_root(
+                    player.id,
+                    "library",
+                    &player.library,
+                ),
             });
             hidden_zones.push(PublicAuditHiddenZone {
                 owner: player.id.0,
                 zone: "hand".to_string(),
                 count: player.hand.len(),
                 protocol: public_audit_protocol_name(),
-                commitment_root: None,
+                commitment_root: self.public_audit_commitment_root(
+                    player.id,
+                    "hand",
+                    &player.hand,
+                ),
             });
             if !player.sideboard.is_empty() {
                 hidden_zones.push(PublicAuditHiddenZone {
@@ -951,24 +1007,33 @@ impl WasmGame {
                     zone: "outside_game".to_string(),
                     count: player.sideboard.len(),
                     protocol: public_audit_protocol_name(),
-                    commitment_root: None,
+                    commitment_root: self.public_audit_commitment_root(
+                        player.id,
+                        "outside_game",
+                        &player.sideboard,
+                    ),
                 });
             }
-            let hidden_exile_count = self
+            let hidden_exile_ids = self
                 .game
                 .exile
                 .iter()
                 .filter_map(|id| self.game.object(*id).map(|object| (*id, object)))
                 .filter(|(_, object)| object.owner == player.id)
                 .filter(|(id, _)| !self.public_audit_object_identity_is_public(*id))
-                .count();
-            if hidden_exile_count > 0 {
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>();
+            if !hidden_exile_ids.is_empty() {
                 hidden_zones.push(PublicAuditHiddenZone {
                     owner: player.id.0,
                     zone: "hidden_exile".to_string(),
-                    count: hidden_exile_count,
+                    count: hidden_exile_ids.len(),
                     protocol: public_audit_protocol_name(),
-                    commitment_root: None,
+                    commitment_root: self.public_audit_commitment_root(
+                        player.id,
+                        "hidden_exile",
+                        &hidden_exile_ids,
+                    ),
                 });
             }
         }
@@ -976,8 +1041,8 @@ impl WasmGame {
         PublicAuditCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             format: self.match_format,
-            perspective: self.perspective.0,
-            snapshot_serial: self.snapshot_serial,
+            perspective: 0,
+            snapshot_serial: 0,
             turn: SyncTurn {
                 active_player: self.game.turn.active_player.0,
                 priority_player: self.game.turn.priority_player.map(|player| player.0),
@@ -1042,6 +1107,8 @@ impl WasmGame {
             owner: info.owner.0,
             slot: info.slot,
             commitment: info.commitment.clone(),
+            public_slot: info.public_slot,
+            public_commitment: info.public_commitment.clone(),
         });
         Ok(())
     }
@@ -1114,7 +1181,9 @@ impl WasmGame {
         let owner = PlayerId::from_index(object.owner);
         let zone = sync_zone_from_name(&object.zone)?;
 
-        let mut restored = if object.hidden_card.is_some() {
+        let is_redacted_hidden_card =
+            object.hidden_card.is_some() && object.name == "Hidden Card";
+        let mut restored = if is_redacted_hidden_card {
             Object::new_hidden_card(id, owner, zone)
         } else if object.token {
             let card_types = object
@@ -1196,6 +1265,8 @@ impl WasmGame {
                         zone: restored_zone,
                         slot: hidden.slot,
                         commitment: hidden.commitment.clone(),
+                        public_slot: hidden.public_slot,
+                        public_commitment: hidden.public_commitment.clone(),
                     },
                 );
             }
@@ -1471,6 +1542,46 @@ mod sync_checkpoint_tests {
             .hidden_zones
             .iter()
             .any(|zone| zone.owner == 1 && zone.zone == "hand" && zone.count == 1));
+    }
+
+    #[test]
+    fn public_audit_checkpoint_uses_stable_public_hidden_commitments() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let object_id = game.game.create_hidden_card_placeholder(
+            PlayerId::from_index(0),
+            Zone::Hand,
+            3,
+            "ziffle:deck-hash:3".to_string(),
+        );
+        let before = game
+            .build_public_audit_checkpoint()
+            .hidden_zones
+            .into_iter()
+            .find(|zone| zone.owner == 0 && zone.zone == "hand")
+            .and_then(|zone| zone.commitment_root)
+            .expect("hidden hand should have a public commitment root");
+
+        game.game.set_hidden_card_info(
+            object_id,
+            HiddenCardInfo {
+                owner: PlayerId::from_index(0),
+                zone: Zone::Hand,
+                slot: 42,
+                commitment: "deck-slot-42".to_string(),
+                public_slot: Some(3),
+                public_commitment: Some("ziffle:deck-hash:3".to_string()),
+            },
+        );
+        let after = game
+            .build_public_audit_checkpoint()
+            .hidden_zones
+            .into_iter()
+            .find(|zone| zone.owner == 0 && zone.zone == "hand")
+            .and_then(|zone| zone.commitment_root)
+            .expect("hidden hand should keep a public commitment root");
+
+        assert_eq!(after, before);
     }
 
     #[test]

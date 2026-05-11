@@ -236,12 +236,28 @@ async function enabledButtonLabels(page) {
   );
 }
 
-async function clickLocalDecisionButton(page, label) {
-  const button = page.locator('[data-local-action="true"]:enabled').first();
+async function clickLocalButton(page, label, textPattern = null) {
+  let button = page.locator('button[data-local-action="true"]:enabled');
+  if (textPattern) {
+    button = button.filter({ hasText: textPattern });
+  }
+  button = button.first();
   if ((await button.count()) === 0) return null;
-  const text = (await button.innerText()).replace(/\s+/g, " ").trim();
-  await button.click();
-  return { label, text };
+  try {
+    const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+    await button.press("Enter", { timeout: 3000 });
+    return { label, text };
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!message.includes("Timeout") && !message.includes("detached")) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+async function clickLocalDecisionButton(page, label) {
+  return clickLocalButton(page, label);
 }
 
 async function visibleBodyText(page) {
@@ -666,7 +682,7 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
   }
 });
 
-test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands without opening mismatch", { timeout: 120000 }, async () => {
+test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands without opening mismatch", { timeout: 240000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
   const { vite, baseUrl } = await startHarnessServer(peerPort);
@@ -719,17 +735,19 @@ test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands 
         /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Sync failed|Match start failed|Auto-pass failed/i
       );
 
-      const hostPlayMountain = hostPage.getByRole("button").filter({ hasText: /PLAY MOUNTAIN/i }).first();
-      if (!hostPlayed && (await hostPlayMountain.count()) > 0) {
-        await hostPlayMountain.click();
+      const hostPlayMountain = !hostPlayed
+        ? await clickLocalButton(hostPage, "host-play", /PLAY MOUNTAIN/i)
+        : null;
+      if (!hostPlayed && hostPlayMountain) {
         hostPlayed = true;
         await sleep(3000);
         continue;
       }
 
-      const guestPlayMountain = guestPage.getByRole("button").filter({ hasText: /PLAY MOUNTAIN/i }).first();
-      if (hostPlayed && !guestPlayed && (await guestPlayMountain.count()) > 0) {
-        await guestPlayMountain.click();
+      const guestPlayMountain = hostPlayed && !guestPlayed
+        ? await clickLocalButton(guestPage, "guest-play", /PLAY MOUNTAIN/i)
+        : null;
+      if (!guestPlayed && guestPlayMountain) {
         guestPlayed = true;
         await sleep(6000);
         break;

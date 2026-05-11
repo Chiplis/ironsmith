@@ -17,6 +17,7 @@ const WORKER_METHODS = [
   "drawCard",
   "drawOpeningHands",
   "exportHiddenCardOpening",
+  "exportPublicAuditCheckpoint",
   "exportRedactedSyncCheckpoint",
   "exportSyncCheckpoint",
   "forfeitPlayer",

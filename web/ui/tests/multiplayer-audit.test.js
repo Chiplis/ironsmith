@@ -18,6 +18,7 @@ import {
   exportAuditEncryptionPublicKey,
   exportAuditPublicKey,
   importAuditPublicKey,
+  publicCheckpointHash,
   verifyCardOpeningAgainstManifest,
   verifyAuditPayload,
   verifyLiveAuditTranscript,
@@ -47,6 +48,26 @@ test("auditStateHash is stable across key insertion order", async () => {
     matchId: "m",
   }, webcrypto);
   assert.equal(left, right);
+});
+
+test("public checkpoint hashes ignore transient worker metadata", async () => {
+  const baseCheckpoint = {
+    players: [{ id: 0, handCount: 7 }],
+    hiddenZones: [{ owner: 0, zone: "hand", count: 7 }],
+  };
+  assert.equal(
+    await publicCheckpointHash(baseCheckpoint, webcrypto),
+    await publicCheckpointHash({
+      ...baseCheckpoint,
+      __perf: { totalWorkerMs: 12.34 },
+      hiddenZones: [
+        {
+          ...baseCheckpoint.hiddenZones[0],
+          __perf: { totalWorkerMs: 56.78 },
+        },
+      ],
+    }, webcrypto),
+  );
 });
 
 test("signed audit envelopes verify and reject tampering", async () => {
@@ -232,6 +253,7 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
     actor: 1,
     prevStateHash: "0".repeat(64),
     command,
+    publicCheckpointHash: "public-checkpoint-after-seq-1",
   }, webcrypto);
   const transcript = {
     kind: "ironsmith-live-browser-audit-v1",
@@ -276,6 +298,138 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
     }, webcrypto),
     /not signed by the acting player/,
   );
+});
+
+test("live audit transcript verifier checks committed openings", async () => {
+  const actorKey = await createAuditSessionKey(webcrypto);
+  const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const manifest = await buildPrivateDeckManifest({
+    matchId: "m-open",
+    owner: 0,
+    deck: ["Island"],
+    saltForSlot: () => "open-salt",
+  }, webcrypto);
+  const opening = await buildDeckSlotOpening({ manifest, slot: 0 }, webcrypto);
+  const command = { type: "draw_cards", player: 0, count: 1 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: actorKey,
+    matchId: "m-open",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    openings: [opening],
+    publicCheckpointHash: "public-checkpoint-after-opening",
+  }, webcrypto);
+  const transcript = {
+    kind: "ironsmith-live-browser-audit-v1",
+    initialStateHash: "0".repeat(64),
+    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+    deckAuditManifests: [publicDeckManifest(manifest)],
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  };
+
+  assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
+  const tamperedOpening = { ...opening, card: "Black Lotus" };
+  const tamperedAudit = await buildSignedActionEnvelope({
+    keyPair: actorKey,
+    matchId: "m-open",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    openings: [tamperedOpening],
+    publicCheckpointHash: "public-checkpoint-after-opening",
+  }, webcrypto);
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      ...transcript,
+      actions: [{
+        ...transcript.actions[0],
+        audit: tamperedAudit,
+      }],
+    }, webcrypto),
+    /Opening does not match committed deck slot/,
+  );
+});
+
+test("live audit transcript verifier rejects incomplete fair-random reveals", async () => {
+  const actorKey = await createAuditSessionKey(webcrypto);
+  const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: actorKey,
+    matchId: "m-rng",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    rngReveals: [{
+      type: "commit_reveal_random",
+      requirementId: "rng-1",
+      commits: [{ player: 0, commitmentHex: "commit-0" }],
+      reveals: [{ player: 0, nonceHex: "nonce-0", commitmentHex: "commit-0" }],
+      combinedSeedHex: "seed",
+    }],
+    publicCheckpointHash: "public-checkpoint-after-rng",
+  }, webcrypto);
+
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      kind: "ironsmith-live-browser-audit-v1",
+      initialStateHash: "0".repeat(64),
+      players: [
+        { seat: 0, auditPublicKey: actorPublicKey },
+        { seat: 1, auditPublicKey: actorPublicKey },
+      ],
+      actions: [{ seq: 1, actorIndex: 0, command, audit }],
+    }, webcrypto),
+    /must include every player exactly once/,
+  );
+});
+
+test("live audit transcript verifier requires a shuffle-proof verifier", async () => {
+  const actorKey = await createAuditSessionKey(webcrypto);
+  const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const command = { type: "priority_action", action_index: 0 };
+  const shuffleProof = {
+    type: "ziffle_shuffle",
+    requirementId: "shuffle-1",
+    owner: 0,
+    zone: "library",
+    deckCount: 2,
+    context: "ctx",
+    keys: [],
+    steps: [],
+    deckHash: "deck-hash",
+  };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: actorKey,
+    matchId: "m-shuffle",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    shuffleProofs: [shuffleProof],
+    publicCheckpointHash: "public-checkpoint-after-shuffle",
+  }, webcrypto);
+  const transcript = {
+    kind: "ironsmith-live-browser-audit-v1",
+    initialStateHash: "0".repeat(64),
+    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  };
+
+  await assert.rejects(
+    () => verifyLiveAuditTranscript(transcript, webcrypto),
+    /no verifier was provided/,
+  );
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto, {
+    verifyShuffleProof: async (proof) => {
+      assert.equal(proof.deckHash, "deck-hash");
+    },
+  });
+  assert.equal(report.valid, true);
 });
 
 test("match genesis and resync envelopes bind roster and checkpoints", async () => {

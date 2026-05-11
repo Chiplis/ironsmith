@@ -1,6 +1,5 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 use ark_std::rand::{SeedableRng as ArkSeedableRng, rngs::StdRng as ArkStdRng};
-use sha2::{Digest, Sha256};
 use ziffle::{
     AggregatePublicKey, AggregateRevealToken, MaskedDeck, OwnershipProof, PublicKey, RevealToken,
     RevealTokenProof, SecretKey, Shuffle, ShuffleProof, Verified,

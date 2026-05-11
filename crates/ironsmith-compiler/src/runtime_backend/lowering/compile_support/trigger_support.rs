@@ -155,6 +155,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 .count(crate::triggers::CountMode::OneOrMore),
         ),
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
+        TriggerSpec::PutIntoGraveyardOneOrMore(filter) => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .count(crate::triggers::CountMode::OneOrMore),
+        ),
         TriggerSpec::PutIntoGraveyardFromZone {
             filter,
             from,

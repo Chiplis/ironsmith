@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Peer from "peerjs";
 import {
+  auditStateHash,
   buildSignedActionEnvelope,
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
@@ -19,6 +20,7 @@ import {
   importAuditEncryptionKeyPair,
   importAuditKeyPair,
   importAuditPublicKey,
+  publicCheckpointHash,
   publicDeckManifest,
   randomAuditHex,
   sha256Hex,
@@ -697,7 +699,7 @@ function resolveLocalPlayerIndexFromPeer(session, players = null) {
 
 function getPeerSessionStorage() {
   if (typeof window === "undefined") return null;
-  return window.sessionStorage || window.localStorage || null;
+  return window.localStorage || window.sessionStorage || null;
 }
 
 function readStoredPlayerIndex(lobbyId) {
@@ -1106,6 +1108,21 @@ function playerCryptoSeatBindingReady(player) {
   );
 }
 
+function playerMatchesPresentedAuditIdentity(player, auditPublicKey, auditEncryptionPublicKey) {
+  const expectedAuditKey = String(player?.auditPublicKey || "").trim();
+  const presentedAuditKey = String(auditPublicKey || "").trim();
+  const expectedEncryptionKey = String(player?.auditEncryptionPublicKey || "").trim();
+  const presentedEncryptionKey = String(auditEncryptionPublicKey || "").trim();
+  return (
+    Boolean(expectedAuditKey)
+    && Boolean(presentedAuditKey)
+    && presentedAuditKey === expectedAuditKey
+    && Boolean(expectedEncryptionKey)
+    && Boolean(presentedEncryptionKey)
+    && presentedEncryptionKey === expectedEncryptionKey
+  );
+}
+
 async function waitForCryptoSeatBindingsFromSession(sessionRef, timeoutMs = 10000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -1217,6 +1234,7 @@ export function usePeerLobby({
   const auditPublicKeyRef = useRef("");
   const auditEncryptionPublicKeyRef = useRef("");
   const auditStateHashRef = useRef(INITIAL_AUDIT_STATE_HASH);
+  const initialPublicCheckpointHashRef = useRef("");
   const auditVerifyKeyCacheRef = useRef(new Map());
   const liveAuditTranscriptRef = useRef(null);
   const privateDeckManifestsRef = useRef(new Map());
@@ -1241,9 +1259,10 @@ export function usePeerLobby({
     stateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
-    multiplayerRef.current = multiplayer;
-  }, [multiplayer]);
+  // updateMultiplayer owns multiplayerRef so async message handlers can observe
+  // state changes before React commits the next render. Mirroring rendered state
+  // back into the ref here can regress the ref to an older render during fast
+  // peer message sequences.
 
   const ensureDirectPeerConnections = useCallback((players) => {
     ensureDirectPeerConnectionsRef.current(players);
@@ -2212,9 +2231,20 @@ export function usePeerLobby({
     rngReveals = [],
     shuffleProofs = [],
     privateViewProofs = [],
+    publicCheckpointHash: providedPublicCheckpointHash = null,
   }) => {
     const { keyPair } = await ensureAuditIdentity();
     const signer = resolveLocalPlayerIndex(multiplayerRef.current);
+    const currentGame = gameRef.current;
+    const resolvedPublicCheckpointHash = providedPublicCheckpointHash
+      || (
+        currentGame && typeof currentGame.exportPublicAuditCheckpoint === "function"
+          ? await publicCheckpointHash(await currentGame.exportPublicAuditCheckpoint())
+          : null
+      );
+    if (!resolvedPublicCheckpointHash) {
+      throw new Error("Game engine cannot export a public audit checkpoint");
+    }
     return buildSignedActionEnvelope({
       keyPair,
       matchId: currentAuditMatchId(),
@@ -2227,8 +2257,25 @@ export function usePeerLobby({
       rngReveals: cloneMultiplayerPayload(rngReveals),
       shuffleProofs: cloneMultiplayerPayload(shuffleProofs),
       privateViewProofs: cloneMultiplayerPayload(privateViewProofs),
+      publicCheckpointHash: resolvedPublicCheckpointHash,
     });
   }, [currentAuditMatchId, ensureAuditIdentity]);
+
+  const verifyCurrentPublicCheckpointHash = useCallback(async (expectedHash, reason = "Public checkpoint hash mismatch") => {
+    const expected = String(expectedHash || "");
+    if (!expected) {
+      throw new Error("Sequenced audit is missing public checkpoint hash");
+    }
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.exportPublicAuditCheckpoint !== "function") {
+      throw new Error("Game engine cannot export a public audit checkpoint");
+    }
+    const actual = await publicCheckpointHash(await currentGame.exportPublicAuditCheckpoint());
+    if (actual !== expected) {
+      throw new Error(reason);
+    }
+    return actual;
+  }, []);
 
   const verifySequencedActionAudit = useCallback(
     async ({ audit, seq, actorIndex, command }) => {
@@ -2247,6 +2294,23 @@ export function usePeerLobby({
       if (canonicalMultiplayerPayload(audit.command) !== canonicalMultiplayerPayload(command)) {
         throw new Error("Sequenced audit command does not match broadcast action");
       }
+      if (!audit.publicCheckpointHash) {
+        throw new Error("Sequenced audit is missing public checkpoint hash");
+      }
+      const computedHash = await auditStateHash({
+        matchId: audit.matchId,
+        seq: Number(audit.seq),
+        prevStateHash: audit.prevStateHash,
+        command: audit.command,
+        openings: audit.openings || [],
+        rngReveals: audit.rngReveals || [],
+        shuffleProofs: audit.shuffleProofs || [],
+        privateViewProofs: audit.privateViewProofs || [],
+        publicCheckpointHash: audit.publicCheckpointHash,
+      });
+      if (computedHash !== String(audit.nextStateHash || "")) {
+        throw new Error("Sequenced audit next state hash is invalid");
+      }
       await verifyAuditOpeningsAgainstManifests(audit.openings || []);
       const signer = Number(audit.signer ?? audit.actor);
       if (signer !== Number(audit.actor)) {
@@ -2264,6 +2328,7 @@ export function usePeerLobby({
         rngReveals: audit.rngReveals || [],
         shuffleProofs: audit.shuffleProofs || [],
         privateViewProofs: audit.privateViewProofs || [],
+        publicCheckpointHash: audit.publicCheckpointHash,
         nextStateHash: audit.nextStateHash,
       };
       const valid = await verifyAuditPayload(publicKey, payload, audit.signature || "");
@@ -2361,12 +2426,40 @@ export function usePeerLobby({
         if (!reveal) {
           throw new Error("Missing transcripted fair-random reveal");
         }
+        const expectedPlayers = reindexPlayers(
+          matchStartPayloadRef.current?.players || multiplayerRef.current.players || []
+        ).map((player) => Number(player.index)).sort((left, right) => left - right);
+        const commits = Array.isArray(reveal.commits) ? reveal.commits : [];
+        const reveals = Array.isArray(reveal.reveals) ? reveal.reveals : [];
+        if (commits.length !== expectedPlayers.length || reveals.length !== expectedPlayers.length) {
+          throw new Error("Transcripted fair-random reveal must include every player");
+        }
+        for (let index = 0; index < expectedPlayers.length; index += 1) {
+          if (
+            Number(commits[index]?.player) !== expectedPlayers[index]
+            || Number(reveals[index]?.player) !== expectedPlayers[index]
+          ) {
+            throw new Error("Transcripted fair-random material must be sorted and complete");
+          }
+        }
+        const seenPlayers = new Set();
+        for (const commit of commits) {
+          const player = Number(commit?.player);
+          if (seenPlayers.has(player)) {
+            throw new Error("Transcripted fair-random material contains a duplicate player");
+          }
+          seenPlayers.add(player);
+        }
         for (const entry of reveal.reveals || []) {
           const expected = (reveal.commits || []).find(
             (commit) => Number(commit.player) === Number(entry.player)
           );
           const actual = await rngCommitmentForNonce(entry.nonceHex);
-          if (!expected || actual !== String(expected.commitmentHex || "")) {
+          if (
+            !expected
+            || actual !== String(expected.commitmentHex || "")
+            || (entry.commitmentHex && actual !== String(entry.commitmentHex || ""))
+          ) {
             throw new Error("Transcripted fair-random reveal does not match commitment");
           }
         }
@@ -2791,6 +2884,7 @@ export function usePeerLobby({
       matchStartPayloadRef.current = null;
       liveZiffleCeremoniesRef.current.clear();
       actionHistoryRef.current = [];
+      initialPublicCheckpointHashRef.current = "";
       updateMultiplayer(createEmptyState());
       if (message) {
         setStatus(message, Boolean(options.isError));
@@ -3028,6 +3122,11 @@ export function usePeerLobby({
         ? (await gameRef.current.uiState())?.decision?.player
         : null;
       const isTimeoutForfeit = isActionTimeoutForfeitCommand(message.command);
+      if (isForfeitCommand(message.command) && !isTimeoutForfeit) {
+        if (Number(message.command.player) !== Number(message.actorIndex)) {
+          throw new Error("A player can only forfeit themselves");
+        }
+      }
       if (isTimeoutForfeit) {
         const liveState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
         updateActionTimerForState(liveState);
@@ -3067,6 +3166,10 @@ export function usePeerLobby({
         audit: message.audit,
       });
       await revealLocalZiffleHand(matchStartPayloadRef.current);
+      await verifyCurrentPublicCheckpointHash(
+        message.audit?.publicCheckpointHash,
+        "Sequenced action public checkpoint hash does not match local state"
+      );
       if (gameRef.current) {
         updateActionTimerForState(await gameRef.current.uiState(), { reset: true });
       }
@@ -3473,11 +3576,56 @@ export function usePeerLobby({
     }));
   }
 
+  function playerIndexForPeerId(peerId) {
+    const peer = String(peerId || "");
+    const players = matchStartPayloadRef.current?.players || multiplayerRef.current.players || [];
+    const player = players.find((entry) => String(entry?.peerId || "") === peer);
+    return player?.index == null ? null : Number(player.index);
+  }
+
+  async function validateIncomingRngRequest(conn, message, label) {
+    const session = multiplayerRef.current;
+    if (!session.matchStarted) {
+      throw new Error(`${label} received before match start`);
+    }
+    if (String(message?.matchId || "") !== currentAuditMatchId()) {
+      throw new Error(`${label} belongs to a different match`);
+    }
+    const seq = Number(message?.seq);
+    const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
+    if (!Number.isInteger(seq) || seq !== expectedSeq) {
+      throw new Error(`${label} has an invalid action sequence`);
+    }
+    if (!String(message?.requirementId || "")) {
+      throw new Error(`${label} is missing a requirement id`);
+    }
+    const requester = playerIndexForPeerId(conn?.peer);
+    const decision = gameRef.current
+      ? (await gameRef.current.uiState())?.decision
+      : stateRef.current?.decision;
+    if (
+      requester == null
+      || decision?.player == null
+      || Number(decision.player) !== Number(requester)
+    ) {
+      throw new Error(`${label} was not sent by the active decision player`);
+    }
+    return {
+      matchId: currentAuditMatchId(),
+      seq,
+      requirementId: String(message.requirementId || ""),
+      requesterPeerId: String(conn?.peer || ""),
+      requesterPlayer: Number(requester),
+    };
+  }
+
   async function answerRngCommitRequest(conn, message) {
     try {
+      const request = await validateIncomingRngRequest(conn, message, "Random commitment request");
       const nonceHex = randomAuditHex(32);
       const commitmentHex = await rngCommitmentForNonce(nonceHex);
       rngCommitNoncesRef.current.set(String(message.requestId || ""), {
+        ...request,
         nonceHex,
         commitmentHex,
       });
@@ -3506,6 +3654,16 @@ export function usePeerLobby({
       if (!stored) {
         throw new Error("Unknown random commitment request");
       }
+      const request = await validateIncomingRngRequest(conn, message, "Random reveal request");
+      if (
+        request.matchId !== stored.matchId
+        || Number(request.seq) !== Number(stored.seq)
+        || request.requirementId !== stored.requirementId
+        || request.requesterPeerId !== stored.requesterPeerId
+      ) {
+        throw new Error("Random reveal request does not match the commitment request");
+      }
+      rngCommitNoncesRef.current.delete(String(message.commitRequestId || ""));
       safeSend(conn, {
         type: "rng_reveal_response",
         protocolVersion: PROTOCOL_VERSION,
@@ -3528,7 +3686,7 @@ export function usePeerLobby({
 
   async function collectFairRandomReveal(requirement, seq) {
     const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
-    const localIndex = resolveLocalCryptoPlayerIndex(payload);
+    const localIndex = resolveLocalCryptoPlayerIndex();
     const commits = [];
     const revealRequests = [];
     for (const player of players) {
@@ -3552,6 +3710,12 @@ export function usePeerLobby({
           requirementId: String(requirement.id || ""),
         });
         const commitment = await waiter;
+        if (Number(commitment?.player) !== Number(player.index)) {
+          throw new Error("Random commitment response came from the wrong player");
+        }
+        if (!String(commitment?.commitmentHex || "")) {
+          throw new Error("Random commitment response is missing its commitment");
+        }
         commits.push({
           player: Number(commitment.player),
           commitmentHex: String(commitment.commitmentHex || ""),
@@ -3582,7 +3746,11 @@ export function usePeerLobby({
           seq: Number(seq),
           requirementId: String(requirement.id || ""),
         });
-        reveals.push(await waiter);
+        const reveal = await waiter;
+        if (Number(reveal?.player) !== Number(request.player.index)) {
+          throw new Error("Random reveal response came from the wrong player");
+        }
+        reveals.push(reveal);
       }
     }
     reveals.sort((a, b) => Number(a.player) - Number(b.player));
@@ -3916,6 +4084,12 @@ export function usePeerLobby({
       actionHistoryRef.current = [];
       relayedActionIdsRef.current.clear();
       auditStateHashRef.current = INITIAL_AUDIT_STATE_HASH;
+      const initialPublicCheckpointHash = await publicCheckpointHash(
+        await currentGame.exportPublicAuditCheckpoint()
+      );
+      initialPublicCheckpointHashRef.current = initialPublicCheckpointHash;
+      payload.initialPublicCheckpointHash = initialPublicCheckpointHash;
+      matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       liveAuditTranscriptRef.current = {
         version: 1,
         kind: "ironsmith-live-browser-audit-v1",
@@ -3936,6 +4110,7 @@ export function usePeerLobby({
         deckAuditManifests: (payload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(payload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
+        initialPublicCheckpointHash,
         actions: [],
       };
       writeStoredPlayerIndex(payload.lobbyId || payload.hostPeerId, localEntry.index);
@@ -4029,6 +4204,20 @@ export function usePeerLobby({
         ? [...message.actions].sort((left, right) => Number(left?.seq || 0) - Number(right?.seq || 0))
         : [];
       await verifySignedMatchGenesis(matchPayload);
+      const verifyTranscriptShuffleProof = async (proof) => {
+        if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
+          throw new Error("Ziffle mental-poker backend is not available");
+        }
+        const verified = await currentGame.ziffleVerifyShuffle({
+          deckCount: Number(proof.deckCount),
+          context: String(proof.context || ""),
+          keys: cloneMultiplayerPayload(proof.keys || []),
+          steps: cloneMultiplayerPayload(proof.steps || []),
+        });
+        if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
+          throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
+        }
+      };
       const transcriptReport = await verifyLiveAuditTranscript({
         version: 1,
         kind: "ironsmith-live-browser-audit-v1",
@@ -4049,9 +4238,24 @@ export function usePeerLobby({
         deckAuditManifests: (matchPayload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(matchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
+        initialPublicCheckpointHash: matchPayload.initialPublicCheckpointHash || "",
         actions: actionEntries.map((entry) => cloneMultiplayerPayload(entry)),
-      });
-      const resyncSigner = Number(message?.resyncEnvelope?.signer ?? matchPayload.genesis?.hostSeat ?? 0);
+      }, globalThis.crypto, { verifyShuffleProof: verifyTranscriptShuffleProof });
+      const payloadHostPeerId = String(matchPayload.hostPeerId || "").trim();
+      const expectedHostPeerId = String(currentSession.hostPeerId || "").trim();
+      if (payloadHostPeerId && expectedHostPeerId && payloadHostPeerId !== expectedHostPeerId) {
+        throw new Error("Resync payload was not sent by the current match host");
+      }
+      const currentHostPlayer = (matchPayload.players || []).find(
+        (player) => String(player?.peerId || "").trim() === (payloadHostPeerId || expectedHostPeerId)
+      );
+      const expectedHostSeat = normalizePlayerIndex(currentHostPlayer?.index)
+        ?? normalizePlayerIndex(matchPayload.genesis?.hostSeat)
+        ?? 0;
+      const resyncSigner = normalizePlayerIndex(message?.resyncEnvelope?.signer) ?? expectedHostSeat;
+      if (resyncSigner !== expectedHostSeat) {
+        throw new Error("Resync envelope was not signed by the match host");
+      }
       const signerPlayer = (matchPayload.players || []).find(
         (player) => Number(player.index) === resyncSigner
       );
@@ -4068,11 +4272,47 @@ export function usePeerLobby({
       ) {
         throw new Error("Resync transcript final hash does not match signed envelope");
       }
+      const finalAction = actionEntries.at(-1);
+      const finalPublicCheckpointHash = finalAction?.audit?.publicCheckpointHash || "";
+      if (actionEntries.length > 0 && !finalPublicCheckpointHash) {
+        throw new Error("Resync transcript is missing final public checkpoint hash");
+      }
+      const expectedPublicCheckpointHash = actionEntries.length > 0
+        ? finalPublicCheckpointHash
+        : (
+          matchPayload.initialPublicCheckpointHash
+          || initialPublicCheckpointHashRef.current
+          || ""
+        );
 
-      const nextState = await currentGame.importSyncCheckpoint(
-        message.checkpoint,
-        localEntry.index,
-      );
+      const rollbackCheckpoint = typeof currentGame.exportSyncCheckpoint === "function"
+        ? await currentGame.exportSyncCheckpoint()
+        : null;
+      let nextState;
+      try {
+        nextState = await currentGame.importSyncCheckpoint(
+          message.checkpoint,
+          localEntry.index,
+        );
+        if (expectedPublicCheckpointHash) {
+          await verifyCurrentPublicCheckpointHash(
+            expectedPublicCheckpointHash,
+            "Resync checkpoint public state does not match the signed action transcript"
+          );
+        }
+      } catch (err) {
+        if (rollbackCheckpoint) {
+          try {
+            await currentGame.importSyncCheckpoint(
+              rollbackCheckpoint,
+              currentSession.localPlayerIndex ?? localEntry.index
+            );
+          } catch {
+            // Keep the resync verification error as the actionable failure.
+          }
+        }
+        throw err;
+      }
       setState(nextState);
       const actionTimer = updateActionTimerForState(nextState, { reset: true });
 
@@ -4088,6 +4328,10 @@ export function usePeerLobby({
       relayedActionIdsRef.current.clear();
       auditStateHashRef.current =
         actionEntries.at(-1)?.audit?.nextStateHash || INITIAL_AUDIT_STATE_HASH;
+      initialPublicCheckpointHashRef.current =
+        matchPayload.initialPublicCheckpointHash
+        || transcriptReport.initialPublicCheckpointHash
+        || initialPublicCheckpointHashRef.current;
       liveAuditTranscriptRef.current = {
         version: 1,
         kind: "ironsmith-live-browser-audit-v1",
@@ -4108,6 +4352,7 @@ export function usePeerLobby({
         deckAuditManifests: (matchPayload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(matchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
+        initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
         actions: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
       };
       writeStoredPlayerIndex(matchPayload.lobbyId || matchPayload.hostPeerId, localEntry.index);
@@ -4148,6 +4393,7 @@ export function usePeerLobby({
       setState,
       setStatus,
       updateMultiplayer,
+      verifyCurrentPublicCheckpointHash,
     ]
   );
 
@@ -5382,9 +5628,19 @@ export function usePeerLobby({
             }
             targetPlayerIndex = requestedPlayerIndex;
           } else {
-            const disconnectedSlot = [...indexedPlayers]
+            const disconnectedSlots = [...indexedPlayers]
               .sort((left, right) => Number(left.index || 0) - Number(right.index || 0))
-              .find((player) => player.connected === false);
+              .filter((player) => player.connected === false);
+            const matchingDisconnectedSlot = session.matchStarted
+              ? disconnectedSlots.find((player) =>
+                  playerMatchesPresentedAuditIdentity(
+                    player,
+                    message.auditPublicKey,
+                    message.auditEncryptionPublicKey
+                  )
+                )
+              : null;
+            const disconnectedSlot = matchingDisconnectedSlot || disconnectedSlots[0] || null;
             if (disconnectedSlot) {
               targetPlayerIndex = Number(disconnectedSlot.index);
             } else if (!session.matchStarted && indexedPlayers.length < session.desiredPlayers) {
@@ -5408,16 +5664,20 @@ export function usePeerLobby({
 	            const existingSlot = indexedPlayers.find(
 	              (player) => Number(player.index) === targetPlayerIndex
 	            );
-		            const expectedAuditKey = String(existingSlot?.auditPublicKey || "").trim();
-		            const presentedAuditKey = String(message.auditPublicKey || "").trim();
-		            const expectedEncryptionKey = String(existingSlot?.auditEncryptionPublicKey || "").trim();
-		            const presentedEncryptionKey = String(message.auditEncryptionPublicKey || "").trim();
-		            if (
-		              (expectedAuditKey && presentedAuditKey !== expectedAuditKey)
-		              || (expectedEncryptionKey && presentedEncryptionKey !== expectedEncryptionKey)
-		            ) {
-		              safeSend(conn, {
-		                type: "reject",
+            const expectedAuditKey = String(existingSlot?.auditPublicKey || "").trim();
+            const presentedAuditKey = String(message.auditPublicKey || "").trim();
+            const expectedEncryptionKey = String(existingSlot?.auditEncryptionPublicKey || "").trim();
+            const presentedEncryptionKey = String(message.auditEncryptionPublicKey || "").trim();
+            if (
+              !expectedAuditKey
+              || !presentedAuditKey
+              || presentedAuditKey !== expectedAuditKey
+              || !expectedEncryptionKey
+              || !presentedEncryptionKey
+              || presentedEncryptionKey !== expectedEncryptionKey
+            ) {
+              safeSend(conn, {
+                type: "reject",
 		                protocolVersion: PROTOCOL_VERSION,
 		                reason: "Reconnect audit identity does not match the player slot",
 	              });
@@ -6829,6 +7089,11 @@ export function usePeerLobby({
           ? (await gameRef.current.uiState())?.decision?.player
           : null;
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
+        if (isForfeitCommand(command) && !isTimeoutForfeit) {
+          if (Number(command.player) !== Number(session.localPlayerIndex)) {
+            throw new Error("A player can only forfeit themselves");
+          }
+        }
         if (isTimeoutForfeit) {
           const liveState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
           updateActionTimerForState(liveState);
@@ -6914,6 +7179,10 @@ export function usePeerLobby({
           requirements: appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements,
           audit,
         });
+        await verifyCurrentPublicCheckpointHash(
+          audit.publicCheckpointHash,
+          "Local public checkpoint hash does not match signed action"
+        );
         if (gameRef.current) {
           updateActionTimerForState(await gameRef.current.uiState(), { reset: true });
         }
@@ -6933,6 +7202,7 @@ export function usePeerLobby({
       buildSequencedActionAudit,
       verifySequencedActionAudit,
       verifyAuditSatisfiesCryptoRequirements,
+      verifyCurrentPublicCheckpointHash,
       setStatus,
       updateMultiplayer,
       waitForPeerResyncs,

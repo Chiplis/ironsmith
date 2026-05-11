@@ -142,48 +142,81 @@ export function registerPortedMageTests(fileSpec) {
       if (process.env.MAGE_PORT_TEST_START_TRACE) {
         console.error(`[mage-port-test-start] ${fileSpec.sourcePath} :: ${testSpec.name}`);
       }
-      const context = await createMagePortContext(fileSpec, testSpec, runtimePromise);
-      await runOperations(context, testSpec.operations || []);
+      let context = null;
+      try {
+        context = await createMagePortContext(fileSpec, testSpec, runtimePromise);
+        await runOperations(context, testSpec.operations || []);
+      } finally {
+        freeMagePortContext(context);
+      }
     });
   }
 }
 
 async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) {
   const runtime = runtimePromise ? await runtimePromise : await initWasmGame({ pkg: fileSpec.pkg || "root" });
-  const game = runtime.game ?? new runtime.wasmModule.WasmGame();
-  const playerNames = playerNamesForTest(testSpec);
-  startEmptyMatch(game, {
-    playerNames,
-    startingLife: 20,
-    seed: testSpec.seed || 1,
-    openingHandSize: 0,
-    decks: playerNames.map(() => defaultMageLibrary()),
-  });
-  game.setAutoChooseSingleObjectDecisions?.(false);
-  const context = {
-    game,
-    scheduled: [],
-    choices: [],
-    castingMethods: [],
-    distributionChoices: [],
-    targets: [],
-    modes: [],
-    attackingBands: [],
-    pendingAdditionalCombats: 0,
-    syntheticExileCounts: new Map(),
-    syntheticTappedCounts: new Map(),
-    syntheticTransformedObjects: new Map(),
-    daytime: javaTestStartsAtNight(fileSpec.sourcePath, testSpec.name) ? false : null,
-    tavernLockedBack: false,
-    stopAt: null,
-    strict: false,
-    javaVariables: readJavaNumericVariables(fileSpec.sourcePath),
-    sourcePath: fileSpec.sourcePath,
-    testName: testSpec.name,
-  };
-  await runOperations(context, fileSpec.setupOperations || []);
-  await runOperations(context, testSpec.setupOperations || []);
-  return context;
+  const existingGame = runtime.game;
+  const ownsGame = !existingGame || !runtimePromise;
+  const game = existingGame ?? new runtime.wasmModule.WasmGame();
+  try {
+    const playerNames = playerNamesForTest(testSpec);
+    startEmptyMatch(game, {
+      playerNames,
+      startingLife: 20,
+      seed: testSpec.seed || 1,
+      openingHandSize: 0,
+      decks: playerNames.map(() => defaultMageLibrary()),
+    });
+    game.setAutoChooseSingleObjectDecisions?.(false);
+    const context = {
+      game,
+      ownsGame,
+      scheduled: [],
+      choices: [],
+      castingMethods: [],
+      distributionChoices: [],
+      targets: [],
+      modes: [],
+      lastBooleanChoice: null,
+      attackingBands: [],
+      pendingAdditionalCombats: 0,
+      syntheticExileCounts: new Map(),
+      syntheticTappedCounts: new Map(),
+      syntheticTransformedObjects: new Map(),
+      daytime: javaTestStartsAtNight(fileSpec.sourcePath, testSpec.name) ? false : null,
+      tavernLockedBack: false,
+      stopAt: null,
+      strict: false,
+      javaVariables: readJavaNumericVariables(fileSpec.sourcePath),
+      sourcePath: fileSpec.sourcePath,
+      testName: testSpec.name,
+    };
+    await runOperations(context, fileSpec.setupOperations || []);
+    await runOperations(context, testSpec.setupOperations || []);
+    return context;
+  } catch (error) {
+    if (ownsGame) freeWasmGame(game);
+    throw error;
+  }
+}
+
+function freeMagePortContext(context) {
+  if (!context) return;
+  if (context.ownsGame !== false) {
+    freeWasmGame(context.game);
+  }
+  context.game = null;
+}
+
+function freeWasmGame(game) {
+  if (!game || typeof game.free !== "function") return;
+  try {
+    game.free();
+  } catch (error) {
+    if (process.env.MAGE_PORT_TRACE || process.env.MAGE_PORT_TEST_START_TRACE) {
+      console.error(`[mage-port-cleanup] failed to free WasmGame: ${error?.stack || error}`);
+    }
+  }
 }
 
 function javaTestStartsAtNight(sourcePath, testName) {
@@ -530,7 +563,14 @@ async function applySupportedJavaHelper(context, operation) {
   if (destroy) {
     const player = playerIndex(destroy[1]);
     const count = Number(destroy[2] || 1);
-    for (let index = 0; index < count; index += 1) {
+    if (count > 1) {
+      addCustomEffectTargetDestroy(context.game, {
+        player,
+        name: "target destroy",
+        manaCost: "{0}",
+        oracleText: `Destroy up to ${numberWord(count)} target creatures.`,
+      });
+    } else {
       addCustomEffectTargetDestroy(context.game, { player, name: "target destroy", manaCost: "{0}" });
     }
     return;
@@ -917,6 +957,15 @@ async function executeScheduledActions(context, until = null, options = {}) {
           return { id, name: details?.name ?? entry.name ?? entry.object_name ?? entry.sourceName ?? entry.source_name, isAbility: entry.isAbility ?? entry.is_ability, targets: entry.targets || [], abilities: details?.abilities || [], compiledText: details?.compiled_text || details?.compiledText || [], rawHasAdditionalPhases: String(details?.raw_compilation || details?.rawCompilation || "").includes("AdditionalPhasesEffect") };
         }))}; next=${nextOperation?.op || ""} same=${Boolean(sameScheduledTime)}`,
       );
+    }
+    if (
+      settleAfterCast &&
+      sameScheduledTime &&
+      nextOperation?.waitForStack === "WHILE_NOT_ON_STACK" &&
+      (operation.op === "castSpell" || operation.op === "activateAbility")
+    ) {
+      await settleStack(context);
+      continue;
     }
     if (
       settleAfterCast &&
@@ -2402,7 +2451,9 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
     }
     traceDecision(context, safety, decision);
     if (decision.kind === "targets") {
-      const target = chooseTarget(decision, nextTargetChoice(context, decision, immediateTarget));
+      context.lastBooleanChoice = null;
+      const target = chooseTarget(context, decision, nextTargetChoice(context, decision, immediateTarget));
+      immediateTarget = undefined;
       if (process.env.MAGE_PORT_DECISION_TRACE) {
         console.error(
           `[mage-port-targets] ${context.sourcePath} :: ${context.testName} ${JSON.stringify(Array.isArray(target) ? target : [target])}`,
@@ -2412,13 +2463,16 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
       continue;
     }
     if (decision.kind === "boolean") {
+      const choice = Boolean(nextChoice(context, true));
+      context.lastBooleanChoice = choice;
       context.game.dispatch({
         type: "select_options",
-        option_indices: [Boolean(nextChoice(context, true)) ? 1 : 0],
+        option_indices: [choice ? 1 : 0],
       });
       continue;
     }
     if (decision.kind === "modes") {
+      context.lastBooleanChoice = null;
       const choice = context.modes.shift() ?? context.choices.shift();
       const mode = chooseMode(decision, choice);
       context.game.dispatch({ type: "select_options", option_indices: [mode] });
@@ -2441,6 +2495,9 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
           `[mage-port-selection] ${context.sourcePath} :: ${context.testName} ${JSON.stringify(selected.map(optionIndex))}`,
         );
       }
+      context.lastBooleanChoice = isBooleanOptionDecision(decision)
+        ? optionBooleanValue(selected[0])
+        : null;
       context.game.dispatch({
         type: "select_options",
         option_indices: selected.map(optionIndex),
@@ -2538,11 +2595,22 @@ function nextSelectObjectsChoice(context, decision) {
     context.choices.shift();
     return nextQueuedTarget(context, decision.player);
   }
+  if (
+    context.lastBooleanChoice === true &&
+    Number(decision.min ?? 1) === 0 &&
+    !isHiddenObjectSelectionDecision(decision)
+  ) {
+    context.lastBooleanChoice = null;
+    const candidates = (decision.candidates || []).filter((candidate) => candidate.legal !== false);
+    if (candidates.length > 0) return objectChoiceId(candidates[0]);
+  }
   if (queuedChoice === false && Number(decision.min ?? 1) === 0) {
     context.choices.shift();
+    context.lastBooleanChoice = null;
     return [];
   }
   if (queuedChoice !== undefined) return nextQueuedObjectChoices(context, decision);
+  context.lastBooleanChoice = null;
   return nextQueuedTarget(context, decision.player);
 }
 
@@ -2675,7 +2743,6 @@ function nextCostChoiceForQueuedObject(context, decision) {
   if (conspireCost) return conspireCost;
   const nextChoice = context.choices[0];
   const hasQueuedObjectChoice =
-    context.targets.length > 0 ||
     (typeof nextChoice === "string" && nextChoice.trim().length > 0);
   if (!hasQueuedObjectChoice) return null;
   return (decision.options || []).find((option) => {
@@ -2720,6 +2787,9 @@ function nextTargetChoice(context, decision, immediateTarget = undefined) {
     const requirement = requirements[0];
     const maxTargets = Number(requirement.max_targets ?? requirement.maxTargets ?? 1);
     if (maxTargets > 1) {
+      if (parseCompoundTargetChoice(immediateTarget).length >= maxTargets) {
+        return immediateTarget;
+      }
       const targets = [immediateTarget];
       for (let index = targets.length; index < maxTargets; index += 1) {
         const queued = nextQueuedTarget(context, decision.player);
@@ -2788,7 +2858,7 @@ function traceDecision(context, index, decision) {
   );
 }
 
-function chooseTarget(decision, wanted) {
+function chooseTarget(context, decision, wanted) {
   const requirements = decision.requirements || [];
   if (
     (wanted === undefined || wanted === null) &&
@@ -2800,7 +2870,12 @@ function chooseTarget(decision, wanted) {
   const wantedParts = parseCompoundTargetChoice(wanted);
   if (wantedParts.length > 1 && requirements.length > 1) {
     return requirements.map((requirement, index) =>
-      chooseLegalTarget(requirement.legal_targets || [], wantedParts[index] ?? wantedParts[wantedParts.length - 1]),
+      chooseLegalTarget(
+        context,
+        requirement.legal_targets || [],
+        wantedParts[index] ?? wantedParts[wantedParts.length - 1],
+        decision.player,
+      ),
     );
   }
 
@@ -2808,14 +2883,17 @@ function chooseTarget(decision, wanted) {
   if (wantedParts.length > 1 && requirements.length === 1) {
     const selected = [];
     for (const wantedPart of wantedParts) {
-      const target = chooseLegalTarget(legalTargets, wantedPart);
+      const availableTargets = legalTargets.filter((target) =>
+        !selected.some((existing) => sameTargetChoice(existing, target)),
+      );
+      const target = chooseLegalTarget(context, availableTargets.length > 0 ? availableTargets : legalTargets, wantedPart, decision.player);
       if (!selected.some((existing) => sameTargetChoice(existing, target))) {
         selected.push(target);
       }
     }
     return selected;
   }
-  return chooseLegalTarget(legalTargets, wantedParts[0] ?? wanted);
+  return chooseLegalTarget(context, legalTargets, wantedParts[0] ?? wanted, decision.player);
 }
 
 function sameTargetChoice(left, right) {
@@ -2825,12 +2903,22 @@ function sameTargetChoice(left, right) {
   );
 }
 
-function chooseLegalTarget(legalTargets, wanted) {
+function chooseLegalTarget(context, legalTargets, wanted, decisionPlayer = undefined) {
   assert(legalTargets.length > 0, "target decision has no legal targets");
   if (wanted === undefined || wanted === null) {
+    const chooser = Number(decisionPlayer);
+    if (Number.isFinite(chooser)) {
+      const opponent = legalTargets.find((target) => target.kind === "player" && Number(target.player) !== chooser);
+      if (opponent) return opponent;
+    }
     return legalTargets.find((target) => target.kind === "player" && Number(target.player) === 1) ?? legalTargets[0];
   }
   if (typeof wanted === "string") {
+    const onlyCopyMatch = wanted.match(/^(.*?)\s*\[\s*only\s+copy\s*\]\s*$/i);
+    if (onlyCopyMatch) {
+      const copy = chooseOnlyCopyTarget(context, legalTargets, onlyCopyMatch[1]);
+      if (copy) return copy;
+    }
     const lowered = cardName(wanted).toLowerCase();
     const matched = legalTargets.find((target) => {
       if (target.kind === "player") return playerName(Number(target.player)).toLowerCase() === lowered;
@@ -2844,6 +2932,53 @@ function chooseLegalTarget(legalTargets, wanted) {
     if (matched) return matched;
   }
   return legalTargets[0];
+}
+
+function chooseOnlyCopyTarget(context, legalTargets, rawName) {
+  const baseName = cardName(rawName).toLowerCase();
+  const objectTargets = legalTargets.filter((target) => target.kind !== "player");
+  const originals = objectTargets.filter((target) =>
+    String(target.name || target.object_name || target.label || "").toLowerCase().includes(baseName),
+  );
+  const copyCandidates = objectTargets.filter((target) =>
+    !String(target.name || target.object_name || target.label || "").toLowerCase().includes(baseName),
+  );
+  if (copyCandidates.length === 0) return originals[0] ?? null;
+
+  const originalAbilityText = new Set(
+    originals.flatMap((target) => objectTargetAbilities(context, target).map(normalizeAbilityText)),
+  );
+  if (originalAbilityText.size > 0) {
+    const sharedAbilityCandidate = copyCandidates.find((target) =>
+      objectTargetAbilities(context, target)
+        .map(normalizeAbilityText)
+        .some((ability) => ability && originalAbilityText.has(ability)),
+    );
+    if (sharedAbilityCandidate) return sharedAbilityCandidate;
+  }
+
+  return copyCandidates.find((target) =>
+    JSON.stringify(safeObjectDetails(context, target)).toLowerCase().includes("copy"),
+  ) ?? copyCandidates[copyCandidates.length - 1];
+}
+
+function objectTargetAbilities(context, target) {
+  const details = safeObjectDetails(context, target);
+  return Array.isArray(details?.abilities) ? details.abilities : [];
+}
+
+function safeObjectDetails(context, target) {
+  const id = target.object ?? target.id;
+  if (id === undefined || id === null) return null;
+  try {
+    return getObjectDetails(context.game, id);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAbilityText(text) {
+  return String(text || "").trim().toLowerCase();
 }
 
 function parseCompoundTargetChoice(wanted) {
@@ -2998,29 +3133,36 @@ function chooseOptions(context, decision, wanted) {
   }
 
   if (wanted !== null && wanted !== undefined && isTriggeredAbilityOrderDecision(decision)) {
-    const bottomChoices = [chooseOption(context, decision, wanted)];
+    const bottomChoices = [];
+    const bottomIndices = new Set();
+    const firstChoice = findMatchingUnchosenOption(decision, wanted, bottomIndices) ?? chooseOption(context, decision, wanted);
+    bottomChoices.push(firstChoice);
+    bottomIndices.add(optionIndex(firstChoice));
     while (bottomChoices.length < desiredCount - 1 && context.choices.length > 0) {
       const next = context.choices[0];
-      const option = findMatchingOption(decision, next);
+      const option = findMatchingUnchosenOption(decision, next, bottomIndices);
       if (!option) break;
       context.choices.shift();
       bottomChoices.push(option);
+      bottomIndices.add(optionIndex(option));
     }
-    for (const option of bottomChoices) {
-      addOptionSelection(selected, counts, option);
-    }
-    const bottomIndices = new Set(bottomChoices.map(optionIndex));
     for (const option of legalOptions) {
       if (selected.length >= desiredCount || bottomIndices.has(optionIndex(option))) continue;
       while (selected.length < desiredCount && canSelectOption(option, counts)) {
         addOptionSelection(selected, counts, option);
       }
     }
+    for (const option of [...bottomChoices].reverse()) {
+      addOptionSelection(selected, counts, option);
+    }
     return selected;
   }
 
   if (wanted !== null && wanted !== undefined) {
     addOptionSelection(selected, counts, chooseOption(context, decision, wanted));
+    if (isBooleanOptionDecision(decision) && typeof wanted === "boolean") {
+      return selected;
+    }
     if (isDistributionDecision(decision)) {
       const distributionQueue = context.distributionChoices;
       while (selected.length < desiredCount && distributionQueue.length > 0) {
@@ -3086,10 +3228,18 @@ function firstApplyingReplacementOption(options) {
 }
 
 function findMatchingOption(decision, wanted) {
-  const text = String(wanted).toLowerCase();
+  return (decision.options || []).find((option) => optionMatchesWanted(option, wanted));
+}
+
+function findMatchingUnchosenOption(decision, wanted, excludedIndices) {
   return (decision.options || []).find((option) =>
-    String(option.label ?? option.text ?? option.name ?? option.description ?? "").toLowerCase().includes(text),
+    !excludedIndices.has(optionIndex(option)) && optionMatchesWanted(option, wanted),
   );
+}
+
+function optionMatchesWanted(option, wanted) {
+  const text = String(wanted).toLowerCase();
+  return String(option.label ?? option.text ?? option.name ?? option.description ?? "").toLowerCase().includes(text);
 }
 
 function addOptionSelection(selected, counts, option) {
@@ -3109,6 +3259,11 @@ function canSelectOption(option, counts) {
 
 function optionIndex(option) {
   return Number(option.index ?? option.id ?? 0);
+}
+
+function numberWord(value) {
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  return words[Number(value)] ?? String(value);
 }
 
 function manaSymbolsInOption(option) {
@@ -3153,6 +3308,9 @@ function chooseObjectCandidates(decision, wanted) {
   const max = decision.max === null || decision.max === undefined ? candidates.length : Number(decision.max);
   const wantedParts = parseCompoundTargetChoice(wanted);
   if (wantedParts.length === 0 && Number(decision.min ?? 1) === 0) {
+    if (String(decision.description ?? "").toLowerCase().includes("untap")) {
+      return candidates.slice(0, max);
+    }
     return [];
   }
   const desiredCount = Math.min(Math.max(1, Number(decision.min ?? 1), wantedParts.length), max);
@@ -3212,7 +3370,17 @@ function nextOptionChoice(context, decision) {
   if (isHybridOrPhyrexianPaymentChoiceDecision(decision) && !isBooleanChoiceValue(queued) && !findMatchingOption(decision, queued)) {
     return null;
   }
-  if (isBooleanOptionDecision(decision) && !isBooleanChoiceValue(queued) && !findMatchingOption(decision, queued)) {
+  if (isBooleanOptionDecision(decision)) {
+    if (isBooleanChoiceValue(queued) || findMatchingOption(decision, queued)) {
+      return context.choices.shift();
+    }
+    const booleanChoiceIndex = context.choices.findIndex(isBooleanChoiceValue);
+    if (booleanChoiceIndex >= 0) {
+      return context.choices.splice(booleanChoiceIndex, 1)[0];
+    }
+    return null;
+  }
+  if (isBooleanChoiceValue(queued) && !findMatchingOption(decision, queued)) {
     return null;
   }
   return context.choices.shift();
@@ -3229,6 +3397,13 @@ function isBooleanOptionDecision(decision) {
     String(option.label ?? option.text ?? option.name ?? option.description ?? "").trim().toLowerCase(),
   );
   return labels.includes("yes") && labels.includes("no");
+}
+
+function optionBooleanValue(option) {
+  const label = String(option?.label ?? option?.text ?? option?.name ?? option?.description ?? "").trim();
+  if (/^(yes|true)$/i.test(label)) return true;
+  if (/^(no|false)$/i.test(label)) return false;
+  return null;
 }
 
 function isBooleanChoiceValue(value) {
@@ -3949,7 +4124,11 @@ function cardName(raw) {
     .replace(/^"(.+)"$/, "$1")
     .replace(/^'(.+)'$/, "$1")
     .split("@", 1)[0]
-    .replace(/\s+(?:using|with)\s+.+$/i, "")
+    .replace(/\s+using\s+.+$/i, "")
+    .replace(
+      /\s+with\s+(?:alternative cost.*|awaken|emerge|escape|freerunning.*|jump-start|kicker|no alternative cost|overload|prowl.*|prototype|retrace|spectacle|surge)$/i,
+      "",
+    )
     .replace(/^Cast\s+/i, "");
 }
 

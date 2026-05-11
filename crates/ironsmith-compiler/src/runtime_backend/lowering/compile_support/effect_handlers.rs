@@ -20,9 +20,11 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),
-        TriggerSpec::PutIntoGraveyard(filter) => Ok(
-            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(filter.clone()),
-        ),
+        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(
+                filter.clone(),
+            ))
+        }
         TriggerSpec::PutIntoGraveyardFromZone {
             filter,
             from,
@@ -274,7 +276,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
-                TriggerSpec::PutIntoGraveyard(filter) => {
+                TriggerSpec::PutIntoGraveyard(filter)
+                | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let lowered = compile_trigger_effects_with_imports(

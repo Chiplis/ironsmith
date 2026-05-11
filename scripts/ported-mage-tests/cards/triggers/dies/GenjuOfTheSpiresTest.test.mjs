@@ -41,7 +41,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{T}, Sacrifice",
-          "target": "Mountain"
+          "target": "Mountain",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "setStopAt",

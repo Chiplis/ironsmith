@@ -916,6 +916,9 @@ function PriorityActionStrip({
             <button
               key={key}
               type="button"
+              data-local-action={canAct && isPrimaryCycle ? "true" : "false"}
+              aria-disabled={!canAct || !isPrimaryCycle}
+              disabled={!canAct || !isPrimaryCycle}
               aria-hidden={isPrimaryCycle ? undefined : true}
               tabIndex={isPrimaryCycle ? undefined : -1}
               ref={setNodeRef}

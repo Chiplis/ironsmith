@@ -305,12 +305,16 @@ def translate_call(name, args, constants, source, ability_vars=None):
             target = first_target_arg(values[4:])
             if target is not None:
                 op["target"] = target
+            if has_stack_clause(values[4:], "StackClause.WHILE_NOT_ON_STACK"):
+                op["waitForStack"] = "WHILE_NOT_ON_STACK"
             return op
         if name == "activateAbility":
             op = {"op": "activateAbility", "turn": values[0], "phase": values[1], "player": values[2], "ability": values[3]}
             target = first_target_arg(values[4:])
             if target is not None:
                 op["target"] = target
+            if has_stack_clause(values[4:], "StackClause.WHILE_NOT_ON_STACK"):
+                op["waitForStack"] = "WHILE_NOT_ON_STACK"
             return op
         if name == "activateManaAbility":
             return {
@@ -511,6 +515,10 @@ def first_target_arg(values):
             continue
         return value
     return None
+
+
+def has_stack_clause(values, clause):
+    return any(isinstance(value, str) and value == clause for value in values)
 
 
 def parse_value(raw, constants):

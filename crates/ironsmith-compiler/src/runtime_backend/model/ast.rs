@@ -219,6 +219,7 @@ pub(crate) enum TriggerSpec {
     DiesOneOrMore(ObjectFilter),
     HauntedCreatureDies,
     PutIntoGraveyard(ObjectFilter),
+    PutIntoGraveyardOneOrMore(ObjectFilter),
     PutIntoGraveyardFromZone {
         filter: ObjectFilter,
         from: Zone,

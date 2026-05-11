@@ -345,6 +345,13 @@ impl WasmGame {
                 zone,
                 slot: input.original_slot,
                 commitment: input.commitment.clone().unwrap_or_default(),
+                public_slot: Some(input.position),
+                public_commitment: Some(
+                    input
+                        .position_commitment
+                        .clone()
+                        .unwrap_or_else(|| info.commitment.clone()),
+                ),
             },
         );
         self.registry
@@ -475,6 +482,8 @@ impl WasmGame {
                     zone: Zone::Library,
                     slot: position as u16,
                     commitment: format!("ziffle:{}:{}", input.deck_hash, position),
+                    public_slot: None,
+                    public_commitment: None,
                 },
             );
         }
@@ -1538,6 +1547,9 @@ impl WasmGame {
     /// preserving the broader epoch rollback as a fallback.
     #[wasm_bindgen(js_name = cancelDecision)]
     pub fn cancel_decision(&mut self) -> Result<JsValue, JsValue> {
+        if !self.is_cancelable() {
+            return Err(JsValue::from_str("current decision cannot be cancelled"));
+        }
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref().cloned() {
             self.restore_replay_checkpoint(&checkpoint);
         } else if let Some(checkpoint) = self

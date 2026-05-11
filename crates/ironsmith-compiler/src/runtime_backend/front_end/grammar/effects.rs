@@ -408,7 +408,9 @@ const CHOOSE_NEW_TARGET_REFERENCE_PREFIXES: &[&[&str]] = &[
     &["it"],
     &["them"],
     &["the", "copy"],
+    &["the", "copies"],
     &["that", "copy"],
+    &["those", "copies"],
     &["the", "spell"],
     &["that", "spell"],
 ];

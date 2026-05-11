@@ -122,6 +122,8 @@ pub struct HiddenCardInfo {
     pub zone: Zone,
     pub slot: u16,
     pub commitment: String,
+    pub public_slot: Option<u16>,
+    pub public_commitment: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2960,6 +2962,8 @@ impl GameState {
                 zone,
                 slot,
                 commitment,
+                public_slot: None,
+                public_commitment: None,
             },
         );
         id

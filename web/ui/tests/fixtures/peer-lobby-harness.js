@@ -169,6 +169,13 @@ function createFakeGame() {
       actionSequence,
       battlefield: JSON.parse(JSON.stringify(battlefield)),
     }),
+    exportPublicAuditCheckpoint: async () => ({
+      players: JSON.parse(JSON.stringify(matchConfig?.playerNames || [])),
+      startingLife: Number(matchConfig?.startingLife || 20),
+      format: String(matchConfig?.format || "normal"),
+      actionSequence,
+      battlefield: JSON.parse(JSON.stringify(battlefield)),
+    }),
     importSyncCheckpoint: async (checkpoint, perspectiveIndex = 0) => {
       matchConfig = JSON.parse(JSON.stringify(checkpoint?.matchConfig || {}));
       perspective = Number(perspectiveIndex ?? checkpoint?.perspective ?? 0);

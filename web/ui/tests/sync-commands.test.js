@@ -109,6 +109,27 @@ test("cancel commands can be applied during resync without a visible decision", 
   );
 });
 
+test("forfeit commands must target the pending decision player", () => {
+  assert.equal(
+    isDecisionCommandCompatible(
+      { kind: "priority", player: 1, actions: [] },
+      { type: "forfeit_player", player: 1 },
+    ),
+    true,
+  );
+  assert.equal(
+    isDecisionCommandCompatible(
+      { kind: "priority", player: 0, actions: [] },
+      { type: "forfeit_player", player: 1 },
+    ),
+    false,
+  );
+  assert.equal(
+    isDecisionCommandCompatible(null, { type: "forfeit_player", player: 0 }),
+    false,
+  );
+});
+
 test("mismatch descriptions include command and pending decision kind", () => {
   assert.equal(
     describeDecisionCommandMismatch(

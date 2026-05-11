@@ -4505,6 +4505,10 @@ fn committed_resolution_prompt_is_not_cancelable() {
         !wasm.is_cancelable(),
         "once the spell has resolved into its imprint prompt, undo should be disabled"
     );
+    assert!(
+        wasm.cancel_decision().is_err(),
+        "non-cancelable prompts must reject direct cancelDecision calls"
+    );
 }
 
 #[test]

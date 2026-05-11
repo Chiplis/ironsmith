@@ -80,6 +80,8 @@ impl WasmGame {
                                 zone: ironsmith::zone::Zone::Library,
                                 slot: slot.slot,
                                 commitment: slot.commitment.clone(),
+                                public_slot: None,
+                                public_commitment: None,
                             },
                         );
                     }

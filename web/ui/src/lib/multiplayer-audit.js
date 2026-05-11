@@ -35,6 +35,23 @@ function normalizeForJson(value) {
   return value;
 }
 
+function stripTransientMetadata(value) {
+  if (Array.isArray(value)) {
+    return value.map(stripTransientMetadata);
+  }
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort()
+      .reduce((out, key) => {
+        if (String(key).startsWith("__")) return out;
+        const stripped = stripTransientMetadata(value[key]);
+        if (stripped !== undefined) out[key] = stripped;
+        return out;
+      }, {});
+  }
+  return value;
+}
+
 export async function sha256Hex(value, cryptoImpl = globalThis.crypto) {
   if (!cryptoImpl?.subtle) {
     throw new Error("WebCrypto subtle API is unavailable");
@@ -382,6 +399,7 @@ export async function auditStateHash({
   rngReveals = [],
   shuffleProofs = [],
   privateViewProofs = [],
+  publicCheckpointHash,
 }, cryptoImpl = globalThis.crypto) {
   return sha256Hex(
     canonicalJson({
@@ -394,6 +412,7 @@ export async function auditStateHash({
       rngReveals,
       shuffleProofs,
       privateViewProofs,
+      publicCheckpointHash,
     }),
     cryptoImpl,
   );
@@ -411,6 +430,7 @@ export async function buildSignedActionEnvelope({
   rngReveals = [],
   shuffleProofs = [],
   privateViewProofs = [],
+  publicCheckpointHash,
 }, cryptoImpl = globalThis.crypto) {
   const nextStateHash = await auditStateHash({
     matchId,
@@ -421,6 +441,7 @@ export async function buildSignedActionEnvelope({
     rngReveals,
     shuffleProofs,
     privateViewProofs,
+    publicCheckpointHash,
   }, cryptoImpl);
   const payload = {
     matchId,
@@ -433,6 +454,7 @@ export async function buildSignedActionEnvelope({
     rngReveals,
     shuffleProofs,
     privateViewProofs,
+    publicCheckpointHash,
     nextStateHash,
   };
   return {
@@ -627,7 +649,14 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
 export async function checkpointHash(checkpoint, cryptoImpl = globalThis.crypto) {
   return sha256Hex(canonicalJson({
     domain: "ironsmith-resync-checkpoint-v1",
-    checkpoint,
+    checkpoint: stripTransientMetadata(checkpoint),
+  }), cryptoImpl);
+}
+
+export async function publicCheckpointHash(checkpoint, cryptoImpl = globalThis.crypto) {
+  return sha256Hex(canonicalJson({
+    domain: "ironsmith-public-audit-checkpoint-v1",
+    checkpoint: stripTransientMetadata(checkpoint),
   }), cryptoImpl);
 }
 
@@ -880,7 +909,143 @@ export function publicDeckManifest(manifest) {
   };
 }
 
-export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalThis.crypto) {
+function transcriptDeckManifestMap(transcript) {
+  const manifests = transcript.match?.deckAuditManifests
+    || transcript.deckAuditManifests
+    || [];
+  return new Map(
+    manifests
+      .filter(Boolean)
+      .map((manifest) => [Number(manifest.owner), manifest]),
+  );
+}
+
+function sortedPlayerSeats(players) {
+  return [...players.keys()].sort((left, right) => Number(left) - Number(right));
+}
+
+function requireExactSortedPlayerEntries(entries, expectedPlayers, label) {
+  if (!Array.isArray(entries)) {
+    throw new Error(`${label} must be an array`);
+  }
+  if (entries.length !== expectedPlayers.length) {
+    throw new Error(`${label} must include every player exactly once`);
+  }
+  const seen = new Set();
+  for (let index = 0; index < expectedPlayers.length; index += 1) {
+    const expectedPlayer = Number(expectedPlayers[index]);
+    const actualPlayer = Number(entries[index]?.player);
+    if (!Number.isInteger(actualPlayer)) {
+      throw new Error(`${label} contains an invalid player index`);
+    }
+    if (seen.has(actualPlayer)) {
+      throw new Error(`${label} contains a duplicate player`);
+    }
+    seen.add(actualPlayer);
+    if (actualPlayer !== expectedPlayer) {
+      throw new Error(`${label} must be sorted by player and include every player`);
+    }
+  }
+}
+
+async function rngCommitmentForNonce(nonceHex, cryptoImpl) {
+  return sha256Hex(canonicalJson({
+    domain: "ironsmith-rng-commit-v1",
+    nonceHex: String(nonceHex || ""),
+  }), cryptoImpl);
+}
+
+async function verifyFairRandomReveal({
+  reveal,
+  expectedPlayers,
+  matchId,
+  seq,
+}, cryptoImpl) {
+  requireExactSortedPlayerEntries(reveal?.commits, expectedPlayers, "Fair-random commits");
+  requireExactSortedPlayerEntries(reveal?.reveals, expectedPlayers, "Fair-random reveals");
+  for (const entry of reveal.reveals || []) {
+    const expected = (reveal.commits || []).find(
+      (commit) => Number(commit.player) === Number(entry.player)
+    );
+    const actual = await rngCommitmentForNonce(entry.nonceHex, cryptoImpl);
+    if (!expected || actual !== String(expected.commitmentHex || "")) {
+      throw new Error("Fair-random reveal does not match commitment");
+    }
+    if (entry.commitmentHex && actual !== String(entry.commitmentHex || "")) {
+      throw new Error("Fair-random reveal commitment echo is invalid");
+    }
+  }
+  const combinedSeedHex = await sha256Hex(canonicalJson({
+    domain: "ironsmith-combined-rng-v1",
+    matchId: String(matchId || ""),
+    seq: Number(seq),
+    requirementId: String(reveal?.requirementId || ""),
+    commits: reveal.commits || [],
+    reveals: reveal.reveals || [],
+  }), cryptoImpl);
+  if (combinedSeedHex !== String(reveal?.combinedSeedHex || "")) {
+    throw new Error("Fair-random combined seed is invalid");
+  }
+}
+
+async function verifyAuditOpenings({
+  openings = [],
+  manifests,
+}, cryptoImpl) {
+  for (const opening of openings || []) {
+    const manifest = manifests.get(Number(opening?.owner));
+    if (!manifest) {
+      throw new Error(`Opening references unknown deck manifest for player ${opening?.owner}`);
+    }
+    const valid = await verifyCardOpeningAgainstManifest({
+      manifest,
+      slot: opening.slot,
+      card: opening.card,
+      salt: opening.salt,
+    }, cryptoImpl);
+    if (!valid) {
+      throw new Error(`Opening does not match committed deck slot for player ${Number(opening?.owner) + 1}`);
+    }
+  }
+}
+
+function verifyPrivateViewProofStructure(proofs = [], players) {
+  for (const proof of proofs || []) {
+    if (String(proof?.type || "") !== "encrypted_private_opening") {
+      throw new Error("Unsupported private-view proof type");
+    }
+    if (!proof?.encryptedOpening?.ciphertextHex || !proof?.encryptedOpening?.plaintextHash) {
+      throw new Error("Private-view proof is missing encrypted opening material");
+    }
+    const viewer = Number(proof.viewer);
+    const viewerKey = players.get(viewer)?.auditEncryptionPublicKey || "";
+    if (viewerKey && String(proof.encryptedOpening.recipientPublicKey || "") !== viewerKey) {
+      throw new Error("Private-view proof targets the wrong viewer key");
+    }
+  }
+}
+
+async function verifyShuffleProofList({
+  shuffleProofs = [],
+  verifyShuffleProof,
+  seq,
+}) {
+  for (const proof of shuffleProofs || []) {
+    if (String(proof?.type || "") !== "ziffle_shuffle") {
+      throw new Error(`Unsupported shuffle proof type at sequence ${seq}`);
+    }
+    if (typeof verifyShuffleProof !== "function") {
+      throw new Error("Live audit transcript contains shuffle proofs but no verifier was provided");
+    }
+    await verifyShuffleProof(proof);
+  }
+}
+
+export async function verifyLiveAuditTranscript(
+  transcript,
+  cryptoImpl = globalThis.crypto,
+  options = {},
+) {
   if (!transcript || typeof transcript !== "object") {
     throw new Error("Missing audit transcript");
   }
@@ -910,9 +1075,14 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
   const players = new Map(
     (transcript.players || []).map((player) => [
       Number(player.seat),
-      String(player.auditPublicKey || ""),
+      {
+        auditPublicKey: String(player.auditPublicKey || ""),
+        auditEncryptionPublicKey: String(player.auditEncryptionPublicKey || ""),
+      },
     ]),
   );
+  const expectedPlayers = sortedPlayerSeats(players);
+  const manifests = transcriptDeckManifestMap(transcript);
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
   let expectedSeq = 1;
   for (const entry of transcript.actions || []) {
@@ -929,12 +1099,15 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
     if (canonicalJson(audit.command) !== canonicalJson(entry.command)) {
       throw new Error(`Audit command mismatch at sequence ${expectedSeq}`);
     }
+    if (!audit.publicCheckpointHash) {
+      throw new Error(`Action ${expectedSeq} is missing public checkpoint hash`);
+    }
 
     const signer = Number(audit.signer ?? audit.actor);
     if (signer !== Number(audit.actor)) {
       throw new Error(`Action ${expectedSeq} was not signed by the acting player`);
     }
-    const signerKey = await importAuditPublicKey(players.get(signer), cryptoImpl);
+    const signerKey = await importAuditPublicKey(players.get(signer)?.auditPublicKey || "", cryptoImpl);
     const envelopePayload = {
       matchId: audit.matchId,
       seq: Number(audit.seq),
@@ -946,6 +1119,7 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
       rngReveals: audit.rngReveals || [],
       shuffleProofs: audit.shuffleProofs || [],
       privateViewProofs: audit.privateViewProofs || [],
+      publicCheckpointHash: audit.publicCheckpointHash,
       nextStateHash: audit.nextStateHash,
     };
     const sequencedValid = await verifyAuditPayload(
@@ -957,6 +1131,24 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
     if (!sequencedValid) {
       throw new Error(`Sequenced audit signature is invalid at sequence ${expectedSeq}`);
     }
+    await verifyAuditOpenings({
+      openings: audit.openings || [],
+      manifests,
+    }, cryptoImpl);
+    verifyPrivateViewProofStructure(audit.privateViewProofs || [], players);
+    for (const reveal of audit.rngReveals || []) {
+      await verifyFairRandomReveal({
+        reveal,
+        expectedPlayers,
+        matchId: audit.matchId,
+        seq: audit.seq,
+      }, cryptoImpl);
+    }
+    await verifyShuffleProofList({
+      shuffleProofs: audit.shuffleProofs || [],
+      verifyShuffleProof: options.verifyShuffleProof,
+      seq: expectedSeq,
+    });
     const computedHash = await auditStateHash({
       matchId: audit.matchId,
       seq: Number(audit.seq),
@@ -966,6 +1158,7 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
       rngReveals: audit.rngReveals || [],
       shuffleProofs: audit.shuffleProofs || [],
       privateViewProofs: audit.privateViewProofs || [],
+      publicCheckpointHash: audit.publicCheckpointHash,
     }, cryptoImpl);
     if (computedHash !== audit.nextStateHash) {
       throw new Error(`Audit next state hash mismatch at sequence ${expectedSeq}`);
@@ -976,6 +1169,7 @@ export async function verifyLiveAuditTranscript(transcript, cryptoImpl = globalT
   return {
     valid: true,
     verifiedActions: expectedSeq - 1,
+    initialPublicCheckpointHash: transcript.initialPublicCheckpointHash || "",
     finalStateHash: stateHash,
   };
 }

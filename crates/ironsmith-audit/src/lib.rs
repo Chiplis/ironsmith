@@ -142,6 +142,15 @@ pub struct VerificationReport {
     pub final_state_hash: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VerificationOptions {
+    /// Allows legacy prototype fixtures whose shuffle records contain only a
+    /// transcript-binding hash instead of serialized ziffle proof artifacts.
+    ///
+    /// Production verification must keep this disabled.
+    pub allow_compact_shuffle_proof_hashes: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditFailure {
     pub seq: Option<u64>,
@@ -165,6 +174,13 @@ impl fmt::Display for AuditFailure {
 impl std::error::Error for AuditFailure {}
 
 pub fn verify_transcript(transcript: &AuditTranscript) -> Result<VerificationReport, AuditFailure> {
+    verify_transcript_with_options(transcript, VerificationOptions::default())
+}
+
+pub fn verify_transcript_with_options(
+    transcript: &AuditTranscript,
+    options: VerificationOptions,
+) -> Result<VerificationReport, AuditFailure> {
     if transcript.version != TRANSCRIPT_VERSION {
         return Err(AuditFailure {
             seq: None,
@@ -185,7 +201,7 @@ pub fn verify_transcript(transcript: &AuditTranscript) -> Result<VerificationRep
         });
     }
 
-    let deck_commitments = verify_deck_ceremonies(transcript, &players)?;
+    let deck_commitments = verify_deck_ceremonies(transcript, &players, options)?;
     let player_seats = players.keys().copied().collect::<BTreeSet<_>>();
     let mut audit_state = AuditState::new(player_seats, &deck_commitments);
     let mut state_hash = transcript.initial_state_hash.clone();
@@ -274,6 +290,7 @@ fn player_map(players: &[PlayerInfo]) -> Result<BTreeMap<u8, VerifyingKey>, Audi
 fn verify_deck_ceremonies(
     transcript: &AuditTranscript,
     players: &BTreeMap<u8, VerifyingKey>,
+    options: VerificationOptions,
 ) -> Result<BTreeMap<(u8, u16), String>, AuditFailure> {
     let required_players = players.keys().copied().collect::<BTreeSet<_>>();
     let mut commitments = BTreeMap::new();
@@ -347,7 +364,7 @@ fn verify_deck_ceremonies(
                 &step.output_deck_hash,
                 &step.entropy_commitment,
             );
-            verify_shuffle_proof(step, &expected_proof_hash)?;
+            verify_shuffle_proof(step, &expected_proof_hash, options)?;
             input = step.output_deck_hash.clone();
         }
         if input != ceremony.final_encrypted_deck_hash {
@@ -365,7 +382,11 @@ fn verify_deck_ceremonies(
     Ok(commitments)
 }
 
-fn verify_shuffle_proof(step: &ShuffleStep, expected_hash: &str) -> Result<(), AuditFailure> {
+fn verify_shuffle_proof(
+    step: &ShuffleStep,
+    expected_hash: &str,
+    options: VerificationOptions,
+) -> Result<(), AuditFailure> {
     match &step.shuffle_proof {
         ShuffleProof::BayerGrothMentalPokerV1 {
             proof_transcript_hash,
@@ -383,6 +404,13 @@ fn verify_shuffle_proof(step: &ShuffleStep, expected_hash: &str) -> Result<(), A
                     seq: None,
                     player: Some(step.shuffler),
                     reason: "shuffle proof does not bind the transcripted step".to_string(),
+                });
+            }
+            if !options.allow_compact_shuffle_proof_hashes {
+                return Err(AuditFailure {
+                    seq: None,
+                    player: Some(step.shuffler),
+                    reason: "shuffle proof only contains a transcript-binding hash; full ziffle proof artifacts are required".to_string(),
                 });
             }
             Ok(())
@@ -691,9 +719,27 @@ mod tests {
     use crate::fixtures::{cheating_transcript, fair_transcript};
 
     #[test]
-    fn fair_fixture_verifies() {
+    fn strict_verifier_rejects_compact_shuffle_proof_hashes() {
         let transcript = fair_transcript().expect("fixture should build");
-        let report = verify_transcript(&transcript).expect("fair transcript should verify");
+        let err = verify_transcript(&transcript).expect_err("compact proof hashes are not strict");
+        assert!(
+            err.reason
+                .contains("full ziffle proof artifacts are required"),
+            "{}",
+            err.reason
+        );
+    }
+
+    #[test]
+    fn fair_fixture_verifies_with_fixture_shuffle_proof_option() {
+        let transcript = fair_transcript().expect("fixture should build");
+        let report = verify_transcript_with_options(
+            &transcript,
+            VerificationOptions {
+                allow_compact_shuffle_proof_hashes: true,
+            },
+        )
+        .expect("fair fixture should verify in fixture mode");
         assert!(report.valid);
         assert_eq!(report.verified_actions, 5);
     }
@@ -701,7 +747,13 @@ mod tests {
     #[test]
     fn cheating_fixture_is_detected() {
         let transcript = cheating_transcript().expect("fixture should build");
-        let err = verify_transcript(&transcript).expect_err("cheating transcript must fail");
+        let err = verify_transcript_with_options(
+            &transcript,
+            VerificationOptions {
+                allow_compact_shuffle_proof_hashes: true,
+            },
+        )
+        .expect_err("cheating transcript must fail");
         assert_eq!(err.seq, Some(3));
         assert_eq!(err.player, Some(2));
         assert!(

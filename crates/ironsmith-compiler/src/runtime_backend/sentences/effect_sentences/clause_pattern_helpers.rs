@@ -453,6 +453,10 @@ pub(crate) fn parse_copy_spell_clause(
         } else {
             copy_clause_tail
         };
+        let (copy_target_tail, explicit_count) = strip_copy_count_suffix(copy_target_tail);
+        if let Some(count_value) = explicit_count {
+            count = count_value;
+        }
         if let Some(for_each_idx) =
             find_token_word_sequence_index(copy_target_tail, &["for", "each"])
         {
@@ -523,6 +527,11 @@ pub(crate) fn parse_copy_spell_clause(
     } else {
         tail
     };
+    let (stripped_copy_target_tail, explicit_count) = strip_copy_count_suffix(copy_target_tail);
+    copy_target_tail = stripped_copy_target_tail;
+    if let Some(count_value) = explicit_count {
+        count = count_value;
+    }
     if let Some(for_each_idx) = find_token_word_sequence_index(copy_target_tail, &["for", "each"]) {
         let count_filter_tokens = trim_commas(&copy_target_tail[for_each_idx + 2..]);
         if count_filter_tokens.is_empty() {
@@ -608,6 +617,16 @@ fn parse_copy_spell_removed_supertypes(tokens: &[OwnedLexToken]) -> Vec<crate::t
     } else {
         Vec::new()
     }
+}
+
+fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
+    if tokens.last().is_some_and(|token| token.is_word("twice")) {
+        return (
+            &tokens[..tokens.len().saturating_sub(1)],
+            Some(Value::Fixed(2)),
+        );
+    }
+    (tokens, None)
 }
 
 pub(crate) fn parse_counter_target_phrase(
