@@ -950,6 +950,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_preserves_outer_controller_across_aggregate_scope() {
+        let tokens = tokenize_line(
+            "a creature an opponent controls with the greatest power among creatures that player controls",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
     fn apply_parity_filter_phrases_detects_chosen_quality_and_odd_mana_value() {
         let mut filter = ObjectFilter::default();
 

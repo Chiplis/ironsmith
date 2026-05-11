@@ -31,6 +31,7 @@ pub(crate) struct RewriteLoweredCardState {
     pub(crate) haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
     pub(crate) latest_spell_exports: ReferenceExports,
     pub(crate) latest_additional_cost_exports: ReferenceExports,
+    pub(crate) latest_created_token: Option<(String, PlayerAst)>,
 }
 
 pub(crate) fn rewrite_update_last_restrictable_ability(

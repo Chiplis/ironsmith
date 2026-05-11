@@ -909,6 +909,7 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::NotYou => Some(PlayerFilter::NotYou),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),

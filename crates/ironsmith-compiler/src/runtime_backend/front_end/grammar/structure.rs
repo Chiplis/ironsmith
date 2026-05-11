@@ -308,6 +308,11 @@ pub(crate) fn classify_statement_line_family_lexed(
         word_refs.as_slice(),
         ["each", "player", third, ..] if is_statement_verb_word(third)
     );
+    let starts_with_each_other_player_statement = matches!(
+        word_refs.as_slice(),
+        ["each", "other", "player", fourth, ..] | ["each", "other", "players", fourth, ..]
+            if is_statement_verb_word(fourth)
+    );
     let starts_with_all_quantified_statement = matches!(
         word_refs.as_slice(),
         ["all", ..] if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word))
@@ -319,6 +324,7 @@ pub(crate) fn classify_statement_line_family_lexed(
     );
 
     (starts_with_each_player_statement
+        || starts_with_each_other_player_statement
         || starts_with_all_quantified_statement
         || starts_with_quantified_target_player_statement
         || is_statement_verb_word(word_refs[0])

@@ -1671,25 +1671,29 @@ impl DecisionView {
                     .items
                     .iter()
                     .enumerate()
-                    .map(|(index, (object_id, name))| OptionView {
-                        index,
-                        description: if decision_object_visible(*object_id) {
-                            name.clone()
-                        } else {
-                            hidden_object_label()
-                        },
-                        legal: true,
-                        repeatable: false,
-                        max_count: Some(1),
-                        object_id: decision_object_visible(*object_id).then_some(object_id.0),
-                        object_controller: decision_object_visible(*object_id)
-                            .then(|| {
-                                game.current_controller(*object_id)
-                                    .or_else(|| game.object(*object_id).map(|obj| obj.owner))
-                                    .map(|controller| controller.0)
-                            })
-                            .flatten(),
-                        related_object_ids: None,
+                    .map(|(index, (object_id, name))| {
+                        let is_real_object = game.object(*object_id).is_some();
+                        let visible = decision_object_visible(*object_id);
+                        OptionView {
+                            index,
+                            description: if visible || !is_real_object {
+                                name.clone()
+                            } else {
+                                hidden_object_label()
+                            },
+                            legal: true,
+                            repeatable: false,
+                            max_count: Some(1),
+                            object_id: visible.then_some(object_id.0),
+                            object_controller: visible
+                                .then(|| {
+                                    game.current_controller(*object_id)
+                                        .or_else(|| game.object(*object_id).map(|obj| obj.owner))
+                                        .map(|controller| controller.0)
+                                })
+                                .flatten(),
+                            related_object_ids: None,
+                        }
                     })
                     .collect(),
                 source_id: resolve_source_id(order.source),

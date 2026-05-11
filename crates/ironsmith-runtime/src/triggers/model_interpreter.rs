@@ -117,6 +117,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::Blocks { filter } => crate::triggers::Trigger::blocks(filter),
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
+        TriggerKind::ThisBecomesBlockedByObject { filter } => {
+            crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
+        }
         TriggerKind::ThisDies => crate::triggers::Trigger::this_dies(),
         TriggerKind::ThisDiesOrIsExiled => crate::triggers::Trigger::this_dies_or_is_exiled(),
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),

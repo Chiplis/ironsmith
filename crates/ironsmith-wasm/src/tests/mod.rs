@@ -5063,6 +5063,16 @@ fn roaming_throne_blood_artist_culling_flow_reaches_two_trigger_ordering_options
         2,
         "UI decision payload should keep both Blood Artist trigger ordering options"
     );
+    assert!(
+        decision["options"]
+            .as_array()
+            .expect("ordering decision should expose options")
+            .iter()
+            .all(|option| option["description"]
+                .as_str()
+                .is_some_and(|description| description.starts_with("Blood Artist\n"))),
+        "synthetic trigger-order options should expose their public labels: {decision:?}"
+    );
 }
 
 #[test]

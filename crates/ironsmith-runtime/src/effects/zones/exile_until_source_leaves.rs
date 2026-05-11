@@ -75,7 +75,13 @@ impl EffectExecutor for ExileUntilEffect {
                     if self.face_down {
                         game.set_face_down(new_id);
                     }
-                    game.add_exiled_with_source_link(ctx.source, new_id);
+                    if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+                        game.add_exiled_with_source_link_returning_to(
+                            ctx.source, new_id, from_zone,
+                        );
+                    } else {
+                        game.add_exiled_with_source_link(ctx.source, new_id);
+                    }
                     exiled_count += 1;
                 }
             }
@@ -224,6 +230,39 @@ mod tests {
         assert!(game.battlefield.iter().any(|id| {
             game.object(*id)
                 .is_some_and(|object| object.name == "Elite Vanguard")
+        }));
+    }
+
+    #[test]
+    fn source_leaves_duration_can_exile_card_from_hand() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature_on_battlefield(&mut game, "Brain Maggot", alice);
+        let card = make_creature_card(9911, "Bloodflow Connoisseur");
+        let hand_card = game.create_object_from_card(&card, bob, Zone::Hand);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(hand_card));
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Bloodflow Connoisseur")
+        }));
+        assert_eq!(game.get_exiled_with_source_links(source).len(), 1);
+
+        game.move_object_by_effect(source, Zone::Graveyard);
+        crate::game_loop::drain_pending_trigger_events(
+            &mut game,
+            &mut crate::triggers::TriggerQueue::new(),
+        );
+
+        assert!(game.exile.is_empty());
+        assert!(game.player(bob).expect("bob exists").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Bloodflow Connoisseur")
         }));
     }
 }

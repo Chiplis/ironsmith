@@ -3092,7 +3092,7 @@ impl StaticAbilityKind for SetLandSubtypesForFilter {
                 if verb == "are" {
                     simple_pluralize(&name)
                 } else {
-                    name
+                    format!("{} {name}", indefinite_article_for(&name))
                 }
             })
             .collect::<Vec<_>>();

@@ -231,11 +231,23 @@ fn source_reference_word_variants_from_text(text: &str) -> Vec<Vec<String>> {
                 .replace('−', "-")
         })
         .collect::<Vec<_>>();
-    if token_words == parser_words {
-        vec![parser_words]
-    } else {
-        vec![parser_words, token_words]
+    let mut variants = vec![parser_words.clone()];
+    if token_words != parser_words {
+        variants.push(token_words);
     }
+    let article_stripped = parser_words
+        .iter()
+        .filter(|word| !is_article(word))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !article_stripped.is_empty()
+        && !variants
+            .iter()
+            .any(|variant| variant.as_slice() == article_stripped.as_slice())
+    {
+        variants.push(article_stripped);
+    }
+    variants
 }
 
 pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
@@ -2217,6 +2229,11 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::Opponent);
     }
+    if words_have_prefix(slice, &["other", "player"])
+        || words_have_prefix(slice, &["other", "players"])
+    {
+        return SubjectAst::Player(PlayerAst::NotYou);
+    }
 
     if words_have_prefix(slice, &["defending", "player"])
         || words_have_suffix(slice, &["defending", "player"])
@@ -2382,6 +2399,29 @@ mod tests {
     fn parse_subject_recognizes_they_as_that_player() {
         let tokens = lex_line("they lose 5 life", 0).unwrap();
         assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::That));
+    }
+
+    #[test]
+    fn parse_subject_recognizes_each_other_player() {
+        let tokens = lex_line("each other player", 0).unwrap();
+        assert_eq!(
+            parse_subject(&tokens),
+            SubjectAst::Player(PlayerAst::NotYou)
+        );
+    }
+
+    #[test]
+    fn parse_target_phrase_recognizes_source_name_with_internal_article() {
+        let tokens = lex_line("Kraven the Hunter", 0).unwrap();
+        let target = with_source_reference_context("Kraven the Hunter", || {
+            parse_target_phrase(&tokens).expect("source name with internal article should parse")
+        });
+
+        assert!(
+            matches!(target, TargetAst::Source(_))
+                || matches!(target, TargetAst::Object(ref filter, _, _) if filter.source),
+            "expected source target, got {target:?}"
+        );
     }
 
     #[test]

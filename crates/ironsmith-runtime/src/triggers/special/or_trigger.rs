@@ -80,6 +80,23 @@ impl TriggerMatcher for OrTrigger {
         self.triggers.iter().any(|t| t.matches(event, ctx))
     }
 
+    fn trigger_count(&self, event: &TriggerEvent) -> u32 {
+        self.triggers
+            .iter()
+            .map(|trigger| trigger.trigger_count(event))
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        self.triggers
+            .iter()
+            .filter(|trigger| trigger.matches(event, ctx))
+            .map(|trigger| trigger.trigger_count_with_context(event, ctx))
+            .max()
+            .unwrap_or(0)
+    }
+
     fn display(&self) -> String {
         if self.triggers.is_empty() {
             return "never".to_string();

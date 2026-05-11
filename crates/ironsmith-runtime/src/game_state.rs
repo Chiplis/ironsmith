@@ -1912,6 +1912,9 @@ pub struct GameState {
     /// This powers "cards exiled with <this object>" style references.
     pub exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
 
+    /// Return zones for cards exiled by a source-leaves duration effect.
+    pub exiled_with_source_return_zones: HashMap<ObjectId, HashMap<ObjectId, Zone>>,
+
     /// Sources whose linked exiled cards return immediately when the source
     /// leaves the battlefield.
     pub return_exiled_when_source_leaves: HashSet<ObjectId>,
@@ -2019,6 +2022,7 @@ impl GameState {
             declined_commander_command_zone_moves: HashSet::new(),
             imprinted_cards: HashMap::new(),
             exiled_with_source: HashMap::new(),
+            exiled_with_source_return_zones: HashMap::new(),
             return_exiled_when_source_leaves: HashSet::new(),
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
@@ -3486,11 +3490,21 @@ impl GameState {
                 old_zone,
                 new_zone,
                 cause,
-                pre_move_snapshot,
+                pre_move_snapshot.clone(),
             );
             let mut event = event;
             if old_zone == Zone::Battlefield {
                 event.result_objects = vec![new_id];
+                if let Some(snapshot) = pre_move_snapshot.as_ref() {
+                    for attachment_id in &snapshot.attachments {
+                        if let Some(attachment) = self.object(*attachment_id) {
+                            event = event.with_object_tag(
+                                crate::tag::TagKey::from("attached_source"),
+                                crate::snapshot::ObjectSnapshot::from_object(attachment, self),
+                            );
+                        }
+                    }
+                }
             }
             let event_provenance = self
                 .provenance_graph_mut()
@@ -7777,6 +7791,19 @@ impl GameState {
         }
     }
 
+    pub fn add_exiled_with_source_link_returning_to(
+        &mut self,
+        source_id: ObjectId,
+        exiled_card_id: ObjectId,
+        return_zone: Zone,
+    ) {
+        self.add_exiled_with_source_link(source_id, exiled_card_id);
+        self.exiled_with_source_return_zones
+            .entry(source_id)
+            .or_default()
+            .insert(exiled_card_id, return_zone);
+    }
+
     pub fn mark_return_exiled_when_source_leaves(&mut self, source_id: ObjectId) {
         self.return_exiled_when_source_leaves.insert(source_id);
     }
@@ -7789,12 +7816,20 @@ impl GameState {
             .exiled_with_source
             .remove(&source_id)
             .unwrap_or_default();
+        let return_zones = self
+            .exiled_with_source_return_zones
+            .remove(&source_id)
+            .unwrap_or_default();
         for object_id in linked {
             if self
                 .object(object_id)
                 .is_some_and(|object| object.zone == Zone::Exile)
             {
-                self.move_object_by_effect(object_id, Zone::Battlefield);
+                let return_zone = return_zones
+                    .get(&object_id)
+                    .copied()
+                    .unwrap_or(Zone::Battlefield);
+                self.move_object_by_effect(object_id, return_zone);
             }
         }
     }
@@ -7812,6 +7847,10 @@ impl GameState {
         self.exiled_with_source.retain(|_, linked| {
             linked.retain(|id| *id != exiled_card_id);
             !linked.is_empty()
+        });
+        self.exiled_with_source_return_zones.retain(|_, zones| {
+            zones.remove(&exiled_card_id);
+            !zones.is_empty()
         });
     }
 
@@ -8060,6 +8099,30 @@ impl GameState {
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
         std::mem::take(&mut self.effect_store.pending_trigger_events)
+    }
+
+    pub(crate) fn remove_pending_trigger_events_matching_from(
+        &mut self,
+        start_index: usize,
+        mut predicate: impl FnMut(&crate::triggers::TriggerEvent) -> bool,
+    ) -> Vec<crate::triggers::TriggerEvent> {
+        let mut removed = Vec::new();
+        let mut retained = Vec::new();
+        for (index, event) in std::mem::take(&mut self.effect_store.pending_trigger_events)
+            .into_iter()
+            .enumerate()
+        {
+            if index >= start_index && predicate(&event) {
+                self.turn_store
+                    .turn_history
+                    .remove_staged_event(event.provenance());
+                removed.push(event);
+            } else {
+                retained.push(event);
+            }
+        }
+        self.effect_store.pending_trigger_events = retained;
+        removed
     }
 
     pub fn record_ui_battlefield_transition(

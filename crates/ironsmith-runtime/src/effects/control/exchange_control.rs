@@ -16,6 +16,24 @@ const TEMP_IT_TAG: &str = "__it__";
 pub use ironsmith_core::SharedTypeConstraint;
 pub type ExchangeControlEffect = ironsmith_core::ExchangeControlEffect;
 
+fn fallback_second_selected_target(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    first: crate::ids::ObjectId,
+) -> Option<crate::ids::ObjectId> {
+    ctx.targets.iter().find_map(|target| {
+        let crate::effects::ResolvedTarget::Object(object_id) = target else {
+            return None;
+        };
+        if *object_id == first {
+            return None;
+        }
+        game.object(*object_id)
+            .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+            .then_some(*object_id)
+    })
+}
+
 impl EffectExecutor for ExchangeControlEffect {
     fn execute(
         &self,
@@ -71,8 +89,17 @@ impl EffectExecutor for ExchangeControlEffect {
             }
 
             let perm2_id = match perm2_result {
-                Ok(object_id) => object_id,
-                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+                Ok(object_id) if object_id != perm1_id => object_id,
+                Ok(_) => match fallback_second_selected_target(game, ctx, perm1_id) {
+                    Some(object_id) => object_id,
+                    None => return Ok(EffectOutcome::target_invalid()),
+                },
+                Err(ExecutionError::InvalidTarget) => {
+                    match fallback_second_selected_target(game, ctx, perm1_id) {
+                        Some(object_id) => object_id,
+                        None => return Ok(EffectOutcome::target_invalid()),
+                    }
+                }
                 Err(err) => return Err(err),
             };
             (perm1_id, perm2_id)
@@ -408,6 +435,49 @@ mod tests {
             game.effect_store.continuous_effects.effects_sorted().len(),
             2
         );
+    }
+
+    #[test]
+    fn test_tagged_exchange_control_uses_scoped_target_assignments() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let your_artifact = create_artifact(&mut game, "Your Artifact", alice);
+        let opponents_artifact = create_artifact(&mut game, "Opponent Artifact", bob);
+
+        let source = game.new_object_id();
+        let first = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact()));
+        let second = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent().other()));
+        let exchange = ExchangeControlEffect::new(first.clone(), second.clone())
+            .with_permanent1_reference_tag(TagKey::from("exchange_first"))
+            .with_shared_type(SharedTypeConstraint::CardType);
+        let effect = Effect::new(crate::effects::TaggedEffect::new(
+            "exchanged",
+            Effect::new(exchange),
+        ));
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(your_artifact),
+                ResolvedTarget::Object(opponents_artifact),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: first,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: second,
+                    range: 1..2,
+                },
+            ]);
+
+        let result = execute_effect(&mut game, &effect, &mut ctx).unwrap();
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(game.controller_of_id(your_artifact), Some(bob));
+        assert_eq!(game.controller_of_id(opponents_artifact), Some(alice));
     }
 
     #[test]

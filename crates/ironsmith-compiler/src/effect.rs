@@ -571,6 +571,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::GrantEffect>() {
             return Some(&payload.target);
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::ExchangeControlEffect>() {
+            return Some(&payload.permanent1);
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
             return Some(&payload.from);
         }

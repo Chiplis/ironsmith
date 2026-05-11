@@ -16,6 +16,7 @@ use crate::effects::zones::{
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::EventOutcome;
+use crate::events::zones::ZoneChangeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
@@ -909,8 +910,10 @@ impl EffectExecutor for DevourEffect {
                 })
         };
 
+        let pending_start = game.effect_store.pending_trigger_events.len();
         let mut sacrificed_count: i32 = 0;
         let mut sacrifice_events = Vec::new();
+        let mut graveyard_zone_changes = Vec::new();
         for id in chosen {
             let pre_snapshot = game
                 .object(id)
@@ -929,6 +932,13 @@ impl EffectExecutor for DevourEffect {
                 EventOutcome::Proceed(result) => {
                     sacrificed_count += 1;
                     if result.final_zone == Zone::Graveyard {
+                        if let Some(snapshot) = pre_snapshot.clone() {
+                            graveyard_zone_changes.push((
+                                id,
+                                result.new_object_ids.clone(),
+                                snapshot,
+                            ));
+                        }
                         sacrifice_events.push(TriggerEvent::new_with_provenance(
                             SacrificeEvent::new(id, Some(ctx.source))
                                 .with_snapshot(pre_snapshot, sacrificing_player),
@@ -939,6 +949,47 @@ impl EffectExecutor for DevourEffect {
                 EventOutcome::Replaced => {
                     sacrificed_count += 1;
                 }
+            }
+        }
+
+        if graveyard_zone_changes.len() > 1 {
+            let event_objects = graveyard_zone_changes
+                .iter()
+                .map(|(id, _, _)| *id)
+                .collect::<Vec<_>>();
+            let result_objects = graveyard_zone_changes
+                .iter()
+                .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
+                .collect::<Vec<_>>();
+            let snapshots = graveyard_zone_changes
+                .iter()
+                .map(|(_, _, snapshot)| snapshot.clone())
+                .collect::<Vec<_>>();
+
+            let removed =
+                game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                    let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
+                        return false;
+                    };
+                    zone_change.from == Zone::Battlefield
+                        && zone_change.to == Zone::Graveyard
+                        && zone_change.objects.len() == 1
+                        && event_objects.contains(&zone_change.objects[0])
+                });
+
+            if !removed.is_empty() {
+                let mut event = ZoneChangeEvent::batch_with_snapshots(
+                    event_objects,
+                    Zone::Battlefield,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    snapshots,
+                );
+                event.result_objects = result_objects;
+                game.queue_trigger_event(
+                    ctx.provenance,
+                    TriggerEvent::new_with_provenance(event, ctx.provenance),
+                );
             }
         }
 
@@ -2099,6 +2150,62 @@ mod tests {
                 .count()
                 == 1,
             "expected devour to emit one sacrifice event"
+        );
+    }
+
+    #[test]
+    fn devour_batches_multiple_deaths_for_lki_triggers() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 20, "Devourer", 2, 2);
+        let cutthroat_like = CardDefinitionBuilder::new(CardId::from_raw(21), "Cutthroat-Like")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .with_trigger(
+                crate::triggers::Trigger::or(vec![
+                    crate::triggers::Trigger::this_dies(),
+                    crate::triggers::Trigger::dies(
+                        crate::target::ObjectFilter::creature().you_control(),
+                    ),
+                ]),
+                Vec::new(),
+            )
+            .build();
+        let first = game.create_object_from_definition(&cutthroat_like, alice, Zone::Battlefield);
+        let second = create_creature(&mut game, alice, 22, "Second Food", 1, 1);
+        let mut dm = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![first, second]]),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let outcome = DevourEffect::new(1)
+            .execute(&mut game, &mut ctx)
+            .expect("execute devour");
+
+        assert_eq!(
+            outcome
+                .events_of_type::<crate::events::permanents::SacrificeEvent>()
+                .count(),
+            2,
+            "expected one sacrifice event per sacrificed creature"
+        );
+        let zone_changes = game
+            .effect_store
+            .pending_trigger_events
+            .iter()
+            .filter_map(|event| event.downcast::<ZoneChangeEvent>())
+            .collect::<Vec<_>>();
+        assert_eq!(zone_changes.len(), 1, "expected one batched death event");
+        assert_eq!(zone_changes[0].objects.len(), 2);
+        assert_eq!(zone_changes[0].result_objects.len(), 2);
+        assert_eq!(zone_changes[0].snapshots().len(), 2);
+
+        let triggered =
+            crate::triggers::check_triggers(&game, &game.effect_store.pending_trigger_events[0]);
+        assert_eq!(
+            triggered.len(),
+            2,
+            "the dying source should see both simultaneous creature deaths"
         );
     }
 

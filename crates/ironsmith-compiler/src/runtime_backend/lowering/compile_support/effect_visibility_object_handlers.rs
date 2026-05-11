@@ -152,6 +152,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     subject.bind_revealed_hand_choice_filter(filter, ctx)?
                 } else if chooses_tagged_object_pool(filter) {
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
+                } else if matches!(player, PlayerAst::Implicit) {
+                    subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 } else {
                     subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
                 };

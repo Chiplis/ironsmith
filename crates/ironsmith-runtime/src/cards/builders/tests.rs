@@ -921,6 +921,38 @@ fn test_builder_arcbound_wanderer_modular_sunburst_renders_full_semantics() {
 }
 
 #[test]
+fn parser_treats_artifacts_and_or_creatures_as_type_union_in_dies_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Seer Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Whenever one or more artifacts and/or creatures you control are put into a graveyard from the battlefield, surveil 1.",
+        )
+        .expect("parse artifacts-and/or-creatures dies trigger");
+
+    let filter = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+                .map(|trigger| &trigger.object_filter),
+            _ => None,
+        })
+        .expect("expected a zone-change trigger");
+
+    assert_eq!(
+        filter.card_types,
+        vec![CardType::Artifact, CardType::Creature]
+    );
+    assert!(
+        filter.all_card_types.is_empty(),
+        "artifacts and/or creatures should match either type, got {filter:?}"
+    );
+}
+
+#[test]
 fn test_builder_fading_creates_counter_upkeep_and_sacrifice_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Test")
         .card_types(vec![CardType::Creature])
@@ -3954,6 +3986,38 @@ fn test_parse_trigger_this_blocks_filtered_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_this_blocks_or_becomes_blocked_by_filtered_creature_delayed_destroy() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arrogant Bloodlord Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Whenever this creature blocks or becomes blocked by a creature with power 1 or less, destroy this creature at end of combat.",
+        )
+        .expect("parse source blocks-or-becomes-blocked trigger with blocker filter");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ThisBlocksObjectTrigger")
+            && debug.contains("ThisBecomesBlockedByObjectTrigger"),
+        "expected source-scoped blocks/becomes-blocked trigger pair, got {debug}"
+    );
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect") && debug.contains("EndOfCombatTrigger"),
+        "expected delayed end-of-combat destroy payload, got {debug}"
+    );
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("blocks creature with power 1 or less")
+            && joined.contains("becomes blocked by creature with power 1 or less")
+            && joined.contains("end of combat"),
+        "expected rendered trigger/effect to preserve blocker filter and delay, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_you_discard_filtered_card() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Discard Trigger Probe")
         .card_types(vec![CardType::Creature])
@@ -5184,6 +5248,106 @@ fn oracle_like_enchant_keyword_grant_does_not_duplicate_keyword_tail() {
     assert!(
         !rendered.contains("and flying. and flying"),
         "expected duplicate keyword tail to be collapsed, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oracle_like_enchant_anthem_keywords_and_subtype_addition_parse_together() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Angelic Aura Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Enchant creature\nEnchanted creature gets +4/+4, has flying and first strike, and is an Angel in addition to its other types.",
+        )
+        .expect("aura anthem, keyword grants, and subtype addition should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("+4/+4")
+            && rendered.contains("flying")
+            && rendered.contains("first strike")
+            && rendered.contains("angel")
+            && rendered.contains("in addition to its other types"),
+        "expected composed aura static effect in rendered output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oracle_like_basic_land_type_aura_sets_land_type_instead_of_adding_it() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Land Type Aura Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Enchant land\nEnchanted land is an Island.")
+        .expect("basic land type aura line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted land is an island"),
+        "expected aura to set the enchanted land's basic land type, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("in addition to its other types"),
+        "expected basic land type setting not subtype addition, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oracle_like_attached_land_put_into_graveyard_trigger_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Genju Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant Mountain\nWhen enchanted Mountain is put into a graveyard, you may return this card from your graveyard to your hand.",
+        )
+        .expect("attached land graveyard trigger should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted mountain is put into a graveyard from the battlefield")
+            && (rendered.contains("return this card from your graveyard to your hand")
+                || rendered.contains("return this aura from a graveyard to its owner's hand")),
+        "expected attached-object graveyard trigger and return effect, got {rendered}"
+    );
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("functional_zones: [Battlefield]"),
+        "attached-object graveyard triggers should function from the battlefield, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oracle_like_return_to_hand_unless_target_opponent_pays_life_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Passage Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever another creature you own dies, return it to your hand unless target opponent pays 3 life.",
+        )
+        .expect("target opponent unless-pay trigger should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let debug = format!("{:?}", triggered);
+    assert!(
+        debug.contains("UnlessPaysEffect") && debug.contains("Target(Opponent)"),
+        "expected unless-pay effect to target an opponent, got {debug}"
+    );
+    assert!(
+        debug.contains("Player(Opponent)"),
+        "expected trigger choices to include an opponent player target, got {debug}"
     );
 }
 
@@ -8221,6 +8385,73 @@ fn parse_one_or_more_etb_trigger_binds_that_much_to_zone_change_count() {
         debug.contains("EventValue(\n                                                                    Amount,\n                                                                )")
             || debug.contains("EventValue(Amount)"),
         "expected event-derived amount to remain bound to the trigger, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_one_or_more_dies_trigger_uses_batch_count_mode() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Townsfolk Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more other creatures you control die, put a +1/+1 counter on this creature.",
+        )
+        .expect("one-or-more dies trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("count_mode: OneOrMore"),
+        "expected one-or-more dies trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("other: true"),
+        "expected other-creature filter to be preserved, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_implicit_choose_creature_does_not_default_to_you_control() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Duneblast Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose up to one creature. Destroy the rest.")
+        .expect("implicit choose creature should parse");
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("spell should have effects")
+        .all_effects();
+    let choose = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("expected choose-object effect");
+    assert_eq!(choose.count.min, 0);
+    assert_eq!(choose.count.max, Some(1));
+    assert_eq!(
+        choose.filter.controller, None,
+        "implicit choose should allow any controller's creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_sacrificed_permanents_card_type_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Baba Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}, Sacrifice up to three permanents: If there were three or more card types among sacrificed permanents, each opponent loses 3 life and you gain 3 life.",
+        )
+        .expect("sacrificed-permanents card-type condition should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CardTypesAmong") && debug.contains("sacrificed_0"),
+        "expected condition to count card types among sacrificed permanents, got {debug}"
+    );
+    assert!(
+        debug.contains("min: 0") && debug.contains("max: Some(3)"),
+        "expected sacrifice cost to choose up to three permanents, got {debug}"
     );
 }
 
@@ -19502,6 +19733,26 @@ fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_token_with_quoted_static_power_toughness_keeps_cda() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Voice Token Variant")
+        .parse_text(
+            "Create a green and white Elemental creature token with \"This token's power and toughness are each equal to the number of creatures you control.\"",
+        )
+        .expect("quoted static P/T token text should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("CreateTokenEffect"),
+        "expected spell create-token effect, got {debug}"
+    );
+    assert!(
+        debug.contains("CharacteristicDefiningPT") && debug.contains("Creature"),
+        "expected Elemental token to keep dynamic creature-count P/T text, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ritual_of_the_returned_keeps_token_power_toughness_followup_on_spell_effect() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ritual of the Returned Variant")
         .parse_text(
@@ -21684,6 +21935,27 @@ fn parse_delayed_destroy_at_next_end_step_parses() {
     assert!(
         debug.contains("DestroyEffect"),
         "expected delayed destroy payload, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_exchange_control_keeps_first_target_before_missing_target_prelude() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Legerdemain Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exchange control of target artifact or creature and another target permanent that shares one of those types with it.",
+        )
+        .expect("parse heterogeneous exchange control");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ExchangeControlEffect"),
+        "expected exchange control effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("TargetOnlyEffect"),
+        "expected heterogeneous exchange control to expose its own ordered target requirements without target-only preludes, got {debug}"
     );
 }
 

@@ -122,8 +122,9 @@ pub(crate) use trigger_subject_filters::{
     controller_filter_for_token_player, effect_creates_any_token,
     effect_creates_eldrazi_spawn_or_scion, is_generic_token_reminder_sentence,
     is_round_up_each_time_sentence, is_simple_copy_reference_sentence,
-    is_spawn_scion_token_mana_reminder, parse_copy_reference_cost_reduction_sentence,
-    parse_may_cast_it_sentence, parse_sentence_exile_that_token_when_source_leaves,
+    is_spawn_scion_token_mana_reminder, last_created_token_info,
+    parse_copy_reference_cost_reduction_sentence, parse_may_cast_it_sentence,
+    parse_sentence_exile_that_token_when_source_leaves,
     parse_sentence_sacrifice_source_when_that_token_leaves, parse_trigger_subject_player_filter,
     strip_embedded_token_rules_text, title_case_token_word,
 };

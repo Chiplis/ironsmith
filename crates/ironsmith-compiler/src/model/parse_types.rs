@@ -21,6 +21,7 @@ pub enum PlayerAst {
     Target,
     TargetOpponent,
     Opponent,
+    NotYou,
     That,
     ThatPlayerOrTargetController,
     ItsController,

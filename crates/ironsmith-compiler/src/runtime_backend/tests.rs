@@ -6754,6 +6754,30 @@ fn parse_named_source_exile_instead_of_graveyard_from_anywhere() {
 }
 
 #[test]
+fn parse_cycling_card_exile_instead_unless_cycled() {
+    let tokens = lex_line(
+        "If a card that has a cycling ability would be put into your graveyard from anywhere and it wasn't cycled, exile it instead.",
+        0,
+    )
+    .expect("cycling exile-replacement line should lex");
+    let parsed = super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
+        .expect("cycling exile-replacement line should parse");
+    let Some(ability) = parsed else {
+        panic!("expected exile-replacement static ability");
+    };
+    let debug = format!("{ability:?}").to_ascii_lowercase();
+
+    assert_eq!(
+        ability.id(),
+        crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+    );
+    assert!(
+        debug.contains("cycling") && debug.contains("exclude_cycled: true"),
+        "debug={debug}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_draw_replace_exile_top_face_down_probe_matches_static_shape() {
     let tokens = lex_line(
         "If you would draw a card, exile the top card of your library face down instead.",
@@ -7114,6 +7138,17 @@ fn rewrite_grammar_exact_static_line_probes_match_simple_keyword_static_shapes()
         ),
         (
             "Nonbasic lands are Mountains.",
+            (|tokens| {
+                super::keyword_static::parse_nonbasic_lands_are_basic_land_type_line(tokens)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            }) as Probe,
+            super::keyword_static::parse_nonbasic_lands_are_basic_land_type_line as Parser,
+            crate::static_abilities::StaticAbilityId::SetLandSubtypes,
+        ),
+        (
+            "Enchanted land is an Island.",
             (|tokens| {
                 super::keyword_static::parse_nonbasic_lands_are_basic_land_type_line(tokens)
                     .ok()

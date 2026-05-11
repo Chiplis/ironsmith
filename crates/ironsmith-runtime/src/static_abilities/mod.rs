@@ -2596,6 +2596,16 @@ impl StaticAbility {
         Self::new(ExileToExileInsteadOfGraveyard::new(filter, graveyard_owner))
     }
 
+    pub fn exile_to_exile_instead_of_graveyard_unless_cycled(
+        filter: crate::target::ObjectFilter,
+        graveyard_owner: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(ExileToExileInsteadOfGraveyard::unless_cycled(
+            filter,
+            graveyard_owner,
+        ))
+    }
+
     pub fn exile_would_die_instead(filter: crate::target::ObjectFilter) -> Self {
         Self::new(ExileWouldDieInstead::new(filter))
     }

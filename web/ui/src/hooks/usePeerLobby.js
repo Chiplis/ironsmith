@@ -50,6 +50,7 @@ const DEFAULT_ACTION_TIMEOUT_MS = 5 * 60 * 1000;
 const ACTION_TIMEOUT_TICK_MS = 1000;
 const ACTION_TIMEOUT_CLAIM_SKEW_MS = 2000;
 const AUDIT_DECK_MANIFEST_STORAGE_PREFIX = "ironsmith.auditDeckManifest.v1";
+const AUDIT_REVEALED_OPENING_STORAGE_PREFIX = "ironsmith.auditRevealedOpening.v1";
 const AUDIT_IDENTITY_STORAGE_KEY = "ironsmith.auditIdentity.v1";
 const ZIFFLE_IDENTITY_STORAGE_PREFIX = "ironsmith.ziffleIdentity.v1";
 const CURRENT_PLAYER_STORAGE_KEY = "currentPlayer";
@@ -420,57 +421,13 @@ function ziffleDiagnosticNoticeBody(message, diagnostics) {
   ].filter(Boolean).join(" | ");
 }
 
-function collectCommandObjectIds(value, output = new Set(), keyHint = "") {
-  if (value == null) return output;
-  if (typeof value === "number" || typeof value === "string") {
-    const normalizedKey = String(keyHint || "").toLowerCase();
-    const objectIdKeys = new Set([
-      "card",
-      "cardid",
-      "card_id",
-      "creature",
-      "creatureid",
-      "creature_id",
-      "land",
-      "landid",
-      "land_id",
-      "object",
-      "objectid",
-      "object_id",
-      "permanent",
-      "permanentid",
-      "permanent_id",
-      "source",
-      "sourceid",
-      "source_id",
-      "spell",
-      "spellid",
-      "spell_id",
-    ]);
-    if (
-      normalizedKey === "id"
-      || objectIdKeys.has(normalizedKey)
-      || ((normalizedKey.includes("object")
-        || normalizedKey.includes("source")
-        || normalizedKey.includes("card"))
-        && normalizedKey.includes("id"))
-    ) {
-      const numeric = Number(value);
-      if (Number.isSafeInteger(numeric) && numeric > 0) {
-        output.add(numeric);
-      }
-    }
-    return output;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      collectCommandObjectIds(entry, output, keyHint);
-    }
-    return output;
-  }
-  if (typeof value === "object") {
-    for (const [key, entry] of Object.entries(value)) {
-      collectCommandObjectIds(entry, output, key);
+function collectCommandObjectIds(command, output = new Set()) {
+  if (!command || typeof command !== "object") return output;
+  if (command.type === "priority_action" && command.action_ref) {
+    const objectId = actionRefObjectId(command.action_ref);
+    const numeric = Number(objectId);
+    if (Number.isSafeInteger(numeric) && numeric > 0) {
+      output.add(numeric);
     }
   }
   return output;
@@ -498,8 +455,13 @@ function openingMatchesRequirement(opening, requirement) {
   ) {
     return false;
   }
-  if (requirement.commitment && opening.commitment && opening.commitment !== requirement.commitment) {
-    return false;
+  if (requirement.commitment) {
+    const requiredCommitment = String(requirement.commitment);
+    const commitmentMatches =
+      String(opening.commitment || "") === requiredCommitment
+      || String(opening.positionCommitment || "") === requiredCommitment;
+    if (!commitmentMatches) return false;
+    if (String(opening.commitment || "") === requiredCommitment) return true;
   }
   if (requirement.slot == null) return true;
   return Number(opening.slot) === Number(requirement.slot)
@@ -599,10 +561,14 @@ function actionRefWithObjectId(actionRef, objectId) {
 function hiddenOpeningMatchesExport(opening, exported) {
   if (!opening || !exported) return false;
   if (opening.owner != null && Number(opening.owner) !== Number(exported.owner)) return false;
-  if (opening.slot != null && Number(opening.slot) !== Number(exported.slot)) return false;
-  if (opening.commitment && exported.commitment && opening.commitment !== exported.commitment) {
-    return false;
+  if (opening.commitment && exported.commitment) {
+    if (opening.commitment !== exported.commitment) return false;
+    if (opening.card && exported.card && String(opening.card) !== String(exported.card)) {
+      return false;
+    }
+    return true;
   }
+  if (opening.slot != null && Number(opening.slot) !== Number(exported.slot)) return false;
   if (opening.card && exported.card && String(opening.card) !== String(exported.card)) {
     return false;
   }
@@ -717,13 +683,25 @@ function resolveLocalPlayerIndex(session) {
   return normalizePlayerIndex(localPlayer?.index);
 }
 
-function getLocalStorage() {
-  if (typeof window === "undefined" || !window.localStorage) return null;
-  return window.localStorage;
+function resolveLocalPlayerIndexFromPeer(session, players = null) {
+  const localPeerId = String(session?.localPeerId || "").trim();
+  if (!localPeerId) return null;
+  const entries = Array.isArray(players) && players.length > 0
+    ? players
+    : session?.players || [];
+  const localPlayer = entries.find(
+    (player) => String(player?.peerId || "") === localPeerId
+  );
+  return normalizePlayerIndex(localPlayer?.index);
+}
+
+function getPeerSessionStorage() {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage || window.localStorage || null;
 }
 
 function readStoredPlayerIndex(lobbyId) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return null;
 
   try {
@@ -744,7 +722,7 @@ function readStoredPlayerIndex(lobbyId) {
 }
 
 function readStoredAuditIdentity() {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return null;
   try {
     const raw = String(storage.getItem(AUDIT_IDENTITY_STORAGE_KEY) || "").trim();
@@ -755,7 +733,7 @@ function readStoredAuditIdentity() {
 }
 
 function writeStoredAuditIdentity(identity) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage || !identity) return;
   try {
     storage.setItem(AUDIT_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
@@ -765,7 +743,7 @@ function writeStoredAuditIdentity(identity) {
 }
 
 function clearStoredAuditIdentity() {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return;
   try {
     storage.removeItem(AUDIT_IDENTITY_STORAGE_KEY);
@@ -779,7 +757,7 @@ function privateDeckManifestStorageKey(matchId, owner) {
 }
 
 function readStoredPrivateDeckManifest(matchId, owner) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return null;
   try {
     const raw = String(storage.getItem(privateDeckManifestStorageKey(matchId, owner)) || "").trim();
@@ -790,7 +768,7 @@ function readStoredPrivateDeckManifest(matchId, owner) {
 }
 
 function writeStoredPrivateDeckManifest(manifest) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage || !manifest || manifest.owner == null || !manifest.matchId) return;
   try {
     storage.setItem(
@@ -802,12 +780,53 @@ function writeStoredPrivateDeckManifest(manifest) {
   }
 }
 
+function revealedOpeningStorageKey(indexKey) {
+  return `${AUDIT_REVEALED_OPENING_STORAGE_PREFIX}:${String(indexKey || "")}`;
+}
+
+function readStoredRevealedOpening(indexKey) {
+  const storage = getPeerSessionStorage();
+  if (!storage) return null;
+  try {
+    const raw = String(storage.getItem(revealedOpeningStorageKey(indexKey)) || "").trim();
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredRevealedOpening(indexKey, opening) {
+  const storage = getPeerSessionStorage();
+  if (!storage || !indexKey || !opening) return;
+  try {
+    storage.setItem(revealedOpeningStorageKey(indexKey), JSON.stringify(opening));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function clearStoredRevealedOpeningsForMatch(matchId) {
+  const storage = getPeerSessionStorage();
+  if (!storage) return;
+  const prefix = revealedOpeningStorageKey(`${String(matchId || "")}:`);
+  try {
+    const keys = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+    for (const key of keys) storage.removeItem(key);
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
 function ziffleIdentityStorageKey(context) {
   return `${ZIFFLE_IDENTITY_STORAGE_PREFIX}:${String(context || "")}`;
 }
 
 function readStoredZiffleIdentity(context) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return null;
   try {
     const raw = String(storage.getItem(ziffleIdentityStorageKey(context)) || "").trim();
@@ -818,7 +837,7 @@ function readStoredZiffleIdentity(context) {
 }
 
 function writeStoredZiffleIdentity(context, keyPair) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage || !context || !keyPair) return;
   try {
     storage.setItem(ziffleIdentityStorageKey(context), JSON.stringify(keyPair));
@@ -834,7 +853,7 @@ function resolveReconnectPlayerIndex(session, lobbyId) {
 }
 
 function writeStoredPlayerIndex(lobbyId, playerIndex) {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   const normalizedIndex = normalizePlayerIndex(playerIndex);
   if (!storage || normalizedIndex == null) return;
 
@@ -850,7 +869,7 @@ function writeStoredPlayerIndex(lobbyId, playerIndex) {
 }
 
 function clearStoredPlayerIndex(lobbyId = "") {
-  const storage = getLocalStorage();
+  const storage = getPeerSessionStorage();
   if (!storage) return;
 
   try {
@@ -1066,11 +1085,7 @@ function canHostedMatchStart(session) {
     session.mode !== "starting" &&
     session.players.length === session.desiredPlayers &&
     session.players.length > 0 &&
-    session.players.every((player) =>
-      player.connected !== false
-      && player.ready
-      && playerCryptoSeatBindingReady(player)
-    )
+    session.players.every((player) => player.connected !== false && player.ready)
   );
 }
 
@@ -1089,6 +1104,18 @@ function playerCryptoSeatBindingReady(player) {
     && Boolean(player.auditPublicKey)
     && Boolean(player.auditEncryptionPublicKey)
   );
+}
+
+async function waitForCryptoSeatBindingsFromSession(sessionRef, timeoutMs = 10000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const players = reindexPlayers(sessionRef.current?.players || []);
+    if (players.length > 0 && players.every(playerCryptoSeatBindingReady)) {
+      return players;
+    }
+    await sleep(100);
+  }
+  return reindexPlayers(sessionRef.current?.players || []);
 }
 
 function compactMatchValidationError(error) {
@@ -1193,6 +1220,7 @@ export function usePeerLobby({
   const auditVerifyKeyCacheRef = useRef(new Map());
   const liveAuditTranscriptRef = useRef(null);
   const privateDeckManifestsRef = useRef(new Map());
+  const localRevealedOpeningsRef = useRef(new Map());
   const ziffleKeyPairsRef = useRef(new Map());
   const ziffleShuffleWaitersRef = useRef(new Map());
   const ziffleRevealWaitersRef = useRef(new Map());
@@ -1608,6 +1636,14 @@ export function usePeerLobby({
     );
   }, []);
 
+  const resolveLocalCryptoPlayerIndex = useCallback((payload = matchStartPayloadRef.current) => {
+    const session = multiplayerRef.current;
+    return (
+      resolveLocalPlayerIndexFromPeer(session, payload?.players)
+      ?? resolveLocalPlayerIndex(session)
+    );
+  }, []);
+
 	  const rememberPrivateDeckManifest = useCallback((manifest) => {
 	    if (!manifest || !Array.isArray(manifest.slotSecrets)) return;
 	    const key = `${manifest.matchId}:${Number(manifest.owner)}`;
@@ -1639,6 +1675,88 @@ export function usePeerLobby({
       `${Number(owner)}:${Number(originalSlot)}`
     );
   }, []);
+
+  const rememberLocalRevealedOpening = useCallback((opening, details = {}) => {
+    if (!opening || opening.owner == null || opening.slot == null || !opening.card) return;
+    const matchId = String(details.matchId || currentAuditMatchId());
+    const writeEntry = (indexKey, entry) => {
+      localRevealedOpeningsRef.current.set(indexKey, entry);
+      writeStoredRevealedOpening(indexKey, entry);
+    };
+    const entry = {
+      ...cloneMultiplayerPayload(opening),
+      matchId,
+      objectId:
+        details.objectId != null
+          ? Number(details.objectId)
+          : opening.objectId != null
+            ? Number(opening.objectId)
+            : null,
+      position:
+        details.position != null
+          ? Number(details.position)
+          : opening.position != null
+            ? Number(opening.position)
+            : null,
+      positionCommitment: String(details.positionCommitment || opening.positionCommitment || ""),
+    };
+    if (entry.objectId != null) {
+      writeEntry(`${matchId}:object:${entry.objectId}`, entry);
+    }
+    if (entry.commitment) {
+      writeEntry(
+        `${matchId}:owner:${Number(entry.owner)}:commitment:${entry.commitment}`,
+        entry
+      );
+    }
+    if (entry.positionCommitment) {
+      writeEntry(
+        `${matchId}:owner:${Number(entry.owner)}:position:${entry.positionCommitment}`,
+        entry
+      );
+    }
+  }, [currentAuditMatchId]);
+
+  const localRevealedOpeningForExport = useCallback((exported) => {
+    if (!exported || exported.owner == null) return null;
+    const matchId = currentAuditMatchId();
+    const objectId = exported.object_id ?? exported.objectId;
+    const owner = Number(exported.owner);
+    const commitment = String(exported.commitment || "");
+    const readEntry = (indexKey) => {
+      const cached = localRevealedOpeningsRef.current.get(indexKey);
+      if (cached) return cached;
+      const stored = readStoredRevealedOpening(indexKey);
+      if (stored) {
+        localRevealedOpeningsRef.current.set(indexKey, stored);
+      }
+      return stored;
+    };
+    const candidates = [];
+    if (commitment) {
+      candidates.push(
+        readEntry(`${matchId}:owner:${owner}:commitment:${commitment}`),
+        readEntry(`${matchId}:owner:${owner}:position:${commitment}`)
+      );
+    }
+    if (objectId != null) {
+      candidates.push(readEntry(`${matchId}:object:${Number(objectId)}`));
+    }
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (Number(candidate.owner) !== owner) continue;
+      if (exported.card && String(candidate.card || "") !== String(exported.card || "")) continue;
+      if (
+        commitment
+        && String(candidate.commitment || "") !== commitment
+        && String(candidate.positionCommitment || "") !== commitment
+      ) {
+        continue;
+      }
+      return cloneMultiplayerPayload(candidate);
+    }
+    return null;
+  }, [currentAuditMatchId]);
 
   const publicDeckManifestForOwner = useCallback((owner) => {
     const normalized = Number(owner);
@@ -1775,6 +1893,82 @@ export function usePeerLobby({
     }
   }, [publicDeckManifestForOwner]);
 
+  const buildDeckSlotOpeningForExport = useCallback(async ({
+    manifest,
+    preferredSlot,
+    card,
+    exportedCommitment = "",
+    label = "private deck opening",
+  }) => {
+    const normalizedCommitment = String(exportedCommitment || "");
+    let preferredOpening = null;
+    try {
+      preferredOpening = await buildDeckSlotOpening({
+        manifest,
+        slot: preferredSlot,
+        card,
+      });
+    } catch (err) {
+      if (!normalizedCommitment) throw err;
+    }
+    if (
+      preferredOpening
+      && (!normalizedCommitment || preferredOpening.commitment === normalizedCommitment)
+    ) {
+      return {
+        opening: preferredOpening,
+        remappedFromSlot: null,
+      };
+    }
+
+    if (normalizedCommitment) {
+      const committedSecret = (manifest?.slotSecrets || []).find(
+        (secret) => String(secret?.commitment || "") === normalizedCommitment
+      );
+      if (committedSecret) {
+        const committedSlot = Number(committedSecret.slot);
+        return {
+          opening: await buildDeckSlotOpening({
+            manifest,
+            slot: committedSlot,
+            card: committedSecret.card,
+          }),
+          remappedFromSlot:
+            Number(preferredSlot) === committedSlot ? null : Number(preferredSlot),
+        };
+      }
+    }
+
+    for (const secret of manifest?.slotSecrets || []) {
+      const candidateSlot = Number(secret?.slot);
+      if (!Number.isInteger(candidateSlot) || candidateSlot === Number(preferredSlot)) {
+        continue;
+      }
+      try {
+        const candidate = await buildDeckSlotOpening({
+          manifest,
+          slot: candidateSlot,
+          card,
+        });
+        if (candidate.commitment === normalizedCommitment) {
+          return {
+            opening: candidate,
+            remappedFromSlot: Number(preferredSlot),
+          };
+        }
+      } catch {
+        // Keep searching; a different card name cannot satisfy this slot commitment.
+      }
+    }
+
+    throw new Error(
+      `${label} does not match slot ${Number(preferredSlot)}`
+      + ` (owner ${Number(manifest?.owner) + 1}, match ${String(manifest?.matchId || "")},`
+      + ` exported ${normalizedCommitment.slice(0, 12) || "none"},`
+      + ` local ${preferredOpening?.commitment?.slice(0, 12) || "none"})`
+    );
+  }, []);
+
 	  const buildLocalOpeningsForCommand = useCallback(async (command, cryptoRequirements = []) => {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.exportHiddenCardOpening !== "function") {
@@ -1805,21 +1999,27 @@ export function usePeerLobby({
       }
       const key = `${Number(exported.owner)}:${Number(exported.slot)}`;
       if (seen.has(key)) continue;
+      let cachedOpening = localRevealedOpeningForExport(exported);
       const manifest = privateDeckManifestForOwner(exported.owner);
-      const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
-      if (!manifest) {
+      const localSeat = resolveLocalCryptoPlayerIndex();
+      if (!manifest && !cachedOpening) {
         if (Number(exported.owner) === Number(localSeat)) {
           throw new Error(`Missing private deck opening for slot ${Number(exported.slot)}`);
         }
         continue;
       }
-      const opening = await buildDeckSlotOpening({
-        manifest,
-        slot: exported.slot,
-        card: exported.card,
-      });
-      if (exported.commitment && opening.commitment !== exported.commitment) {
-        throw new Error(`Local hidden card opening does not match object ${objectId}`);
+      let remappedFromSlot = null;
+      let opening = cachedOpening;
+      if (!opening) {
+        const built = await buildDeckSlotOpeningForExport({
+          manifest,
+          preferredSlot: exported.slot,
+          card: exported.card,
+          exportedCommitment: exported.commitment,
+          label: "Local hidden card opening",
+        });
+        opening = built.opening;
+        remappedFromSlot = built.remappedFromSlot;
       }
       opening.objectId = Number(exported.object_id ?? exported.objectId ?? objectId);
       opening.timing = commandObjectIds.has(Number(objectId)) ? "pre" : "post";
@@ -1831,11 +2031,26 @@ export function usePeerLobby({
           opening.positionCommitment = ziffleRuntimeCommitment(ceremony.deckHash, zifflePosition);
         }
       }
+      if (remappedFromSlot != null) {
+        opening.reportedSlot = Number(remappedFromSlot);
+      }
+      rememberLocalRevealedOpening(opening, {
+        objectId: opening.objectId,
+        positionCommitment: opening.positionCommitment,
+      });
       openings.push(opening);
       seen.add(key);
     }
 	    return openings;
-	  }, [privateDeckManifestForOwner, ziffleCeremonyForOwner, ziffleOpeningPositionForSlot]);
+	  }, [
+      buildDeckSlotOpeningForExport,
+      localRevealedOpeningForExport,
+      privateDeckManifestForOwner,
+      rememberLocalRevealedOpening,
+      resolveLocalCryptoPlayerIndex,
+      ziffleCeremonyForOwner,
+      ziffleOpeningPositionForSlot,
+    ]);
 
 	  const buildLocalOpeningFromRequirement = useCallback(async (requirement, exported = null) => {
 	    const owner = Number(exported?.owner ?? requirement?.owner);
@@ -1843,7 +2058,8 @@ export function usePeerLobby({
 	      throw new Error("Crypto opening requirement is missing an owner");
 	    }
 	    const manifest = privateDeckManifestForOwner(owner);
-	    if (!manifest) {
+      const cachedOpeningForRequirement = exported ? localRevealedOpeningForExport(exported) : null;
+	    if (!manifest && !cachedOpeningForRequirement) {
 	      throw new Error(`Missing private deck opening material for player ${owner + 1}`);
 	    }
 
@@ -1879,25 +2095,37 @@ export function usePeerLobby({
 	      rememberZiffleOpeningPosition(owner, originalSlot, position);
 	    }
 
-	    const secret = (manifest.slotSecrets || []).find(
+	    const secret = (manifest?.slotSecrets || []).find(
 	      (entry) => Number(entry.slot) === Number(originalSlot)
 	    );
-	    if (!secret) {
+	    if (!secret && !cachedOpeningForRequirement && !exported?.card && !requirement?.card) {
 	      throw new Error(`Missing private deck opening for slot ${Number(originalSlot)}`);
 	    }
-	    const card = String(exported?.card || requirement?.card || secret.card || "");
-	    const opening = await buildDeckSlotOpening({
-	      manifest,
-	      slot: originalSlot,
-	      card,
-	    });
-	    if (
-	      exportedCommitment
-	      && !ziffleDeckHash
-	      && opening.commitment !== exportedCommitment
-	    ) {
-	      throw new Error(`Private deck opening does not match slot ${Number(originalSlot)}`);
-	    }
+	    const card = String(exported?.card || requirement?.card || secret?.card || cachedOpeningForRequirement?.card || "");
+      let cachedOpening = cachedOpeningForRequirement;
+      let remappedFromSlot = null;
+      let opening = cachedOpening;
+      if (!opening) {
+        const built = await buildDeckSlotOpeningForExport({
+          manifest,
+          preferredSlot: originalSlot,
+          card,
+          exportedCommitment: ziffleDeckHash ? "" : exportedCommitment,
+          label: "Private deck opening",
+        });
+        opening = built.opening;
+        remappedFromSlot = built.remappedFromSlot;
+      }
+      if (remappedFromSlot != null) {
+        originalSlot = Number(opening.slot);
+      }
+      if (exported) {
+        rememberLocalRevealedOpening(opening, {
+          objectId: exported.object_id ?? exported.objectId,
+          position: opening.position,
+          positionCommitment: opening.positionCommitment,
+        });
+      }
 	    return {
 	      opening: {
 	        ...opening,
@@ -1909,6 +2137,7 @@ export function usePeerLobby({
 	        timing: "post",
 	        ...(position != null ? { position } : {}),
 	        ...(positionCommitment ? { positionCommitment } : {}),
+          ...(remappedFromSlot != null ? { reportedSlot: Number(remappedFromSlot) } : {}),
 	      },
 	      owner,
 	      originalSlot,
@@ -1917,7 +2146,10 @@ export function usePeerLobby({
 	    };
 	  }, [
 	    collectZiffleRevealTokens,
+      buildDeckSlotOpeningForExport,
+      localRevealedOpeningForExport,
 	    privateDeckManifestForOwner,
+      rememberLocalRevealedOpening,
 	    rememberZiffleOpeningPosition,
 	    ziffleCeremonyForOwner,
 	  ]);
@@ -1926,26 +2158,50 @@ export function usePeerLobby({
 	    const openings = [];
 	    for (const requirement of requirements || []) {
 	      if (String(requirement?.type || "") !== "public_open") continue;
-	      const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+		      const localSeat = resolveLocalCryptoPlayerIndex();
 	      if (Number(requirement.owner) !== Number(localSeat)) continue;
 	      openings.push((await buildLocalOpeningFromRequirement(requirement)).opening);
 	    }
 	    return openings;
-	  }, [buildLocalOpeningFromRequirement]);
+	  }, [buildLocalOpeningFromRequirement, resolveLocalCryptoPlayerIndex]);
 
 	  const buildLocalDeckAuditManifest = useCallback(
     async ({ matchId, owner, deck, sideboard, commanders }) => {
+      const normalizedMatchId = String(matchId || "");
+      const normalizedOwner = Number(owner);
+      const normalizedDeck = sanitizeCardList(deck);
+      const normalizedSideboard = sanitizeCardList(sideboard);
+      const normalizedCommanders = sanitizeCardList(commanders);
+      const expectedDecklistHash = await decklistHashForCards({
+        matchId: normalizedMatchId,
+        owner: normalizedOwner,
+        deck: normalizedDeck,
+        sideboard: normalizedSideboard,
+        commanders: normalizedCommanders,
+      });
+      const existing = privateDeckManifestForOwner(normalizedOwner, normalizedMatchId);
+      if (
+        existing?.decklistHash === expectedDecklistHash
+        && Number(existing.deckCount) === normalizedDeck.length
+        && Number(existing.sideboardCount || 0) === normalizedSideboard.length
+        && Number(existing.commanderCount || 0) === normalizedCommanders.length
+        && Array.isArray(existing.slotSecrets)
+        && existing.slotSecrets.length === normalizedDeck.length
+      ) {
+        rememberPrivateDeckManifest(existing);
+        return existing;
+      }
       const manifest = await buildPrivateDeckManifest({
-        matchId,
-        owner: Number(owner),
-        deck: sanitizeCardList(deck),
-        sideboard: sanitizeCardList(sideboard),
-        commanders: sanitizeCardList(commanders),
+        matchId: normalizedMatchId,
+        owner: normalizedOwner,
+        deck: normalizedDeck,
+        sideboard: normalizedSideboard,
+        commanders: normalizedCommanders,
       });
       rememberPrivateDeckManifest(manifest);
       return manifest;
     },
-    [rememberPrivateDeckManifest]
+    [privateDeckManifestForOwner, rememberPrivateDeckManifest]
   );
 
   const buildSequencedActionAudit = useCallback(async ({
@@ -2270,10 +2526,10 @@ export function usePeerLobby({
 	    const currentGame = gameRef.current;
 	    const proofs = [];
 	    const privateOpeningProofs = [];
-	    const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+		    const localSeat = resolveLocalCryptoPlayerIndex();
 	    for (const requirement of requirements || []) {
 	      if (String(requirement?.type || "") !== "private_open") continue;
-	      if (Number(requirement.owner) !== Number(localSeat)) continue;
+		      if (Number(requirement.owner) !== Number(localSeat)) continue;
 	      const viewer = Number(requirement.viewer);
 	      const recipientPublicKey = auditEncryptionPublicKeyForPlayer(viewer);
 	      if (!recipientPublicKey) {
@@ -2354,7 +2610,12 @@ export function usePeerLobby({
       proofs.push(proof);
 	    }
 	    return proofs;
-	  }, [auditEncryptionPublicKeyForPlayer, buildLocalOpeningFromRequirement, currentAuditMatchId]);
+	  }, [
+      auditEncryptionPublicKeyForPlayer,
+      buildLocalOpeningFromRequirement,
+      currentAuditMatchId,
+      resolveLocalCryptoPlayerIndex,
+    ]);
 
 	  const buildLocalCryptoMaterialForRequirements = useCallback(async (requirements = []) => {
 	    const openings = mergeAuditOpenings(
@@ -2371,7 +2632,7 @@ export function usePeerLobby({
 
   const answerCryptoMaterialRequest = useCallback(async (conn, message) => {
     try {
-      const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+	      const localSeat = resolveLocalCryptoPlayerIndex();
       const requirements = (message.requirements || []).filter((requirement) =>
         Number(requirement?.owner) === Number(localSeat)
       );
@@ -2391,10 +2652,10 @@ export function usePeerLobby({
         error: toErrorMessage(err),
       });
     }
-  }, [buildLocalCryptoMaterialForRequirements]);
+  }, [buildLocalCryptoMaterialForRequirements, resolveLocalCryptoPlayerIndex]);
 
   const collectRemoteCryptoMaterialForRequirements = useCallback(async (requirements = []) => {
-    const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+	    const localSeat = resolveLocalCryptoPlayerIndex();
     const materialByOwner = new Map();
     for (const requirement of requirements || []) {
       const type = String(requirement?.type || "");
@@ -2435,7 +2696,13 @@ export function usePeerLobby({
         ...responses.map((response) => response.privateViewProofs || [])
       ),
     };
-  }, [currentAuditMatchId, makeZiffleRequestId, setStatus, waitForCryptoMaterial]);
+  }, [
+    currentAuditMatchId,
+    makeZiffleRequestId,
+    resolveLocalCryptoPlayerIndex,
+    setStatus,
+    waitForCryptoMaterial,
+  ]);
 
   const resolvePeerResyncWaitersIfIdle = useCallback(() => {
     if (resyncingPeerIdsRef.current.size > 0) return;
@@ -2873,7 +3140,7 @@ export function usePeerLobby({
     if (!currentGame || typeof currentGame.ziffleBuildRevealToken !== "function") {
       throw new Error("Ziffle reveal-token backend is not available");
     }
-    const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
+    const localIndex = resolveLocalCryptoPlayerIndex();
     const keyPair = await ensureZiffleIdentity({
       context: ceremony.context,
       deckCount: ceremony.deckCount,
@@ -3261,7 +3528,7 @@ export function usePeerLobby({
 
   async function collectFairRandomReveal(requirement, seq) {
     const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
-    const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
+    const localIndex = resolveLocalCryptoPlayerIndex(payload);
     const commits = [];
     const revealRequests = [];
     for (const player of players) {
@@ -3366,6 +3633,7 @@ export function usePeerLobby({
     if (
       !currentGame
       || typeof currentGame.exportSyncCheckpoint !== "function"
+      || typeof currentGame.exportHiddenCardOpening !== "function"
       || typeof currentGame.ziffleRevealCard !== "function"
       || typeof currentGame.revealHiddenPosition !== "function"
     ) {
@@ -3389,11 +3657,52 @@ export function usePeerLobby({
     for (const objectId of handIds) {
       const object = objects.get(objectId);
       const hidden = object?.hiddenCard;
-      if (!hidden || Number(hidden.owner) !== Number(localIndex)) continue;
-      const position = Number(hidden.slot);
+      let exported = null;
+      try {
+        exported = await currentGame.exportHiddenCardOpening(wasmObjectIdArg(objectId));
+      } catch {
+        exported = null;
+      }
+      if (exported && Number(exported.owner) !== Number(localIndex)) {
+        exported = null;
+      }
+      if (!hidden && !exported) continue;
+      const exportedCommitment = String(exported?.commitment || "");
+      const exportedZiffleDeckHash = ziffleDeckHashFromCommitment(exportedCommitment);
+      if (!hidden && !exportedZiffleDeckHash && exported) {
+        const cached = localRevealedOpeningForExport(exported);
+        if (cached) {
+          rememberLocalRevealedOpening(cached, {
+            objectId,
+            position: cached.position,
+            positionCommitment: cached.positionCommitment,
+            matchId: payload.auditMatchId,
+          });
+          continue;
+        }
+        const { opening } = await buildDeckSlotOpeningForExport({
+          manifest,
+          preferredSlot: exported.slot,
+          card: exported.card,
+          exportedCommitment,
+          label: "Local hidden card opening",
+        });
+        rememberLocalRevealedOpening(opening, {
+          objectId,
+          position: opening.position,
+          positionCommitment: opening.positionCommitment,
+          matchId: payload.auditMatchId,
+        });
+        continue;
+      }
+      if (!hidden && !exportedZiffleDeckHash) continue;
+      const position = Number(hidden?.slot ?? exported?.slot);
+      const positionCommitment =
+        String(hidden?.commitment || "")
+        || (exportedZiffleDeckHash ? exportedCommitment : "");
       const ceremony = ziffleCeremonyForOwner(localIndex, {
         payload,
-        commitment: hidden.commitment,
+        commitment: positionCommitment,
       });
       if (!ceremony) continue;
       const tokens = await collectZiffleRevealTokens(ceremony, position);
@@ -3422,9 +3731,25 @@ export function usePeerLobby({
         position,
         originalSlot,
         cardName: opening.card,
-        positionCommitment: hidden.commitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
+        positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
         commitment: opening.commitment,
+      }).catch((err) => {
+        if (!exported) throw err;
       });
+      rememberLocalRevealedOpening(
+        {
+          ...opening,
+          objectId,
+          position,
+          positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
+        },
+        {
+          objectId,
+          position,
+          positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
+          matchId: payload.auditMatchId,
+        }
+      );
       rememberZiffleOpeningPosition(localIndex, originalSlot, position);
       changed = true;
     }
@@ -3574,6 +3899,9 @@ export function usePeerLobby({
       });
       await currentGame.setPerspective(localEntry.index);
       liveZiffleCeremoniesRef.current.clear();
+      ziffleOpeningPositionsRef.current.clear();
+      localRevealedOpeningsRef.current.clear();
+      clearStoredRevealedOpeningsForMatch(payload.auditMatchId || currentAuditMatchId());
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       ensureDirectPeerConnections(payload.players || []);
       if (!options.deferLocalZiffleReveal) {
@@ -3752,6 +4080,9 @@ export function usePeerLobby({
         message?.lastSequence ?? actionEntries.at(-1)?.seq ?? 0
       );
       liveZiffleCeremoniesRef.current.clear();
+      ziffleOpeningPositionsRef.current.clear();
+      localRevealedOpeningsRef.current.clear();
+      clearStoredRevealedOpeningsForMatch(matchPayload.auditMatchId || currentAuditMatchId());
       matchStartPayloadRef.current = cloneMultiplayerPayload(matchPayload);
       actionHistoryRef.current = actionEntries.map((entry) => cloneMultiplayerPayload(entry));
       relayedActionIdsRef.current.clear();
@@ -3881,6 +4212,7 @@ export function usePeerLobby({
       );
       return;
     }
+    players = await waitForCryptoSeatBindingsFromSession(multiplayerRef);
     const unboundCryptoPlayer = players.find((player) => !playerCryptoSeatBindingReady(player));
     if (unboundCryptoPlayer) {
       setStatus(
@@ -4075,6 +4407,7 @@ export function usePeerLobby({
       );
       return;
     }
+    players = await waitForCryptoSeatBindingsFromSession({ current: { players } });
     const unboundCryptoPlayer = players.find((player) => !playerCryptoSeatBindingReady(player));
     if (unboundCryptoPlayer) {
       setStatus(

@@ -9,9 +9,11 @@ use crate::effects::helpers::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_destroy};
+use crate::events::zones::ZoneChangeEvent;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
+use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 /// Effect that destroys permanents.
@@ -123,8 +125,10 @@ impl EffectExecutor for DestroyEffect {
         }
 
         // For all/multi-target effects, count only successful destructions.
+        let pending_start = game.effect_store.pending_trigger_events.len();
         let mut destroyed_objects = Vec::new();
         let mut destroyed_memory = Vec::new();
+        let mut graveyard_zone_changes = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -150,7 +154,11 @@ impl EffectExecutor for DestroyEffect {
                     if let Some(snapshot) = pre_snapshot.as_ref() {
                         destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
                     }
-                    destroyed_objects.extend(game.take_zone_change_results(object_id));
+                    let result_objects = game.take_zone_change_results(object_id);
+                    if let Some(snapshot) = pre_snapshot {
+                        graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
+                    }
+                    destroyed_objects.extend(result_objects);
                     return Ok(true);
                 }
                 Ok(false)
@@ -159,6 +167,47 @@ impl EffectExecutor for DestroyEffect {
             Ok(result) => result,
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
+
+        if graveyard_zone_changes.len() > 1 {
+            let event_objects = graveyard_zone_changes
+                .iter()
+                .map(|(id, _, _)| *id)
+                .collect::<Vec<_>>();
+            let result_objects = graveyard_zone_changes
+                .iter()
+                .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
+                .collect::<Vec<_>>();
+            let snapshots = graveyard_zone_changes
+                .iter()
+                .map(|(_, _, snapshot)| snapshot.clone())
+                .collect::<Vec<_>>();
+
+            let removed =
+                game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                    let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
+                        return false;
+                    };
+                    zone_change.from == Zone::Battlefield
+                        && zone_change.to == Zone::Graveyard
+                        && zone_change.objects.len() == 1
+                        && event_objects.contains(&zone_change.objects[0])
+                });
+
+            if !removed.is_empty() {
+                let mut event = ZoneChangeEvent::batch_with_snapshots(
+                    event_objects,
+                    Zone::Battlefield,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    snapshots,
+                );
+                event.result_objects = result_objects;
+                game.queue_trigger_event(
+                    ctx.provenance,
+                    TriggerEvent::new_with_provenance(event, ctx.provenance),
+                );
+            }
+        }
 
         let mut outcome = apply_result.outcome;
         if !destroyed_objects.is_empty() {

@@ -35,6 +35,8 @@ const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
     &["players"],
     &["opponent"],
     &["opponents"],
+    &["other", "player"],
+    &["other", "players"],
     &["target", "player"],
     &["target", "players"],
     &["target", "opponent"],

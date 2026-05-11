@@ -1150,10 +1150,20 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
                 filter,
                 graveyard_owner,
-            } => StaticAbility::exile_to_exile_instead_of_graveyard(
-                filter.clone(),
-                graveyard_owner.clone(),
-            ),
+                exclude_cycled,
+            } => {
+                if *exclude_cycled {
+                    StaticAbility::exile_to_exile_instead_of_graveyard_unless_cycled(
+                        filter.clone(),
+                        graveyard_owner.clone(),
+                    )
+                } else {
+                    StaticAbility::exile_to_exile_instead_of_graveyard(
+                        filter.clone(),
+                        graveyard_owner.clone(),
+                    )
+                }
+            }
             ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
                 if let Some(damaged_by) = damaged_by {
                     StaticAbility::exile_would_die_instead_damaged_by(

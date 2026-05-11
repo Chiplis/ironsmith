@@ -1,7 +1,9 @@
 //! Untap effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
+use crate::effects::helpers::{
+    ObjectApplyResultPolicy, apply_to_selected_objects_with_choice_description,
+};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::PermanentUntappedEvent;
@@ -41,11 +43,17 @@ impl EffectExecutor for UntapEffect {
         };
         let provenance = ctx.provenance;
 
-        let apply_result = apply_to_selected_objects(
+        let choice_description = match self.target.base() {
+            ChooseSpec::Object(filter) => Some(format!("Choose {} to untap", filter.description())),
+            _ => Some("Choose permanent to untap".to_string()),
+        };
+
+        let apply_result = apply_to_selected_objects_with_choice_description(
             game,
             ctx,
             &self.target,
             result_policy,
+            choice_description,
             |game, _ctx, object_id| {
                 if game.object(object_id).is_some() && game.is_tapped(object_id) {
                     game.untap(object_id);

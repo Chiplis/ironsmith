@@ -787,26 +787,50 @@ fn prepend_missing_target_choice_prelude(
     mut compiled: Vec<Effect>,
     choices: &[ChooseSpec],
 ) -> Vec<Effect> {
-    let mut prelude = Vec::new();
+    let mut missing_targets = Vec::new();
     for choice in choices {
         if !choice.is_target() {
             continue;
         }
         let exposed_count = compiled
             .iter()
-            .filter(|effect| effect.target_spec().is_some_and(|spec| spec == choice))
+            .filter(|effect| effect_exposes_target_choice(effect, choice))
             .count();
         if exposed_count != 1 {
-            prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+            missing_targets.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                 choice.clone(),
             )));
         }
     }
-    if prelude.is_empty() {
+    if missing_targets.is_empty() {
         return compiled;
     }
-    prelude.append(&mut compiled);
-    prelude
+    if compiled.iter().any(effect_contains_exchange_control) {
+        return compiled;
+    }
+    missing_targets.append(&mut compiled);
+    missing_targets
+}
+
+fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
+    if effect.target_spec().is_some_and(|spec| spec == choice) {
+        return true;
+    }
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .is_some_and(|tagged| effect_exposes_target_choice(&tagged.effect, choice))
+}
+
+fn effect_contains_exchange_control(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::ExchangeControlEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .is_some_and(|tagged| effect_contains_exchange_control(&tagged.effect))
 }
 
 fn preserve_chooser_relative_player_filters(
@@ -2126,6 +2150,8 @@ fn extract_inline_token_rules_text(source_text: &str) -> Option<String> {
         "q, ",
         "tap ",
         "sacrifice ",
+        "this ",
+        "power ",
         "whenever ",
         "when ",
         "at ",
@@ -2161,7 +2187,8 @@ fn try_parse_quoted_token_rules_text(
         || quoted_lower.starts_with("whenever ")
         || quoted_lower.starts_with("at ");
     let looks_activated = quoted.contains(':');
-    if !looks_triggered && !looks_activated {
+    let looks_static = quoted_lower.contains("power") && quoted_lower.contains("toughness");
+    if !looks_triggered && !looks_activated && !looks_static {
         return None;
     }
 
@@ -4286,6 +4313,26 @@ mod parse_compile_tests {
         assert!(
             debug.contains("until: EndOfTurn"),
             "expected generic quoted-token parse to keep until-end-of-turn duration, got {debug}"
+        );
+    }
+
+    #[test]
+    fn try_parse_quoted_token_rules_text_parses_static_pt_ability() {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Elemental")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental])
+            .color_indicator(ColorSet::GREEN.union(ColorSet::WHITE))
+            .power_toughness(PowerToughness::fixed(0, 0));
+        let source_text = "green and white Elemental creature token with \"This token's power and toughness are each equal to the number of creatures you control.\"";
+        let parsed = try_parse_quoted_token_rules_text(&builder, source_text, "This creature")
+            .expect("quoted static P/T ability should parse generically");
+        let debug = format!("{parsed:#?}");
+
+        assert!(
+            debug.contains("CharacteristicDefiningPT")
+                && debug.contains("card_types: [\n                                    Creature"),
+            "expected generic quoted-token parse to compile dynamic creature-count P/T, got {debug}"
         );
     }
 

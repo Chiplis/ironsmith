@@ -36,6 +36,8 @@ pub struct ZoneChangeEvent {
     /// Snapshot of the object's state before the zone change (for LKI).
     /// For batch events, this is the snapshot of the first/primary object.
     pub snapshot: Option<ObjectSnapshot>,
+    /// Snapshots of every object's state before the zone change (for batch LKI).
+    pub snapshots: Vec<ObjectSnapshot>,
     /// Optional tagged object snapshots attached to this zone-change event.
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
@@ -55,6 +57,7 @@ impl ZoneChangeEvent {
             from,
             to,
             cause,
+            snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
         }
@@ -75,6 +78,7 @@ impl ZoneChangeEvent {
             from,
             to,
             cause,
+            snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
         }
@@ -82,14 +86,36 @@ impl ZoneChangeEvent {
 
     /// Create a batch zone change event for multiple objects.
     pub fn batch(objects: Vec<ObjectId>, from: Zone, to: Zone, cause: EventCause) -> Self {
+        Self::batch_with_snapshots(objects, from, to, cause, Vec::new())
+    }
+
+    /// Create a batch zone change event for multiple objects with LKI snapshots.
+    pub fn batch_with_snapshots(
+        objects: Vec<ObjectId>,
+        from: Zone,
+        to: Zone,
+        cause: EventCause,
+        snapshots: Vec<ObjectSnapshot>,
+    ) -> Self {
+        let snapshot = snapshots.first().cloned();
         Self {
             objects,
             result_objects: Vec::new(),
             from,
             to,
             cause,
-            snapshot: None,
+            snapshot,
+            snapshots,
             object_tags: HashMap::new(),
+        }
+    }
+
+    /// Pre-change snapshots represented by this event.
+    pub fn snapshots(&self) -> &[ObjectSnapshot] {
+        if self.snapshots.is_empty() {
+            self.snapshot.as_slice()
+        } else {
+            &self.snapshots
         }
     }
 

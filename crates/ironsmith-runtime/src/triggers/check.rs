@@ -19,7 +19,7 @@ use crate::resolution::ResolutionProgram;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 use super::Trigger;
@@ -123,6 +123,8 @@ pub struct TriggerQueue {
     /// Pending triggered abilities.
     pub entries: Vec<TriggeredAbilityEntry>,
 }
+
+const ATTACHED_SOURCE_TAG: &str = "attached_source";
 
 impl TriggerQueue {
     /// Create a new empty trigger queue.
@@ -923,7 +925,11 @@ pub(crate) fn check_triggers_with_view(
             continue;
         };
 
-        let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game);
+        let controller = view
+            .calculated_characteristics(obj_id)
+            .map(|chars| chars.controller)
+            .unwrap_or_else(|| game.controller_of(obj));
+        let ctx = TriggerContext::for_source(obj_id, controller, game);
 
         // Get calculated abilities (after continuous effects like Humility, Blood Moon)
         let calculated_abilities = view
@@ -941,12 +947,14 @@ pub(crate) fn check_triggers_with_view(
             }
 
             if trigger_ability.trigger.matches(trigger_event, &ctx) {
-                let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                let trigger_count = trigger_ability
+                    .trigger
+                    .trigger_count_with_context(trigger_event, &ctx);
                 if trigger_count == 0 {
                     continue;
                 }
                 if is_soulbond_pair_trigger(trigger_ability)
-                    && !soulbond_trigger_had_eligible_pair(game, obj_id, game.controller_of(obj))
+                    && !soulbond_trigger_had_eligible_pair(game, obj_id, controller)
                 {
                     continue;
                 }
@@ -958,7 +966,7 @@ pub(crate) fn check_triggers_with_view(
                     && !verify_intervening_if(
                         game,
                         condition,
-                        game.controller_of(obj),
+                        controller,
                         trigger_event,
                         obj_id,
                         Some(trigger_identity),
@@ -969,7 +977,7 @@ pub(crate) fn check_triggers_with_view(
 
                 let entry = TriggeredAbilityEntry {
                     source: obj_id,
-                    controller: game.controller_of(obj),
+                    controller,
                     x_value: trigger_entry_x_value(trigger_event, obj.x_value),
                     event_value_amount,
                     ability: TriggeredAbility {
@@ -1000,9 +1008,11 @@ pub(crate) fn check_triggers_with_view(
     if trigger_event.kind() == crate::events::traits::EventKind::ZoneChange
         && let Some(zc) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
         && zc.is_ltb()
-        && let Some(snapshot) = zc.snapshot.as_ref()
     {
-        if !game.battlefield.contains(&snapshot.object_id) {
+        for snapshot in zc.snapshots() {
+            if game.battlefield.contains(&snapshot.object_id) {
+                continue;
+            }
             for ability in &snapshot.abilities {
                 let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                     continue;
@@ -1015,7 +1025,9 @@ pub(crate) fn check_triggers_with_view(
 
                 let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
                 if trigger_ability.trigger.matches(trigger_event, &ctx) {
-                    let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                    let trigger_count = trigger_ability
+                        .trigger
+                        .trigger_count_with_context(trigger_event, &ctx);
                     if trigger_count == 0 {
                         continue;
                     }
@@ -1061,6 +1073,76 @@ pub(crate) fn check_triggers_with_view(
                 }
             }
         }
+        collect_attached_source_lki_triggers(game, trigger_event, zc, &mut triggered);
+    }
+
+    // A permanent can see itself being sacrificed. The sacrifice event carries
+    // the pre-move snapshot, so use the same battlefield-LKI rules as LTB
+    // triggers for abilities like "Whenever you sacrifice a green creature".
+    if trigger_event.kind() == crate::events::traits::EventKind::Sacrifice
+        && let Some(sacrifice) =
+            trigger_event.downcast::<crate::events::permanents::SacrificeEvent>()
+        && let Some(snapshot) = sacrifice.snapshot.as_ref()
+        && !game.battlefield.contains(&snapshot.object_id)
+    {
+        for ability in &snapshot.abilities {
+            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+                continue;
+            };
+
+            if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
+
+            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
+            if trigger_ability.trigger.matches(trigger_event, &ctx) {
+                let trigger_count = trigger_ability
+                    .trigger
+                    .trigger_count_with_context(trigger_event, &ctx);
+                if trigger_count == 0 {
+                    continue;
+                }
+                let event_value_amount = trigger_ability
+                    .trigger
+                    .event_value_amount(trigger_event, &ctx);
+                let trigger_identity = compute_trigger_identity(trigger_ability);
+                if let Some(ref condition) = trigger_ability.intervening_if
+                    && !verify_intervening_if(
+                        game,
+                        condition,
+                        snapshot.controller,
+                        trigger_event,
+                        snapshot.object_id,
+                        Some(trigger_identity),
+                    )
+                {
+                    continue;
+                }
+
+                let entry = TriggeredAbilityEntry {
+                    source: snapshot.object_id,
+                    controller: snapshot.controller,
+                    x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                    event_value_amount,
+                    ability: TriggeredAbility {
+                        trigger: trigger_ability.trigger.clone(),
+                        effects: trigger_ability.effects.clone(),
+                        choices: trigger_ability.choices.clone(),
+                        intervening_if: trigger_ability.intervening_if.clone(),
+                        presentation_label: None,
+                    },
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: snapshot.stable_id,
+                    source_name: snapshot.name.clone(),
+                    source_snapshot: Some(snapshot.clone()),
+                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                    trigger_identity,
+                };
+                for _ in 0..trigger_count {
+                    triggered.push(entry.clone());
+                }
+            }
+        }
     }
 
     // Some discard triggers function from hand and must be checked using the
@@ -1078,7 +1160,9 @@ pub(crate) fn check_triggers_with_view(
 
             let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
             if trigger_ability.trigger.matches(trigger_event, &ctx) {
-                let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                let trigger_count = trigger_ability
+                    .trigger
+                    .trigger_count_with_context(trigger_event, &ctx);
                 if trigger_count == 0 {
                     continue;
                 }
@@ -1308,6 +1392,106 @@ pub(crate) fn check_triggers_with_view(
     triggered
 }
 
+fn collect_attached_source_lki_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    zone_change: &crate::events::zones::ZoneChangeEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(attached_sources) = zone_change.object_tags.get(ATTACHED_SOURCE_TAG) else {
+        return;
+    };
+    let leaving_snapshots = zone_change.snapshots();
+    if leaving_snapshots.is_empty() {
+        return;
+    }
+
+    for source_snapshot in attached_sources {
+        if source_snapshot.zone != Zone::Battlefield {
+            continue;
+        }
+
+        let mut filter_ctx =
+            game.filter_context_for(source_snapshot.controller, Some(source_snapshot.object_id));
+        if source_snapshot.subtypes.contains(&Subtype::Aura) {
+            filter_ctx.tagged_objects.insert(
+                crate::tag::TagKey::from("enchanted"),
+                leaving_snapshots.to_vec(),
+            );
+        }
+        if source_snapshot.subtypes.contains(&Subtype::Equipment) {
+            filter_ctx.tagged_objects.insert(
+                crate::tag::TagKey::from("equipped"),
+                leaving_snapshots.to_vec(),
+            );
+        }
+
+        let ctx = TriggerContext::new(
+            source_snapshot.object_id,
+            source_snapshot.controller,
+            filter_ctx,
+            game,
+        );
+        for ability in &source_snapshot.abilities {
+            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
+            if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+                continue;
+            }
+
+            let trigger_count = trigger_ability
+                .trigger
+                .trigger_count_with_context(trigger_event, &ctx);
+            if trigger_count == 0 {
+                continue;
+            }
+            let event_value_amount = trigger_ability
+                .trigger
+                .event_value_amount(trigger_event, &ctx);
+            let trigger_identity = compute_trigger_identity(trigger_ability);
+            if let Some(ref condition) = trigger_ability.intervening_if
+                && !verify_intervening_if(
+                    game,
+                    condition,
+                    source_snapshot.controller,
+                    trigger_event,
+                    source_snapshot.object_id,
+                    Some(trigger_identity),
+                )
+            {
+                continue;
+            }
+
+            let entry = TriggeredAbilityEntry {
+                source: source_snapshot.object_id,
+                controller: source_snapshot.controller,
+                x_value: trigger_entry_x_value(trigger_event, source_snapshot.x_value),
+                event_value_amount,
+                ability: TriggeredAbility {
+                    trigger: trigger_ability.trigger.clone(),
+                    effects: trigger_ability.effects.clone(),
+                    choices: trigger_ability.choices.clone(),
+                    intervening_if: trigger_ability.intervening_if.clone(),
+                    presentation_label: None,
+                },
+                triggering_event: trigger_event.clone(),
+                source_stable_id: source_snapshot.stable_id,
+                source_name: source_snapshot.name.clone(),
+                source_snapshot: Some(source_snapshot.clone()),
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                trigger_identity,
+            };
+            for _ in 0..trigger_count {
+                triggered.push(entry.clone());
+            }
+        }
+    }
+}
+
 fn add_speed_increase_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
@@ -1372,6 +1556,7 @@ fn state_trigger_event(source: ObjectId) -> TriggerEvent {
 fn collect_state_triggers_for_object(
     game: &GameState,
     obj: &crate::object::Object,
+    controller: PlayerId,
     abilities: &[crate::ability::Ability],
     triggered: &mut Vec<TriggeredAbilityEntry>,
     active: &mut HashSet<ActiveStateTriggerKey>,
@@ -1403,7 +1588,7 @@ fn collect_state_triggers_for_object(
         if !verify_intervening_if(
             game,
             condition,
-            game.controller_of(obj),
+            controller,
             &trigger_event,
             obj.id,
             Some(trigger_identity),
@@ -1423,7 +1608,7 @@ fn collect_state_triggers_for_object(
         let tagged_objects = tagged_objects_for_trigger_event(game, &trigger_event);
         triggered.push(TriggeredAbilityEntry {
             source: obj.id,
-            controller: game.controller_of(obj),
+            controller,
             x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
             event_value_amount: None,
             ability: TriggeredAbility {
@@ -1459,9 +1644,14 @@ pub fn check_state_triggers(
         let calculated_abilities = view
             .abilities_rc(obj_id)
             .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
+        let controller = view
+            .calculated_characteristics(obj_id)
+            .map(|chars| chars.controller)
+            .unwrap_or_else(|| game.controller_of(obj));
         collect_state_triggers_for_object(
             game,
             obj,
+            controller,
             calculated_abilities.as_ref(),
             &mut triggered,
             &mut active,
@@ -1473,6 +1663,7 @@ pub fn check_state_triggers(
             collect_state_triggers_for_object(
                 game,
                 obj,
+                game.controller_of(obj),
                 &obj.abilities,
                 &mut triggered,
                 &mut active,
@@ -1485,6 +1676,7 @@ pub fn check_state_triggers(
             collect_state_triggers_for_object(
                 game,
                 obj,
+                game.controller_of(obj),
                 &obj.abilities,
                 &mut triggered,
                 &mut active,
@@ -1660,7 +1852,9 @@ fn check_triggers_in_zone(
         }
 
         if trigger_ability.trigger.matches(trigger_event, &ctx) {
-            let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+            let trigger_count = trigger_ability
+                .trigger
+                .trigger_count_with_context(trigger_event, &ctx);
             if trigger_count == 0 {
                 continue;
             }
@@ -1944,7 +2138,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     fn make_battlefield_creature(
@@ -1968,6 +2162,45 @@ mod tests {
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    #[test]
+    fn sacrifice_event_uses_source_lki_for_self_sacrifice_triggers() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = make_battlefield_creature(&mut game, alice, "Self-Sacrifice Watcher");
+        if let Some(object) = game.object_mut(source) {
+            object.abilities.push(crate::ability::Ability {
+                kind: AbilityKind::Triggered(TriggeredAbility {
+                    trigger: Trigger::player_sacrifices(
+                        PlayerFilter::You,
+                        ObjectFilter::creature(),
+                    ),
+                    effects: vec![Effect::gain_life(2)].into(),
+                    choices: Vec::new(),
+                    intervening_if: None,
+                    presentation_label: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
+        }
+
+        let snapshot = game
+            .object(source)
+            .map(|object| ObjectSnapshot::from_object(object, &game))
+            .expect("source should exist before sacrifice");
+        game.move_object_by_effect(source, Zone::Graveyard);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::permanents::SacrificeEvent::new(source, None)
+                .with_snapshot(Some(snapshot), Some(alice)),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let triggered = check_triggers(&game, &event);
+
+        assert_eq!(triggered.len(), 1, "expected self-sacrifice LKI trigger");
+        assert_eq!(triggered[0].source_name, "Self-Sacrifice Watcher");
+        assert!(triggered[0].source_snapshot.is_some());
     }
 
     #[test]
@@ -2031,6 +2264,178 @@ mod tests {
         );
 
         assert_eq!(triggered.len(), 1, "expected one soulbond trigger");
+    }
+
+    #[test]
+    fn or_spell_cast_trigger_uses_current_controller() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+
+        let voice_like = CardDefinitionBuilder::new(CardId::new(), "Voice-Like")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_trigger(
+                Trigger::or(vec![
+                    Trigger::new(crate::triggers::SpellCastTrigger::qualified(
+                        None,
+                        PlayerFilter::Opponent,
+                        Some(PlayerFilter::You),
+                        None,
+                        None,
+                        false,
+                    )),
+                    Trigger::this_dies(),
+                ]),
+                Vec::new(),
+            )
+            .build();
+        let source = game.create_object_from_definition(&voice_like, bob, Zone::Battlefield);
+        let aura = make_battlefield_artifact(&mut game, alice, "Control Aura");
+        assert!(
+            game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(source),)
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                aura,
+                alice,
+                crate::continuous::EffectTarget::AttachedTo(aura),
+                crate::continuous::Modification::ChangeController(alice),
+            ));
+        game.refresh_continuous_state();
+
+        let spell = CardBuilder::new(CardId::new(), "Lightning Bolt")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, bob, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
+
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, bob, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let triggered = check_triggers(&game, &event);
+
+        assert_eq!(triggered.len(), 1, "expected opponent-cast trigger");
+        assert_eq!(triggered[0].controller, alice);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn attached_aura_lki_trigger_sees_enchanted_creature_die() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature = make_battlefield_creature(&mut game, alice, "Silvercoat Lion");
+        let aura_def = CardDefinitionBuilder::new(CardId::new(), "Return Aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .parse_text("Enchant creature\nWhen enchanted creature dies, return this card to its owner's hand.")
+            .expect("aura death trigger should parse");
+        let aura = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+        assert!(
+            game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(creature),)
+        );
+
+        game.move_object_by_effect(creature, Zone::Graveyard);
+        let events = game.take_pending_trigger_events();
+        let dies_event = events
+            .iter()
+            .find(|event| {
+                event
+                    .downcast::<crate::events::zones::ZoneChangeEvent>()
+                    .is_some_and(|zone_change| zone_change.is_dies())
+            })
+            .expect("expected creature dies event");
+
+        let triggered = check_triggers(&game, dies_event);
+        assert_eq!(triggered.len(), 1, "expected attached Aura LKI trigger");
+        assert_eq!(triggered[0].source_name, "Return Aura");
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn attached_aura_lki_trigger_matches_enchanted_land_subtype() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let mountain = CardBuilder::new(CardId::new(), "Mountain")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Mountain])
+            .build();
+        let mountain_id = game.create_object_from_card(&mountain, alice, Zone::Battlefield);
+        let aura_def = CardDefinitionBuilder::new(CardId::new(), "Genju Probe")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .parse_text(
+                "Enchant Mountain\nWhen enchanted Mountain is put into a graveyard, you may return this card from your graveyard to your hand.",
+            )
+            .expect("attached land graveyard trigger should parse");
+        let aura = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+        assert!(
+            game.attach_object_to_target(
+                aura,
+                crate::object::AttachmentTarget::Object(mountain_id),
+            )
+        );
+
+        game.move_object_by_effect(mountain_id, Zone::Graveyard);
+        let events = game.take_pending_trigger_events();
+        let land_graveyard_event = events
+            .iter()
+            .find(|event| {
+                event
+                    .downcast::<crate::events::zones::ZoneChangeEvent>()
+                    .is_some_and(|zone_change| zone_change.is_ltb())
+            })
+            .expect("expected land graveyard event");
+
+        let triggered = check_triggers(&game, land_graveyard_event);
+        assert_eq!(
+            triggered.len(),
+            1,
+            "expected attached Aura LKI trigger for enchanted Mountain"
+        );
+        assert_eq!(triggered[0].source_name, "Genju Probe");
+    }
+
+    #[cfg(all(ironsmith_runtime_parser_tests, feature = "generated-registry"))]
+    #[test]
+    fn voice_of_resurgence_spell_cast_trigger_works_under_control_aura() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+
+        let voice = crate::cards::CardRegistry::try_compile_card("Voice of Resurgence")
+            .expect("Voice of Resurgence should compile");
+        let treachery = crate::cards::CardRegistry::try_compile_card("Treachery")
+            .expect("Treachery should compile");
+        let bolt = crate::cards::CardRegistry::try_compile_card("Lightning Bolt")
+            .expect("Lightning Bolt should compile");
+
+        let voice_id = game.create_object_from_definition(&voice, bob, Zone::Battlefield);
+        let treachery_id = game.create_object_from_definition(&treachery, alice, Zone::Battlefield);
+        assert!(game.attach_object_to_target(
+            treachery_id,
+            crate::object::AttachmentTarget::Object(voice_id),
+        ));
+        game.refresh_continuous_state();
+        assert_eq!(game.controller_of_id(voice_id), Some(alice));
+
+        let spell_id = game.create_object_from_definition(&bolt, bob, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
+
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, bob, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let triggered = check_triggers(&game, &event);
+
+        assert_eq!(triggered.len(), 1, "expected Voice spell-cast trigger");
+        assert_eq!(triggered[0].controller, alice);
     }
 
     #[test]

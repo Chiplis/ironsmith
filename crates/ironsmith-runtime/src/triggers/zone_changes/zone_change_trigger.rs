@@ -383,7 +383,9 @@ impl ZoneChangeTrigger {
             || filter_desc.starts_with("the ")
             || filter_desc.starts_with("this ")
             || filter_desc.starts_with("that ")
-            || filter_desc.starts_with("another ");
+            || filter_desc.starts_with("another ")
+            || filter_desc.starts_with("enchanted ")
+            || filter_desc.starts_with("equipped ");
         if self.count_mode == CountMode::OneOrMore {
             parts.push("one or more".to_string());
         } else if !has_article {
@@ -469,6 +471,17 @@ fn snapshot_matches_filter(
     filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
 }
 
+fn matching_snapshots<'a>(
+    zc: &'a ZoneChangeEvent,
+    filter: &ObjectFilter,
+    ctx: &TriggerContext,
+) -> Vec<&'a crate::snapshot::ObjectSnapshot> {
+    zc.snapshots()
+        .iter()
+        .filter(|snapshot| snapshot_matches_filter(snapshot, filter, ctx))
+        .collect()
+}
+
 impl TriggerMatcher for ZoneChangeTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         // Must be a zone change event
@@ -493,20 +506,23 @@ impl TriggerMatcher for ZoneChangeTrigger {
             return false;
         }
 
-        let use_snapshot = self.uses_snapshot() && zc.snapshot.is_some();
+        let use_snapshot = self.uses_snapshot() && !zc.snapshots().is_empty();
+        let matching_snapshots = if use_snapshot {
+            matching_snapshots(zc, &self.object_filter, ctx)
+        } else {
+            Vec::new()
+        };
 
         // Check player relation using LKI snapshots only for leave/die-style triggers.
         if self.player != PlayerRelation::Any {
             let player_matches = if use_snapshot {
-                let snapshot = zc
-                    .snapshot
-                    .as_ref()
-                    .expect("use_snapshot implies a zone-change snapshot");
-                match &self.player {
-                    PlayerRelation::You => snapshot.controller == ctx.controller,
-                    PlayerRelation::Opponent => snapshot.controller != ctx.controller,
-                    PlayerRelation::Any => true,
-                }
+                matching_snapshots
+                    .iter()
+                    .any(|snapshot| match &self.player {
+                        PlayerRelation::You => snapshot.controller == ctx.controller,
+                        PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                        PlayerRelation::Any => true,
+                    })
             } else {
                 zc.destination_objects().iter().any(|&id| {
                     if let Some(obj) = ctx.game.object(id) {
@@ -537,11 +553,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
         // Check object filter using snapshot only when the trigger cares about the
         // pre-change object state. ETB-style triggers need the live object.
         if use_snapshot {
-            let snapshot = zc
-                .snapshot
-                .as_ref()
-                .expect("use_snapshot implies a zone-change snapshot");
-            if !snapshot_matches_filter(snapshot, &self.object_filter, ctx) {
+            if matching_snapshots.is_empty() {
                 return false;
             }
         } else {
@@ -595,11 +607,42 @@ impl TriggerMatcher for ZoneChangeTrigger {
             CountMode::OneOrMore => 1,
             CountMode::Each => {
                 if let Some(zc) = event.downcast::<ZoneChangeEvent>() {
-                    let use_snapshot = self.uses_snapshot() && zc.snapshot.is_some();
+                    if self.this_object {
+                        return 1;
+                    }
+                    let use_snapshot = self.uses_snapshot() && !zc.snapshots().is_empty();
                     if use_snapshot {
-                        zc.count() as u32
+                        zc.snapshots().len() as u32
                     } else {
                         zc.destination_objects().len() as u32
+                    }
+                } else {
+                    1
+                }
+            }
+        }
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        match self.count_mode {
+            CountMode::OneOrMore => 1,
+            CountMode::Each => {
+                if let Some(zc) = event.downcast::<ZoneChangeEvent>() {
+                    if self.this_object {
+                        return 1;
+                    }
+                    let use_snapshot = self.uses_snapshot() && !zc.snapshots().is_empty();
+                    if use_snapshot {
+                        matching_snapshots(zc, &self.object_filter, ctx).len() as u32
+                    } else {
+                        zc.destination_objects()
+                            .iter()
+                            .filter(|&&id| {
+                                ctx.game.object(id).is_some_and(|obj| {
+                                    self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                                })
+                            })
+                            .count() as u32
                     }
                 } else {
                     1

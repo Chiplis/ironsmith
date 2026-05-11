@@ -8786,6 +8786,20 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_each_other_player_sacrifices_creature_of_their_choice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Each Other Player Sacrifice Variant")
+            .parse_text("Each other player sacrifices a creature of their choice.")
+            .expect("parse each-other-player sacrifice text");
+
+        let debug = format!("{:#?}", def.spell_effect);
+        assert!(
+            debug.contains("Sacrifice") && debug.contains("NotYou"),
+            "expected NotYou sacrifice effect, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_unless_controller_pays_life_keeps_unless_branch() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Unless Life Variant")
             .card_types(vec![CardType::Creature])

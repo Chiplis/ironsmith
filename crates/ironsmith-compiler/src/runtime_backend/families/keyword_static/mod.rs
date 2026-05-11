@@ -2096,7 +2096,7 @@ fn parse_as_enters_choice_subject_words<'a>(
 pub(crate) fn parse_choose_basic_land_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     let Some((idx, display_subject)) =
         parse_as_enters_choice_subject_words(&words, AS_ENTERS_AURA_SUBJECTS)
     else {
@@ -2136,7 +2136,7 @@ pub(crate) fn parse_enchanted_land_is_chosen_type_line(
 pub(crate) fn parse_choose_card_name_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     let Some((idx, display_subject)) =
         parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
     else {
@@ -5495,7 +5495,11 @@ pub(crate) fn parse_nonbasic_lands_are_basic_land_type_line(
         return Ok(None);
     }
 
-    let subtype_words = &words[be_idx + 1..];
+    let mut subtype_idx = be_idx + 1;
+    if words.get(subtype_idx).is_some_and(|word| is_article(word)) {
+        subtype_idx += 1;
+    }
+    let subtype_words = &words[subtype_idx..];
     if subtype_words.len() != 1 {
         return Ok(None);
     }
@@ -6994,7 +6998,7 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
 pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if !slice_starts_with(&words, &["if"])
         || !slice_contains(&words, &"would")
         || !slice_contains(&words, &"graveyard")
@@ -7010,28 +7014,57 @@ pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
     let Some(graveyard_idx) = words.iter().position(|word| *word == "graveyard") else {
         return Ok(None);
     };
-    if !words
+    let Some(graveyard_owner) = words
         .get(would_idx..graveyard_idx)
-        .is_some_and(|slice| slice == ["would", "be", "put", "into", "a"])
-    {
+        .and_then(parse_would_be_put_into_graveyard_owner_words)
+    else {
         return Ok(None);
-    }
+    };
+    let exclude_cycled = words.get(graveyard_idx + 1..).is_some_and(|tail| {
+        tail.windows(4).any(|w| {
+            w == ["and", "it", "wasnt", "cycled"] || w == ["and", "it", "wasn't", "cycled"]
+        })
+    });
 
+    let filter_tokens = trim_lexed_commas(&tokens[1..would_idx]);
     let filter_words = &words[1..would_idx];
     let filter = if is_source_reference_words(filter_words) {
         ObjectFilter::source()
     } else {
-        match filter_words {
-            ["a", "card"] | ["card"] => ObjectFilter::default(),
-            ["a", "card", "or", "token"] | ["card", "or", "token"] => ObjectFilter::default(),
-            ["a", "creature", "card"] | ["creature", "card"] => ObjectFilter::creature(),
-            _ => return Ok(None),
-        }
+        parse_object_filter(filter_tokens, false).or_else(|_| match filter_words {
+            ["a", "card"] | ["card"] => Ok(ObjectFilter::default()),
+            ["a", "card", "or", "token"] | ["card", "or", "token"] => Ok(ObjectFilter::default()),
+            ["a", "creature", "card"] | ["creature", "card"] => Ok(ObjectFilter::creature()),
+            ["a", "card", "that", "has", "a", "cycling", "ability"]
+            | ["card", "that", "has", "a", "cycling", "ability"] => {
+                Ok(ObjectFilter::default().with_ability_marker("cycling"))
+            }
+            _ => Err(CardTextError::ParseError(format!(
+                "unsupported exile-to-graveyard replacement subject (subject: '{}')",
+                filter_words.join(" ")
+            ))),
+        })?
     };
-    Ok(Some(StaticAbility::exile_to_exile_instead_of_graveyard(
-        filter,
-        PlayerFilter::Any,
-    )))
+    let ability = if exclude_cycled {
+        StaticAbility::exile_to_exile_instead_of_graveyard_unless_cycled(filter, graveyard_owner)
+    } else {
+        StaticAbility::exile_to_exile_instead_of_graveyard(filter, graveyard_owner)
+    };
+    Ok(Some(ability))
+}
+
+fn parse_would_be_put_into_graveyard_owner_words(words: &[&str]) -> Option<PlayerFilter> {
+    match words {
+        ["would", "be", "put", "into", "a"]
+        | ["would", "be", "put", "into", "a", "players"]
+        | ["would", "be", "put", "into", "a", "player's"] => Some(PlayerFilter::Any),
+        ["would", "be", "put", "into", "your"] => Some(PlayerFilter::You),
+        ["would", "be", "put", "into", "an", "opponents"]
+        | ["would", "be", "put", "into", "an", "opponent's"]
+        | ["would", "be", "put", "into", "opponents"]
+        | ["would", "be", "put", "into", "opponent's"] => Some(PlayerFilter::Opponent),
+        _ => None,
+    }
 }
 
 pub(crate) fn parse_exile_would_die_instead_line(

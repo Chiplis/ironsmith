@@ -3,6 +3,8 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, LineInfo, ParseAnnotations,
     PlayerAst, StaticAbilityAst, TriggerSpec,
 };
+use crate::runtime_backend::activation_and_restrictions::last_created_token_info;
+use crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
@@ -79,6 +81,32 @@ fn unwrap_matching_conditional_replacement_effects(
         return effects;
     }
     conditional.if_true.clone()
+}
+
+fn rewrite_prior_token_placeholder_effect(
+    effect: &mut EffectAst,
+    token_info: &(String, PlayerAst),
+) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::CreateTokenWithMods { name, player, .. } =
+            &mut subject_verb.action
+        && matches!(name.as_str(), "of those" | "those")
+    {
+        *name = token_info.0.clone();
+        *player = token_info.1;
+        subject_verb.subject.player = token_info.1;
+    }
+}
+
+fn rewrite_prior_token_placeholders(effects: &mut [EffectAst], token_info: &(String, PlayerAst)) {
+    for effect in effects {
+        rewrite_prior_token_placeholder_effect(effect, token_info);
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                rewrite_prior_token_placeholder_effect(nested_effect, token_info);
+            }
+        });
+    }
 }
 
 fn compile_trailing_instead_if_condition(
@@ -781,7 +809,7 @@ fn lower_statement_chunk(
     } = input;
     let NormalizedLineChunk::Statement {
         effects_ast,
-        prepared,
+        mut prepared,
     } = parsed
     else {
         unreachable!("statement lowerer received mismatched chunk");
@@ -811,6 +839,14 @@ fn lower_statement_chunk(
     }) {
         builder.aura_attach_filter = Some(enchant_filter);
     }
+    if let Some(token_info) = state.latest_created_token.clone() {
+        rewrite_prior_token_placeholders(&mut prepared.effects, &token_info);
+        prepared = super::rewrite_prepare_effects_for_lowering(
+            &prepared.effects,
+            prepared.imports.clone(),
+        )?;
+    }
+
     let lowered = match super::rewrite_lower_prepared_statement_effects(&prepared) {
         Ok(lowered) => lowered,
         Err(err) if allow_unsupported => {
@@ -827,6 +863,11 @@ fn lower_statement_chunk(
         false,
         "spell text effects",
     )?;
+    if let Some(token_info) =
+        last_created_token_info(&effects_ast).or_else(|| last_created_token_info(&prepared.effects))
+    {
+        state.latest_created_token = Some(token_info);
+    }
     let compiled = lowered.effects;
     state.latest_spell_exports = lowered.exports;
 

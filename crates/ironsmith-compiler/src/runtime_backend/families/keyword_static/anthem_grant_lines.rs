@@ -3390,6 +3390,20 @@ pub(crate) fn parse_anthem_and_keyword_line(
         trailing_condition = Some(parse_static_condition_clause(&condition_tokens)?);
         ability_tokens = ability_head;
     }
+    let mut trailing_type_color_addition: Option<TypeColorAdditionClause> = None;
+    if let Some(and_is_idx) = anthem_index_where(ability_tokens.len().saturating_sub(1), |idx| {
+        ability_tokens[idx].is_word("and") && ability_tokens[idx + 1].is_word("is")
+    }) {
+        let addition_tokens = trim_edge_punctuation(&ability_tokens[and_is_idx + 1..]);
+        if let Some(additions) = parse_type_color_addition_clause(&addition_tokens)? {
+            let keyword_head = trim_edge_punctuation(&ability_tokens[..and_is_idx]);
+            if keyword_head.is_empty() {
+                return Ok(None);
+            }
+            trailing_type_color_addition = Some(additions);
+            ability_tokens = keyword_head;
+        }
+    }
 
     let mut keyword_actions: Vec<KeywordAction> = Vec::new();
     let mut granted_activated_ability: Option<ParsedAbility> = None;
@@ -3585,6 +3599,9 @@ pub(crate) fn parse_anthem_and_keyword_line(
     for action in keyword_actions {
         result.push(grant_keyword_action_for_anthem_subject(&clause, action));
     }
+    if let Some(additions) = trailing_type_color_addition {
+        push_type_color_additions_for_anthem_subject(&mut result, &clause, additions)?;
+    }
 
     if let Some(ability) = granted_activated_ability {
         result.push(grant_object_ability_for_anthem_subject(
@@ -3595,6 +3612,47 @@ pub(crate) fn parse_anthem_and_keyword_line(
     }
 
     Ok(Some(result))
+}
+
+fn push_type_color_additions_for_anthem_subject(
+    result: &mut Vec<StaticAbilityAst>,
+    clause: &ParsedAnthemClause,
+    additions: TypeColorAdditionClause,
+) -> Result<(), CardTextError> {
+    let filter = anthem_subject_filter(&clause.subject);
+    let condition = clause.condition.clone();
+    let mut push_static = |ability: StaticAbility| -> Result<(), CardTextError> {
+        let ast: StaticAbilityAst = ability.into();
+        result.push(match &condition {
+            Some(condition) => add_static_ability_ast_condition(ast, condition.clone())?,
+            None => ast,
+        });
+        Ok(())
+    };
+
+    if !additions.set_colors.is_empty() {
+        push_static(StaticAbility::set_colors(
+            filter.clone(),
+            additions.set_colors,
+        ))?;
+    }
+    if !additions.added_colors.is_empty() {
+        push_static(StaticAbility::add_colors(
+            filter.clone(),
+            additions.added_colors,
+        ))?;
+    }
+    if !additions.card_types.is_empty() {
+        push_static(StaticAbility::add_card_types(
+            filter.clone(),
+            additions.card_types,
+        ))?;
+    }
+    if !additions.subtypes.is_empty() {
+        push_static(StaticAbility::add_subtypes(filter, additions.subtypes))?;
+    }
+
+    Ok(())
 }
 
 fn merge_static_ability_ast_conditions(

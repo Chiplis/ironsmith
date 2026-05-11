@@ -358,6 +358,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ExileToExileInsteadOfGraveyard {
         filter: ObjectFilter,
         graveyard_owner: PlayerFilter,
+        exclude_cycled: bool,
     },
     ExileWouldDieInstead {
         filter: ObjectFilter,
@@ -1095,9 +1096,11 @@ where
             StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
                 filter,
                 graveyard_owner,
+                exclude_cycled,
             } => StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
                 filter,
                 graveyard_owner,
+                exclude_cycled,
             },
             StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
                 StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by }
@@ -2988,12 +2991,28 @@ impl<
         filter: ObjectFilter,
         graveyard_owner: PlayerFilter,
     ) -> Self {
+        Self::exile_to_exile_instead_of_graveyard_with_options(filter, graveyard_owner, false)
+    }
+
+    pub fn exile_to_exile_instead_of_graveyard_unless_cycled(
+        filter: ObjectFilter,
+        graveyard_owner: PlayerFilter,
+    ) -> Self {
+        Self::exile_to_exile_instead_of_graveyard_with_options(filter, graveyard_owner, true)
+    }
+
+    fn exile_to_exile_instead_of_graveyard_with_options(
+        filter: ObjectFilter,
+        graveyard_owner: PlayerFilter,
+        exclude_cycled: bool,
+    ) -> Self {
         Self {
             id: Some(StaticAbilityId::ExileToExileInsteadOfGraveyard),
             label: "exile instead of graveyard".into(),
             payload: StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
                 filter,
                 graveyard_owner,
+                exclude_cycled,
             },
         }
     }

@@ -112,6 +112,18 @@ pub(crate) fn resolve_tagged_object_id(
     game.find_object_by_stable_id(snapshot.stable_id)
 }
 
+pub(crate) fn resolve_source_object_id(
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Option<ObjectId> {
+    if game.object(ctx.source).is_some() {
+        return Some(ctx.source);
+    }
+    ctx.source_snapshot
+        .as_ref()
+        .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+}
+
 fn resolve_tagged_players_from_context(
     game: &GameState,
     ctx: &ExecutionContext,
@@ -890,7 +902,7 @@ pub fn resolve_value(
                 None
             };
             // Try to get current object, fall back to LKI snapshot
-            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+            if matches!(target_spec.base(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
             {
                 snapshot.power.ok_or_else(|| {
@@ -935,7 +947,7 @@ pub fn resolve_value(
                 None
             };
             // Try to get current object, fall back to LKI snapshot
-            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+            if matches!(target_spec.base(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
             {
                 snapshot.toughness.ok_or_else(|| {
@@ -974,7 +986,7 @@ pub fn resolve_value(
         Value::ManaValueOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+            if matches!(target_spec.base(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
             {
                 snapshot
@@ -1541,11 +1553,28 @@ pub fn resolve_value(
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            if matches!(spec.base(), ChooseSpec::Source) {
+                if let Some(snapshot) =
+                    source_lki_for_moved_current_object(game, ctx).or_else(|| {
+                        ctx.source_snapshot
+                            .as_ref()
+                            .filter(|_| resolve_source_object_id(game, ctx).is_none())
+                    })
+                {
+                    let total = if let Some(counter_type) = counter_type {
+                        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                    } else {
+                        snapshot.counters.values().map(|count| *count as i32).sum()
+                    };
+                    return Ok(total);
+                }
+            }
+
             let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
             let total = object_ids
                 .into_iter()
                 .map(|id| {
-                    if matches!(spec.as_ref(), ChooseSpec::Source)
+                    if matches!(spec.base(), ChooseSpec::Source)
                         && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
                     {
                         if let Some(counter_type) = counter_type {
@@ -1626,7 +1655,10 @@ fn source_lki_for_moved_current_object<'a>(
     ctx: &'a ExecutionContext<'_>,
 ) -> Option<&'a ObjectSnapshot> {
     let snapshot = ctx.source_snapshot.as_ref()?;
-    let current = game.object(ctx.source)?;
+    let current = game.object(ctx.source).or_else(|| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+    })?;
     (snapshot.stable_id == current.stable_id
         && (snapshot.object_id != current.id || snapshot.zone != current.zone))
         .then_some(snapshot)
@@ -1696,7 +1728,7 @@ pub(crate) fn preview_object_ids_for_choose_spec(
             Some(preview_object_ids_for_filter(game, filter, ctx))
         }
         ChooseSpec::SpecificObject(id) => Some(vec![*id]),
-        ChooseSpec::Source => Some(vec![ctx.source]),
+        ChooseSpec::Source => resolve_source_object_id(game, ctx).map(|id| vec![id]),
         ChooseSpec::Tagged(tag) => Some(
             ctx.get_tagged_all(tag)
                 .map(|tagged| {
@@ -2438,6 +2470,15 @@ pub fn resolve_objects_for_effect(
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    resolve_objects_for_effect_with_choice_description(game, ctx, spec, None)
+}
+
+pub fn resolve_objects_for_effect_with_choice_description(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    choice_description: Option<String>,
+) -> Result<Vec<ObjectId>, ExecutionError> {
     if !spec.is_target()
         && let ChooseSpec::Object(filter) = spec.base()
     {
@@ -2498,12 +2539,15 @@ pub fn resolve_objects_for_effect(
             game.object(*id)
                 .is_some_and(|object| object.zone.is_hidden())
         }) {
+            let description = choice_description
+                .clone()
+                .unwrap_or_else(|| format!("Choose {}", filter.description()));
             view_hidden_candidate_objects(
                 game,
                 ctx,
                 game.controlling_player_for(ctx.controller),
                 &candidates,
-                format!("Choose {}", filter.description()),
+                description,
                 false,
             );
         }
@@ -2512,18 +2556,14 @@ pub fn resolve_objects_for_effect(
             return Ok(candidates);
         }
 
+        let description =
+            choice_description.unwrap_or_else(|| format!("Choose {}", filter.description()));
         let chosen: Vec<ObjectId> = make_decision(
             game,
             ctx.decision_maker,
             ctx.controller,
             Some(ctx.source),
-            ChooseObjectsSpec::new(
-                ctx.source,
-                format!("Choose {}", filter.description()),
-                candidates.clone(),
-                min,
-                Some(max),
-            ),
+            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max)),
         );
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
@@ -2583,13 +2623,25 @@ pub fn apply_to_selected_objects(
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
     result_policy: ObjectApplyResultPolicy,
+    apply: impl FnMut(&mut GameState, &mut ExecutionContext, ObjectId) -> Result<bool, ExecutionError>,
+) -> Result<ObjectApplyResult, ExecutionError> {
+    apply_to_selected_objects_with_choice_description(game, ctx, spec, result_policy, None, apply)
+}
+
+pub fn apply_to_selected_objects_with_choice_description(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    result_policy: ObjectApplyResultPolicy,
+    choice_description: Option<String>,
     mut apply: impl FnMut(
         &mut GameState,
         &mut ExecutionContext,
         ObjectId,
     ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
-    let objects = resolve_objects_for_effect(game, ctx, spec)?;
+    let objects =
+        resolve_objects_for_effect_with_choice_description(game, ctx, spec, choice_description)?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(ObjectApplyResult {
             selected_count: 0,
@@ -2698,7 +2750,9 @@ pub fn resolve_objects_from_spec(
                     return Ok(vec![*id]);
                 }
                 ChooseSpec::Source => {
-                    return Ok(vec![ctx.source]);
+                    return resolve_source_object_id(game, ctx)
+                        .map(|id| vec![id])
+                        .ok_or(ExecutionError::InvalidTarget);
                 }
                 ChooseSpec::Tagged(tag) => {
                     let tagged = ctx
@@ -2929,7 +2983,9 @@ pub fn resolve_objects_from_spec(
         }
 
         // Source reference
-        ChooseSpec::Source => Ok(vec![ctx.source]),
+        ChooseSpec::Source => resolve_source_object_id(game, ctx)
+            .map(|id| vec![id])
+            .ok_or(ExecutionError::InvalidTarget),
 
         // Specific object
         ChooseSpec::SpecificObject(id) => Ok(vec![*id]),
@@ -3633,6 +3689,45 @@ mod tests {
             .expect("source mana value should resolve from LKI"),
             2,
             "608.2h requires source information to use LKI after the source leaves its expected zone"
+        );
+    }
+
+    #[test]
+    fn power_of_source_uses_lki_after_source_moves_by_stable_id() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_card = CardBuilder::new(crate::ids::CardId::from_raw(401), "Departing Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(source_id)
+            .expect("source should exist")
+            .add_counters(crate::object::CounterType::PlusOnePlusOne, 3);
+        let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(source_id).expect("source should still exist"),
+            &game,
+        );
+        let moved_source_id = game
+            .move_object_by_effect(source_id, Zone::Graveyard)
+            .expect("source should move to graveyard");
+
+        assert_ne!(source_id, moved_source_id);
+        assert_eq!(
+            game.object(moved_source_id)
+                .expect("moved source should exist")
+                .power(),
+            Some(2),
+            "zone changes should clear counters from the current object"
+        );
+
+        let ctx =
+            ExecutionContext::new_default(source_id, alice).with_source_snapshot(source_snapshot);
+        assert_eq!(
+            resolve_value(&game, &Value::PowerOf(Box::new(ChooseSpec::Source)), &ctx)
+                .expect("source power should resolve from LKI"),
+            5,
+            "608.2h requires PowerOf(Source) to use LKI after the source moved"
         );
     }
 

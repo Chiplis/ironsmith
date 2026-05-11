@@ -55,6 +55,7 @@ pub(crate) enum ActivationCostSegmentCst {
     SacrificeCreature,
     SacrificeChosen {
         count: u32,
+        up_to: bool,
         filter_text: String,
         other: bool,
     },
@@ -676,7 +677,14 @@ fn parse_sacrifice_segment_tokens(
 
     let mut idx = 0usize;
     let mut count = 1u32;
-    if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
+    let mut up_to = false;
+    if tail.get(0..2) == Some(&["up", "to"])
+        && let Some((parsed, consumed_words)) = parse_count_prefix_words(&tail[2..])
+    {
+        count = parsed;
+        idx = 2 + consumed_words;
+        up_to = true;
+    } else if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
         count = parsed;
         idx = consumed_words;
     } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
@@ -703,6 +711,7 @@ fn parse_sacrifice_segment_tokens(
 
     Ok(ActivationCostSegmentCst::SacrificeChosen {
         count,
+        up_to,
         filter_text,
         other,
     })
@@ -1899,6 +1908,7 @@ pub(crate) fn lower_activation_cost_cst(
             }
             ActivationCostSegmentCst::SacrificeChosen {
                 count,
+                up_to,
                 filter_text,
                 other,
             } => {
@@ -1916,16 +1926,27 @@ pub(crate) fn lower_activation_cost_cst(
                 }
                 let tag = format!("sacrifice_cost_{sacrifice_tag_id}");
                 sacrifice_tag_id += 1;
+                let choice_count = if *up_to {
+                    ChoiceCount::up_to(*count as usize)
+                } else {
+                    ChoiceCount::exactly(*count as usize)
+                };
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
-                    ChoiceCount::exactly(*count as usize),
+                    choice_count,
                     PlayerFilter::You,
                     tag.clone(),
                 )));
-                costs.push(Cost::validated_effect(Effect::sacrifice(
-                    ObjectFilter::tagged(tag),
-                    *count,
-                )));
+                let sacrifice = if *up_to {
+                    Effect::sacrifice_player(
+                        ObjectFilter::tagged(tag.clone()),
+                        crate::effect::Value::Count(ObjectFilter::tagged(tag)),
+                        PlayerFilter::You,
+                    )
+                } else {
+                    Effect::sacrifice(ObjectFilter::tagged(tag), *count)
+                };
+                costs.push(Cost::validated_effect(sacrifice));
             }
             ActivationCostSegmentCst::ExileSelf => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

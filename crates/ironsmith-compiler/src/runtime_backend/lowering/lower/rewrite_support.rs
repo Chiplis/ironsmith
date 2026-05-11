@@ -84,12 +84,29 @@ pub(super) fn infer_triggered_ability_functional_zones(
             break;
         }
     }
-    if str_contains(normalized.as_str(), "return this card from your graveyard") {
+    if str_contains(normalized.as_str(), "return this card from your graveyard")
+        && !trigger_references_attached_object(trigger)
+    {
         zones = vec![Zone::Graveyard];
     } else if str_contains(normalized.as_str(), "discard this card") {
         zones = vec![Zone::Hand];
     }
     zones
+}
+
+fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::PutIntoGraveyard(filter) => {
+            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
+        }
+        TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {
+            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
+        }
+        TriggerSpec::Either(left, right) => {
+            trigger_references_attached_object(left) || trigger_references_attached_object(right)
+        }
+        _ => false,
+    }
 }
 
 fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {

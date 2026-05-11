@@ -1896,6 +1896,7 @@ mod tests {
         for text in [
             "Draw a card.",
             "Each player discards a card.",
+            "Each other player sacrifices a creature.",
             "That target player sacrifices a creature.",
             "This spell deals 3 damage to any target.",
             "Target creature gets +2/+2 until end of turn.",

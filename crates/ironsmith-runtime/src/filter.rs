@@ -4096,6 +4096,10 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     ) {
         return object_has_mana_ability(object);
     }
+    if normalized_marker == "cycling" && object.abilities.iter().any(ability_is_structural_cycling)
+    {
+        return true;
+    }
 
     let has_regular = object.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind {
@@ -4159,6 +4163,11 @@ fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marke
     ) {
         return snapshot_has_mana_ability(snapshot);
     }
+    if normalized_marker == "cycling"
+        && snapshot.abilities.iter().any(ability_is_structural_cycling)
+    {
+        return true;
+    }
 
     snapshot.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind
@@ -4172,6 +4181,43 @@ fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marke
         }
         ability_text_has_marker(ability, marker)
     })
+}
+
+fn ability_is_structural_cycling(ability: &crate::ability::Ability) -> bool {
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    if !ability.functional_zones.contains(&Zone::Hand)
+        || !matches!(activated.timing, crate::ability::ActivationTiming::AnyTime)
+    {
+        return false;
+    }
+    let costs = activated.mana_cost.costs();
+    costs.iter().any(cost_is_discard_this_card) && costs.iter().any(cost_is_cycle_keyword_action)
+}
+
+fn cost_is_discard_this_card(cost: &crate::costs::Cost) -> bool {
+    let Some(discard) = cost
+        .effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+    else {
+        return false;
+    };
+    discard.count == crate::effect::Value::Fixed(1)
+        && discard.player == PlayerFilter::You
+        && !discard.random
+        && discard
+            .card_filter
+            .as_ref()
+            .is_some_and(|filter| filter.source && filter.zone == Some(Zone::Hand))
+}
+
+fn cost_is_cycle_keyword_action(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
+        .is_some_and(|emit| {
+            emit.action == crate::events::KeywordActionKind::Cycle && emit.amount == 1
+        })
 }
 
 fn snapshot_has_mana_ability(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {

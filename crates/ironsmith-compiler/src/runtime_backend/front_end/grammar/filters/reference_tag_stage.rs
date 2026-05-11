@@ -455,6 +455,10 @@ pub(super) fn parse_object_filter_inner(
         let mut idx = 0usize;
         while idx < all_words.len() {
             let slice = &all_words[idx..];
+            if relation_clause_is_inside_aggregate_scope(&all_words, idx) {
+                idx += 1;
+                continue;
+            }
             if let Some(consumed) =
                 try_apply_joint_owner_controller_clause(&mut filter, slice, &pronoun_player_filter)
             {
@@ -1104,7 +1108,7 @@ pub(super) fn parse_object_filter_inner(
         let has_or = contains_filter_word(&all_words, "or");
         let has_and_or = contains_filter_word(&all_words, "and/or");
         if types.len() > 1 {
-            if has_and && !has_or {
+            if has_and || has_or || has_and_or {
                 filter.card_types = types;
             } else {
                 filter.all_card_types = types;
@@ -1390,6 +1394,14 @@ pub(super) fn parse_object_filter_inner(
         apply_basic_land_exception(&mut filter);
     }
 
+    if (contains_filter_word(&all_words, "and")
+        || contains_filter_word(&all_words, "or")
+        || contains_filter_word(&all_words, "and/or"))
+        && !filter.card_types.is_empty()
+    {
+        filter.all_card_types.clear();
+    }
+
     let has_constraints = !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()
         || !filter.supertypes.is_empty()
@@ -1604,6 +1616,21 @@ pub(super) fn parse_object_filter_inner(
     }
 
     Ok(filter)
+}
+
+fn relation_clause_is_inside_aggregate_scope(words: &[&str], relation_start: usize) -> bool {
+    let Some(with_idx) = words[..relation_start]
+        .iter()
+        .rposition(|word| *word == "with")
+    else {
+        return false;
+    };
+    let prefix = &words[with_idx + 1..relation_start];
+    let has_aggregate = prefix
+        .iter()
+        .any(|word| matches!(*word, "greatest" | "least" | "total"));
+    let has_scope_marker = prefix.iter().any(|word| matches!(*word, "among" | "of"));
+    has_aggregate && has_scope_marker
 }
 
 fn strip_other_than_basic_land_cards_clause(

@@ -711,13 +711,56 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
             break;
         }
     }
-    if str_contains(normalized.as_str(), "return this card from your graveyard") {
+    if str_contains(normalized.as_str(), "return this card from your graveyard")
+        && !trigger_references_attached_object(trigger)
+    {
         zones = vec![Zone::Graveyard];
     } else if str_contains(normalized.as_str(), "discard this card") {
         zones = vec![Zone::Hand];
     }
 
     zones
+}
+
+fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::PutIntoGraveyard(filter) => {
+            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
+        }
+        TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {
+            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
+        }
+        TriggerSpec::Either(left, right) => {
+            trigger_references_attached_object(left) || trigger_references_attached_object(right)
+        }
+        _ => false,
+    }
+}
+
+fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == tag)
+        || filter
+            .could_be_targeted_by
+            .as_ref()
+            .is_some_and(|constraint| {
+                matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
+            })
+        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
+        || filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|targets| filter_references_tag(targets, tag))
+        || filter
+            .targets_only_object
+            .as_deref()
+            .is_some_and(|targets| filter_references_tag(targets, tag))
+        || filter
+            .any_of
+            .iter()
+            .any(|branch| filter_references_tag(branch, tag))
 }
 
 pub(crate) fn lower_special_rewrite_triggered_chunk(

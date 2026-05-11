@@ -138,6 +138,12 @@ pub trait TriggerMatcher:
         1
     }
 
+    /// Context-aware trigger count for triggers whose per-event multiplicity
+    /// depends on source-relative filters like "another".
+    fn trigger_count_with_context(&self, event: &TriggerEvent, _ctx: &TriggerContext) -> u32 {
+        self.trigger_count(event)
+    }
+
     /// Numeric value derived by this trigger from the matched event context.
     ///
     /// This is distinct from `trigger_count`: a trigger can queue once for a

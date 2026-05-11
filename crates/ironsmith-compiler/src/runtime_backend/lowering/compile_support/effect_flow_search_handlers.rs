@@ -130,16 +130,33 @@ pub(super) fn try_compile_flow_and_iteration_effect(
 
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
-            let player_filter = resolve_unless_player_filter(
-                *player,
-                &current_reference_env(ctx),
-                previous_last_player_filter,
-            )?;
+            let (player_filter, mut player_choices) = match player {
+                PlayerAst::Target => (
+                    PlayerFilter::target_player(),
+                    vec![ChooseSpec::target_player()],
+                ),
+                PlayerAst::TargetOpponent => (
+                    PlayerFilter::target_opponent(),
+                    vec![ChooseSpec::target(ChooseSpec::Player(
+                        PlayerFilter::Opponent,
+                    ))],
+                ),
+                _ => (
+                    resolve_unless_player_filter(
+                        *player,
+                        &current_reference_env(ctx),
+                        previous_last_player_filter,
+                    )?,
+                    Vec::new(),
+                ),
+            };
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
+            let mut choices = inner_choices;
+            choices.append(&mut player_choices);
             let effect = Effect::unless_pays_total_cost(inner_effects, player_filter, cost.clone());
-            (vec![effect], inner_choices)
+            (vec![effect], choices)
         }
         EffectAst::UnlessAction {
             effects,

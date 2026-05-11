@@ -34,6 +34,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
+        TriggerSpec::ThisBecomesBlockedByObject(filter) => {
+            Trigger::this_becomes_blocked_by_object(filter)
+        }
         TriggerSpec::ThisDies => Trigger::this_dies(),
         TriggerSpec::ThisDiesOrIsExiled => Trigger::this_dies_or_is_exiled(),
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
@@ -144,6 +147,13 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::player_sacrifices(player, filter)
         }
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
+        TriggerSpec::DiesOneOrMore(filter) => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .count(crate::triggers::CountMode::OneOrMore),
+        ),
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
         TriggerSpec::PutIntoGraveyardFromZone {
             filter,

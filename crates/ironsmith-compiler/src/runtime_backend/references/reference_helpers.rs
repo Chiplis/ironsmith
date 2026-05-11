@@ -54,6 +54,7 @@ pub(crate) fn resolve_non_target_player_filter(
             "target player requires explicit targeting".to_string(),
         )),
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
+        PlayerAst::NotYou => Ok(PlayerFilter::NotYou),
         PlayerAst::That => {
             if let Some(filter) = refs.known_last_player_filter()
                 && !filter.mentions_iterated_player()

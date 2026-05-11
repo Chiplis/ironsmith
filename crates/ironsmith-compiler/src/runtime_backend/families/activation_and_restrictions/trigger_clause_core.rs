@@ -1174,6 +1174,43 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     for tail in [
+        ["is", "put", "into", "graveyard"].as_slice(),
+        ["is", "put", "into", "a", "graveyard"].as_slice(),
+        ["are", "put", "into", "graveyard"].as_slice(),
+        ["are", "put", "into", "a", "graveyard"].as_slice(),
+    ] {
+        if slice_ends_with(&words, tail) {
+            let subject_word_len = words.len().saturating_sub(tail.len());
+            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            if !subject_words
+                .first()
+                .is_some_and(|word| matches!(*word, "enchanted" | "equipped"))
+            {
+                continue;
+            }
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
+            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in attached-object put-into-graveyard trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            filter.zone = None;
+            filter.owner = None;
+            return Ok(TriggerSpec::PutIntoGraveyardFromZone {
+                filter,
+                from: Zone::Battlefield,
+                one_or_more,
+            });
+        }
+    }
+
+    for tail in [
         [
             "is",
             "put",
@@ -2368,6 +2405,32 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if (slice_starts_with(
+        &words,
+        &[
+            "this", "creature", "blocks", "or", "becomes", "blocked", "by",
+        ],
+    ) || slice_starts_with(
+        &words,
+        &["this", "blocks", "or", "becomes", "blocked", "by"],
+    )) && let Some(by_idx) = find_index(tokens, |token| token.is_word("by"))
+    {
+        let blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        if !blocker_tokens.is_empty() {
+            let blocker_filter =
+                parse_object_filter_lexed(&blocker_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported blocking-object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+            return Ok(TriggerSpec::Either(
+                Box::new(TriggerSpec::ThisBlocksObject(blocker_filter.clone())),
+                Box::new(TriggerSpec::ThisBecomesBlockedByObject(blocker_filter)),
+            ));
+        }
+    }
+
     if (slice_starts_with(&words, &["this", "creature", "blocks"])
         || slice_starts_with(&words, &["this", "blocks"]))
         && let Some(blocks_idx) = find_index(tokens, |token| {
@@ -2500,6 +2563,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(TriggerSpec::HauntedCreatureDies);
             }
 
+            let one_or_more = has_leading_one_or_more(subject_tokens);
             let mut other = false;
             subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
             if subject_tokens
@@ -2531,7 +2595,11 @@ pub(crate) fn parse_trigger_clause_lexed(
             }
 
             if let Ok(filter) = parse_object_filter_lexed(subject_tokens, other) {
-                return Ok(TriggerSpec::Dies(filter));
+                return Ok(if one_or_more {
+                    TriggerSpec::DiesOneOrMore(filter)
+                } else {
+                    TriggerSpec::Dies(filter)
+                });
             }
             let mut normalized_subject_tokens = Vec::with_capacity(subject_tokens.len());
             let mut idx = 0usize;
@@ -2550,7 +2618,11 @@ pub(crate) fn parse_trigger_clause_lexed(
             if normalized_subject_tokens.len() != subject_tokens.len()
                 && let Ok(filter) = parse_object_filter_lexed(&normalized_subject_tokens, other)
             {
-                return Ok(TriggerSpec::Dies(filter));
+                return Ok(if one_or_more {
+                    TriggerSpec::DiesOneOrMore(filter)
+                } else {
+                    TriggerSpec::Dies(filter)
+                });
             }
 
             Err(CardTextError::ParseError(format!(

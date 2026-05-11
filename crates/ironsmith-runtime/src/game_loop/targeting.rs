@@ -332,8 +332,97 @@ pub(super) fn apply_keyword_payment_tags_for_resolution(
 }
 
 /// Drain pending death and custom trigger events and enqueue all matches.
+fn simultaneous_sba_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<TriggerEvent> {
+    use crate::events::cause::CauseType;
+    use crate::events::zones::ZoneChangeEvent;
+
+    let mut batch_events: Vec<TriggerEvent> = Vec::new();
+
+    for event in pending_events {
+        let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
+            continue;
+        };
+        if zone_change.from != crate::zone::Zone::Battlefield
+            || zone_change.to == crate::zone::Zone::Battlefield
+            || zone_change.cause.cause_type != CauseType::StateBasedAction
+        {
+            continue;
+        }
+
+        let merge_index = batch_events.iter().position(|existing| {
+            existing
+                .downcast::<ZoneChangeEvent>()
+                .is_some_and(|existing_zone_change| {
+                    existing_zone_change.from == zone_change.from
+                        && existing_zone_change.to == zone_change.to
+                        && existing_zone_change.cause == zone_change.cause
+                })
+        });
+
+        let Some(index) = merge_index else {
+            batch_events.push(event.clone());
+            continue;
+        };
+
+        let Some(mut merged_zone_change) =
+            batch_events[index].downcast::<ZoneChangeEvent>().cloned()
+        else {
+            continue;
+        };
+        if merged_zone_change.snapshots.is_empty()
+            && let Some(snapshot) = merged_zone_change.snapshot.clone()
+        {
+            merged_zone_change.snapshots.push(snapshot);
+        }
+        for object in &zone_change.objects {
+            if !merged_zone_change.objects.contains(object) {
+                merged_zone_change.objects.push(*object);
+            }
+        }
+        for result_object in &zone_change.result_objects {
+            if !merged_zone_change.result_objects.contains(result_object) {
+                merged_zone_change.result_objects.push(*result_object);
+            }
+        }
+        for snapshot in zone_change.snapshots() {
+            if !merged_zone_change
+                .snapshots
+                .iter()
+                .any(|existing| existing.stable_id == snapshot.stable_id)
+            {
+                merged_zone_change.snapshots.push(snapshot.clone());
+            }
+        }
+        merged_zone_change.snapshot = merged_zone_change.snapshots.first().cloned();
+        for (tag, snapshots) in &zone_change.object_tags {
+            merged_zone_change
+                .object_tags
+                .entry(tag.clone())
+                .or_default()
+                .extend(snapshots.clone());
+        }
+
+        let provenance = batch_events[index].provenance();
+        let mut merged_event = TriggerEvent::new_with_provenance(merged_zone_change, provenance);
+        if let Some(source_snapshot) = batch_events[index].source_snapshot().cloned() {
+            merged_event = merged_event.with_source_snapshot(source_snapshot);
+        }
+        batch_events[index] = merged_event;
+    }
+
+    batch_events
+        .into_iter()
+        .filter(|event| {
+            event
+                .downcast::<ZoneChangeEvent>()
+                .is_some_and(|zone_change| zone_change.snapshots().len() > 1)
+        })
+        .collect()
+}
+
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
     let pending_events = game.take_pending_trigger_events();
+    let batch_lki_events = simultaneous_sba_ltb_batch_events(&pending_events);
     let mut one_or_more_zone_changes_seen = HashSet::new();
     for event in pending_events {
         let source_leave = event
@@ -353,6 +442,40 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
         if let Some(source_ids) = source_leave {
             for source_id in source_ids {
                 game.return_exiled_for_source_leave(source_id);
+            }
+        }
+    }
+
+    for event in batch_lki_events {
+        let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+            continue;
+        };
+        let source_stable_ids: HashSet<_> = zone_change
+            .snapshots()
+            .iter()
+            .map(|snapshot| snapshot.stable_id)
+            .collect();
+        trigger_queue.entries.retain(|entry| {
+            if entry.source_snapshot.is_none()
+                || !source_stable_ids.contains(&entry.source_stable_id)
+            {
+                return true;
+            }
+            let Some(entry_zone_change) = entry
+                .triggering_event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+            else {
+                return true;
+            };
+            entry_zone_change.from != zone_change.from
+                || entry_zone_change.to != zone_change.to
+                || entry_zone_change.cause != zone_change.cause
+        });
+        for trigger in crate::triggers::check_triggers(game, &event) {
+            if trigger.source_snapshot.is_some()
+                && source_stable_ids.contains(&trigger.source_stable_id)
+            {
+                trigger_queue.add(trigger);
             }
         }
     }
@@ -407,6 +530,45 @@ pub type ExtractedTarget<'a> = crate::effects::TargetSelectionProfile<'a>;
 /// Extract a ChooseSpec from an Effect, if it has one that requires selection.
 pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
     effect.target_selection_profile()
+}
+
+fn exchange_control_target_specs(effect: &Effect) -> Option<(&ChooseSpec, &ChooseSpec)> {
+    if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeControlEffect>() {
+        if exchange.permanent1 != exchange.permanent2 {
+            return Some((&exchange.permanent1, &exchange.permanent2));
+        }
+    }
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .and_then(|tagged| exchange_control_target_specs(&tagged.effect))
+}
+
+fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(relaxed_exchange_later_target_spec(spec)),
+            hints: hints.clone(),
+        },
+        ChooseSpec::Target(inner) => {
+            ChooseSpec::Target(Box::new(relaxed_exchange_later_target_spec(inner)))
+        }
+        ChooseSpec::Object(filter) => {
+            let mut filter = filter.clone();
+            filter.other = false;
+            filter.tagged_constraints.clear();
+            ChooseSpec::Object(filter)
+        }
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
+            Box::new(relaxed_exchange_later_target_spec(inner)),
+            count.clone(),
+        ),
+        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
+            Box::new(relaxed_exchange_later_target_spec(inner)),
+            count.clone(),
+            value.clone(),
+        ),
+        _ => spec.clone(),
+    }
 }
 
 #[derive(Clone)]
@@ -790,6 +952,34 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         return;
     }
 
+    if let Some((first, second)) = exchange_control_target_specs(effect) {
+        for spec in [first.clone(), relaxed_exchange_later_target_spec(second)] {
+            if !requires_target_selection(&spec) {
+                continue;
+            }
+            let profile = crate::effects::TargetSelectionProfile {
+                spec: &spec,
+                description: "target",
+                min_targets: 1,
+                max_targets: Some(1),
+                count_value: None,
+                reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
+            };
+            declare_target(&profile, declared_targets);
+            let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+            if !legal_targets.is_empty() {
+                requirements.push(TargetRequirement {
+                    spec,
+                    legal_targets,
+                    description: "target".to_string(),
+                    min_targets: 1,
+                    max_targets: Some(1),
+                });
+            }
+        }
+        return;
+    }
+
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
@@ -1067,6 +1257,26 @@ fn count_target_selection_slots_from_effect_internal(
                     .sum::<usize>()
             })
             .sum();
+    }
+
+    if let Some((first, second)) = exchange_control_target_specs(effect) {
+        let mut count = 0;
+        for spec in [first, second] {
+            if !requires_target_selection(spec) {
+                continue;
+            }
+            let profile = crate::effects::TargetSelectionProfile {
+                spec,
+                description: "target",
+                min_targets: 1,
+                max_targets: Some(1),
+                count_value: None,
+                reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
+            };
+            declare_target(&profile, declared_targets);
+            count += 1;
+        }
+        return count;
     }
 
     let Some(extracted) = extract_target_spec(effect) else {
@@ -1658,6 +1868,71 @@ pub(super) fn collect_validation_target_specs_from_effect(
     }
 }
 
+fn effect_contains_exchange_control(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::ExchangeControlEffect>()
+        .is_some()
+    {
+        return true;
+    }
+
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && effect_contains_exchange_control(child) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn stack_entry_contains_exchange_control(game: &GameState, entry: &StackEntry) -> bool {
+    let effects = if let Some(effects) = &entry.ability_effects {
+        effects.clone()
+    } else if let Some(obj) = game.object(entry.object_id) {
+        get_effects_for_stack_entry(game, entry, obj)
+    } else {
+        crate::resolution::ResolutionProgram::default()
+    };
+
+    effects
+        .all_effects()
+        .iter()
+        .any(|effect| effect_contains_exchange_control(effect))
+}
+
+fn exchange_control_target_still_targetable(
+    game: &GameState,
+    entry: &StackEntry,
+    target: &Target,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Target::Object(object_id) = target else {
+        return false;
+    };
+    if !game
+        .object(*object_id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+    {
+        return false;
+    }
+
+    let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent()));
+    compute_legal_targets_with_source_snapshot_and_view(
+        game,
+        &spec,
+        entry.controller,
+        Some(entry.object_id),
+        entry.source_snapshot.as_ref(),
+        if entry.tagged_objects.is_empty() {
+            None
+        } else {
+            Some(&entry.tagged_objects)
+        },
+        view,
+    )
+    .contains(target)
+}
+
 pub(super) fn stack_entry_validation_target_specs(
     game: &GameState,
     entry: &StackEntry,
@@ -1796,6 +2071,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut valid_targets = Vec::new();
         let mut valid_assignments = Vec::with_capacity(entry.target_assignments.len());
         let mut invalid_count = 0usize;
+        let contains_exchange_control = stack_entry_contains_exchange_control(game, entry);
 
         for assignment in &entry.target_assignments {
             let resolved_spec = choose_spec_with_damaged_player_from_event(
@@ -1837,7 +2113,10 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {
-                if legal_targets.contains(target) {
+                if legal_targets.contains(target)
+                    || (contains_exchange_control
+                        && exchange_control_target_still_targetable(game, entry, target, view))
+                {
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),
                         Target::Player(id) => ResolvedTarget::Player(*id),

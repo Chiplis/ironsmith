@@ -17,6 +17,7 @@ use crate::compiled_text::describe_value;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
 use crate::events::cards::DiscardEvent;
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
+use crate::events::cause::CauseType;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
@@ -3591,6 +3592,7 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
 pub struct ExileToExileInsteadOfGraveyard {
     pub filter: ObjectFilter,
     pub graveyard_owner: PlayerFilter,
+    pub exclude_cycled: bool,
 }
 
 impl ExileToExileInsteadOfGraveyard {
@@ -3598,6 +3600,15 @@ impl ExileToExileInsteadOfGraveyard {
         Self {
             filter,
             graveyard_owner,
+            exclude_cycled: false,
+        }
+    }
+
+    pub fn unless_cycled(filter: ObjectFilter, graveyard_owner: PlayerFilter) -> Self {
+        Self {
+            filter,
+            graveyard_owner,
+            exclude_cycled: true,
         }
     }
 
@@ -3616,10 +3627,16 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
     }
 
     fn display(&self) -> String {
+        let cycled_clause = if self.exclude_cycled {
+            " and it wasn't cycled"
+        } else {
+            ""
+        };
         format!(
-            "If {} would be put into {} graveyard from anywhere, exile it instead.",
+            "If {} would be put into {} graveyard from anywhere{}, exile it instead.",
             self.filter.description(),
-            self.graveyard_owner_phrase()
+            self.graveyard_owner_phrase(),
+            cycled_clause
         )
     }
 
@@ -3635,7 +3652,7 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldGoToGraveyardFromAnywhereMatcher::new(filter),
+            WouldGoToGraveyardFromAnywhereMatcher::new(filter, self.exclude_cycled),
             ReplacementAction::ChangeDestination(Zone::Exile),
         ))
     }
@@ -3644,11 +3661,39 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
 #[derive(Debug, Clone)]
 struct WouldGoToGraveyardFromAnywhereMatcher {
     filter: ObjectFilter,
+    exclude_cycled: bool,
 }
 
 impl WouldGoToGraveyardFromAnywhereMatcher {
-    fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+    fn new(filter: ObjectFilter, exclude_cycled: bool) -> Self {
+        Self {
+            filter,
+            exclude_cycled,
+        }
+    }
+
+    fn is_excluded_cycled_discard(
+        &self,
+        card: ObjectId,
+        cause: &crate::events::cause::EventCause,
+        ctx: &EventContext,
+    ) -> bool {
+        if !self.exclude_cycled {
+            return false;
+        }
+        if cause.cause_type != CauseType::Cost || cause.source != Some(card) {
+            return false;
+        }
+        let cycling_filter = ObjectFilter::default().with_ability_marker("cycling");
+        if let Some(snapshot) = ctx
+            .event_source_snapshot
+            .filter(|snapshot| snapshot.object_id == card)
+        {
+            return cycling_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+        }
+        ctx.game
+            .object(card)
+            .is_some_and(|obj| cycling_filter.matches(obj, &ctx.filter_ctx, ctx.game))
     }
 }
 
@@ -3662,6 +3707,9 @@ impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
                 if discard.destination != Zone::Graveyard {
                     return false;
                 }
+                if self.is_excluded_cycled_discard(discard.card, &discard.cause, ctx) {
+                    return false;
+                }
                 ctx.game
                     .object(discard.card)
                     .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
@@ -3671,6 +3719,11 @@ impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
                     return false;
                 };
                 if zone_change.to != Zone::Graveyard {
+                    return false;
+                }
+                if zone_change.objects.first().is_some_and(|card| {
+                    self.is_excluded_cycled_discard(*card, &zone_change.cause, ctx)
+                }) {
                     return false;
                 }
                 if let Some(snapshot) = zone_change.snapshot.as_ref().or(ctx.event_source_snapshot)
@@ -4211,11 +4264,12 @@ mod tests {
     use super::*;
     use crate::StaticAbility;
     use crate::card::{CardBuilder, PowerToughness, PtValue};
+    use crate::cards::CardDefinitionBuilder;
     use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::events::EventContext;
     use crate::events::cause::EventCause;
-    use crate::events::processing::process_damage_assignments_with_event;
+    use crate::events::processing::{EventOutcome, process_damage_assignments_with_event};
     use crate::events::zones::ZoneChangeEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaCost;
@@ -4521,6 +4575,45 @@ mod tests {
                     |constraint| constraint.tag.as_str() == SOURCE_EXILED_TAG
                 )
         ));
+    }
+
+    #[test]
+    fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardDefinitionBuilder::new(CardId::from_raw(4500), "Abandoned Probe")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(
+                StaticAbility::exile_to_exile_instead_of_graveyard_unless_cycled(
+                    ObjectFilter::default().with_ability_marker("cycling"),
+                    PlayerFilter::You,
+                ),
+            ))
+            .build();
+        let source = game.create_object_from_definition(&source_card, alice, Zone::Battlefield);
+        let cycling_card =
+            CardDefinitionBuilder::new(CardId::from_raw(4501), "Cycling Creature Probe")
+                .card_types(vec![CardType::Creature])
+                .parse_text("Cycling {2}")
+                .expect("cycling ability should parse");
+        let cycling_object =
+            game.create_object_from_definition(&cycling_card, alice, Zone::Battlefield);
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = crate::events::processing::process_zone_change(
+            &mut game,
+            cycling_object,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            EventCause::from_cost(source, alice),
+            &mut dm,
+        );
+
+        assert!(
+            matches!(result, EventOutcome::Proceed(Zone::Exile)),
+            "result={result:?}"
+        );
     }
 
     #[test]

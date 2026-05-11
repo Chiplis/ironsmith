@@ -476,6 +476,48 @@ mod tests {
     }
 
     #[test]
+    fn source_return_to_hand_follows_source_snapshot_stable_id() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+
+        let card = CardBuilder::new(CardId::from_raw(9904), "Source Return Probe")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let original_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let source_snapshot = game
+            .object(original_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, &game))
+            .expect("source object should exist");
+
+        let move_to_graveyard =
+            crate::effects::MoveToZoneEffect::to_graveyard(ChooseSpec::SpecificObject(original_id));
+        let mut move_ctx = ExecutionContext::new_default(original_id, alice);
+        move_to_graveyard
+            .execute(&mut game, &mut move_ctx)
+            .expect("move to graveyard should resolve");
+        assert!(game.object(original_id).is_none());
+
+        let mut ctx =
+            ExecutionContext::new_default(original_id, alice).with_source_snapshot(source_snapshot);
+        let effect = ReturnToHandEffect::with_spec(ChooseSpec::Source);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("source return should resolve through stable id");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert!(
+            game.player(alice)
+                .expect("alice exists")
+                .hand
+                .iter()
+                .any(|&id| game
+                    .object(id)
+                    .is_some_and(|obj| obj.name == "Source Return Probe")),
+            "the source card should return using its current object id"
+        );
+    }
+
+    #[test]
     fn tagged_follow_up_does_not_retarget_replacement_redirected_object() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;

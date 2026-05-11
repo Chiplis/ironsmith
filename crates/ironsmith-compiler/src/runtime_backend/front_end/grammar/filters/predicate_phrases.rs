@@ -384,6 +384,7 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::NotYou => Some(PlayerFilter::NotYou),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::ThatPlayerOrTargetController => {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
@@ -447,6 +448,28 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 }
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() >= 9
+        && words[0] == "there"
+        && matches!(words.get(1).copied(), Some("are" | "were"))
+        && words.get(3).copied() == Some("or")
+        && words.get(4).copied() == Some("more")
+        && words.get(5).copied() == Some("card")
+        && matches!(words.get(6).copied(), Some("type" | "types"))
+        && words.get(7).copied() == Some("among")
+        && matches!(words.get(8).copied(), Some("sacrificed" | "sacrificed_0"))
+        && matches!(
+            words.get(9).copied(),
+            Some("permanent" | "permanents") | None
+        )
+        && let Some(count) = parse_named_number(words[2])
+    {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CardTypesAmong(ObjectFilter::tagged("sacrificed_0")),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+
     if words.len() >= 13
         && words[0] == "there"
         && words[1] == "are"

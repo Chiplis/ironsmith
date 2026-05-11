@@ -1,3 +1,5 @@
+use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
+
 use super::*;
 
 pub(super) enum PreParseFollowupResult {
@@ -567,6 +569,13 @@ fn pre_rule_token_followups(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if let Some(effect) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
+        state.effects.push(effect);
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: Some("subject-verb verb=Create subject=implicit recognizer=prior-token-instead"),
+        }));
+    }
     if is_spawn_scion_token_mana_reminder(sentence_tokens) {
         if state
             .effects
@@ -674,6 +683,59 @@ fn pre_rule_token_followups(
         return Ok(Some(PreParseFollowupResult::Plan(plan)));
     }
     Ok(None)
+}
+
+fn parse_create_more_of_prior_tokens(
+    sentence_tokens: &[OwnedLexToken],
+    prior_effects: &[EffectAst],
+) -> Option<EffectAst> {
+    let create_idx = sentence_tokens
+        .iter()
+        .position(|token| token.is_word("create") || token.is_word("put"))?;
+    if create_idx == 0 {
+        return None;
+    }
+    let predicate = parse_trailing_if_predicate_lexed(&sentence_tokens[..create_idx])?;
+    let (name, player) = last_created_token_info(prior_effects)?;
+    let after_create = &sentence_tokens[create_idx + 1..];
+    let (count, used) = parse_number(after_create)?;
+    let tail_words = crate::runtime_backend::token_word_refs(&after_create[used..]);
+    if tail_words.len() < 3 || tail_words[..3] != ["of", "those", "tokens"] {
+        return None;
+    }
+    let trailing_words = &tail_words[3..];
+    let trailing_is_supported = trailing_words.is_empty()
+        || trailing_words == ["instead"]
+        || trailing_words == ["onto", "the", "battlefield"]
+        || trailing_words == ["onto", "the", "battlefield", "instead"];
+    if !trailing_is_supported {
+        return None;
+    }
+
+    let create = EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        player,
+        SubjectVerbActionAst::CreateTokenWithMods {
+            name,
+            count: Value::Fixed(count as i32),
+            dynamic_power_toughness: None,
+            player,
+            attached_to: None,
+            tapped: false,
+            attacking: false,
+            exile_at_end_of_combat: false,
+            sacrifice_at_end_of_combat: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
+            granted_abilities: Vec::new(),
+        },
+    );
+
+    Some(EffectAst::Conditional {
+        predicate,
+        if_true: vec![create],
+        if_false: Vec::new(),
+    })
 }
 
 fn pre_rule_otherwise_followup(

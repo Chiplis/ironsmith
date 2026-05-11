@@ -120,6 +120,7 @@ pub(crate) enum TriggerSpec {
     ThisBlocksObject(ObjectFilter),
     Blocks(ObjectFilter),
     ThisBecomesBlocked,
+    ThisBecomesBlockedByObject(ObjectFilter),
     ThisDies,
     ThisDiesOrIsExiled,
     ThisLeavesBattlefield,
@@ -215,6 +216,7 @@ pub(crate) enum TriggerSpec {
         filter: ObjectFilter,
     },
     Dies(ObjectFilter),
+    DiesOneOrMore(ObjectFilter),
     HauntedCreatureDies,
     PutIntoGraveyard(ObjectFilter),
     PutIntoGraveyardFromZone {

@@ -988,6 +988,8 @@ pub(crate) fn parse_create(
                             | "gets"
                             | "gain"
                             | "gains"
+                            | "power"
+                            | "toughness"
                             | "cant"
                             | "can"
                             | "block"

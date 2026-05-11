@@ -19,7 +19,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectRef, PlayerFilter};
 use crate::triggers::Trigger;
 use crate::triggers::TriggerEvent;
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 
 fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
@@ -3575,6 +3575,80 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
 }
 
 #[test]
+fn destroy_all_batches_dies_events_for_sources_destroyed_at_the_same_time() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut decision_maker = SelectFirstDecisionMaker;
+
+    let harvester = create_creature(&mut game, "Harvester Probe", alice, 5, 5);
+    if let Some(obj) = game.object_mut(harvester) {
+        obj.abilities.push(Ability::triggered(
+            Trigger::dies(crate::target::ObjectFilter::creature().nontoken().other()),
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+        ));
+    }
+    create_creature(&mut game, "Alice Creature", alice, 2, 2);
+    create_creature(&mut game, "Bob Creature", bob, 2, 2);
+
+    let destroy_all = Effect::destroy_all(crate::target::ObjectFilter::creature());
+    let mut ctx = crate::effects::ExecutionContext::new(harvester, alice, &mut decision_maker);
+    crate::effects::execute_effect(&mut game, &destroy_all, &mut ctx)
+        .expect("destroy all should resolve");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        2,
+        "a source destroyed with other creatures should trigger once for each other nontoken creature"
+    );
+}
+
+#[test]
+fn simultaneous_sba_deaths_use_source_lki_for_all_dying_objects() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let necromancer = create_creature(&mut game, "Necromancer Probe", alice, 2, 2);
+    if let Some(obj) = game.object_mut(necromancer) {
+        obj.subtypes.push(Subtype::Human);
+        obj.abilities.push(Ability::triggered(
+            Trigger::either(
+                Trigger::this_dies(),
+                Trigger::dies(
+                    crate::target::ObjectFilter::creature()
+                        .with_subtype(Subtype::Human)
+                        .you_control(),
+                ),
+            ),
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+        ));
+    }
+
+    let human_a = create_creature(&mut game, "Human A", alice, 1, 1);
+    let human_b = create_creature(&mut game, "Human B", alice, 1, 1);
+    for id in [human_a, human_b] {
+        if let Some(obj) = game.object_mut(id) {
+            obj.subtypes.push(Subtype::Human);
+        }
+    }
+
+    game.mark_damage(necromancer, 2);
+    game.mark_damage(human_a, 1);
+    game.mark_damage(human_b, 1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        3,
+        "a dies-trigger source should see all simultaneous SBA deaths using LKI"
+    );
+}
+
+#[test]
 fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_library_top() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -5070,6 +5144,117 @@ fn test_distinct_object_target_clauses_resolve_against_their_own_selected_target
         2,
         "both selected targets should end up in Bob's graveyard"
     );
+}
+
+#[test]
+fn test_exchange_control_second_target_requirement_includes_artifact_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_card = CardBuilder::new(CardId::from_raw(5_051), "Legerdemain Probe")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Stack);
+    let ring_card = CardBuilder::new(CardId::from_raw(5_052), "Jinxed Ring")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ring_id = game.create_object_from_card(&ring_card, alice, Zone::Battlefield);
+    let construct_card = CardBuilder::new(CardId::from_raw(5_053), "Bonded Construct")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let construct_id = game.create_object_from_card(&construct_card, bob, Zone::Battlefield);
+
+    let first = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact()));
+    let second = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent().other()));
+    let exchange = crate::effects::ExchangeControlEffect::new(first, second)
+        .with_permanent1_reference_tag(crate::tag::TagKey::from("exchange_first"))
+        .with_shared_type(crate::effects::SharedTypeConstraint::CardType);
+    let effect = Effect::new(crate::effects::TaggedEffect::new(
+        "exchanged",
+        Effect::new(exchange),
+    ));
+
+    let requirements =
+        super::targeting::extract_target_requirements(&game, &[effect], alice, Some(spell_id));
+
+    assert_eq!(requirements.len(), 2);
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&Target::Object(ring_id))
+    );
+    assert!(
+        requirements[1]
+            .legal_targets
+            .contains(&Target::Object(construct_id)),
+        "the second Legerdemain target must allow an artifact creature, got {:?}",
+        requirements[1].legal_targets
+    );
+}
+
+#[test]
+fn test_exchange_control_resolution_preserves_selected_permanent_when_assignment_spec_is_stale() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ring_card = CardBuilder::new(CardId::from_raw(5_061), "Jinxed Ring")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ring_id = game.create_object_from_card(&ring_card, alice, Zone::Battlefield);
+    let construct_card = CardBuilder::new(CardId::from_raw(5_062), "Bonded Construct")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let construct_id = game.create_object_from_card(&construct_card, bob, Zone::Battlefield);
+
+    let first = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact()));
+    let second = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent().other()));
+    let exchange = crate::effects::ExchangeControlEffect::new(first.clone(), second)
+        .with_permanent1_reference_tag(crate::tag::TagKey::from("exchange_first"))
+        .with_shared_type(crate::effects::SharedTypeConstraint::CardType);
+    let spell_card = CardBuilder::new(CardId::from_raw(5_063), "Legerdemain Probe")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_def = crate::cards::CardDefinition::spell(
+        spell_card,
+        vec![Effect::new(crate::effects::TaggedEffect::new(
+            "exchanged",
+            Effect::new(exchange),
+        ))],
+    );
+    let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Stack);
+    let entry = StackEntry::new(spell_id, alice)
+        .with_targets(vec![Target::Object(ring_id), Target::Object(construct_id)])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: first,
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land())),
+                range: 1..2,
+            },
+        ]);
+    let (valid_targets, valid_assignments, all_invalid) =
+        super::targeting::validate_stack_entry_targets(&game, &entry);
+    assert!(!all_invalid);
+    assert_eq!(
+        valid_targets,
+        vec![
+            crate::effects::ResolvedTarget::Object(ring_id),
+            crate::effects::ResolvedTarget::Object(construct_id),
+        ]
+    );
+    assert_eq!(valid_assignments[1].range, 1..2);
+    game.push_to_stack(entry);
+
+    super::resolve_stack_entry(&mut game).expect("exchange spell should resolve");
+
+    assert_eq!(game.controller_of_id(ring_id), Some(bob));
+    assert_eq!(game.controller_of_id(construct_id), Some(alice));
 }
 
 #[test]
@@ -8068,6 +8253,111 @@ fn test_resolution_uses_source_lki_for_generic_power_of_source() {
         game.player(alice).expect("Alice should exist").life,
         24,
         "608.2h requires generic source-referential object values to use source LKI after the source leaves"
+    );
+}
+
+#[test]
+fn test_resolution_uses_source_lki_for_dynamic_token_count() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Departed Token Source", alice, 1, 1);
+    game.object_mut(source_id)
+        .expect("source should exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+    let token = CardDefinitionBuilder::new(CardId::new(), "Vampire")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Vampire])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::new(crate::effects::CreateTokenEffect::you(
+            token,
+            Value::PowerOf(Box::new(ChooseSpec::Source)),
+        ))],
+    );
+    game.push_to_stack(entry);
+
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave before its ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    let tokens = game
+        .battlefield
+        .iter()
+        .filter(|id| game.object(**id).is_some_and(|obj| obj.name == "Vampire"))
+        .count();
+    assert_eq!(
+        tokens, 2,
+        "dynamic token counts should resolve PowerOf(Source) from source LKI after the source leaves"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parsed_dies_token_count_uses_source_lki_after_prior_counter_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Elenda Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Vampire])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Whenever another creature dies, put a +1/+1 counter on Elenda Probe.\nWhen this creature dies, create X 1/1 white Vampire creature tokens with lifelink, where X is Elenda Probe's power.",
+        )
+        .expect("Elenda-like text should parse");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other = create_creature(&mut game, "Other Creature", bob, 2, 2);
+
+    game.move_object_by_effect(other, Zone::Graveyard)
+        .expect("other creature should die");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("counter trigger should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("counter trigger should resolve");
+    }
+    assert_eq!(
+        game.object(source)
+            .expect("source should remain on battlefield")
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(1),
+        "the first dies trigger should put a +1/+1 counter on the source"
+    );
+
+    game.move_object_by_effect(source, Zone::Graveyard)
+        .expect("source should die");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("dies token trigger should stack");
+    assert_eq!(
+        game.stack
+            .last()
+            .and_then(|entry| entry.source_snapshot.as_ref())
+            .and_then(|snapshot| snapshot.power),
+        Some(2),
+        "the queued dies trigger should carry source LKI including counters"
+    );
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("token trigger should resolve");
+    }
+
+    let tokens = game
+        .battlefield
+        .iter()
+        .filter(|id| game.object(**id).is_some_and(|obj| obj.name == "Vampire"))
+        .count();
+    assert_eq!(
+        tokens, 2,
+        "Elenda-like dies triggers should create tokens from the source's LKI power"
     );
 }
 

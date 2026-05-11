@@ -295,7 +295,9 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
 fn describe_trigger_for_ordering(trigger: &TriggeredAbilityEntry) -> String {
     let trigger_text = trigger.ability.trigger.display();
     let effect_text = crate::compiled_text::compile_effect_list(&trigger.ability.effects);
-    let detail = if !effect_text.trim().is_empty() {
+    let detail = if !trigger_text.trim().is_empty() && !effect_text.trim().is_empty() {
+        format!("{trigger_text}\n{effect_text}")
+    } else if !effect_text.trim().is_empty() {
         effect_text
     } else if !trigger_text.trim().is_empty() {
         trigger_text

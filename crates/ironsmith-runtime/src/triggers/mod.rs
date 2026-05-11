@@ -211,6 +211,10 @@ impl Trigger {
         self.0.trigger_count(event)
     }
 
+    pub fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        self.0.trigger_count_with_context(event, ctx)
+    }
+
     pub fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
         self.0.event_value_amount(event, ctx)
     }
@@ -493,6 +497,11 @@ impl Trigger {
     /// Create a "when this creature becomes blocked" trigger.
     pub fn this_becomes_blocked() -> Self {
         Self::new(ThisBecomesBlockedTrigger)
+    }
+
+    /// Create a "when this creature becomes blocked by [filter]" trigger.
+    pub fn this_becomes_blocked_by_object(filter: ObjectFilter) -> Self {
+        Self::new(ThisBecomesBlockedByObjectTrigger::new(filter))
     }
 
     /// Create a "when [filter] becomes blocked" trigger.
@@ -1049,6 +1058,10 @@ impl TriggerMatcher for Trigger {
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         self.0.trigger_count(event)
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        self.0.trigger_count_with_context(event, ctx)
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {

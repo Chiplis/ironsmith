@@ -25,6 +25,10 @@ use crate::zone::Zone;
 
 use super::choose_objects::{ChooseObjectsEffect, search_zones, top_only_selection_limit};
 
+fn is_implicit_object_tag(tag: &str) -> bool {
+    matches!(tag, "__it__" | "it")
+}
+
 fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
     filter
         .controller
@@ -938,7 +942,7 @@ pub(crate) fn run_choose_objects(
 
         let candidates = collect_candidates(effect, game, ctx, chooser_id)?;
         if candidates.is_empty() {
-            if effect.replace_tagged_objects || matches!(effect.tag.as_str(), "__it__" | "it") {
+            if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
                 ctx.clear_object_tag(effect.tag.as_str());
             }
             let outcome = EffectOutcome::count(0);
@@ -1153,14 +1157,7 @@ pub(crate) fn run_choose_objects(
 
         let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
         if !snapshots.is_empty() {
-            let replaces_stack_implicit_tag = matches!(effect.tag.as_str(), "__it__" | "it")
-                && ctx.get_tagged_all(&effect.tag).is_some_and(|existing| {
-                    existing.iter().any(|snapshot| {
-                        game.object(snapshot.object_id)
-                            .is_some_and(|object| object.zone == Zone::Stack)
-                    })
-                });
-            if effect.replace_tagged_objects || replaces_stack_implicit_tag {
+            if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
                 ctx.set_tagged_objects(effect.tag.clone(), snapshots);
             } else {
                 ctx.tag_objects(effect.tag.clone(), snapshots);
@@ -1263,6 +1260,13 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, owner, Zone::Hand)
+    }
+
+    fn create_battlefield_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
     struct PromptCapturingDecisionMaker {
@@ -1957,6 +1961,46 @@ mod tests {
             .expect("tag should remain populated");
         let tagged_ids: Vec<ObjectId> = tagged.iter().map(|snapshot| snapshot.object_id).collect();
         assert_eq!(tagged_ids, vec![second]);
+    }
+
+    #[test]
+    fn test_choose_objects_replaces_existing_implicit_it_tag() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_battlefield_card(&mut game, "Brain Maggot", alice);
+        let chosen_card = create_hand_card(&mut game, "Bloodflow Connoisseur", bob);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_objects(
+            "__it__",
+            vec![crate::snapshot::ObjectSnapshot::from_object(
+                game.object(source).expect("source should exist"),
+                &game,
+            )],
+        );
+
+        let effect = ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::Opponent),
+            1,
+            PlayerFilter::You,
+            "__it__",
+        )
+        .in_zone(Zone::Hand);
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
+
+        let crate::effect::OutcomeValue::Objects(choice) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(choice, vec![chosen_card]);
+
+        let tagged = ctx
+            .tagged_objects
+            .get(&crate::tag::TagKey::from("__it__"))
+            .expect("implicit tag should remain populated");
+        let tagged_ids: Vec<ObjectId> = tagged.iter().map(|snapshot| snapshot.object_id).collect();
+        assert_eq!(tagged_ids, vec![chosen_card]);
     }
 
     #[test]

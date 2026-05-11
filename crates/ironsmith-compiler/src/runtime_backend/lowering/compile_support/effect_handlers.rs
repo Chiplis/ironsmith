@@ -50,7 +50,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::Blocks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Blocks(filter.clone()))
         }
-        TriggerSpec::Dies(filter) => Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone())),
+        TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
+        }
         TriggerSpec::SpellCast {
             filter,
             caster,
@@ -312,7 +314,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
-                TriggerSpec::Dies(filter) => {
+                TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let lowered = compile_trigger_effects_with_imports(
