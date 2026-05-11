@@ -192,6 +192,8 @@ function Harness() {
   const [visibleState, setVisibleState] = useState(null);
   const statusEventsRef = useRef([]);
   const syncEventsRef = useRef([]);
+  const autoPassEnabledRef = useRef(false);
+  const autoPassAttemptRef = useRef("");
   const game = useMemo(() => createFakeGame(), []);
 
   const setState = useCallback((nextState) => {
@@ -230,6 +232,33 @@ function Harness() {
   });
 
   useEffect(() => {
+    if (!autoPassEnabledRef.current) return;
+    if (!lobby.multiplayer.matchStarted || lobby.multiplayer.submittingAction) return;
+    if (!visibleState?.decision || Number(visibleState.decision.player) !== Number(lobby.multiplayer.localPlayerIndex)) return;
+    const action = (visibleState.decision.actions || [])[0];
+    if (!action?.action_ref) return;
+    const key = [
+      lobby.multiplayer.lastAppliedSequence,
+      visibleState.snapshot_id,
+      visibleState.decision.player,
+      action.index,
+    ].join("|");
+    if (autoPassAttemptRef.current === key) return;
+    autoPassAttemptRef.current = key;
+    void lobby.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: action.action_ref,
+    }, "harness auto-pass");
+  }, [
+    lobby,
+    lobby.multiplayer.lastAppliedSequence,
+    lobby.multiplayer.localPlayerIndex,
+    lobby.multiplayer.matchStarted,
+    lobby.multiplayer.submittingAction,
+    visibleState,
+  ]);
+
+  useEffect(() => {
     window.__peerHarness = {
       ready: true,
       createLobby: lobby.createLobby,
@@ -238,6 +267,10 @@ function Harness() {
       startHostedMatch: lobby.startHostedMatch,
       submitMultiplayerCommand: lobby.submitMultiplayerCommand,
       submitMultiplayerAddCardCheat: lobby.submitMultiplayerAddCardCheat,
+      setAutoPass: (enabled) => {
+        autoPassEnabledRef.current = Boolean(enabled);
+        autoPassAttemptRef.current = "";
+      },
       silentlyAddCard: async ({ playerIndex, cardName, zone = "hand" } = {}) => {
         await game.addCardToZone(
           Number(playerIndex ?? lobby.multiplayer.localPlayerIndex ?? 0),

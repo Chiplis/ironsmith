@@ -11,6 +11,7 @@ import {
   createAuditEncryptionKey,
   createAuditSessionKey,
   encryptPrivateAuditPayload,
+  decklistHashForCards,
   exportAuditEncryptionKeyPair,
   exportAuditEncryptionPublicKey,
   exportAuditKeyPair,
@@ -57,6 +58,7 @@ const MATCH_SEED_OFFSET = 0xcbf29ce484222325n;
 const MATCH_SEED_PRIME = 0x100000001b3n;
 const MATCH_SEED_MASK = 0xffffffffffffffffn;
 const matchSeedEncoder = new TextEncoder();
+const sleep = (ms) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 
 function createEmptyState() {
   return {
@@ -374,12 +376,80 @@ function cloneMultiplayerPayload(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function compactZiffleCeremonyForDiagnostics(ceremony) {
+  if (!ceremony || typeof ceremony !== "object") return null;
+  return {
+    owner: ceremony.owner == null ? null : Number(ceremony.owner),
+    deckCount: ceremony.deckCount == null ? null : Number(ceremony.deckCount),
+    context: String(ceremony.context || ""),
+    deckHash: String(ceremony.deckHash || ""),
+    keyPlayers: Array.isArray(ceremony.keys)
+      ? ceremony.keys.map((key) => Number(key?.player)).filter((player) => Number.isFinite(player))
+      : [],
+    stepCount: Array.isArray(ceremony.steps) ? ceremony.steps.length : 0,
+  };
+}
+
+function compactZiffleDiagnosticsJson(diagnostics) {
+  try {
+    return JSON.stringify(diagnostics);
+  } catch {
+    return "{}";
+  }
+}
+
+function ziffleDiagnosticNoticeBody(message, diagnostics) {
+  const text = String(message || "Unknown ziffle ceremony").trim();
+  const requestId = String(diagnostics?.requestId || diagnostics?.requester?.requestId || "");
+  const owner =
+    diagnostics?.requestedOwner
+    ?? diagnostics?.requester?.ceremony?.owner
+    ?? diagnostics?.requester?.targetPlayerIndex
+    ?? null;
+  const context =
+    diagnostics?.requestedContext
+    || diagnostics?.requester?.ceremony?.context
+    || diagnostics?.local?.auditMatchId
+    || "";
+  return [
+    text,
+    requestId ? `request ${requestId}` : "",
+    owner == null ? "" : `owner ${owner}`,
+    context ? `context ${context}` : "",
+    "click Copy diagnostics for full JSON",
+  ].filter(Boolean).join(" | ");
+}
+
 function collectCommandObjectIds(value, output = new Set(), keyHint = "") {
   if (value == null) return output;
   if (typeof value === "number" || typeof value === "string") {
     const normalizedKey = String(keyHint || "").toLowerCase();
+    const objectIdKeys = new Set([
+      "card",
+      "cardid",
+      "card_id",
+      "creature",
+      "creatureid",
+      "creature_id",
+      "land",
+      "landid",
+      "land_id",
+      "object",
+      "objectid",
+      "object_id",
+      "permanent",
+      "permanentid",
+      "permanent_id",
+      "source",
+      "sourceid",
+      "source_id",
+      "spell",
+      "spellid",
+      "spell_id",
+    ]);
     if (
       normalizedKey === "id"
+      || objectIdKeys.has(normalizedKey)
       || ((normalizedKey.includes("object")
         || normalizedKey.includes("source")
         || normalizedKey.includes("card"))
@@ -423,6 +493,8 @@ function openingMatchesRequirement(opening, requirement) {
     requirement.objectId != null
     && opening.objectId != null
     && Number(opening.objectId) !== Number(requirement.objectId)
+    && requirement.slot == null
+    && !requirement.commitment
   ) {
     return false;
   }
@@ -432,6 +504,109 @@ function openingMatchesRequirement(opening, requirement) {
   if (requirement.slot == null) return true;
   return Number(opening.slot) === Number(requirement.slot)
     || Number(opening.position) === Number(requirement.slot);
+}
+
+function mergeAuditOpenings(...openingLists) {
+  const merged = new Map();
+  for (const opening of openingLists.flat()) {
+    if (!opening || opening.owner == null || opening.slot == null) continue;
+    const key = `${Number(opening.owner)}:${Number(opening.slot)}:${Number(opening.objectId ?? -1)}`;
+    const existing = merged.get(key);
+    if (existing?.timing === "pre" && opening.timing !== "pre") continue;
+    merged.set(key, opening);
+  }
+  return [...merged.values()];
+}
+
+function mergePrivateViewProofs(...proofLists) {
+  const merged = new Map();
+  for (const proof of proofLists.flat()) {
+    if (!proof) continue;
+    const key = [
+      String(proof.requirementId || ""),
+      String(proof.type || ""),
+      Number(proof.owner ?? -1),
+      Number(proof.viewer ?? -1),
+      Number(proof.objectId ?? -1),
+    ].join(":");
+    merged.set(key, proof);
+  }
+  return [...merged.values()];
+}
+
+function wasmObjectIdArg(objectId) {
+  const normalized = Number(objectId);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    throw new Error(`Invalid object id: ${objectId}`);
+  }
+  return BigInt(normalized);
+}
+
+function actionRefObjectId(actionRef) {
+  if (!actionRef || typeof actionRef !== "object") return null;
+  switch (String(actionRef.kind || "")) {
+    case "play_land":
+      return actionRef.land_id;
+    case "cast_spell":
+      return actionRef.spell_id;
+    case "use_pregame_action":
+      return actionRef.card_id;
+    case "activate_ability":
+    case "activate_mana_ability":
+      return actionRef.source;
+    case "turn_face_up":
+      return actionRef.creature_id;
+    case "special_action": {
+      const action = actionRef.action || {};
+      return action.card_id ?? action.permanent_id;
+    }
+    default:
+      return null;
+  }
+}
+
+function actionRefWithObjectId(actionRef, objectId) {
+  if (!actionRef || typeof actionRef !== "object") return actionRef;
+  const next = cloneMultiplayerPayload(actionRef);
+  switch (String(next.kind || "")) {
+    case "play_land":
+      next.land_id = Number(objectId);
+      break;
+    case "cast_spell":
+      next.spell_id = Number(objectId);
+      break;
+    case "use_pregame_action":
+      next.card_id = Number(objectId);
+      break;
+    case "activate_ability":
+    case "activate_mana_ability":
+      next.source = Number(objectId);
+      break;
+    case "turn_face_up":
+      next.creature_id = Number(objectId);
+      break;
+    case "special_action":
+      if (next.action?.card_id != null) {
+        next.action.card_id = Number(objectId);
+      } else if (next.action?.permanent_id != null) {
+        next.action.permanent_id = Number(objectId);
+      }
+      break;
+  }
+  return next;
+}
+
+function hiddenOpeningMatchesExport(opening, exported) {
+  if (!opening || !exported) return false;
+  if (opening.owner != null && Number(opening.owner) !== Number(exported.owner)) return false;
+  if (opening.slot != null && Number(opening.slot) !== Number(exported.slot)) return false;
+  if (opening.commitment && exported.commitment && opening.commitment !== exported.commitment) {
+    return false;
+  }
+  if (opening.card && exported.card && String(opening.card) !== String(exported.card)) {
+    return false;
+  }
+  return true;
 }
 
 function canonicalMultiplayerPayload(value) {
@@ -891,7 +1066,28 @@ function canHostedMatchStart(session) {
     session.mode !== "starting" &&
     session.players.length === session.desiredPlayers &&
     session.players.length > 0 &&
-    session.players.every((player) => player.connected !== false && player.ready)
+    session.players.every((player) =>
+      player.connected !== false
+      && player.ready
+      && playerCryptoSeatBindingReady(player)
+    )
+  );
+}
+
+function playerCryptoSeatBindingReady(player) {
+  if (!player) return false;
+  const index = normalizePlayerIndex(player.index);
+  if (index == null) return false;
+  const manifest = publicDeckManifest(player.deckAuditManifest);
+  const zifflePlayer = normalizePlayerIndex(player.ziffleKey?.player);
+  const signer = normalizePlayerIndex(player.playerGenesisSignature?.signer);
+  return (
+    manifest?.owner === index
+    && String(manifest.matchId || "")
+    && zifflePlayer === index
+    && signer === index
+    && Boolean(player.auditPublicKey)
+    && Boolean(player.auditEncryptionPublicKey)
   );
 }
 
@@ -1003,6 +1199,7 @@ export function usePeerLobby({
   const rngCommitWaitersRef = useRef(new Map());
   const rngRevealWaitersRef = useRef(new Map());
   const rngCommitNoncesRef = useRef(new Map());
+  const cryptoMaterialWaitersRef = useRef(new Map());
   const liveZiffleCeremoniesRef = useRef(new Map());
   const ziffleOpeningPositionsRef = useRef(new Map());
   const relayedActionIdsRef = useRef(new Set());
@@ -1092,8 +1289,12 @@ export function usePeerLobby({
   }, []);
 
   const updateMultiplayer = useCallback((updater) => {
+    const previous = multiplayerRef.current;
     const next =
-      typeof updater === "function" ? updater(multiplayerRef.current) : updater;
+      typeof updater === "function" ? updater(previous) : updater;
+    if (next === previous) {
+      return previous;
+    }
     const normalized = withConnectionWarnings(next);
     multiplayerRef.current = normalized;
     setMultiplayer(normalized);
@@ -1241,13 +1442,18 @@ export function usePeerLobby({
     })
   ), []);
 
-  const waitForZiffleRevealToken = useCallback((requestId, timeoutMs = 60000) => (
+  const waitForZiffleRevealToken = useCallback((requestId, timeoutMs = 60000, metadata = null) => (
     new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
         ziffleRevealWaitersRef.current.delete(requestId);
-        reject(new Error("Timed out waiting for ziffle reveal token"));
+        reject(new Error(
+          metadata
+            ? `Timed out waiting for ziffle reveal token: ${compactZiffleDiagnosticsJson(metadata)}`
+            : "Timed out waiting for ziffle reveal token"
+        ));
       }, timeoutMs);
       ziffleRevealWaitersRef.current.set(requestId, {
+        metadata,
         resolve: (value) => {
           window.clearTimeout(timer);
           resolve(value);
@@ -1298,6 +1504,25 @@ export function usePeerLobby({
     })
   ), []);
 
+  const waitForCryptoMaterial = useCallback((requestId, timeoutMs = 60000) => (
+    new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        cryptoMaterialWaitersRef.current.delete(requestId);
+        reject(new Error("Timed out waiting for cryptographic opening material"));
+      }, timeoutMs);
+      cryptoMaterialWaitersRef.current.set(requestId, {
+        resolve: (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err) => {
+          window.clearTimeout(timer);
+          reject(err);
+        },
+      });
+    })
+  ), []);
+
   const resolveZiffleShuffleStep = useCallback((message) => {
     const requestId = String(message?.requestId || "");
     const waiter = ziffleShuffleWaitersRef.current.get(requestId);
@@ -1317,7 +1542,13 @@ export function usePeerLobby({
     if (!waiter) return false;
     ziffleRevealWaitersRef.current.delete(requestId);
     if (message.error) {
-      waiter.reject(new Error(String(message.error)));
+      const diagnostics = {
+        requester: waiter.metadata || null,
+        responder: message.diagnostics || null,
+      };
+      waiter.reject(new Error(
+        `${String(message.error)}: ${compactZiffleDiagnosticsJson(diagnostics)}`
+      ));
     } else {
       waiter.resolve(message.token);
     }
@@ -1346,6 +1577,22 @@ export function usePeerLobby({
       waiter.reject(new Error(String(message.error)));
     } else {
       waiter.resolve(message.reveal);
+    }
+    return true;
+  }, []);
+
+  const resolveCryptoMaterial = useCallback((message) => {
+    const requestId = String(message?.requestId || "");
+    const waiter = cryptoMaterialWaitersRef.current.get(requestId);
+    if (!waiter) return false;
+    cryptoMaterialWaitersRef.current.delete(requestId);
+    if (message.error) {
+      waiter.reject(new Error(String(message.error)));
+    } else {
+      waiter.resolve({
+        openings: message.openings || [],
+        privateViewProofs: message.privateViewProofs || [],
+      });
     }
     return true;
   }, []);
@@ -1423,14 +1670,75 @@ export function usePeerLobby({
   const ziffleCeremonyForOwner = useCallback((owner, options = {}) => {
     const normalizedOwner = Number(owner);
     const deckHash = String(options.deckHash || ziffleDeckHashFromCommitment(options.commitment) || "");
+    const context = String(options.context || "");
     const live = liveZiffleCeremoniesRef.current.get(normalizedOwner);
-    if (live && (!deckHash || String(live.deckHash || "") === deckHash)) return live;
+    if (
+      live
+      && (!deckHash || String(live.deckHash || "") === deckHash)
+      && (!context || String(live.context || "") === context)
+    ) {
+      return live;
+    }
     const payload = options.payload || matchStartPayloadRef.current;
     return (payload?.ziffleCeremonies || []).find((entry) =>
       Number(entry.owner) === normalizedOwner
       && (!deckHash || String(entry.deckHash || "") === deckHash)
-    ) || live || null;
+      && (!context || String(entry.context || "") === context)
+    ) || null;
   }, []);
+
+  const localZiffleDiagnostics = useCallback((label = "local") => {
+    const session = multiplayerRef.current;
+    return {
+      label,
+      localPeerId: String(session.localPeerId || ""),
+      role: String(session.role || ""),
+      mode: String(session.mode || ""),
+      matchStarted: Boolean(session.matchStarted),
+      localPlayerIndex:
+        session.localPlayerIndex == null ? null : Number(session.localPlayerIndex),
+      lobbyId: String(session.lobbyId || ""),
+      hostPeerId: String(session.hostPeerId || ""),
+      auditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
+      matchStartPayloadPresent: Boolean(matchStartPayloadRef.current),
+      payloadCeremonies: (matchStartPayloadRef.current?.ziffleCeremonies || [])
+        .map(compactZiffleCeremonyForDiagnostics)
+        .filter(Boolean),
+      liveCeremonies: [...liveZiffleCeremoniesRef.current.values()]
+        .map(compactZiffleCeremonyForDiagnostics)
+        .filter(Boolean),
+      players: (session.players || []).map((player) => ({
+        index: Number(player.index),
+        name: String(player.name || ""),
+        peerId: String(player.peerId || ""),
+        connected: player.connected !== false,
+        hasZiffleKey: Boolean(player.ziffleKey),
+      })),
+    };
+  }, []);
+
+  const emitZiffleDiagnosticNotice = useCallback((title, err, diagnostics = null) => {
+    const message = toErrorMessage(err, "Unknown ziffle ceremony");
+    const mergedDiagnostics = {
+      message,
+      local: localZiffleDiagnostics(title),
+      ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
+    };
+    const json = compactZiffleDiagnosticsJson(mergedDiagnostics);
+    emitSyncFailureNotice(title, {
+      body: ziffleDiagnosticNoticeBody(message, mergedDiagnostics),
+      copyText: json,
+      copyStatusMessage: "Copied Ziffle diagnostics",
+      actions: [
+        {
+          label: "Copy diagnostics",
+          copyText: json,
+          copyStatusMessage: "Copied Ziffle diagnostics",
+        },
+      ],
+    });
+    console.warn("Ironsmith Ziffle diagnostics", mergedDiagnostics);
+  }, [localZiffleDiagnostics]);
 
   const importCachedAuditPublicKey = useCallback(async (rawHex) => {
     const normalized = String(rawHex || "").trim();
@@ -1467,7 +1775,7 @@ export function usePeerLobby({
     }
   }, [publicDeckManifestForOwner]);
 
-  const buildLocalOpeningsForCommand = useCallback(async (command, cryptoRequirements = []) => {
+	  const buildLocalOpeningsForCommand = useCallback(async (command, cryptoRequirements = []) => {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.exportHiddenCardOpening !== "function") {
       return [];
@@ -1487,7 +1795,7 @@ export function usePeerLobby({
     for (const objectId of objectIds) {
       let exported = null;
       try {
-        exported = await currentGame.exportHiddenCardOpening(Number(objectId));
+        exported = await currentGame.exportHiddenCardOpening(wasmObjectIdArg(objectId));
       } catch (err) {
         void err;
         continue;
@@ -1526,10 +1834,106 @@ export function usePeerLobby({
       openings.push(opening);
       seen.add(key);
     }
-    return openings;
-  }, [privateDeckManifestForOwner, ziffleCeremonyForOwner, ziffleOpeningPositionForSlot]);
+	    return openings;
+	  }, [privateDeckManifestForOwner, ziffleCeremonyForOwner, ziffleOpeningPositionForSlot]);
 
-  const buildLocalDeckAuditManifest = useCallback(
+	  const buildLocalOpeningFromRequirement = useCallback(async (requirement, exported = null) => {
+	    const owner = Number(exported?.owner ?? requirement?.owner);
+	    if (!Number.isInteger(owner)) {
+	      throw new Error("Crypto opening requirement is missing an owner");
+	    }
+	    const manifest = privateDeckManifestForOwner(owner);
+	    if (!manifest) {
+	      throw new Error(`Missing private deck opening material for player ${owner + 1}`);
+	    }
+
+	    let originalSlot = Number(exported?.slot ?? requirement?.slot);
+	    if (!Number.isInteger(originalSlot) || originalSlot < 0) {
+	      throw new Error("Crypto opening requirement is missing a committed slot");
+	    }
+	    let position = null;
+	    let positionCommitment = "";
+	    const exportedCommitment = String(exported?.commitment || requirement?.commitment || "");
+	    const ziffleDeckHash = ziffleDeckHashFromCommitment(exportedCommitment);
+	    if (ziffleDeckHash) {
+	      const currentGame = gameRef.current;
+	      if (!currentGame || typeof currentGame.ziffleRevealCard !== "function") {
+	        throw new Error("Ziffle opening reveal backend is not available");
+	      }
+	      position = Number(exported?.slot ?? requirement?.slot);
+	      const ceremony = ziffleCeremonyForOwner(owner, { commitment: exportedCommitment });
+	      if (!ceremony) {
+	        throw new Error(`Missing ziffle ceremony for opening player ${owner + 1}`);
+	      }
+	      const tokens = await collectZiffleRevealTokens(ceremony, position);
+	      const reveal = await currentGame.ziffleRevealCard({
+	        deckCount: Number(ceremony.deckCount),
+	        context: String(ceremony.context || ""),
+	        keys: cloneMultiplayerPayload(ceremony.keys || []),
+	        steps: cloneMultiplayerPayload(ceremony.steps || []),
+	        cardPosition: position,
+	        tokens,
+	      });
+	      originalSlot = Number(reveal.originalSlot);
+	      positionCommitment = exportedCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position);
+	      rememberZiffleOpeningPosition(owner, originalSlot, position);
+	    }
+
+	    const secret = (manifest.slotSecrets || []).find(
+	      (entry) => Number(entry.slot) === Number(originalSlot)
+	    );
+	    if (!secret) {
+	      throw new Error(`Missing private deck opening for slot ${Number(originalSlot)}`);
+	    }
+	    const card = String(exported?.card || requirement?.card || secret.card || "");
+	    const opening = await buildDeckSlotOpening({
+	      manifest,
+	      slot: originalSlot,
+	      card,
+	    });
+	    if (
+	      exportedCommitment
+	      && !ziffleDeckHash
+	      && opening.commitment !== exportedCommitment
+	    ) {
+	      throw new Error(`Private deck opening does not match slot ${Number(originalSlot)}`);
+	    }
+	    return {
+	      opening: {
+	        ...opening,
+	        ...(requirement?.objectId != null
+	          ? { objectId: Number(requirement.objectId) }
+	          : exported?.object_id != null || exported?.objectId != null
+	            ? { objectId: Number(exported.object_id ?? exported.objectId) }
+	            : {}),
+	        timing: "post",
+	        ...(position != null ? { position } : {}),
+	        ...(positionCommitment ? { positionCommitment } : {}),
+	      },
+	      owner,
+	      originalSlot,
+	      position,
+	      positionCommitment,
+	    };
+	  }, [
+	    collectZiffleRevealTokens,
+	    privateDeckManifestForOwner,
+	    rememberZiffleOpeningPosition,
+	    ziffleCeremonyForOwner,
+	  ]);
+
+	  const buildLocalRequirementOpeningsForRequirements = useCallback(async (requirements = []) => {
+	    const openings = [];
+	    for (const requirement of requirements || []) {
+	      if (String(requirement?.type || "") !== "public_open") continue;
+	      const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+	      if (Number(requirement.owner) !== Number(localSeat)) continue;
+	      openings.push((await buildLocalOpeningFromRequirement(requirement)).opening);
+	    }
+	    return openings;
+	  }, [buildLocalOpeningFromRequirement]);
+
+	  const buildLocalDeckAuditManifest = useCallback(
     async ({ matchId, owner, deck, sideboard, commanders }) => {
       const manifest = await buildPrivateDeckManifest({
         matchId,
@@ -1782,6 +2186,58 @@ export function usePeerLobby({
     return Array.isArray(requirements) ? requirements : [];
   }
 
+  async function remapPriorityCommandForLocalHiddenOpening(command, openings = []) {
+    if (!command || command.type !== "priority_action" || !command.action_ref) {
+      return command;
+    }
+    const sourceObjectId = actionRefObjectId(command.action_ref);
+    if (sourceObjectId == null) return command;
+
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.uiState !== "function") return command;
+
+    const liveState = await currentGame.uiState();
+    const actions = Array.isArray(liveState?.decision?.actions)
+      ? liveState.decision.actions
+      : [];
+    const sameKindActions = actions.filter(
+      (action) => String(action?.action_ref?.kind || "") === String(command.action_ref.kind || "")
+    );
+    if (sameKindActions.some((action) =>
+      Number(actionRefObjectId(action?.action_ref)) === Number(sourceObjectId)
+    )) {
+      return command;
+    }
+
+    const candidateOpenings = (openings || []).filter(
+      (opening) => opening?.owner != null && opening?.slot != null && opening?.card
+    );
+    if (candidateOpenings.length === 0) return command;
+
+    for (const action of sameKindActions) {
+      const localObjectId = actionRefObjectId(action?.action_ref);
+      if (localObjectId == null || typeof currentGame.exportHiddenCardOpening !== "function") {
+        continue;
+      }
+      let exported = null;
+      try {
+        exported = await currentGame.exportHiddenCardOpening(wasmObjectIdArg(localObjectId));
+      } catch {
+        continue;
+      }
+      const opening = candidateOpenings.find((entry) =>
+        hiddenOpeningMatchesExport(entry, exported)
+      );
+      if (!opening) continue;
+      const remapped = cloneMultiplayerPayload(command);
+      remapped.action_ref = actionRefWithObjectId(command.action_ref, localObjectId);
+      remapped.object_id = Number(localObjectId);
+      return remapped;
+    }
+
+    return command;
+  }
+
   async function injectCryptoMaterialForRequirements(requirements = [], audit = {}) {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.injectTranscriptRandomSeeds !== "function") return;
@@ -1810,77 +2266,47 @@ export function usePeerLobby({
     }
   }
 
-  async function buildLocalPrivateViewProofsForRequirements(requirements = []) {
-    const currentGame = gameRef.current;
-    const proofs = [];
-    const privateOpeningProofs = [];
-    for (const requirement of requirements || []) {
-      if (String(requirement?.type || "") !== "private_open") continue;
-      if (!currentGame || typeof currentGame.exportHiddenCardOpening !== "function") {
-        throw new Error("Private-view opening export is not available");
-      }
-      if (requirement.objectId == null) {
-        throw new Error("Private-view requirement is missing the hidden object id");
-      }
-      const viewer = Number(requirement.viewer);
-      const recipientPublicKey = auditEncryptionPublicKeyForPlayer(viewer);
-      if (!recipientPublicKey) {
-        throw new Error(`Player ${viewer + 1} is missing a private-view encryption key`);
-      }
-      const exported = await currentGame.exportHiddenCardOpening(Number(requirement.objectId));
-      const owner = Number(exported.owner);
-      const manifest = privateDeckManifestForOwner(owner);
-      if (!manifest) {
-        throw new Error(`Missing private deck opening material for player ${owner + 1}`);
-      }
-      let originalSlot = Number(exported.slot);
-      let position = null;
-      let positionCommitment = "";
-      const exportedCommitment = String(exported.commitment || "");
-      const ziffleDeckHash = ziffleDeckHashFromCommitment(exportedCommitment);
-      if (ziffleDeckHash) {
-        if (typeof currentGame.ziffleRevealCard !== "function") {
-          throw new Error("Ziffle private-view reveal backend is not available");
-        }
-        position = Number(exported.slot);
-        const ceremony = ziffleCeremonyForOwner(owner, { commitment: exportedCommitment });
-        if (!ceremony) {
-          throw new Error(`Missing ziffle ceremony for private view of player ${owner + 1}`);
-        }
-        const tokens = await collectZiffleRevealTokens(ceremony, position);
-        const reveal = await currentGame.ziffleRevealCard({
-          deckCount: Number(ceremony.deckCount),
-          context: String(ceremony.context || ""),
-          keys: cloneMultiplayerPayload(ceremony.keys || []),
-          steps: cloneMultiplayerPayload(ceremony.steps || []),
-          cardPosition: position,
-          tokens,
-        });
-        originalSlot = Number(reveal.originalSlot);
-        positionCommitment = exportedCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position);
-        rememberZiffleOpeningPosition(owner, originalSlot, position);
-      }
-      const opening = await buildDeckSlotOpening({
-        manifest,
-        slot: originalSlot,
-        card: exported.card,
-      });
-      const openingPayload = {
-        type: "private_view_opening",
-        matchId: currentAuditMatchId(),
-        requirementId: String(requirement.id || ""),
-        owner,
+	  const buildLocalPrivateViewProofsForRequirements = useCallback(async (requirements = []) => {
+	    const currentGame = gameRef.current;
+	    const proofs = [];
+	    const privateOpeningProofs = [];
+	    const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+	    for (const requirement of requirements || []) {
+	      if (String(requirement?.type || "") !== "private_open") continue;
+	      if (Number(requirement.owner) !== Number(localSeat)) continue;
+	      const viewer = Number(requirement.viewer);
+	      const recipientPublicKey = auditEncryptionPublicKeyForPlayer(viewer);
+	      if (!recipientPublicKey) {
+	        throw new Error(`Player ${viewer + 1} is missing a private-view encryption key`);
+	      }
+	      let exported = null;
+	      if (currentGame && typeof currentGame.exportHiddenCardOpening === "function" && requirement.objectId != null) {
+	        try {
+	          exported = await currentGame.exportHiddenCardOpening(wasmObjectIdArg(requirement.objectId));
+	        } catch {
+	          exported = null;
+	        }
+	      }
+	      const {
+	        opening,
+	        owner,
+	        position,
+	        positionCommitment,
+	      } = await buildLocalOpeningFromRequirement(requirement, exported);
+	      const openingPayload = {
+	        type: "private_view_opening",
+	        matchId: currentAuditMatchId(),
+	        requirementId: String(requirement.id || ""),
+	        owner,
         viewer,
         zone: String(requirement.zone || ""),
         objectId: Number(requirement.objectId),
         opening: {
-          ...opening,
-          objectId: Number(requirement.objectId),
-          timing: "private",
-          ...(position != null ? { position } : {}),
-          ...(positionCommitment ? { positionCommitment } : {}),
-        },
-      };
+	          ...opening,
+	          objectId: Number(requirement.objectId),
+	          timing: "private",
+	        },
+	      };
       const encryptedOpening = await encryptPrivateAuditPayload({
         recipientPublicKey,
         payload: openingPayload,
@@ -1903,10 +2329,11 @@ export function usePeerLobby({
       }
       privateOpeningProofs.push(proof);
       proofs.push(proof);
-    }
-    for (const requirement of requirements || []) {
-      if (String(requirement?.type || "") !== "private_view_window") continue;
-      const openingHashes = privateOpeningProofs
+	    }
+	    for (const requirement of requirements || []) {
+	      if (String(requirement?.type || "") !== "private_view_window") continue;
+	      if (Number(requirement.owner) !== Number(localSeat)) continue;
+	      const openingHashes = privateOpeningProofs
         .filter((entry) =>
           Number(entry.owner) === Number(requirement.owner)
           && Number(entry.viewer) === Number(requirement.viewer)
@@ -1925,9 +2352,90 @@ export function usePeerLobby({
       };
       proof.materialHash = await sha256Hex(canonicalMultiplayerPayload(proof));
       proofs.push(proof);
+	    }
+	    return proofs;
+	  }, [auditEncryptionPublicKeyForPlayer, buildLocalOpeningFromRequirement, currentAuditMatchId]);
+
+	  const buildLocalCryptoMaterialForRequirements = useCallback(async (requirements = []) => {
+	    const openings = mergeAuditOpenings(
+	      await buildLocalOpeningsForCommand({}, requirements),
+	      await buildLocalRequirementOpeningsForRequirements(requirements)
+	    );
+	    const privateViewProofs = await buildLocalPrivateViewProofsForRequirements(requirements);
+	    return { openings, privateViewProofs };
+	  }, [
+	    buildLocalOpeningsForCommand,
+	    buildLocalPrivateViewProofsForRequirements,
+	    buildLocalRequirementOpeningsForRequirements,
+	  ]);
+
+  const answerCryptoMaterialRequest = useCallback(async (conn, message) => {
+    try {
+      const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+      const requirements = (message.requirements || []).filter((requirement) =>
+        Number(requirement?.owner) === Number(localSeat)
+      );
+      const material = await buildLocalCryptoMaterialForRequirements(requirements);
+      safeSend(conn, {
+        type: "crypto_material_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        openings: material.openings,
+        privateViewProofs: material.privateViewProofs,
+      });
+    } catch (err) {
+      safeSend(conn, {
+        type: "crypto_material_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        error: toErrorMessage(err),
+      });
     }
-    return proofs;
-  }
+  }, [buildLocalCryptoMaterialForRequirements]);
+
+  const collectRemoteCryptoMaterialForRequirements = useCallback(async (requirements = []) => {
+    const localSeat = resolveLocalPlayerIndex(multiplayerRef.current);
+    const materialByOwner = new Map();
+    for (const requirement of requirements || []) {
+      const type = String(requirement?.type || "");
+      if (!["public_open", "private_open", "private_view_window"].includes(type)) continue;
+      const owner = Number(requirement.owner);
+      if (!Number.isInteger(owner) || owner === Number(localSeat)) continue;
+      if (!materialByOwner.has(owner)) materialByOwner.set(owner, []);
+      materialByOwner.get(owner).push(requirement);
+    }
+    if (materialByOwner.size === 0) {
+      return { openings: [], privateViewProofs: [] };
+    }
+
+    const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
+    const responses = [];
+    for (const [owner, ownerRequirements] of materialByOwner) {
+      const player = players.find((entry) => Number(entry.index) === owner);
+      if (!player?.peerId) {
+        throw new Error(`Missing peer route for cryptographic material from player ${owner + 1}`);
+      }
+      const conn = await waitForZiffleRoute(player.peerId);
+      const requestId = makeZiffleRequestId("crypto-material");
+      const waiter = waitForCryptoMaterial(requestId);
+      setStatus(`Waiting for cryptographic material from ${player.name || `Player ${owner + 1}`}`);
+      safeSend(conn, {
+        type: "crypto_material_request",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId,
+        matchId: currentAuditMatchId(),
+        requirements: ownerRequirements,
+      });
+      responses.push(await waiter);
+    }
+
+    return {
+      openings: mergeAuditOpenings(...responses.map((response) => response.openings || [])),
+      privateViewProofs: mergePrivateViewProofs(
+        ...responses.map((response) => response.privateViewProofs || [])
+      ),
+    };
+  }, [currentAuditMatchId, makeZiffleRequestId, setStatus, waitForCryptoMaterial]);
 
   const resolvePeerResyncWaitersIfIdle = useCallback(() => {
     if (resyncingPeerIdsRef.current.size > 0) return;
@@ -2233,6 +2741,7 @@ export function usePeerLobby({
       return;
     }
 
+    updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
     try {
       await verifySequencedActionAudit({
         audit: message.audit,
@@ -2265,7 +2774,12 @@ export function usePeerLobby({
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
-      const cryptoRequirements = await previewRequirementsForCommand(message.command);
+      await revealAuditOpenings(message.audit?.openings || []);
+      const localCommand = await remapPriorityCommandForLocalHiddenOpening(
+        message.command,
+        message.audit?.openings || []
+      );
+      const cryptoRequirements = await previewRequirementsForCommand(localCommand);
       await verifyShuffleProofsForRequirements(
         cryptoRequirements,
         message.audit?.shuffleProofs || []
@@ -2275,8 +2789,7 @@ export function usePeerLobby({
         audit: message.audit,
       });
       await injectCryptoMaterialForRequirements(cryptoRequirements, message.audit || {});
-      await revealAuditOpenings(message.audit?.openings || [], { timing: "pre" });
-      const appliedState = await applySyncedCommand(message.command, message.label || "", {
+      const appliedState = await applySyncedCommand(localCommand, message.label || "", {
         actorIndex: message.actorIndex,
         sequence: nextSequence,
       });
@@ -2378,13 +2891,95 @@ export function usePeerLobby({
     });
   }
 
+  async function waitForZiffleCeremony(owner, options = {}, timeoutMs = 10000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const ceremony = ziffleCeremonyForOwner(owner, options);
+      if (ceremony) return ceremony;
+      await sleep(50);
+    }
+    return null;
+  }
+
   async function answerZiffleRevealTokenRequest(conn, message) {
+    let diagnostics = null;
     try {
-      const ceremony = ziffleCeremonyForOwner(message.ceremonyOwner, {
+      const lookup = {
         deckHash: message.deckHash,
-      });
+        context: message.ceremonyContext,
+      };
+      const requestCeremony = message.ceremony;
+      const requestCeremonySummary = compactZiffleCeremonyForDiagnostics(requestCeremony);
+      let requestCeremonyRejectReason = "";
+      const attachedCeremony =
+        requestCeremony && typeof requestCeremony === "object"
+          ? (() => {
+            if (Number(requestCeremony.owner) !== Number(message.ceremonyOwner)) {
+              requestCeremonyRejectReason = "attached ceremony owner does not match request owner";
+              return null;
+            }
+            if (
+              message.deckHash
+              && String(requestCeremony.deckHash || "") !== String(message.deckHash || "")
+            ) {
+              requestCeremonyRejectReason = "attached ceremony deckHash does not match request deckHash";
+              return null;
+            }
+            if (
+              message.ceremonyContext
+              && String(requestCeremony.context || "") !== String(message.ceremonyContext || "")
+            ) {
+              requestCeremonyRejectReason = "attached ceremony context does not match request context";
+              return null;
+            }
+            return cloneMultiplayerPayload(requestCeremony);
+          })()
+          : null;
+      const liveCeremonies = [...liveZiffleCeremoniesRef.current.values()]
+        .map(compactZiffleCeremonyForDiagnostics)
+        .filter(Boolean);
+      const payloadCeremonies = (matchStartPayloadRef.current?.ziffleCeremonies || [])
+        .map(compactZiffleCeremonyForDiagnostics)
+        .filter(Boolean);
+      const currentSession = multiplayerRef.current;
+      diagnostics = {
+        requestId: String(message.requestId || ""),
+        requesterPeerId: String(message.requesterPeerId || ""),
+        responderPeerId: String(currentSession.localPeerId || ""),
+        connectionPeerId: String(conn?.peer || ""),
+        responderRole: String(currentSession.role || ""),
+        responderMode: String(currentSession.mode || ""),
+        responderMatchStarted: Boolean(currentSession.matchStarted),
+        responderLocalPlayerIndex:
+          currentSession.localPlayerIndex == null ? null : Number(currentSession.localPlayerIndex),
+        requestedOwner: Number(message.ceremonyOwner),
+        requestedDeckHash: String(message.deckHash || ""),
+        requestedContext: String(message.ceremonyContext || ""),
+        requestedCardPosition: Number(message.cardPosition),
+        attachedCeremonyPresent: Boolean(requestCeremony),
+        attachedCeremony: requestCeremonySummary,
+        attachedCeremonyRejectReason: requestCeremonyRejectReason,
+        matchStartPayloadPresent: Boolean(matchStartPayloadRef.current),
+        matchStartAuditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
+        liveCeremonies,
+        payloadCeremonies,
+        sessionPlayers: (currentSession.players || []).map((player) => ({
+          index: Number(player.index),
+          name: String(player.name || ""),
+          peerId: String(player.peerId || ""),
+          connected: player.connected !== false,
+          hasZiffleKey: Boolean(player.ziffleKey),
+        })),
+      };
+      const ceremony = ziffleCeremonyForOwner(message.ceremonyOwner, lookup)
+        || await waitForZiffleCeremony(message.ceremonyOwner, lookup)
+        || attachedCeremony;
       if (!ceremony) {
-        throw new Error("Unknown ziffle ceremony");
+        const error = new Error(
+          `Unknown ziffle ceremony: ${compactZiffleDiagnosticsJson(diagnostics)}`
+        );
+        error.ziffleDiagnostics = diagnostics;
+        throw error;
       }
       const token = await buildLocalZiffleRevealToken(ceremony, message.cardPosition);
       safeSend(conn, {
@@ -2394,11 +2989,16 @@ export function usePeerLobby({
         token,
       });
     } catch (err) {
+      const ziffleDiagnostics = err?.ziffleDiagnostics || diagnostics;
+      if (ziffleDiagnostics) {
+        console.warn("Ironsmith ziffle reveal-token request failed", ziffleDiagnostics);
+      }
       safeSend(conn, {
         type: "ziffle_reveal_token_response",
         protocolVersion: PROTOCOL_VERSION,
         requestId: message.requestId,
         error: toErrorMessage(err),
+        diagnostics: ziffleDiagnostics || null,
       });
     }
   }
@@ -2444,7 +3044,19 @@ export function usePeerLobby({
       setStatus(`Waiting for cryptographic reveal material from ${peer.name || `Player ${Number(key.player) + 1}`}`);
       const conn = await waitForZiffleRoute(peer.peerId);
       const requestId = makeZiffleRequestId("ziffle-reveal");
-      const waiter = waitForZiffleRevealToken(requestId);
+      const requestDiagnostics = {
+        requestId,
+        localPeerId: String(session.localPeerId || ""),
+        localRole: String(session.role || ""),
+        localMode: String(session.mode || ""),
+        targetPeerId: String(peer.peerId || ""),
+        targetPlayerIndex: Number(key.player),
+        ceremony: compactZiffleCeremonyForDiagnostics(ceremony),
+        cardPosition: Number(cardPosition),
+        matchStartPayloadPresent: Boolean(matchStartPayloadRef.current),
+        matchStartAuditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
+      };
+      const waiter = waitForZiffleRevealToken(requestId, 60000, requestDiagnostics);
       safeSend(conn, {
         type: "ziffle_reveal_token_request",
         protocolVersion: PROTOCOL_VERSION,
@@ -2452,6 +3064,7 @@ export function usePeerLobby({
         ceremonyOwner: Number(ceremony.owner),
         deckHash: String(ceremony.deckHash || ""),
         ceremonyContext: String(ceremony.context || ""),
+        ceremony: cloneMultiplayerPayload(ceremony),
         cardPosition: Number(cardPosition),
         requesterPeerId: session.localPeerId || "",
       });
@@ -2816,6 +3429,7 @@ export function usePeerLobby({
       changed = true;
     }
     if (changed) {
+      await currentGame.setPerspective(localIndex);
       setState(await currentGame.uiState());
     }
   }
@@ -2912,7 +3526,7 @@ export function usePeerLobby({
   }
 
   const applyMatchStart = useCallback(
-    async (payload) => {
+    async (payload, options = {}) => {
       const currentGame = gameRef.current;
       if (!currentGame || typeof currentGame.startMatch !== "function") {
         throw new Error("Game engine is not ready for multiplayer");
@@ -2928,6 +3542,8 @@ export function usePeerLobby({
       }
       await verifySignedMatchGenesis(payload);
       await verifyZiffleCeremoniesForPayload(payload);
+      matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
+      ensureDirectPeerConnections(payload.players || []);
       const localAuditPublicKey = auditPublicKeyRef.current || "";
       const localEncryptionPublicKey = auditEncryptionPublicKeyRef.current || "";
       if (
@@ -2960,7 +3576,10 @@ export function usePeerLobby({
       liveZiffleCeremoniesRef.current.clear();
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       ensureDirectPeerConnections(payload.players || []);
-      await revealLocalZiffleHand(payload);
+      if (!options.deferLocalZiffleReveal) {
+        await revealLocalZiffleHand(payload);
+      }
+      await currentGame.setPerspective(localEntry.index);
 
       const nextState = await currentGame.uiState();
       setState(nextState);
@@ -3262,6 +3881,14 @@ export function usePeerLobby({
       );
       return;
     }
+    const unboundCryptoPlayer = players.find((player) => !playerCryptoSeatBindingReady(player));
+    if (unboundCryptoPlayer) {
+      setStatus(
+        `${unboundCryptoPlayer.name || "A player"} is still binding deck commitments to their seat`,
+        true
+      );
+      return;
+    }
 
     const payload = {
       type: "match_start",
@@ -3284,10 +3911,7 @@ export function usePeerLobby({
       players.map(async (player) => {
         let manifest = publicDeckManifest(player.deckAuditManifest);
         const hasLocalDeck = player.peerId === session.localPeerId;
-        if (!manifest || manifest.matchId !== payload.auditMatchId) {
-          if (!hasLocalDeck) {
-            throw new Error(`Missing committed deck manifest for ${player.name || "remote player"}`);
-          }
+        if (hasLocalDeck) {
           manifest = await buildLocalDeckAuditManifest({
             matchId: payload.auditMatchId,
             owner: Number(player.index || 0),
@@ -3295,6 +3919,8 @@ export function usePeerLobby({
             sideboard: player.sideboard,
             commanders: player.commanders,
           });
+        } else if (!manifest || manifest.matchId !== payload.auditMatchId) {
+          throw new Error(`Missing committed deck manifest for ${player.name || "remote player"}`);
         }
         return {
           ...player,
@@ -3355,13 +3981,28 @@ export function usePeerLobby({
         }
       }
 
-      await applyMatchStart(payload);
+      await applyMatchStart(payload, { deferLocalZiffleReveal: true });
       sendMatchStartToClients(payload);
+      await revealLocalZiffleHand(payload);
     } catch (err) {
-      emitSyncFailureNotice(
-        "Match start failed",
-        err instanceof Error ? err.message : String(err)
-      );
+      if (/ziffle/i.test(toErrorMessage(err, ""))) {
+        emitZiffleDiagnosticNotice("Match start failed", err, {
+          phase: "host_start_match",
+          payload: {
+            auditMatchId: String(payload.auditMatchId || ""),
+            lobbyId: String(payload.lobbyId || ""),
+            hostPeerId: String(payload.hostPeerId || ""),
+            ziffleCeremonies: (payload.ziffleCeremonies || [])
+              .map(compactZiffleCeremonyForDiagnostics)
+              .filter(Boolean),
+          },
+        });
+      } else {
+        emitSyncFailureNotice(
+          "Match start failed",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
       updateMultiplayer((prev) => ({ ...prev, mode: "lobby" }));
       setStatus(`Match start failed: ${err}`, true);
     }
@@ -3370,6 +4011,7 @@ export function usePeerLobby({
     broadcastToClients,
     buildLocalDeckAuditManifest,
     ensureAuditIdentity,
+    emitZiffleDiagnosticNotice,
     sendMatchStartToClients,
     setStatus,
     signPlayerGenesis,
@@ -3433,6 +4075,14 @@ export function usePeerLobby({
       );
       return;
     }
+    const unboundCryptoPlayer = players.find((player) => !playerCryptoSeatBindingReady(player));
+    if (unboundCryptoPlayer) {
+      setStatus(
+        `${unboundCryptoPlayer.name || "A player"} is still binding deck commitments to their seat`,
+        true
+      );
+      return;
+    }
     const payload = {
       type: "match_start",
       protocolVersion: PROTOCOL_VERSION,
@@ -3456,10 +4106,7 @@ export function usePeerLobby({
       players.map(async (player) => {
         let manifest = publicDeckManifest(player.deckAuditManifest);
         const hasLocalDeck = player.peerId === session.localPeerId;
-        if (!manifest || manifest.matchId !== payload.auditMatchId) {
-          if (!hasLocalDeck) {
-            throw new Error(`Missing committed rematch deck manifest for ${player.name || "remote player"}`);
-          }
+        if (hasLocalDeck) {
           manifest = await buildLocalDeckAuditManifest({
             matchId: payload.auditMatchId,
             owner: Number(player.index || 0),
@@ -3467,6 +4114,8 @@ export function usePeerLobby({
             sideboard: player.sideboard,
             commanders: player.commanders,
           });
+        } else if (!manifest || manifest.matchId !== payload.auditMatchId) {
+          throw new Error(`Missing committed rematch deck manifest for ${player.name || "remote player"}`);
         }
         return {
           ...player,
@@ -3557,13 +4206,28 @@ export function usePeerLobby({
         }
       }
 
-      await applyMatchStart(payload);
+      await applyMatchStart(payload, { deferLocalZiffleReveal: true });
       sendMatchStartToClients(payload);
+      await revealLocalZiffleHand(payload);
     } catch (err) {
-      emitSyncFailureNotice(
-        "Rematch start failed",
-        err instanceof Error ? err.message : String(err)
-      );
+      if (/ziffle/i.test(toErrorMessage(err, ""))) {
+        emitZiffleDiagnosticNotice("Rematch start failed", err, {
+          phase: "host_start_rematch",
+          payload: {
+            auditMatchId: String(payload.auditMatchId || ""),
+            lobbyId: String(payload.lobbyId || ""),
+            hostPeerId: String(payload.hostPeerId || ""),
+            ziffleCeremonies: (payload.ziffleCeremonies || [])
+              .map(compactZiffleCeremonyForDiagnostics)
+              .filter(Boolean),
+          },
+        });
+      } else {
+        emitSyncFailureNotice(
+          "Rematch start failed",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
       updateMultiplayer((prev) => ({
         ...prev,
         mode: "in_match",
@@ -3580,6 +4244,7 @@ export function usePeerLobby({
     broadcastToClients,
     buildLocalDeckAuditManifest,
     ensureAuditIdentity,
+    emitZiffleDiagnosticNotice,
     sendMatchStartToClients,
     setStatus,
     signPlayerGenesis,
@@ -3733,6 +4398,19 @@ export function usePeerLobby({
     if (session.role !== "client" || session.matchStarted || session.mode === "starting") return;
     const localPlayerIndex = resolveLocalPlayerIndex(session);
     if (localPlayerIndex == null) return;
+    const deckSubmission = parseDeckSubmission(
+      session.format,
+      session.localDeckText,
+      session.localCommanderText
+    );
+    const matchId = session.lobbyId || session.hostPeerId || "pending";
+    const expectedDecklistHash = await decklistHashForCards({
+      matchId,
+      owner: localPlayerIndex,
+      deck: deckSubmission.deck,
+      sideboard: deckSubmission.sideboard,
+      commanders: deckSubmission.commanders,
+    });
     const localEntry = (session.players || []).find(
       (player) => player.peerId === session.localPeerId
     );
@@ -3741,18 +4419,14 @@ export function usePeerLobby({
     const currentSigner = normalizePlayerIndex(localEntry?.playerGenesisSignature?.signer);
     if (
       currentManifest?.owner === localPlayerIndex
+      && currentManifest?.matchId === matchId
+      && currentManifest?.decklistHash === expectedDecklistHash
       && currentZifflePlayer === localPlayerIndex
       && currentSigner === localPlayerIndex
     ) {
       return;
     }
 
-    const deckSubmission = parseDeckSubmission(
-      session.format,
-      session.localDeckText,
-      session.localCommanderText
-    );
-    const matchId = session.lobbyId || session.hostPeerId || "pending";
     const {
       publicKey: auditPublicKey,
       encryptionPublicKey: auditEncryptionPublicKey,
@@ -3930,6 +4604,12 @@ export function usePeerLobby({
         case "rng_reveal_response":
           resolveRngReveal(message);
           return;
+        case "crypto_material_request":
+          await answerCryptoMaterialRequest(hostConnectionRef.current, message);
+          return;
+        case "crypto_material_response":
+          resolveCryptoMaterial(message);
+          return;
         case "ziffle_reveal_token_request":
           await answerZiffleRevealTokenRequest(hostConnectionRef.current, message);
           return;
@@ -3999,6 +4679,7 @@ export function usePeerLobby({
       }
     },
     [
+      answerCryptoMaterialRequest,
       applyMatchStart,
       applyStateResync,
       applySyncedCommand,
@@ -4008,6 +4689,7 @@ export function usePeerLobby({
       requestResync,
       revealAuditOpenings,
       publishLocalDeckUpdateForAssignedSeat,
+      resolveCryptoMaterial,
       resolveRngCommit,
       resolveRngReveal,
       resolveZiffleRevealToken,
@@ -4091,10 +4773,23 @@ export function usePeerLobby({
       case "rng_reveal_response":
         resolveRngReveal(message);
         return;
+      case "crypto_material_request":
+        await answerCryptoMaterialRequest(conn, message);
+        return;
+      case "crypto_material_response":
+        resolveCryptoMaterial(message);
+        return;
       default:
         return;
     }
-  }, [resolveRngCommit, resolveRngReveal, resolveZiffleRevealToken, resolveZiffleShuffleStep]);
+  }, [
+    answerCryptoMaterialRequest,
+    resolveCryptoMaterial,
+    resolveRngCommit,
+    resolveRngReveal,
+    resolveZiffleRevealToken,
+    resolveZiffleShuffleStep,
+  ]);
 
   const handlePeerDisconnect = useCallback(
     (peerId) => {
@@ -4151,9 +4846,16 @@ export function usePeerLobby({
       conn.on("data", (message) => {
         markConnectionAlive(heartbeatKey);
         if (handleConnectionHeartbeatMessage(conn, message)) return;
+        if (message?.type === "apply_action") {
+          void enqueueAsync(peerMessageQueueRef, () =>
+            handlePeerMessage(conn, message)
+          ).catch((err) => {
+            setStatus(`Peer message failed: ${toErrorMessage(err)}`, true);
+          });
+          return;
+        }
 	        if (
-	          message?.type === "apply_action"
-	          || message?.type === "ziffle_shuffle_step_request"
+	          message?.type === "ziffle_shuffle_step_request"
 	          || message?.type === "ziffle_shuffle_step_response"
 	          || message?.type === "ziffle_reveal_token_request"
 	          || message?.type === "ziffle_reveal_token_response"
@@ -4296,6 +4998,9 @@ export function usePeerLobby({
       case "rng_reveal_response":
         resolveRngReveal(message);
         return;
+      case "crypto_material_response":
+        resolveCryptoMaterial(message);
+        return;
       case "apply_action":
         await applySequencedActionMessage(message);
         return;
@@ -4304,6 +5009,9 @@ export function usePeerLobby({
         return;
       case "rng_reveal_request":
         await answerRngRevealRequest(conn, message);
+        return;
+      case "crypto_material_request":
+        await answerCryptoMaterialRequest(conn, message);
         return;
       case "ziffle_reveal_token_request":
         await answerZiffleRevealTokenRequest(conn, message);
@@ -4668,6 +5376,7 @@ export function usePeerLobby({
       }
     },
     [
+      answerCryptoMaterialRequest,
       buildHostedResyncPayload,
       broadcastMatchPresence,
       broadcastLobbyState,
@@ -4678,6 +5387,7 @@ export function usePeerLobby({
       startRematchFromState,
       startRematchSideboarding,
       updateMultiplayer,
+      resolveCryptoMaterial,
       resolveRngCommit,
       resolveRngReveal,
       resolveZiffleRevealToken,
@@ -4710,10 +5420,15 @@ export function usePeerLobby({
               err?.syncedRollbackSequence == null ? null : Number(err.syncedRollbackSequence),
           });
         };
+        if (message?.type === "apply_action") {
+          void enqueueAsync(clientMessageQueueRef, () =>
+            handleClientMessage(conn, message)
+          ).catch(handleError);
+          return;
+        }
         // Acks must not wait behind actions that are blocked on those same acks.
         if (
           message?.type === "resync_ack"
-          || message?.type === "apply_action"
           || message?.type === "ziffle_shuffle_step_response"
           || message?.type === "ziffle_reveal_token_request"
           || message?.type === "ziffle_reveal_token_response"
@@ -5487,9 +6202,18 @@ export function usePeerLobby({
           if (hostConnectionRef.current !== conn) return;
           markConnectionAlive(heartbeatKey);
           if (handleConnectionHeartbeatMessage(conn, message)) return;
+          if (message?.type === "apply_action") {
+            void enqueueAsync(hostMessageQueueRef, () => handleHostMessage(message)).catch((err) => {
+              emitSyncFailureNotice(
+                "Sync failed",
+                err instanceof Error ? err.message : String(err)
+              );
+              setStatus(`Lobby message failed: ${err}`, true);
+            });
+            return;
+          }
           if (
-            message?.type === "apply_action"
-            || message?.type === "ziffle_shuffle_step_request"
+            message?.type === "ziffle_shuffle_step_request"
             || message?.type === "ziffle_shuffle_step_response"
             || message?.type === "ziffle_reveal_token_request"
             || message?.type === "ziffle_reveal_token_response"
@@ -5499,10 +6223,11 @@ export function usePeerLobby({
             || message?.type === "rng_reveal_response"
           ) {
             void handleHostMessage(message).catch((err) => {
-              emitSyncFailureNotice(
-                "Ziffle message failed",
-                err instanceof Error ? err.message : String(err)
-              );
+              emitZiffleDiagnosticNotice("Ziffle message failed", err, {
+                phase: "host_ziffle_message",
+                messageType: String(message?.type || ""),
+                requestId: String(message?.requestId || ""),
+              });
               setStatus(`Ziffle message failed: ${err}`, true);
             });
             return;
@@ -5606,6 +6331,7 @@ export function usePeerLobby({
       configurePeerConnection,
       ensureAuditIdentity,
       ensureZiffleIdentity,
+      emitZiffleDiagnosticNotice,
       handleHostMessage,
       handleConnectionHeartbeatMessage,
       leaveLobby,
@@ -5800,6 +6526,10 @@ export function usePeerLobby({
           shuffleProofs,
           rngReveals,
         });
+        const remoteCryptoMaterial = await collectRemoteCryptoMaterialForRequirements(
+          cryptoRequirements
+        );
+        const preOpenings = await buildLocalOpeningsForCommand(command, cryptoRequirements);
         const appliedState = await applySyncedCommand(command, label || "", {
           actorIndex: session.localPlayerIndex,
           sequence: nextSequence,
@@ -5807,9 +6537,21 @@ export function usePeerLobby({
         await revealLocalZiffleHand(matchStartPayloadRef.current);
         await applyVerifiedShuffleProofs(shuffleProofs);
         const appliedRequirements = cryptoRequirementsFromState(appliedState);
-        const openings = await buildLocalOpeningsForCommand(command, cryptoRequirements);
-        const privateViewProofs = await buildLocalPrivateViewProofsForRequirements(
+        const openingRequirements = appliedRequirements.length > 0
+          ? [...cryptoRequirements, ...appliedRequirements]
+          : cryptoRequirements;
+        const postOpenings = await buildLocalOpeningsForCommand(command, openingRequirements);
+        const openings = mergeAuditOpenings(
+          preOpenings,
+          postOpenings,
+          remoteCryptoMaterial.openings
+        );
+        const localPrivateViewProofs = await buildLocalPrivateViewProofsForRequirements(
           appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements
+        );
+        const privateViewProofs = mergePrivateViewProofs(
+          localPrivateViewProofs,
+          remoteCryptoMaterial.privateViewProofs
         );
         const audit = await buildSequencedActionAudit({
           seq: nextSequence,
@@ -5852,7 +6594,9 @@ export function usePeerLobby({
     },
     [
       buildLocalOpeningsForCommand,
+      buildLocalPrivateViewProofsForRequirements,
       buildLocalRngRevealsForRequirements,
+      collectRemoteCryptoMaterialForRequirements,
       buildSequencedActionAudit,
       verifySequencedActionAudit,
       verifyAuditSatisfiesCryptoRequirements,
@@ -5920,6 +6664,10 @@ export function usePeerLobby({
 
   useEffect(() => {
     if (!multiplayer.matchStarted || !actionTimeoutConfigRef.current.timeoutMs) {
+      const idleSnapshot = createActionTimerSnapshot(
+        null,
+        actionTimeoutConfigRef.current.timeoutMs
+      );
       actionTimerRef.current = {
         key: "",
         currentPlayerIndex: null,
@@ -5927,10 +6675,22 @@ export function usePeerLobby({
         deadlineAtMs: null,
       };
       timeoutClaimInFlightRef.current = "";
-      updateMultiplayer((prev) => ({
-        ...prev,
-        actionTimer: createActionTimerSnapshot(null, actionTimeoutConfigRef.current.timeoutMs),
-      }));
+      updateMultiplayer((prev) => {
+        const current = prev.actionTimer || {};
+        if (
+          Boolean(current.enabled) === Boolean(idleSnapshot.enabled)
+          && Number(current.timeoutMs || 0) === Number(idleSnapshot.timeoutMs || 0)
+          && current.currentPlayerIndex == null
+          && current.startedAtMs == null
+          && current.deadlineAtMs == null
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          actionTimer: idleSnapshot,
+        };
+      });
       return undefined;
     }
 

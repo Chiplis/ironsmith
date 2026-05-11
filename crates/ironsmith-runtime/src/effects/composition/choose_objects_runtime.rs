@@ -11,6 +11,7 @@ use crate::effects::cards::search_overrides::{
 };
 use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_to_list, resolve_value,
+    view_hidden_candidate_objects,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
@@ -906,6 +907,22 @@ pub(crate) fn run_choose_objects(
     }
     let search_control = begin_opposition_agent_search_control(game, chooser_id, search_override);
     let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let search_viewer = game.controlling_player_for(chooser_id);
+        if let Some(owner) = library_owner {
+            let library_cards = game
+                .player(owner)
+                .map(|player| player.library.clone())
+                .unwrap_or_default();
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &library_cards,
+                "Search library",
+                false,
+            );
+        }
+
         if let Some(owner) = library_owner {
             offer_library_search_casts(game, ctx, owner)?;
             if ctx.decision_maker.awaiting_choice() {
@@ -976,6 +993,16 @@ pub(crate) fn run_choose_objects(
         }
 
         let has_hidden_search_zones = effect.is_search && search_zones.iter().any(Zone::is_hidden);
+        if has_hidden_search_zones && library_owner.is_none() {
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &candidates,
+                "Search hidden zone",
+                false,
+            );
+        }
         let has_search_stated_quality = effect.filter.has_search_stated_quality();
         let search_required_count = compute_search_required_count(effect.search_mode, max);
         let allow_hidden_partial =
@@ -1097,6 +1124,16 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
+        if effect.reveal && !chosen.is_empty() {
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &chosen,
+                "Reveal chosen hidden card",
+                true,
+            );
+        }
         let chosen_memory: Vec<_> = chosen
             .iter()
             .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))

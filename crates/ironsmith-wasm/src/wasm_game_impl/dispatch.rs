@@ -127,6 +127,7 @@ impl WasmGame {
             semantic_threshold: 0.0,
             snapshot_serial: 0,
             active_viewed_cards: None,
+            active_audit_viewed_cards: Vec::new(),
             last_crypto_requirements: Vec::new(),
             pending_crypto_audit_before: None,
             active_resolving_stack_object: None,
@@ -319,7 +320,11 @@ impl WasmGame {
             .game
             .hidden_cards
             .iter()
-            .find(|(_, info)| info.owner == owner && info.slot == input.position)
+            .find(|(object_id, info)| {
+                info.owner == owner
+                    && info.slot == input.position
+                    && self.game.is_hidden_card_placeholder(**object_id)
+            })
         else {
             return Err(JsValue::from_str(
                 "hidden ziffle position is not present in this engine",
@@ -1126,8 +1131,9 @@ impl WasmGame {
                 skip_triggers,
                 &mut replay_dm,
             );
-            let (pending_context, viewed_cards) = replay_dm.finish();
+            let (pending_context, viewed_cards, audit_viewed_cards) = replay_dm.finish();
             self.active_viewed_cards = viewed_cards;
+            self.active_audit_viewed_cards = audit_viewed_cards;
 
             if let Some(ctx) = pending_context {
                 self.restore_replay_checkpoint(&checkpoint);
@@ -1552,6 +1558,7 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         self.recompute_ui_decision()?;
         self.snapshot()
@@ -1656,8 +1663,9 @@ impl WasmGame {
                     &response,
                     &mut live_dm,
                 );
-                let (pending_context, viewed_cards) = live_dm.finish();
+                let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
                 self.active_viewed_cards = viewed_cards;
+                self.active_audit_viewed_cards = audit_viewed_cards;
 
                 if let Some(next_ctx) = pending_context {
                     self.sync_active_resolving_stack_object_for_prompt(Some(&live_checkpoint));

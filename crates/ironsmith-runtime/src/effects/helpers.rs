@@ -6,9 +6,10 @@
 //! - Target finding and validation
 
 use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::cost::OptionalCostsPaid;
+use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{
     EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeObjectMemory,
@@ -35,6 +36,59 @@ use crate::zone::Zone;
 // ============================================================================
 // Tagged Object Resolution
 // ============================================================================
+
+/// Emit card-view events for hidden-zone objects before their identities are
+/// exposed through a decision prompt or temporary inspection window.
+pub(crate) fn view_hidden_candidate_objects(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    viewer: PlayerId,
+    candidates: &[ObjectId],
+    description: impl Into<String>,
+    public: bool,
+) {
+    let description = description.into();
+    let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+    for &id in candidates {
+        let Some(object) = game.object(id) else {
+            continue;
+        };
+        if !object.zone.is_hidden() {
+            continue;
+        }
+        grouped
+            .entry((object.owner, object.zone))
+            .or_default()
+            .push(id);
+    }
+
+    for ((subject, zone), cards) in grouped {
+        if cards.is_empty() {
+            continue;
+        }
+        if public {
+            for viewer_idx in 0..game.players.len() {
+                let public_viewer = PlayerId::from_index(viewer_idx as u8);
+                let view_ctx = ViewCardsContext::new(
+                    public_viewer,
+                    subject,
+                    Some(ctx.source),
+                    zone,
+                    description.clone(),
+                )
+                .with_public(true);
+                ctx.decision_maker
+                    .view_cards(game, public_viewer, &cards, &view_ctx);
+            }
+        } else {
+            let view_ctx =
+                ViewCardsContext::new(viewer, subject, Some(ctx.source), zone, description.clone());
+            ctx.decision_maker
+                .view_cards(game, viewer, &cards, &view_ctx);
+            ctx.remember_face_down_exile_viewers(&cards, viewer);
+        }
+    }
+}
 
 /// Resolve the current `ObjectId` for a tagged snapshot, following through
 /// zone changes via `stable_id` when the snapshot's `object_id` is stale.
@@ -2438,6 +2492,20 @@ pub fn resolve_objects_for_effect(
 
         if candidates.len() < min {
             return Err(ExecutionError::InvalidTarget);
+        }
+
+        if candidates.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.zone.is_hidden())
+        }) {
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                game.controlling_player_for(ctx.controller),
+                &candidates,
+                format!("Choose {}", filter.description()),
+                false,
+            );
         }
 
         if candidates.len() == 1 && min == 1 && max == 1 {

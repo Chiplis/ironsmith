@@ -22,6 +22,7 @@ import {
 } from "@/lib/trigger-ordering";
 import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { hexToRgbString } from "@/lib/player-colors";
+import { samePlayerId } from "@/lib/player-display";
 
 const GameContext = createContext(null);
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
@@ -248,10 +249,14 @@ function serializeMultiplayerCommand(command, _currentState) {
     if (!action?.action_ref) {
       throw new Error("Priority action is no longer available");
     }
-    return {
+    const syncedCommand = {
       type: "priority_action",
       action_ref: action.action_ref,
     };
+    if (action.object_id != null) {
+      syncedCommand.object_id = Number(action.object_id);
+    }
+    return syncedCommand;
   }
 
   if (command.type === "select_options") {
@@ -802,7 +807,7 @@ export function GameProvider({ children }) {
       const trace = [];
 
       for (let i = 0; i < 4; i++) {
-        if (!st?.decision || st.decision.kind !== "priority" || st.decision.player !== st.perspective) {
+        if (!st?.decision || st.decision.kind !== "priority" || !samePlayerId(st.decision.player, st.perspective)) {
           break;
         }
         if (st.active_player !== st.perspective) {
@@ -891,12 +896,12 @@ export function GameProvider({ children }) {
           st
           && st.decision
           && (
-            st.decision.player !== st.perspective
+            !samePlayerId(st.decision.player, st.perspective)
             || st.active_player !== st.perspective
           )
         ) {
           if (st.decision.kind === "priority") {
-            const isLocalOffTurnPriority = st.decision.player === st.perspective;
+            const isLocalOffTurnPriority = samePlayerId(st.decision.player, st.perspective);
             const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
             if (!passAction) { holdReason = "no pass action available"; break; }
             const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
@@ -1202,7 +1207,7 @@ export function GameProvider({ children }) {
       if (
         allowOpponentAutomation &&
         autoResult.holdReason &&
-        st?.decision?.player !== st?.perspective
+        !samePlayerId(st?.decision?.player, st?.perspective)
       ) {
         parts.push(`holding (${autoResult.holdReason})`);
       }
@@ -1414,7 +1419,7 @@ export function GameProvider({ children }) {
     const currentDecision = currentState?.decision || null;
     if (
       !currentDecision
-      || currentDecision.player !== currentState?.perspective
+      || !samePlayerId(currentDecision.player, currentState?.perspective)
       || !currentState?.cancelable
       || currentDecision.kind === "priority"
     ) {
@@ -1565,7 +1570,7 @@ export function GameProvider({ children }) {
             setStatus("No pending decision to submit", true);
             return;
           }
-          if (currentState.decision.player !== currentState.perspective) {
+          if (!samePlayerId(currentState.decision.player, currentState.perspective)) {
             setStatus("Waiting for the active player");
             return;
           }
@@ -1729,7 +1734,7 @@ export function GameProvider({ children }) {
             setStatus("No pending decision to cancel", true);
             return;
           }
-          if (currentState.decision.player !== currentState.perspective) {
+          if (!samePlayerId(currentState.decision.player, currentState.perspective)) {
             setStatus("Waiting for the active player");
             return;
           }

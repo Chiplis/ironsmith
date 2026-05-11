@@ -2980,7 +2980,7 @@ impl GameState {
         def: &crate::cards::CardDefinition,
     ) -> Option<HiddenCardInfo> {
         self.prime_linked_face_definitions(def);
-        let info = self.hidden_cards.remove(&id)?;
+        let info = self.hidden_cards.get(&id)?.clone();
         let zone = self.object(id)?.zone;
         let object = self.object_mut(id)?;
         object.apply_card_definition(def);
@@ -3077,8 +3077,16 @@ impl GameState {
         let (dredge_card, amount) = candidate;
         let description = self
             .current_name(dredge_card)
-            .map(|name| format!("mill {amount} cards instead of drawing a card to return {name} to your hand"))
-            .unwrap_or_else(|| format!("mill {amount} cards instead of drawing a card to return this card to your hand"));
+            .map(|name| {
+                format!(
+                    "mill {amount} cards instead of drawing a card to return {name} to your hand"
+                )
+            })
+            .unwrap_or_else(|| {
+                format!(
+                    "mill {amount} cards instead of drawing a card to return this card to your hand"
+                )
+            });
         let spec = crate::decisions::MaySpec::new(dredge_card, description);
         if !crate::decisions::make_decision_with_fallback(
             self,

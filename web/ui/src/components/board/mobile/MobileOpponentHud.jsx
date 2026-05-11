@@ -5,6 +5,7 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import useMobileLongPress from "@/hooks/useMobileLongPress";
 import { cn } from "@/lib/utils";
+import { playerDisplayName } from "@/lib/player-display";
 
 function PlayerAvatar({ player, accentHex, isActiveTurn }) {
   const initial = String(player?.name || "?").charAt(0).toUpperCase();
@@ -100,7 +101,7 @@ export default function MobileOpponentHud({
       >
         <PlayerAvatar player={opponent} accentHex={accent?.hex} isActiveTurn={isActiveTurn} />
         <span className="mobile-mtga-hud-identity">
-          <span className="mobile-mtga-hud-name">{opponent.name}</span>
+          <span className="mobile-mtga-hud-name">{playerDisplayName(state?.players || [], opponent)}</span>
           <span className="mobile-mtga-hud-life" aria-label={`Life ${opponent.life}`}>
             {opponent.life}
           </span>

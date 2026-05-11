@@ -11,6 +11,7 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         if self.game_over.is_some() {
             return Ok(());
@@ -40,6 +41,7 @@ impl WasmGame {
         self.pending_live_continuation = None;
         self.priority_state.pending_continuation = None;
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
         self.advance_until_decision()?;
         Ok(())
@@ -438,6 +440,7 @@ impl WasmGame {
             }
             progress => {
                 self.active_viewed_cards = None;
+                self.active_audit_viewed_cards.clear();
                 self.clear_active_resolving_stack_object();
                 self.priority_state.pending_continuation = None;
                 if let Some(root_response) = self.pending_live_action_root.take() {
@@ -548,8 +551,9 @@ impl WasmGame {
             Ok(GameProgress::GameOver(_)) => "game_over_progress".to_string(),
             Err(_) => "apply_priority_response_error".to_string(),
         };
-        let (pending_context, viewed_cards) = live_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
         self.active_viewed_cards = viewed_cards;
+        self.active_audit_viewed_cards = audit_viewed_cards;
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(&step_checkpoint));
@@ -672,7 +676,9 @@ impl WasmGame {
             });
         let live_pa_before = self.priority_state.pending_activation.is_some();
 
+        let pending_crypto_audit_before = self.pending_crypto_audit_before.take();
         self.restore_replay_checkpoint(&continuation.checkpoint);
+        self.pending_crypto_audit_before = pending_crypto_audit_before;
         self.priority_state.pending_continuation = None;
 
         let live_pa_after = self.priority_state.pending_activation.is_some();
@@ -697,8 +703,9 @@ impl WasmGame {
                 )
             }
         };
-        let (pending_context, viewed_cards) = live_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
         self.active_viewed_cards = viewed_cards;
+        self.active_audit_viewed_cards = audit_viewed_cards;
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(&continuation.checkpoint));
@@ -831,9 +838,13 @@ impl WasmGame {
 
         let restore_started_at = PerfTimer::start();
         let carry_viewed_cards = self.active_viewed_cards.clone();
+        let carry_audit_viewed_cards = self.active_audit_viewed_cards.clone();
+        let pending_crypto_audit_before = self.pending_crypto_audit_before.take();
         self.restore_replay_checkpoint(checkpoint);
+        self.pending_crypto_audit_before = pending_crypto_audit_before;
         perf.restore_checkpoint_ms = restore_started_at.elapsed_ms();
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
 
         let mut replay_dm = WasmReplayDecisionMaker::new(nested_answers);
@@ -884,9 +895,14 @@ impl WasmGame {
         perf.priority_advance = last_priority_advance_perf();
 
         let finish_started_at = PerfTimer::start();
-        let (pending_context, viewed_cards) = replay_dm.finish();
+        let (pending_context, viewed_cards, audit_viewed_cards) = replay_dm.finish();
         perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
         self.active_viewed_cards = viewed_cards.or(carry_viewed_cards);
+        self.active_audit_viewed_cards = if audit_viewed_cards.is_empty() {
+            carry_audit_viewed_cards
+        } else {
+            audit_viewed_cards
+        };
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
@@ -915,6 +931,7 @@ impl WasmGame {
             }
             Err(e) => {
                 self.active_viewed_cards = None;
+                self.active_audit_viewed_cards.clear();
                 self.clear_active_resolving_stack_object();
                 self.restore_replay_checkpoint(checkpoint);
                 perf.outcome_kind = "error".to_string();

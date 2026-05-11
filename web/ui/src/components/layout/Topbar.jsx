@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import PhaseTrack from "@/components/board/PhaseTrack";
 import { Bug, ChevronLeft, ChevronRight, Clock3, Github, ScrollText, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 function dispatchPlayerTargetChoice(player, legalTargetPlayerIds) {
   const directId = Number(player?.id);
@@ -56,13 +57,13 @@ export default function Topbar({
   const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
 
   const players = state?.players || [];
-  const activePlayer = players.find((player) => player.id === state?.active_player) || null;
-  const me = players.find((player) => player.id === state?.perspective) || players[0];
-  const meIndex = players.findIndex((player) => player.id === me?.id);
+  const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
+  const me = players.find((player) => samePlayerId(player.id, state?.perspective)) || players[0];
+  const meIndex = players.findIndex((player) => samePlayerId(player.id, me?.id));
   const orderedPlayers = meIndex >= 0
     ? [...players.slice(meIndex), ...players.slice(0, meIndex)]
     : players;
-  const opponents = orderedPlayers.filter((player) => player.id !== me?.id);
+  const opponents = orderedPlayers.filter((player) => !samePlayerId(player.id, me?.id));
   const hasMobileOpponent = nonDesktopViewport && opponents.length > 0;
   const resolvedOpponentIndex = opponents.length > 0
     ? Math.min(mobileOpponentIndex, opponents.length - 1)
@@ -101,7 +102,10 @@ export default function Topbar({
   );
   const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
   const connectionWarningLabel = offlinePlayers.length > 0
-    ? offlinePlayers.map((warning) => warning.name).join(", ")
+    ? offlinePlayers.map((warning) => {
+        const display = playerDisplayName(players, warning.playerIndex ?? warning.index ?? warning.id);
+        return display === "?" ? warning.name : display;
+      }).join(", ")
     : "";
   const legalTargetPlayerIds = new Set();
   if (state?.decision?.kind === "targets") {
@@ -114,7 +118,7 @@ export default function Topbar({
     }
   }
   const canPickTargets = state?.decision?.kind === "targets"
-    && state?.decision?.player === state?.perspective;
+    && samePlayerId(state?.decision?.player, state?.perspective);
   const activeCombatAttackerId = combatMode?.mode === "attackers"
     ? Number(combatMode?.selectedAttacker ?? NaN)
     : NaN;
@@ -273,7 +277,7 @@ export default function Topbar({
             <WifiOff className="size-3.5 shrink-0" />
             <span className="truncate">
               {offlinePlayers.length === 1
-                ? `${offlinePlayers[0].name} offline`
+                ? `${connectionWarningLabel} offline`
                 : `${offlinePlayers.length} offline`}
             </span>
           </button>
@@ -285,12 +289,12 @@ export default function Topbar({
                 ? "border-[#7d302f] bg-[#2b1114]/90 text-[#ffb8c0]"
                 : "border-[#5f4a22] bg-[#231c0e]/90 text-[#ffd98a]"
             }`}
-            title={`${timerPlayer?.name || "Current player"} action timer`}
-            aria-label={`${timerPlayer?.name || "Current player"} action timer ${formatTimerRemaining(actionTimer.remainingMs)}`}
+            title={`${playerDisplayName(players, timerPlayer) || "Current player"} action timer`}
+            aria-label={`${playerDisplayName(players, timerPlayer) || "Current player"} action timer ${formatTimerRemaining(actionTimer.remainingMs)}`}
           >
             <Clock3 className="size-3.5 shrink-0" />
             <span className="truncate">
-              {timerPlayer?.name || "Player"} {formatTimerRemaining(actionTimer.remainingMs)}
+              {playerDisplayName(players, timerPlayer) || "Player"} {formatTimerRemaining(actionTimer.remainingMs)}
             </span>
           </div>
         ) : null}
@@ -309,7 +313,7 @@ export default function Topbar({
             {nonDesktopViewport && activeMobileOpponent ? (
               <div
                 className={`topbar-opponent-chip${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
-                aria-label={`Viewing opponent ${activeMobileOpponent.name}`}
+                aria-label={`Viewing opponent ${playerDisplayName(players, activeMobileOpponent)}`}
               >
                 {opponents.length > 1 ? (
                   <button
@@ -333,10 +337,10 @@ export default function Topbar({
                     handleMobileOpponentTarget();
                   }}
                   disabled={!activeMobileOpponentButtonEnabled}
-                  aria-label={`Opponent ${activeMobileOpponent.name}, life ${activeMobileOpponent.life}`}
+                  aria-label={`Opponent ${playerDisplayName(players, activeMobileOpponent)}, life ${activeMobileOpponent.life}`}
                 >
                   <span className="topbar-opponent-chip-name" style={{ color: activeMobileOpponent.id === activePlayer?.id ? "#fff0ca" : undefined }}>
-                    {activeMobileOpponent.name}
+                    {playerDisplayName(players, activeMobileOpponent)}
                   </span>
                   <span className="topbar-opponent-chip-life">{activeMobileOpponent.life}</span>
                   <span className="topbar-opponent-chip-meta">

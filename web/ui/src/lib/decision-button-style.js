@@ -26,6 +26,7 @@ export function isLocalDecisionButton(state, decision = state?.decision) {
 
   const decisionPlayer = Number(decision?.player);
   if (Number.isFinite(decisionPlayer) && decisionPlayer === perspective) return true;
+  if (Number.isFinite(decisionPlayer)) return false;
 
   const priorityPlayer = Number(state?.priority_player);
   return Number.isFinite(priorityPlayer) && priorityPlayer === perspective;

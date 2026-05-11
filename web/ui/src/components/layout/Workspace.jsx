@@ -21,6 +21,7 @@ import {
   getVisibleStackObjects,
   normalizeZoneViews,
 } from "@/lib/stack-targets";
+import { samePlayerId } from "@/lib/player-display";
 
 const HAND_PEEK_HEIGHT_DEFAULT = 46;
 const HAND_REVEAL_HEIGHT_DEFAULT = 164;
@@ -995,7 +996,7 @@ export default function Workspace({
       if (combatDeclarationActive) return;
       if (
         decision?.kind === "targets"
-        && decision.player === state?.perspective
+        && samePlayerId(decision.player, state?.perspective)
         && objectId != null
         && legalTargetObjectIds.has(Number(objectId))
       ) {
@@ -1008,7 +1009,7 @@ export default function Workspace({
       }
       if (
         decision?.kind === "select_objects"
-        && decision.player === state?.perspective
+        && samePlayerId(decision.player, state?.perspective)
       ) {
         const candidateIds = Array.isArray(options?.candidateObjectIds) && options.candidateObjectIds.length > 0
           ? options.candidateObjectIds
@@ -1270,7 +1271,7 @@ export default function Workspace({
       if (event.button !== 0) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (decision && decision.player === state?.perspective && decision.kind !== "priority") return;
+      if (decision && samePlayerId(decision.player, state?.perspective) && decision.kind !== "priority") return;
       if (target.closest("[data-object-id]")) return;
       if (target.closest(".zone-viewer")) return;
       if (target.closest(".priority-inline-panel")) return;

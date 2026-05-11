@@ -1986,6 +1986,84 @@ fn snapshot_public_top_library_static_shows_each_players_top_card() {
 }
 
 #[test]
+fn crypto_requirements_include_static_public_top_library_opening() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    let lantern = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(
+            StaticAbility::all_players_look_at_top_cards_of_libraries(),
+        ))
+        .build();
+    wasm.game
+        .create_object_from_definition(&lantern, alice, Zone::Battlefield);
+    let hidden_top = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        0,
+        "alice-library-top-commitment".to_string(),
+    );
+
+    let before = wasm.capture_crypto_audit_state();
+    wasm.update_crypto_requirements_from(before);
+
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "public_view_window"
+            && requirement.owner == alice.index() as u8
+            && requirement.zone == "library"
+            && requirement.count == Some(1)
+    }));
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "public_open"
+            && requirement.owner == alice.index() as u8
+            && requirement.zone == "library"
+            && requirement.object_id == Some(hidden_top.0)
+            && requirement.commitment.as_deref() == Some("alice-library-top-commitment")
+    }));
+}
+
+#[test]
+fn crypto_requirements_include_static_private_own_top_library_opening() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    let future_sight = CardDefinitionBuilder::new(CardId::new(), "Future Sight Variant")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            StaticAbility::look_at_top_card_of_library(),
+        ))
+        .build();
+    wasm.game
+        .create_object_from_definition(&future_sight, alice, Zone::Battlefield);
+    let hidden_top = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        0,
+        "alice-private-top-commitment".to_string(),
+    );
+
+    let before = wasm.capture_crypto_audit_state();
+    wasm.update_crypto_requirements_from(before);
+
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "private_view_window"
+            && requirement.owner == alice.index() as u8
+            && requirement.viewer == Some(alice.index() as u8)
+            && requirement.zone == "library"
+            && requirement.count == Some(1)
+    }));
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "private_open"
+            && requirement.owner == alice.index() as u8
+            && requirement.viewer == Some(alice.index() as u8)
+            && requirement.zone == "library"
+            && requirement.object_id == Some(hidden_top.0)
+            && requirement.commitment.as_deref() == Some("alice-private-top-commitment")
+    }));
+}
+
+#[test]
 fn snapshot_courser_static_shows_only_controllers_top_library_card() {
     let mut game = setup_two_player_game();
     let alice = PlayerId::from_index(0);
@@ -2121,6 +2199,45 @@ fn snapshot_telepathy_static_shows_opponents_hands_to_all_players() {
     assert_eq!(bob_view.hand_cards[0].name, "Bob Revealed");
     assert!(cara_view.can_view_hand);
     assert_eq!(cara_view.hand_cards[0].name, "Cara Revealed");
+}
+
+#[test]
+fn crypto_requirements_include_static_public_hand_openings() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let telepathy = CardDefinitionBuilder::new(CardId::new(), "Telepathy Variant")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            StaticAbility::opponents_play_with_hands_revealed(),
+        ))
+        .build();
+    wasm.game
+        .create_object_from_definition(&telepathy, alice, Zone::Battlefield);
+    let hidden_hand = wasm.game.create_hidden_card_placeholder(
+        bob,
+        Zone::Hand,
+        4,
+        "bob-hand-commitment".to_string(),
+    );
+
+    let before = wasm.capture_crypto_audit_state();
+    wasm.update_crypto_requirements_from(before);
+
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "public_view_window"
+            && requirement.owner == bob.index() as u8
+            && requirement.zone == "hand"
+            && requirement.count == Some(1)
+    }));
+    assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+        requirement.requirement_type == "public_open"
+            && requirement.owner == bob.index() as u8
+            && requirement.zone == "hand"
+            && requirement.object_id == Some(hidden_hand.0)
+            && requirement.commitment.as_deref() == Some("bob-hand-commitment")
+    }));
 }
 
 #[test]
@@ -5961,8 +6078,9 @@ fn public_reveal_survives_replay_advance_to_next_prompt() {
     let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
         .with_public(true);
     DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
-    let (_, viewed_cards) = replay_dm.finish();
+    let (_, viewed_cards, audit_viewed_cards) = replay_dm.finish();
     wasm.active_viewed_cards = viewed_cards;
+    wasm.active_audit_viewed_cards = audit_viewed_cards;
 
     wasm.advance_until_decision()
         .expect("advance should produce a priority prompt");
@@ -6008,8 +6126,9 @@ fn public_reveal_resolves_stale_replay_ids_to_live_card_names() {
     let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
         .with_public(true);
     DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
-    let (_, viewed_cards) = replay_dm.finish();
+    let (_, viewed_cards, audit_viewed_cards) = replay_dm.finish();
     wasm.active_viewed_cards = viewed_cards;
+    wasm.active_audit_viewed_cards = audit_viewed_cards;
 
     let moved_id = wasm
         .game

@@ -19,6 +19,7 @@ import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { partitionBattlefieldCards } from "@/lib/battlefield-layout";
 import { normalizePhaseStep } from "@/lib/constants";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import { samePlayerId } from "@/lib/player-display";
 
 import MobileOpponentHud from "@/components/board/mobile/MobileOpponentHud";
 import MobileSelfHud from "@/components/board/mobile/MobileSelfHud";
@@ -195,10 +196,10 @@ export default function MobileBattleScene({
   }, [state?.decision]);
 
   const canPickTargets = state?.decision?.kind === "targets"
-    && state?.decision?.player === state?.perspective;
+    && samePlayerId(state?.decision?.player, state?.perspective);
   const canPickBattlefieldObjects = (
     (state?.decision?.kind === "targets" || state?.decision?.kind === "select_objects")
-    && state?.decision?.player === state?.perspective
+    && samePlayerId(state?.decision?.player, state?.perspective)
   );
   const inspectorOpen = selectedObjectId != null;
 

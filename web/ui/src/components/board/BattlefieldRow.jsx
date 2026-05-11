@@ -18,6 +18,7 @@ import {
 } from "@/lib/game-animations";
 import GameCard from "@/components/cards/GameCard";
 import { Button } from "@/components/ui/button";
+import { samePlayerId } from "@/lib/player-display";
 
 const BOTTOM_BATTLEFIELD_SAFE_INSET = 60;
 const LIVE_DAMAGE_ANIMATION_MS = 300;
@@ -907,7 +908,7 @@ export default function BattlefieldRow({
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision;
-    if (!decision || decision.kind !== "priority" || decision.player !== state?.perspective) {
+    if (!decision || decision.kind !== "priority" || !samePlayerId(decision.player, state?.perspective)) {
       return ids;
     }
     for (const action of decision.actions || []) {

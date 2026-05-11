@@ -45,9 +45,10 @@ export function priorityHoldReason({
   if (!autoPassEnabled) return "auto-pass disabled";
   if (!decision || decision.kind !== "priority") return "not a priority decision";
 
-  const perspective = currentState?.perspective;
-  if (perspectiveMode === "local" && decision.player !== perspective) return "not local priority";
-  if (perspectiveMode === "opponent" && decision.player === perspective) return "not opponent priority";
+  const perspective = toPlayerNumber(currentState?.perspective);
+  const decisionPlayer = toPlayerNumber(decision.player);
+  if (perspectiveMode === "local" && decisionPlayer !== perspective) return "not local priority";
+  if (perspectiveMode === "opponent" && decisionPlayer === perspective) return "not opponent priority";
 
   const stackSize = stackSizeOf(currentState);
   if (manualResolveOnLocalStack && perspectiveMode === "local" && stackSize > 0) {

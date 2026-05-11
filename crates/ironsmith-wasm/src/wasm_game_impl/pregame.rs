@@ -922,6 +922,7 @@ impl WasmGame {
         self.priority_epoch_undo_locked_by_mana = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = None;
         self.clear_active_resolving_stack_object();

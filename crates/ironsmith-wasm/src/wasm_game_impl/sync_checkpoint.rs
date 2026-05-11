@@ -1098,6 +1098,7 @@ impl WasmGame {
         self.semantic_threshold = checkpoint.semantic_threshold;
         self.snapshot_serial = checkpoint.snapshot_serial;
         self.active_viewed_cards = None;
+        self.active_audit_viewed_cards.clear();
         self.active_resolving_stack_object = None;
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = None;
@@ -1507,6 +1508,13 @@ mod sync_checkpoint_tests {
         assert!(!game.game.is_hidden_card_placeholder(hand_id));
         assert_eq!(
             game.game
+                .hidden_card_info(hand_id)
+                .expect("commitment metadata remains after private reveal")
+                .commitment,
+            "commitment-0"
+        );
+        assert_eq!(
+            game.game
                 .object(hand_id)
                 .expect("revealed object should exist")
                 .name,
@@ -1694,5 +1702,55 @@ mod sync_checkpoint_tests {
         for id in bob.hand.iter().chain(bob.library.iter()) {
             assert!(guest.game.is_hidden_card_placeholder(*id));
         }
+    }
+
+    #[test]
+    fn redacted_sync_checkpoint_hides_opened_opponent_hand_cards() {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.populate_libraries_with_hidden_manifests(
+            &[Vec::new(), vec!["Lightning Bolt".to_string()]],
+            &[HiddenDeckManifestInput {
+                owner: 1,
+                deck_count: 1,
+                sideboard_count: 0,
+                commander_count: 0,
+                decklist_hash: "bob-deck".to_string(),
+                commitment_root: "bob-root".to_string(),
+                slot_commitments: vec![HiddenDeckSlotInput {
+                    slot: 0,
+                    commitment: "bob-slot-0".to_string(),
+                }],
+            }],
+        )
+        .expect("host should populate committed decks");
+        let drawn = host.game.draw_cards(PlayerId::from_index(1), 1);
+        let hand_id = drawn[0];
+        host.registry.ensure_cards_loaded(["Lightning Bolt"]);
+        let definition = host
+            .find_card_definition("Lightning Bolt")
+            .expect("fixture card should load")
+            .clone();
+        host.game
+            .reveal_hidden_card_with_definition(hand_id, &definition)
+            .expect("Bob should be able to open their hand card locally");
+
+        let checkpoint = host
+            .build_redacted_sync_checkpoint(PlayerId::from_index(0))
+            .expect("redacted checkpoint should build after private reveal");
+        let redacted = checkpoint
+            .objects
+            .iter()
+            .find(|object| object.id == hand_id.0)
+            .expect("opened hand card should be present in checkpoint");
+        assert_eq!(redacted.name, "Hidden Card");
+        assert_eq!(
+            redacted
+                .hidden_card
+                .as_ref()
+                .expect("redacted card should carry commitment")
+                .commitment,
+            "bob-slot-0"
+        );
     }
 }

@@ -11,7 +11,7 @@ use crate::effects::cards::search_overrides::{
     begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
     finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
 };
-use crate::effects::helpers::resolve_player_filter;
+use crate::effects::helpers::{resolve_player_filter, view_hidden_candidate_objects};
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
@@ -42,6 +42,20 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         let search_control =
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            let search_viewer = game.controlling_player_for(chooser_id);
+            let library_cards = game
+                .player(player_id)
+                .map(|player| player.library.clone())
+                .unwrap_or_default();
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &library_cards,
+                "Search library",
+                false,
+            );
+
             offer_library_search_casts(game, ctx, player_id)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -131,6 +145,16 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                 else {
                     continue;
                 };
+                if self.reveal {
+                    view_hidden_candidate_objects(
+                        game,
+                        ctx,
+                        search_viewer,
+                        &[card_id],
+                        "Reveal searched card",
+                        true,
+                    );
+                }
                 chosen.push(snapshot.clone());
                 ctx.tag_object(self.progress_tag.clone(), snapshot);
             }

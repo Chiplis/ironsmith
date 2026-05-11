@@ -1,16 +1,23 @@
 import { useGame } from "@/context/GameContext";
 import { formatPhase, formatStep } from "@/lib/constants";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 export default function TurnPane() {
   const { state } = useGame();
   if (!state) return null;
 
   const players = state.players || [];
-  const activePlayer = players.find((p) => p.id === state.active_player);
+  const activePlayer = players.find((p) => samePlayerId(p.id, state.active_player));
   const priorityPlayer =
     state.priority_player != null
-      ? players.find((p) => p.id === state.priority_player)
+      ? players.find((p) => samePlayerId(p.id, state.priority_player))
       : null;
+  const decisionPlayer =
+    state.decision?.player != null
+      ? players.find((p) => samePlayerId(p.id, state.decision.player))
+      : null;
+  const decisionOwnerDiffersFromPriority = decisionPlayer
+    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
 
   return (
     <section className="mt-auto border-t border-game-line-2 bg-[#0b121a] p-2 grid gap-1.5 content-start shrink-0">
@@ -28,11 +35,15 @@ export default function TurnPane() {
           {formatStep(state.step)}
         </span>
         <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
-          Active: {activePlayer?.name || "?"}
+          Active: {playerDisplayName(players, activePlayer)}
         </span>
-        {priorityPlayer && (
+        {decisionOwnerDiffersFromPriority ? (
           <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
-            Priority: {priorityPlayer.name}
+            Decision: {playerDisplayName(players, decisionPlayer)}
+          </span>
+        ) : priorityPlayer && (
+          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+            Priority: {playerDisplayName(players, priorityPlayer)}
           </span>
         )}
         <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">

@@ -1,6 +1,7 @@
 import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
+import { playerDisplayName } from "@/lib/player-display";
 import ManaPool from "./ManaPool";
 
 export default function PlayerCard({ player, isActive, isPerspective }) {
@@ -27,7 +28,7 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
     >
       <div className="flex items-center gap-2 min-w-0">
         <h2 className="text-[15px] font-bold m-0 truncate" style={{ color: playerAccent?.hex }}>
-          {player.name}
+          {playerDisplayName(state?.players || [], player)}
         </h2>
         <ManaPool
           pool={player.mana_pool}

@@ -5,6 +5,7 @@ import InspectorStackTimeline from "./InspectorStackTimeline";
 import { cn } from "@/lib/utils";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
+import { samePlayerId } from "@/lib/player-display";
 
 const STACK_RAIL_WIDTH = "clamp(240px, 24vw, 360px)";
 const STACK_EDGE_MARGIN = 6;
@@ -23,7 +24,7 @@ export default function StackTimelineRail({
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
-  const canAct = !!decision && decision.player === state?.perspective;
+  const canAct = !!decision && samePlayerId(decision.player, state?.perspective);
   const stackObjects = getVisibleStackObjects(state);
   const stackPreview = state?.stack_preview || [];
   const stackSignature = stackObjects

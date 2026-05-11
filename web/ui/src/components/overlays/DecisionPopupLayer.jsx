@@ -30,6 +30,7 @@ import {
 } from "@/lib/trigger-ordering";
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { cn } from "@/lib/utils";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { X } from "lucide-react";
 
 const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
@@ -618,6 +619,7 @@ function PriorityActionStrip({
   canAct,
   players,
   perspective,
+  decisionPlayer,
   className = "",
   hasPinnedSelection = false,
   objectNameById,
@@ -830,7 +832,7 @@ function PriorityActionStrip({
   if (!canAct) {
     return (
       <div className={cn("action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>
-        Waiting for opponent
+        Waiting for {playerDisplayName(players, decisionPlayer)}
       </div>
     );
   }
@@ -1510,7 +1512,7 @@ function MobileBattleDecisionLayer({
     clearHoverLinkedObjects,
   } = useHover();
   const decision = state?.decision || null;
-  const canAct = !!decision && state?.perspective === decision.player;
+  const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
 
   const [actionsSheetState, setActionsSheetState] = useState({ key: "", open: false });
   const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
@@ -2166,7 +2168,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   } = useHover();
   const decision = state?.decision || null;
   const manaPayment = state?.mana_payment || null;
-  const canAct = !!decision && state?.perspective === decision.player;
+  const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
   const isPriorityDecision = decision?.kind === "priority";
@@ -2317,6 +2319,21 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       );
     },
     [canAct, cancelDecision, clearHover, dispatch]
+  );
+  const triggerPassActionFromPointer = useCallback(
+    (event) => {
+      if (!canAct || !passAction || event.button !== 0) return;
+      event.preventDefault();
+      triggerPriorityAction(passAction);
+    },
+    [canAct, passAction, triggerPriorityAction]
+  );
+  const triggerPassActionFromClick = useCallback(
+    (event) => {
+      if (!canAct || !passAction || event.detail !== 0) return;
+      triggerPriorityAction(passAction);
+    },
+    [canAct, passAction, triggerPriorityAction]
   );
   const handleActionHoverStart = useCallback(
     (group) => {
@@ -2511,7 +2528,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={!canAct}
                         aria-label={passCurrentLabel}
-                        onClick={() => triggerPriorityAction(passAction)}
+                        onPointerDown={triggerPassActionFromPointer}
+                        onClick={triggerPassActionFromClick}
                       >
                         <span className="sr-only">{passCurrentLabel}</span>
                       </Button>
@@ -2547,6 +2565,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   canAct={canAct}
                   players={state?.players || []}
                   perspective={state?.perspective}
+                  decisionPlayer={decision?.player}
                   className="action-strip-options-region self-stretch"
                   hasPinnedSelection={selectedObjectId != null}
                   objectNameById={objectNameById}
@@ -2672,7 +2691,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   ))
                 ) : (
                   <span className="action-strip-waiting text-[12px] whitespace-nowrap">
-                    Waiting for opponent
+                    Waiting for {playerDisplayName(state?.players || [], decision?.player)}
                   </span>
                 )}
               </div>
@@ -2735,7 +2754,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       data-local-action={localDecisionButton ? "true" : "false"}
                       aria-disabled={!canAct}
                       aria-label={passCurrentLabel}
-                      onClick={() => triggerPriorityAction(passAction)}
+                      onPointerDown={triggerPassActionFromPointer}
+                      onClick={triggerPassActionFromClick}
                     >
                       <span className="sr-only">{passCurrentLabel}</span>
                     </Button>
@@ -2867,6 +2887,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 canAct={canAct}
                 players={state?.players || []}
                 perspective={state?.perspective}
+                decisionPlayer={decision?.player}
                 hasPinnedSelection={selectedObjectId != null}
                 objectNameById={objectNameById}
                 objectControllerById={objectControllerById}
@@ -3046,7 +3067,7 @@ export default function DecisionPopupLayer({
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
-  const canAct = !!decision && state?.perspective === decision.player;
+  const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
 
   if (!decision) return null;
   let content = null;

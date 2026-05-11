@@ -209,6 +209,141 @@ function assertNoPageErrors(...pages) {
   }
 }
 
+function deckUrlParam(deckText) {
+  return Buffer.from(String(deckText || ""), "utf8").toString("base64url");
+}
+
+async function openFullUiPage(context, url, label) {
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      pageErrors.push(message.text());
+    }
+  });
+  await page.goto(url);
+  page.__peerHarnessErrors = pageErrors;
+  page.__peerHarnessLabel = label;
+  return page;
+}
+
+async function enabledButtonLabels(page) {
+  return page.locator("button:enabled").evaluateAll((buttons) =>
+    buttons
+      .map((button) => (button.innerText || button.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+  );
+}
+
+async function clickLocalDecisionButton(page, label) {
+  const button = page.locator('[data-local-action="true"]:enabled').first();
+  if ((await button.count()) === 0) return null;
+  const text = (await button.innerText()).replace(/\s+/g, " ").trim();
+  await button.click();
+  return { label, text };
+}
+
+async function visibleBodyText(page) {
+  return page.locator("body").innerText();
+}
+
+test("PeerJS remote apply gates auto-pass until sequence append completes", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for auto-pass sequence test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for auto-pass sequence test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts auto-pass test match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives auto-pass test match");
+    await guestPage.evaluate(() => window.__peerHarness.setAutoPass(true));
+
+    await hostPage.evaluate(() => {
+      window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      }, "host action before guest auto-pass");
+    });
+
+    const hostAfterAutoPass = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2
+        && snap.visibleState?.decision?.player === 0,
+      "host receives guest auto-pass as sequence 2",
+    );
+    const guestAfterAutoPass = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2
+        && snap.visibleState?.decision?.player === 0,
+      "guest records its auto-pass as sequence 2",
+    );
+
+    assert.deepEqual(
+      syncedCommandEvents(hostAfterAutoPass).map((event) => event.syncContext?.sequence),
+      [1, 2],
+      "host should apply host action and guest auto-pass in distinct sequence slots",
+    );
+    assert.deepEqual(
+      syncedCommandEvents(guestAfterAutoPass).map((event) => event.syncContext?.sequence),
+      [1, 2],
+      "guest should not reuse the remote action sequence for its immediate auto-pass",
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("PeerJS peers resync after guest reconnect and after host takeover reconnect", { timeout: 90000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
@@ -262,8 +397,12 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     );
 
     await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
-    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts match");
-    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives match start");
+    const hostStart = await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts match");
+    const guestStart = await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives match start");
+    assert.equal(hostStart.visibleState.perspective, hostStart.multiplayer.localPlayerIndex);
+    assert.equal(guestStart.visibleState.perspective, guestStart.multiplayer.localPlayerIndex);
+    assert.equal(hostStart.visibleState.decision.player, guestStart.visibleState.decision.player);
+    assert.equal(hostStart.visibleState.decision.player, 0);
 
     await hostPage.evaluate(() => {
       window.__peerHarness.submitMultiplayerCommand({
@@ -482,7 +621,11 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
       [1, 1, 1, 1],
     );
 
-    await pages[1].evaluate(async () => {
+    const cheatingPageIndex = afterAction.findIndex(
+      (snap) => Number(snap.multiplayer.localPlayerIndex) === 1
+    );
+    assert.notEqual(cheatingPageIndex, -1, "expected one browser to own player 2");
+    await pages[cheatingPageIndex].evaluate(async () => {
       const playerIndex = window.__peerHarness.snapshot().multiplayer.localPlayerIndex;
       const state = await window.__peerHarness.silentlyAddCard({
         playerIndex,
@@ -494,6 +637,9 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
         && action.action_ref?.kind === "cast_spell"
         && action.action_ref?.from_zone === "hand"
       );
+      if (!forgedAction) {
+        throw new Error("silent add-card cheat did not create a cast action");
+      }
       await window.__peerHarness.submitMultiplayerCommand({
         type: "priority_action",
         action_ref: forgedAction.action_ref,
@@ -502,7 +648,7 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
     const cheatDetected = await waitForSnapshot(
       pages[0],
       (snap) => snap.statusEvents.some((event) =>
-        event.isError && /Cheat detected from Player 2/.test(event.message)
+        event.isError && /Cheat detected from Player/.test(event.message)
       ),
       "host detects silent local add-card cheat when the forged card is played",
       30000,
@@ -513,6 +659,115 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
   } finally {
     await withTimeout(Promise.allSettled([
       ...contexts.map((context) => context.close()),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands without opening mismatch", { timeout: 120000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const deck = deckUrlParam("60 Mountain");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${deck}`, "host-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${deck}`,
+      "guest-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    let hostPlayed = false;
+    let guestPlayed = false;
+    for (let step = 0; step < 120; step += 1) {
+      const visibleText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+      assert.doesNotMatch(
+        visibleText,
+        /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Sync failed|Match start failed|Auto-pass failed/i
+      );
+
+      const hostPlayMountain = hostPage.getByRole("button").filter({ hasText: /PLAY MOUNTAIN/i }).first();
+      if (!hostPlayed && (await hostPlayMountain.count()) > 0) {
+        await hostPlayMountain.click();
+        hostPlayed = true;
+        await sleep(3000);
+        continue;
+      }
+
+      const guestPlayMountain = guestPage.getByRole("button").filter({ hasText: /PLAY MOUNTAIN/i }).first();
+      if (hostPlayed && !guestPlayed && (await guestPlayMountain.count()) > 0) {
+        await guestPlayMountain.click();
+        guestPlayed = true;
+        await sleep(6000);
+        break;
+      }
+
+      const hostClicked = await clickLocalDecisionButton(hostPage, "host");
+      if (hostClicked) {
+        await sleep(2200);
+        continue;
+      }
+      const guestClicked = await clickLocalDecisionButton(guestPage, "guest");
+      if (guestClicked) {
+        await sleep(2200);
+        continue;
+      }
+      await sleep(1000);
+    }
+
+    assert.equal(hostPlayed, true, "expected host to play a Mountain");
+    assert.equal(guestPlayed, true, "expected guest to play a Mountain");
+
+    const hostText = await visibleBodyText(hostPage);
+    const guestText = await visibleBodyText(guestPage);
+    assert.match(hostText, /Basic Land - Mountain/);
+    assert.match(guestText, /Basic Land - Mountain/);
+    assert.ok(
+      ((`${hostText}\n${guestText}`).match(/Basic Land - Mountain/g) || []).length >= 2,
+      "expected both played lands to be visible"
+    );
+    assert.doesNotMatch(
+      `${hostText}\n${guestText}`,
+      /Private deck opening does not match slot|Sync failed|Match start failed/i
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
       browser.close(),
     ]), 10000);
     await withTimeout(vite.close(), 10000);

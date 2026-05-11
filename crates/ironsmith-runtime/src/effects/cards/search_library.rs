@@ -4,7 +4,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory, SearchSelectionMode};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
+use crate::effects::helpers::{resolve_player_filter, view_hidden_candidate_objects};
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
@@ -41,6 +41,20 @@ impl EffectExecutor for SearchLibraryEffect {
         let search_control =
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            let search_viewer = game.controlling_player_for(chooser_id);
+            let library_cards = game
+                .player(player_id)
+                .map(|player| player.library.clone())
+                .unwrap_or_default();
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &library_cards,
+                "Search library",
+                false,
+            );
+
             offer_library_search_casts(game, ctx, player_id)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -103,6 +117,16 @@ impl EffectExecutor for SearchLibraryEffect {
                     .is_some_and(|p| p.library.contains(&card_id));
 
                 if still_in_library {
+                    if self.reveal {
+                        view_hidden_candidate_objects(
+                            game,
+                            ctx,
+                            search_viewer,
+                            &[card_id],
+                            "Reveal searched card",
+                            true,
+                        );
+                    }
                     let chosen_memory = OutcomeObjectMemory::from_object_id(game, card_id);
                     // For "put on top of library" effects (like Vampiric Tutor), we need to:
                     // 1. Remove the card from the library
@@ -175,5 +199,127 @@ impl EffectExecutor for SearchLibraryEffect {
             finish_opposition_agent_search_control(game, search_control);
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::filter::ObjectFilter;
+    use crate::ids::{CardId, PlayerId};
+    use crate::target::PlayerFilter;
+    use crate::types::CardType;
+
+    #[derive(Debug)]
+    struct ViewCall {
+        viewer: PlayerId,
+        subject: PlayerId,
+        zone: Zone,
+        public: bool,
+        cards: Vec<ObjectId>,
+    }
+
+    #[derive(Debug, Default)]
+    struct CaptureSearchDm {
+        calls: Vec<ViewCall>,
+    }
+
+    impl DecisionMaker for CaptureSearchDm {
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.calls.push(ViewCall {
+                viewer,
+                subject: ctx.subject,
+                zone: ctx.zone,
+                public: ctx.public,
+                cards: cards.to_vec(),
+            });
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    fn add_library_creature(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    #[test]
+    fn search_library_emits_private_view_for_searchable_library() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let first = add_library_creature(&mut game, alice, "First Hidden Creature");
+        let second = add_library_creature(&mut game, alice, "Second Hidden Creature");
+        let source = game.new_object_id();
+        let mut dm = CaptureSearchDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = SearchLibraryEffect::to_hand(
+            ObjectFilter::default().with_type(CardType::Creature),
+            PlayerFilter::You,
+            false,
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("search should resolve");
+
+        assert_eq!(dm.calls.len(), 1);
+        let call = &dm.calls[0];
+        assert_eq!(call.viewer, alice);
+        assert_eq!(call.subject, alice);
+        assert_eq!(call.zone, Zone::Library);
+        assert!(!call.public);
+        assert_eq!(call.cards, vec![first, second]);
+    }
+
+    #[test]
+    fn revealed_search_emits_public_view_for_found_card_without_losing_search_view() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let found = add_library_creature(&mut game, alice, "Found Hidden Creature");
+        let _other = add_library_creature(&mut game, alice, "Other Hidden Creature");
+        let source = game.new_object_id();
+        let mut dm = CaptureSearchDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = SearchLibraryEffect::to_hand(
+            ObjectFilter::default().with_type(CardType::Creature),
+            PlayerFilter::You,
+            true,
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("search should resolve");
+
+        assert!(
+            dm.calls.iter().any(|call| {
+                !call.public && call.viewer == alice && call.cards.contains(&found)
+            })
+        );
+        assert!(
+            dm.calls
+                .iter()
+                .any(|call| call.public && call.cards == vec![found])
+        );
     }
 }

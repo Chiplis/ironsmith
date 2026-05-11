@@ -8,6 +8,7 @@ import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
 import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Undo2 } from "lucide-react";
@@ -142,10 +143,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   );
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
-  const canAct = decision && decision.player === perspective;
+  const canAct = decision && samePlayerId(decision.player, perspective);
 
   const decisionPlayer = decision
-    ? players.find((p) => p.id === decision.player)
+    ? players.find((p) => samePlayerId(p.id, decision.player))
     : null;
 
   const gameOverText = gameOver?.kind === "winner"
@@ -157,7 +158,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
         : "";
 
   const metaText = gameOverText || (decision
-    ? `${decisionPlayer?.name || "?"} · ${decision.reason || decision.kind}`
+    ? `${playerDisplayName(players, decisionPlayer)} · ${decision.reason || decision.kind}`
     : "No pending action");
 
   const isPriorityDecision = decision?.kind === "priority";

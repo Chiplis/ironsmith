@@ -1,6 +1,6 @@
 //! Surveil effect implementation.
 
-use crate::decisions::{SurveilSpec, make_decision};
+use crate::decisions::{SurveilSpec, context::ViewCardsContext, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -124,6 +124,16 @@ impl EffectExecutor for SurveilEffect {
         }
 
         let surveil_count = top_cards_top_to_bottom.len();
+
+        let view_ctx = ViewCardsContext::new(
+            player_id,
+            player_id,
+            Some(ctx.source),
+            Zone::Library,
+            format!("Surveil {surveil_count} card(s)"),
+        );
+        ctx.decision_maker
+            .view_cards(game, player_id, &top_cards_top_to_bottom, &view_ctx);
 
         // Ask player which cards to put in graveyard using the new spec-based system
         let spec = SurveilSpec::new(ctx.source, top_cards_top_to_bottom.clone());

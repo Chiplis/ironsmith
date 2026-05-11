@@ -6,6 +6,7 @@ import ZoneViewer from "@/components/board/ZoneViewer";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
 import { getPlayerAccent } from "@/lib/player-colors";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 const fontListId = "ironsmith-ui-font-options";
@@ -37,8 +38,13 @@ export default function AddCardBar({
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
   const matchLocked = multiplayer.matchStarted;
-  const activePlayer = players.find((player) => player.id === state?.active_player) || null;
-  const priorityPlayer = players.find((player) => player.id === state?.priority_player) || null;
+  const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
+  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
+  const decisionPlayer = state?.decision?.player != null
+    ? players.find((player) => samePlayerId(player.id, state.decision.player)) || null
+    : null;
+  const decisionOwnerDiffersFromPriority = decisionPlayer
+    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const perspectiveAccent = getPlayerAccent(players, perspective, perspective, playerAccentOverrides);
   const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
 
@@ -120,7 +126,7 @@ export default function AddCardBar({
           >
             {players.map((player) => (
               <option key={player.id} value={player.id}>
-                {player.name}
+                {playerDisplayName(players, player)}
               </option>
             ))}
           </select>
@@ -179,13 +185,18 @@ export default function AddCardBar({
         {activePlayer ? (
           <>
             <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Active {activePlayer.name}</span>
+            <span>Active {playerDisplayName(players, activePlayer)}</span>
           </>
         ) : null}
-        {priorityPlayer ? (
+        {decisionOwnerDiffersFromPriority ? (
           <>
             <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Priority {priorityPlayer.name}</span>
+            <span>Decision {playerDisplayName(players, decisionPlayer)}</span>
+          </>
+        ) : priorityPlayer ? (
+          <>
+            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+            <span>Priority {playerDisplayName(players, priorityPlayer)}</span>
           </>
         ) : null}
       </div>

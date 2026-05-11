@@ -15738,7 +15738,7 @@ select::-ms-expand {
 }
 
 .action-strip-main-region .action-strip-main-controls {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .action-strip-main-region .action-strip-main-controls .priority-control-toggles {
@@ -15760,6 +15760,7 @@ select::-ms-expand {
 }
 
 .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] {
+  pointer-events: auto;
   width: 10px !important;
   height: 10px !important;
   border-color: rgba(255, 247, 230, 0.58) !important;

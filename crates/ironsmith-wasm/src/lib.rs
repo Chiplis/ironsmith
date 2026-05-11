@@ -31,6 +31,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::{GameState, StackEntry, Target};
 use ironsmith::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use ironsmith::mana::{ManaCost, ManaSymbol};
+use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::types::CardType;
@@ -554,19 +555,9 @@ fn merge_active_viewed_cards(
     cards: &[ObjectId],
     ctx: &ironsmith::decisions::context::ViewCardsContext,
 ) {
-    let can_merge = current.as_ref().is_some_and(|existing| {
-        existing.public == ctx.public
-            && existing.zone == ctx.zone
-            && existing.source == ctx.source
-            && existing.description == ctx.description
-            && if existing.zone == Zone::Hand {
-                existing.subject == ctx.subject
-            } else if ctx.public {
-                true
-            } else {
-                existing.viewer == viewer && existing.subject == ctx.subject
-            }
-    });
+    let can_merge = current
+        .as_ref()
+        .is_some_and(|existing| viewed_cards_can_merge(existing, viewer, ctx));
 
     if can_merge {
         if let Some(existing) = current.as_mut() {
@@ -580,6 +571,53 @@ fn merge_active_viewed_cards(
     }
 
     *current = Some(ActiveViewedCards {
+        viewer,
+        subject: ctx.subject,
+        zone: ctx.zone,
+        cards: cards.to_vec(),
+        public: ctx.public,
+        source: ctx.source,
+        description: ctx.description.clone(),
+    });
+}
+
+fn viewed_cards_can_merge(
+    existing: &ActiveViewedCards,
+    viewer: PlayerId,
+    ctx: &ironsmith::decisions::context::ViewCardsContext,
+) -> bool {
+    existing.public == ctx.public
+        && existing.zone == ctx.zone
+        && existing.source == ctx.source
+        && existing.description == ctx.description
+        && if existing.zone == Zone::Hand {
+            existing.subject == ctx.subject
+        } else if ctx.public {
+            true
+        } else {
+            existing.viewer == viewer && existing.subject == ctx.subject
+        }
+}
+
+fn merge_audit_viewed_cards(
+    current: &mut Vec<ActiveViewedCards>,
+    viewer: PlayerId,
+    cards: &[ObjectId],
+    ctx: &ironsmith::decisions::context::ViewCardsContext,
+) {
+    if let Some(existing) = current
+        .iter_mut()
+        .find(|existing| viewed_cards_can_merge(existing, viewer, ctx))
+    {
+        for &card in cards {
+            if !existing.cards.contains(&card) {
+                existing.cards.push(card);
+            }
+        }
+        return;
+    }
+
+    current.push(ActiveViewedCards {
         viewer,
         subject: ctx.subject,
         zone: ctx.zone,
@@ -660,12 +698,91 @@ fn zone_crypto_kind(zone: Zone) -> &'static str {
     }
 }
 
+fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|_| game.object_has_static_ability_id(*id, ability_id))
+    })
+}
+
+fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|object| {
+            game.current_controller(*id).unwrap_or(object.owner) == player
+                && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
+        })
+    })
+}
+
+fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
+    battlefield_has_static_ability(game, StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries)
+        || game.object_store.battlefield.iter().any(|id| {
+            game.object(*id).is_some_and(|object| {
+                game.current_controller(*id).unwrap_or(object.owner) == player
+                    && game.object_has_static_ability_id(
+                        *id,
+                        StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+                    )
+            })
+        })
+}
+
+fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|object| {
+            game.current_controller(*id).unwrap_or(object.owner) != player
+                && game.object_has_static_ability_id(
+                    *id,
+                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
+                )
+        })
+    })
+}
+
+fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewedCards>) {
+    let public_viewer = PlayerId::from_index(0);
+    for player in &game.players {
+        if let Some(&top_card) = player.library.last() {
+            if library_top_revealed_by_static_ability(game, player.id) {
+                views.push(ActiveViewedCards {
+                    viewer: public_viewer,
+                    subject: player.id,
+                    zone: Zone::Library,
+                    cards: vec![top_card],
+                    public: true,
+                    source: None,
+                    description: "Static ability reveals the top card of a library".to_string(),
+                });
+            } else if can_view_own_library_top(game, player.id) {
+                views.push(ActiveViewedCards {
+                    viewer: player.id,
+                    subject: player.id,
+                    zone: Zone::Library,
+                    cards: vec![top_card],
+                    public: false,
+                    source: None,
+                    description: "Static ability allows viewing the top card of a library"
+                        .to_string(),
+                });
+            }
+        }
+
+        if hand_revealed_by_static_ability(game, player.id) && !player.hand.is_empty() {
+            views.push(ActiveViewedCards {
+                viewer: public_viewer,
+                subject: player.id,
+                zone: Zone::Hand,
+                cards: player.hand.clone(),
+                public: true,
+                source: None,
+                description: "Static ability reveals a player's hand".to_string(),
+            });
+        }
+    }
+}
+
 fn hidden_audit_key(card: &HiddenAuditCard) -> (u8, u16, String) {
-    (
-        card.owner.index() as u8,
-        card.slot,
-        card.commitment.clone(),
-    )
+    (card.owner.index() as u8, card.slot, card.commitment.clone())
 }
 
 fn push_requirement_unique(
@@ -712,7 +829,9 @@ impl WasmGame {
                 commitment: info.commitment.clone(),
                 card: object.card.as_ref().map(|_| object.name.clone()),
             };
-            state.hidden_by_key.insert(hidden_audit_key(&card), card.clone());
+            state
+                .hidden_by_key
+                .insert(hidden_audit_key(&card), card.clone());
             state.hidden_by_id.insert(object_id, card);
         }
         for player in &self.game.players {
@@ -821,7 +940,15 @@ impl WasmGame {
             }
         }
 
-        if let Some(view) = self.active_viewed_cards.as_ref() {
+        let mut audit_views = self.active_audit_viewed_cards.clone();
+        if audit_views.is_empty()
+            && let Some(view) = self.active_viewed_cards.as_ref()
+        {
+            audit_views.push(view.clone());
+        }
+        append_static_visibility_views(&self.game, &mut audit_views);
+
+        for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
             let view_requirement = CryptoRequirementView {
                 id: format!(
@@ -2067,6 +2194,7 @@ struct WasmReplayDecisionMaker {
     answers: VecDeque<ReplayDecisionAnswer>,
     pending_context: Option<DecisionContext>,
     viewed_cards: Option<ActiveViewedCards>,
+    audit_viewed_cards: Vec<ActiveViewedCards>,
 }
 
 impl WasmReplayDecisionMaker {
@@ -2075,6 +2203,7 @@ impl WasmReplayDecisionMaker {
             answers: answers.iter().cloned().collect(),
             pending_context: None,
             viewed_cards: None,
+            audit_viewed_cards: Vec::new(),
         }
     }
 
@@ -2090,8 +2219,18 @@ impl WasmReplayDecisionMaker {
         ));
     }
 
-    fn finish(self) -> (Option<DecisionContext>, Option<ActiveViewedCards>) {
-        (self.pending_context, self.viewed_cards)
+    fn finish(
+        self,
+    ) -> (
+        Option<DecisionContext>,
+        Option<ActiveViewedCards>,
+        Vec<ActiveViewedCards>,
+    ) {
+        (
+            self.pending_context,
+            self.viewed_cards,
+            self.audit_viewed_cards,
+        )
     }
 }
 
@@ -2429,6 +2568,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         ctx: &ironsmith::decisions::context::ViewCardsContext,
     ) {
         merge_active_viewed_cards(&mut self.viewed_cards, viewer, cards, ctx);
+        merge_audit_viewed_cards(&mut self.audit_viewed_cards, viewer, cards, ctx);
     }
 }
 
@@ -2486,6 +2626,8 @@ pub struct WasmGame {
     snapshot_serial: u64,
     /// Most recent transient card-view event visible to the current perspective.
     active_viewed_cards: Option<ActiveViewedCards>,
+    /// All hidden-card view events emitted by the most recent resolved command.
+    active_audit_viewed_cards: Vec<ActiveViewedCards>,
     /// Crypto material required by the most recent resolved command.
     last_crypto_requirements: Vec<CryptoRequirementView>,
     /// Hidden/random snapshot captured immediately before the command currently
@@ -2993,6 +3135,133 @@ mod native_tests {
             "Pregame"
         );
         assert_eq!(describe_action(&game, &LegalAction::BeginGame), "Pregame");
+    }
+
+    #[test]
+    fn crypto_requirements_include_static_public_top_library_opening() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        let lantern = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Lantern of Insight Variant",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::all_players_look_at_top_cards_of_libraries(
+            ),
+        ))
+        .build();
+        wasm.game
+            .create_object_from_definition(&lantern, alice, Zone::Battlefield);
+        let hidden_top = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-library-top-commitment".to_string(),
+        );
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_view_window"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "library"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "library"
+                && requirement.object_id == Some(hidden_top.0)
+                && requirement.commitment.as_deref() == Some("alice-library-top-commitment")
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_include_static_private_own_top_library_opening() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        let future_sight = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Future Sight Variant",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::look_at_top_card_of_library(),
+        ))
+        .build();
+        wasm.game
+            .create_object_from_definition(&future_sight, alice, Zone::Battlefield);
+        let hidden_top = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-private-top-commitment".to_string(),
+        );
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "private_view_window"
+                && requirement.owner == alice.index() as u8
+                && requirement.viewer == Some(alice.index() as u8)
+                && requirement.zone == "library"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "private_open"
+                && requirement.owner == alice.index() as u8
+                && requirement.viewer == Some(alice.index() as u8)
+                && requirement.zone == "library"
+                && requirement.object_id == Some(hidden_top.0)
+                && requirement.commitment.as_deref() == Some("alice-private-top-commitment")
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_include_static_public_hand_openings() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let telepathy = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Telepathy Variant",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::opponents_play_with_hands_revealed(),
+        ))
+        .build();
+        wasm.game
+            .create_object_from_definition(&telepathy, alice, Zone::Battlefield);
+        let hidden_hand = wasm.game.create_hidden_card_placeholder(
+            bob,
+            Zone::Hand,
+            4,
+            "bob-hand-commitment".to_string(),
+        );
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_view_window"
+                && requirement.owner == bob.index() as u8
+                && requirement.zone == "hand"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == bob.index() as u8
+                && requirement.zone == "hand"
+                && requirement.object_id == Some(hidden_hand.0)
+                && requirement.commitment.as_deref() == Some("bob-hand-commitment")
+        }));
     }
 }
 

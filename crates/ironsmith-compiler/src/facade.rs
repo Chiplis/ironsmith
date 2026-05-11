@@ -27,7 +27,10 @@ fn fallback_static_ability_issue(
     if let Some(id) = ability.id {
         if let Some(id_name) = fallback_static_ability_id_name(id) {
             if id == crate::static_abilities::StaticAbilityId::KeywordFallbackText
-                && ability.display().to_ascii_lowercase().starts_with("craft with")
+                && ability
+                    .display()
+                    .to_ascii_lowercase()
+                    .starts_with("craft with")
             {
                 return None;
             }

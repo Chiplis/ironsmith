@@ -9,6 +9,7 @@ import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
 const ZONE_LABELS = {
@@ -289,7 +290,7 @@ export default function MyZone({
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
-    && state?.decision?.player === state?.perspective;
+    && samePlayerId(state?.decision?.player, state?.perspective);
 
   // Build activatable map from decision actions (activate_ability + activate_mana_ability)
   const activatableMap = buildActivatableMap(state?.decision);
@@ -648,7 +649,7 @@ export default function MyZone({
                 }}
               >
                 <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                  {player.name}
+                  {playerDisplayName(state?.players || [], player)}
                 </span>
                 {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
               </span>

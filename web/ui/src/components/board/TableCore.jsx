@@ -12,6 +12,7 @@ import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 function playerAccentStyle(accent) {
   return {
@@ -93,7 +94,7 @@ export default function TableCore({
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(me?.id)) || legalTargetPlayerIds.has(Number(me?.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
-    && state?.decision?.player === state?.perspective;
+    && samePlayerId(state?.decision?.player, state?.perspective);
   const dispatchPlayerTargetChoice = useCallback(() => {
     if (!canPickTargetFromBoard || !isPlayerLegalTarget) return;
     const targetPlayer = legalTargetPlayerIds.has(Number(me?.id))
@@ -184,7 +185,7 @@ export default function TableCore({
           }}
         >
           <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-            {me.name}
+            {playerDisplayName(state?.players || [], me)}
           </span>
         </span>
         <ManaPool

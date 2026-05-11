@@ -17,6 +17,7 @@ import {
 import { ExternalLink, Github, Menu, RefreshCw, Settings2 } from "lucide-react";
 import AddCardSheet from "./AddCardSheet";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
+import { playerDisplayName } from "@/lib/player-display";
 
 const inputClass =
   "fantasy-field w-full px-3 py-2 text-[14px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50";
@@ -372,7 +373,13 @@ export default function TopbarMenuSheet({
                     Disconnected
                   </span>
                   <Badge variant="secondary" className="fantasy-sheet-badge max-w-[180px] truncate text-[12px] uppercase text-[#ffb8c0]">
-                    {offlinePlayers.map((player) => player.name).join(", ")}
+                    {offlinePlayers.map((player) => {
+                      const display = playerDisplayName(
+                        state?.players || [],
+                        player.playerIndex ?? player.index ?? player.id
+                      );
+                      return display === "?" ? player.name : display;
+                    }).join(", ")}
                   </Badge>
                 </div>
               ) : null}

@@ -6,6 +6,7 @@ import useNewCards from "@/hooks/useNewCards";
 import GameCard from "@/components/cards/GameCard";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
+import { samePlayerId } from "@/lib/player-display";
 
 const HAND_CARD_WIDTH = 124;
 const HAND_CARD_BASE_OVERLAP = 20;
@@ -223,7 +224,7 @@ export default function HandZone({
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision;
-    if (!decision || decision.kind !== "priority" || decision.player !== state?.perspective) {
+    if (!decision || decision.kind !== "priority" || !samePlayerId(decision.player, state?.perspective)) {
       return ids;
     }
     for (const action of decision.actions || []) {

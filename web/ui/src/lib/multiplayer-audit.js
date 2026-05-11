@@ -712,6 +712,23 @@ export function sanitizeAuditCardList(cards) {
     .filter(Boolean);
 }
 
+export async function decklistHashForCards({
+  matchId,
+  owner,
+  deck = [],
+  sideboard = [],
+  commanders = [],
+}, cryptoImpl = globalThis.crypto) {
+  return sha256Hex(canonicalJson({
+    domain: "ironsmith-ui-audit-decklist-v1",
+    matchId,
+    owner,
+    deck: sanitizeAuditCardList(deck),
+    sideboard: sanitizeAuditCardList(sideboard),
+    commanders: sanitizeAuditCardList(commanders),
+  }), cryptoImpl);
+}
+
 export async function buildPrivateDeckManifest({
   matchId,
   owner,
@@ -723,14 +740,13 @@ export async function buildPrivateDeckManifest({
   const normalizedDeck = sanitizeAuditCardList(deck);
   const normalizedSideboard = sanitizeAuditCardList(sideboard);
   const normalizedCommanders = sanitizeAuditCardList(commanders);
-  const decklistHash = await sha256Hex(canonicalJson({
-    domain: "ironsmith-ui-audit-decklist-v1",
+  const decklistHash = await decklistHashForCards({
     matchId,
     owner,
     deck: normalizedDeck,
     sideboard: normalizedSideboard,
     commanders: normalizedCommanders,
-  }), cryptoImpl);
+  }, cryptoImpl);
   const slots = [];
   const slotSecrets = [];
   for (let slot = 0; slot < normalizedDeck.length; slot += 1) {

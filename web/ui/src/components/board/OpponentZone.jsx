@@ -6,6 +6,7 @@ import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
 const ZONE_LABELS = {
@@ -364,7 +365,7 @@ function OpponentSlot({
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
-    && state?.decision?.player === state?.perspective;
+    && samePlayerId(state?.decision?.player, state?.perspective);
   const activatableMap = buildActivatableMap(state?.decision);
   const activeAttackerId = (
     combatMode?.mode === "attackers"
@@ -517,7 +518,7 @@ function OpponentSlot({
               }}
             >
               <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                {player.name}
+                {playerDisplayName(state?.players || [], player)}
               </span>
               {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
             </span>

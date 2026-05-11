@@ -1,6 +1,6 @@
 //! Scry and fateseal effect implementation.
 
-use crate::decisions::{ScrySpec, ask_choose_one, make_decision};
+use crate::decisions::{ScrySpec, ask_choose_one, context::ViewCardsContext, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -133,24 +133,36 @@ struct ScryArrangement {
 fn choose_scry_arrangement(
     game: &GameState,
     ctx: &mut ExecutionContext,
-    player_id: PlayerId,
+    viewer_id: PlayerId,
+    subject_id: PlayerId,
     count: usize,
+    action: &str,
 ) -> ScryArrangement {
-    let top_cards_top_to_bottom = top_library_cards_top_to_bottom(game, player_id, count);
+    let top_cards_top_to_bottom = top_library_cards_top_to_bottom(game, subject_id, count);
     if top_cards_top_to_bottom.is_empty() {
         return ScryArrangement {
-            player_id,
+            player_id: subject_id,
             total_looked: 0,
             top_cards_top_to_bottom: Vec::new(),
             bottom_cards_top_to_bottom: Vec::new(),
         };
     }
 
+    let view_ctx = ViewCardsContext::new(
+        viewer_id,
+        subject_id,
+        Some(ctx.source),
+        crate::zone::Zone::Library,
+        format!("{action} {} card(s)", top_cards_top_to_bottom.len()),
+    );
+    ctx.decision_maker
+        .view_cards(game, viewer_id, &top_cards_top_to_bottom, &view_ctx);
+
     let spec = ScrySpec::new(ctx.source, top_cards_top_to_bottom.clone());
     let bottom_cards_top_to_bottom: Vec<ObjectId> = make_decision(
         game,
         &mut ctx.decision_maker,
-        player_id,
+        viewer_id,
         Some(ctx.source),
         spec,
     )
@@ -166,20 +178,20 @@ fn choose_scry_arrangement(
     let ordered_top_cards = reorder_cards_top_to_bottom(
         game,
         ctx,
-        player_id,
+        viewer_id,
         "Reorder cards to keep on top of your library",
         &kept_on_top,
     );
     let ordered_bottom_cards = reorder_cards_top_to_bottom(
         game,
         ctx,
-        player_id,
+        viewer_id,
         "Reorder cards to put on the bottom of your library",
         &bottom_cards_top_to_bottom,
     );
 
     ScryArrangement {
-        player_id,
+        player_id: subject_id,
         total_looked: top_cards_top_to_bottom.len(),
         top_cards_top_to_bottom: ordered_top_cards,
         bottom_cards_top_to_bottom: ordered_bottom_cards,
@@ -245,7 +257,7 @@ impl EffectExecutor for ScryEffect {
         if count == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        let arrangement = choose_scry_arrangement(game, ctx, player_id, count);
+        let arrangement = choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
         if arrangement.total_looked == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -314,7 +326,8 @@ impl EffectExecutor for FatesealEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let arrangement = choose_scry_arrangement(game, ctx, opponent, count);
+        let arrangement =
+            choose_scry_arrangement(game, ctx, fatesealer, opponent, count, "Fateseal");
         if arrangement.total_looked == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -365,7 +378,8 @@ impl EffectExecutor for EachPlayerScryEffect {
 
         let mut arrangements = Vec::new();
         for player_id in players {
-            let arrangement = choose_scry_arrangement(game, ctx, player_id, count);
+            let arrangement =
+                choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
             if arrangement.total_looked > 0 {
                 arrangements.push(arrangement);
             }
@@ -601,9 +615,9 @@ mod tests {
         let c = add_library_card(&mut game, bob, "C");
         let source = game.new_object_id();
         let mut decision_maker = ScriptedScryDecisionMaker::new();
-        decision_maker.partitions.insert(bob, vec![c]);
-        decision_maker.top_orders.insert(bob, vec![b]);
-        decision_maker.bottom_orders.insert(bob, vec![c]);
+        decision_maker.partitions.insert(alice, vec![c]);
+        decision_maker.top_orders.insert(alice, vec![b]);
+        decision_maker.bottom_orders.insert(alice, vec![c]);
 
         let outcome = {
             let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
@@ -645,8 +659,8 @@ mod tests {
         let source = game.new_object_id();
         let mut decision_maker = ScriptedScryDecisionMaker::new();
         decision_maker.option_choices.insert(alice, vec![1]);
-        decision_maker.partitions.insert(charlie, vec![c1]);
-        decision_maker.bottom_orders.insert(charlie, vec![c1]);
+        decision_maker.partitions.insert(alice, vec![c1]);
+        decision_maker.bottom_orders.insert(alice, vec![c1]);
 
         let outcome = {
             let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
@@ -672,7 +686,7 @@ mod tests {
             top_library_cards_top_to_bottom(&game, charlie, 2),
             vec![_c2, c1]
         );
-        assert_eq!(decision_maker.partition_calls, vec![charlie]);
+        assert_eq!(decision_maker.partition_calls, vec![alice]);
     }
 
     #[test]

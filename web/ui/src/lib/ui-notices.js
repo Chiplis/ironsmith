@@ -13,9 +13,13 @@ export function emitUiNotice(notice) {
 }
 
 export function emitSyncFailureNotice(title, body) {
+  const notice =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? body
+      : { body };
   emitUiNotice({
     tone: "error",
     title,
-    body,
+    ...notice,
   });
 }

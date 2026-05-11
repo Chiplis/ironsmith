@@ -10,6 +10,7 @@ import {
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
   canonicalJson,
+  decklistHashForCards,
   publicDeckManifest,
   createAuditSessionKey,
   createAuditEncryptionKey,
@@ -135,6 +136,31 @@ test("private deck manifests commit slots without exposing card names publicly",
       salt: "salt-1",
     }, webcrypto),
     false,
+  );
+});
+
+test("decklist hash distinguishes stale manifests for duplicate-card decks", async () => {
+  const matchId = "same-lobby-id";
+  const staleManifest = await buildPrivateDeckManifest({
+    matchId,
+    owner: 0,
+    deck: Array(60).fill("Island"),
+    saltForSlot: (slot) => `old-salt-${slot}`,
+  }, webcrypto);
+  const currentHash = await decklistHashForCards({
+    matchId,
+    owner: 0,
+    deck: Array(60).fill("Mountain"),
+  }, webcrypto);
+
+  assert.notEqual(staleManifest.decklistHash, currentHash);
+  await assert.rejects(
+    () => buildDeckSlotOpening({
+      manifest: staleManifest,
+      slot: 56,
+      card: "Mountain",
+    }, webcrypto),
+    /Private deck opening does not match slot 56/,
   );
 });
 
