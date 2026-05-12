@@ -1113,6 +1113,9 @@ impl WasmGame {
             let Some(after_library_order) = after.libraries.get(player) else {
                 continue;
             };
+            if after.random_count <= before.random_count {
+                continue;
+            }
             if !library_relative_order_changed(before_order, after_library_order) {
                 continue;
             }
@@ -1135,7 +1138,7 @@ impl WasmGame {
                     card: None,
                     visibility: None,
                     reason: Some("library order changed".to_string()),
-                    count: None,
+                    count: Some(after_library_order.len().min(u16::MAX as usize) as u16),
                     from: None,
                     to: None,
                     before_order: Some(before_shuffle_order.iter().map(|id| id.0).collect()),

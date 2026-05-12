@@ -4,6 +4,10 @@ const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
 const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
 const ACTION_QUORUM_CERTIFICATE_TYPE = "ironsmith-action-quorum-v1";
 const ACTION_QUORUM_VOTE_DOMAIN = "ironsmith-action-quorum-vote-v1";
+const DISCONNECT_FORFEIT_CERTIFICATE_TYPE = "ironsmith-disconnect-forfeit-v1";
+const DISCONNECT_FORFEIT_VOTE_DOMAIN = "ironsmith-disconnect-forfeit-vote-v1";
+export const DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
+export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const CURRENT_AUDIT_PROTOCOL_VERSION = 10;
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
@@ -503,6 +507,18 @@ export function actionQuorumThreshold(playerCount) {
   return 3;
 }
 
+export function isDisconnectForfeitCommand(command) {
+  return command?.type === "forfeit_player"
+    && String(command?.reason || "") === DISCONNECT_FORFEIT_REASON;
+}
+
+export function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
+  const count = Math.max(0, Number(nonTargetPlayerCount || 0));
+  if (count <= 0) return 0;
+  if (count === 1) return 1;
+  return 2;
+}
+
 function actionQuorumExpected(action) {
   const audit = action?.audit || action || {};
   return {
@@ -659,6 +675,191 @@ export async function verifyActionQuorumCertificate({
   if (seen.size < threshold) {
     throw new Error(
       `Action quorum certificate has ${seen.size} unique vote(s), expected at least ${threshold}`
+    );
+  }
+  return {
+    valid: true,
+    threshold,
+    voters: [...seen].sort((left, right) => left - right),
+  };
+}
+
+export function disconnectForfeitVotePayload({
+  matchId,
+  basisSequence,
+  forfeitedPlayer,
+  forfeitedPeerId,
+  disconnectTimeoutMs,
+  disconnectedAtMs,
+  eligibleAtMs,
+  signedAtMs,
+  voter,
+}) {
+  return {
+    domain: DISCONNECT_FORFEIT_VOTE_DOMAIN,
+    matchId: String(matchId || ""),
+    basisSequence: Number(basisSequence || 0),
+    forfeitedPlayer: Number(forfeitedPlayer),
+    forfeitedPeerId: String(forfeitedPeerId || ""),
+    disconnectTimeoutMs: Math.max(0, Math.floor(Number(disconnectTimeoutMs || 0))),
+    disconnectedAtMs: Math.max(0, Math.floor(Number(disconnectedAtMs || 0))),
+    eligibleAtMs: Math.max(0, Math.floor(Number(eligibleAtMs || 0))),
+    signedAtMs: Math.max(0, Math.floor(Number(signedAtMs || 0))),
+    voter: Number(voter),
+  };
+}
+
+export async function buildSignedDisconnectForfeitVote({
+  keyPair,
+  matchId,
+  basisSequence,
+  forfeitedPlayer,
+  forfeitedPeerId,
+  disconnectTimeoutMs,
+  disconnectedAtMs,
+  eligibleAtMs = Number(disconnectedAtMs || 0) + Number(disconnectTimeoutMs || 0),
+  signedAtMs = Date.now(),
+  voter,
+}, cryptoImpl = globalThis.crypto) {
+  const payload = disconnectForfeitVotePayload({
+    matchId,
+    basisSequence,
+    forfeitedPlayer,
+    forfeitedPeerId,
+    disconnectTimeoutMs,
+    disconnectedAtMs,
+    eligibleAtMs,
+    signedAtMs,
+    voter,
+  });
+  return {
+    ...payload,
+    signatureAlgorithm: "ecdsa-p256-sha256",
+    signature: await signAuditPayload(keyPair, payload, cryptoImpl),
+  };
+}
+
+export async function verifyDisconnectForfeitVote({
+  vote,
+  expected,
+  players = [],
+}, cryptoImpl = globalThis.crypto) {
+  const voter = Number(vote?.voter);
+  if (!Number.isInteger(voter) || voter < 0) {
+    throw new Error("Disconnect forfeit vote contains an invalid voter");
+  }
+  const disconnectedAtMs = Math.max(0, Math.floor(Number(vote?.disconnectedAtMs || 0)));
+  const disconnectTimeoutMs = Math.max(0, Math.floor(Number(
+    expected?.disconnectTimeoutMs ?? vote?.disconnectTimeoutMs ?? DISCONNECT_AUTO_FORFEIT_MS
+  )));
+  const eligibleAtMs = Math.max(0, Math.floor(Number(vote?.eligibleAtMs || 0)));
+  const signedAtMs = Math.max(0, Math.floor(Number(vote?.signedAtMs || 0)));
+  if (eligibleAtMs !== disconnectedAtMs + disconnectTimeoutMs) {
+    throw new Error("Disconnect forfeit vote has an invalid eligibility timestamp");
+  }
+  if (signedAtMs < eligibleAtMs) {
+    throw new Error("Disconnect forfeit vote was signed before the disconnect timeout elapsed");
+  }
+  const payload = disconnectForfeitVotePayload({
+    matchId: expected?.matchId,
+    basisSequence: expected?.basisSequence,
+    forfeitedPlayer: expected?.forfeitedPlayer,
+    forfeitedPeerId: expected?.forfeitedPeerId,
+    disconnectTimeoutMs,
+    disconnectedAtMs,
+    eligibleAtMs,
+    signedAtMs,
+    voter,
+  });
+  if (
+    String(vote?.domain || "") !== DISCONNECT_FORFEIT_VOTE_DOMAIN
+    || String(vote?.matchId || "") !== payload.matchId
+    || Number(vote?.basisSequence) !== payload.basisSequence
+    || Number(vote?.forfeitedPlayer) !== payload.forfeitedPlayer
+    || String(vote?.forfeitedPeerId || "") !== payload.forfeitedPeerId
+    || Number(vote?.disconnectTimeoutMs) !== payload.disconnectTimeoutMs
+  ) {
+    throw new Error("Disconnect forfeit vote does not match the forfeit claim");
+  }
+  const player = (players || []).find((entry) =>
+    Number(entry?.index ?? entry?.seat) === voter
+  );
+  if (!player?.auditPublicKey || voter === payload.forfeitedPlayer) {
+    throw new Error(`Disconnect forfeit voter ${voter + 1} is not eligible`);
+  }
+  const publicKey = await importAuditPublicKey(player.auditPublicKey, cryptoImpl);
+  const valid = await verifyAuditPayload(
+    publicKey,
+    payload,
+    vote.signature || "",
+    cryptoImpl,
+  );
+  if (!valid) {
+    throw new Error("Disconnect forfeit vote signature is invalid");
+  }
+  return voter;
+}
+
+export async function verifyDisconnectForfeitCertificate({
+  certificate,
+  command,
+  players = [],
+  threshold: requiredThreshold = null,
+}, cryptoImpl = globalThis.crypto) {
+  if (!isDisconnectForfeitCommand(command)) return { valid: true, threshold: 0, voters: [] };
+  const roster = Array.isArray(players) ? players : [];
+  const threshold = requiredThreshold == null
+    ? disconnectForfeitVoteThreshold(roster.length)
+    : Math.max(0, Number(requiredThreshold || 0));
+  if (threshold <= 0) {
+    return { valid: true, threshold: 0, voters: [] };
+  }
+  if (!certificate || typeof certificate !== "object") {
+    throw new Error("Disconnect forfeit is missing its quorum certificate");
+  }
+  if (String(certificate.type || "") !== DISCONNECT_FORFEIT_CERTIFICATE_TYPE) {
+    throw new Error("Disconnect forfeit has an unsupported certificate");
+  }
+  const expected = {
+    matchId: String(command.matchId || certificate.matchId || ""),
+    basisSequence: Number(command.basis_sequence ?? certificate.basisSequence ?? 0),
+    forfeitedPlayer: Number(command.player),
+    forfeitedPeerId: String(command.disconnected_peer_id || certificate.forfeitedPeerId || ""),
+    disconnectTimeoutMs: Math.max(
+      0,
+      Math.floor(Number(command.disconnect_timeout_ms ?? certificate.disconnectTimeoutMs ?? DISCONNECT_AUTO_FORFEIT_MS))
+    ),
+  };
+  if (
+    String(certificate.matchId || "") !== expected.matchId
+    || Number(certificate.basisSequence) !== expected.basisSequence
+    || Number(certificate.forfeitedPlayer) !== expected.forfeitedPlayer
+    || String(certificate.forfeitedPeerId || "") !== expected.forfeitedPeerId
+    || Number(certificate.disconnectTimeoutMs) !== expected.disconnectTimeoutMs
+  ) {
+    throw new Error("Disconnect forfeit certificate does not match the command");
+  }
+  const votes = Array.isArray(certificate.votes) ? certificate.votes : [];
+  if (votes.length < threshold) {
+    throw new Error(
+      `Disconnect forfeit certificate has ${votes.length} vote(s), expected at least ${threshold}`
+    );
+  }
+  const seen = new Set();
+  for (const vote of votes) {
+    const voter = await verifyDisconnectForfeitVote({
+      vote,
+      expected,
+      players: roster,
+    }, cryptoImpl);
+    if (seen.has(voter)) {
+      throw new Error("Disconnect forfeit certificate contains a duplicate voter");
+    }
+    seen.add(voter);
+  }
+  if (seen.size < threshold) {
+    throw new Error(
+      `Disconnect forfeit certificate has ${seen.size} unique vote(s), expected at least ${threshold}`
     );
   }
   return {
@@ -1938,6 +2139,7 @@ export async function verifyLiveAuditTranscript(
     const forfeitTarget = audit.command?.type === "forfeit_player"
       ? Number(audit.command.player)
       : null;
+    const disconnectForfeit = isDisconnectForfeitCommand(audit.command);
     const actionQuorumPlayers = forfeitTarget == null
       ? activeQuorumPlayers
       : activeQuorumPlayers.filter((player) =>
@@ -1946,10 +2148,20 @@ export async function verifyLiveAuditTranscript(
     const actionQuorumThresholdOverride = forfeitTarget == null
       ? null
       : (
-        activeQuorumPlayers.length < 3 || Number(audit.actor) === forfeitTarget
+        disconnectForfeit || activeQuorumPlayers.length < 3 || Number(audit.actor) === forfeitTarget
           ? 0
           : actionQuorumPlayers.length
       );
+    if (disconnectForfeit) {
+      await verifyDisconnectForfeitCertificate({
+        certificate: audit.command?.disconnect_certificate || audit.command?.disconnectCertificate,
+        command: {
+          ...audit.command,
+          matchId: audit.matchId,
+        },
+        players: actionQuorumPlayers,
+      }, cryptoImpl);
+    }
     await verifyActionQuorumCertificate({
       certificate: audit.quorumCertificate || entry.quorumCertificate,
       action: entry,

@@ -1658,11 +1658,7 @@ mod sync_checkpoint_tests {
         for id in hand_ids {
             let _ = game.game.move_object_by_effect(id, Zone::Library);
         }
-        game.game
-            .player_mut(bob)
-            .expect("Bob should still exist")
-            .library
-            .reverse();
+        game.game.shuffle_player_library(bob);
         assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
         game.update_crypto_requirements_from(before);
 
@@ -1684,6 +1680,11 @@ mod sync_checkpoint_tests {
             .clone();
         assert_eq!(before_order.len(), 10);
         assert_eq!(after_order.len(), 10);
+        assert_eq!(
+            requirement.count,
+            Some(8),
+            "shuffle requirement count tracks the post-shuffle library prefix"
+        );
 
         let bob_hand = game
             .game
@@ -1718,6 +1719,69 @@ mod sync_checkpoint_tests {
                 format!("ziffle:mulligan-deck:{position}")
             );
         }
+    }
+
+    #[test]
+    fn mulligan_bottoming_revealed_hand_card_does_not_require_library_shuffle() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        for slot in 0..10 {
+            game.game.create_hidden_card_placeholder(
+                alice,
+                Zone::Library,
+                slot,
+                format!("alice-slot-{slot}"),
+            );
+        }
+        assert_eq!(game.game.draw_cards(alice, 7).len(), 7);
+        game.registry.ensure_cards_loaded(["Mountain"]);
+        let mountain = game
+            .find_card_definition("Mountain")
+            .expect("fixture card should load")
+            .clone();
+        for hand_id in game
+            .game
+            .player(alice)
+            .expect("Alice should exist")
+            .hand
+            .clone()
+        {
+            game.game
+                .reveal_hidden_card_with_definition(hand_id, &mountain)
+                .expect("hand card should reveal privately");
+        }
+
+        let before = game.capture_crypto_audit_state();
+        let bottom_card = game
+            .game
+            .player(alice)
+            .expect("Alice should exist")
+            .hand
+            .first()
+            .copied()
+            .expect("Alice should have a hand card to bottom");
+        let Some(moved) = game.game.move_object_by_effect(bottom_card, Zone::Library) else {
+            panic!("bottomed card should move into library");
+        };
+        let player = game.game.player_mut(alice).expect("Alice should exist");
+        let index = player
+            .library
+            .iter()
+            .rposition(|candidate| *candidate == moved)
+            .expect("moved card should be in library");
+        let moved = player.library.remove(index);
+        player.library.insert(0, moved);
+
+        game.update_crypto_requirements_from(before);
+        assert!(
+            !game.last_crypto_requirements.iter().any(|requirement| {
+                requirement.requirement_type == "verifiable_shuffle"
+                    && requirement.owner == alice.index() as u8
+            }),
+            "bottoming a revealed hand card should not be treated as a library shuffle: {:?}",
+            game.last_crypto_requirements
+        );
     }
 
     #[test]

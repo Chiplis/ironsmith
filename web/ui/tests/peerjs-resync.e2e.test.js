@@ -169,8 +169,18 @@ async function startHarnessServer(peerPort) {
 async function openHarness(context, baseUrl, label) {
   const page = await context.newPage();
   const pageErrors = [];
+  const pageConsole = [];
   page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
-  page.on("console", (message) => {
+  page.on("console", async (message) => {
+    let argsText = "";
+    try {
+      const args = await Promise.all(message.args().map((arg) => arg.jsonValue().catch(() => null)));
+      argsText = ` ${JSON.stringify(args)}`;
+    } catch {
+      argsText = "";
+    }
+    pageConsole.push(`${message.type()}: ${message.text()}${argsText}`);
+    if (pageConsole.length > 200) pageConsole.shift();
     if (message.type() === "error") {
       pageErrors.push(message.text());
     }
@@ -219,8 +229,18 @@ function deckUrlParam(deckText) {
 async function openFullUiPage(context, url, label) {
   const page = await context.newPage();
   const pageErrors = [];
+  const pageConsole = [];
   page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
-  page.on("console", (message) => {
+  page.on("console", async (message) => {
+    let argsText = "";
+    try {
+      const args = await Promise.all(message.args().map((arg) => arg.jsonValue().catch(() => null)));
+      argsText = ` ${JSON.stringify(args)}`;
+    } catch {
+      argsText = "";
+    }
+    pageConsole.push(`${message.type()}: ${message.text()}${argsText}`);
+    if (pageConsole.length > 200) pageConsole.shift();
     if (message.type() === "error") {
       pageErrors.push(message.text());
     }
@@ -239,6 +259,7 @@ async function openFullUiPage(context, url, label) {
   );
   await page.goto(url);
   page.__peerHarnessErrors = pageErrors;
+  page.__peerHarnessConsole = pageConsole;
   page.__peerHarnessLabel = label;
   return page;
 }
@@ -263,12 +284,47 @@ async function clickLocalButton(page, label, textPattern = null) {
   }
 }
 
+async function activateLocalButton(page, label, textPattern) {
+  const button = page.locator('button[data-local-action="true"]:enabled').filter({ hasText: textPattern }).first();
+  if ((await button.count()) === 0) return null;
+  const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+  await activateButtonNode(button);
+  return { label, text };
+}
+
+async function activateButtonNode(button) {
+  await button.evaluate((node) => {
+    node.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+      pointerType: "mouse",
+    }));
+    node.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    }));
+    node.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      detail: 1,
+    }));
+  });
+}
+
 async function clickEnabledButton(page, label, textPattern) {
   const button = page.locator("button:enabled").filter({ hasText: textPattern }).first();
   if ((await button.count()) === 0) return null;
   try {
     const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
-    await button.press("Enter", { timeout: 3000 });
+    await activateButtonNode(button);
     return { label, text };
   } catch (err) {
     const message = String(err?.message || err || "");
@@ -284,7 +340,7 @@ async function clickLastEnabledButton(page, label, textPattern) {
   if ((await button.count()) === 0) return null;
   try {
     const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
-    await button.press("Enter", { timeout: 3000 });
+    await activateButtonNode(button);
     return { label, text };
   } catch (err) {
     const message = String(err?.message || err || "");
@@ -301,6 +357,33 @@ async function clickLocalDecisionButton(page, label) {
 
 async function visibleBodyText(page) {
   return page.locator("body").innerText();
+}
+
+async function buttonDebugText(page) {
+  return page.locator("button").evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      text: (button.innerText || button.textContent || "").replace(/\s+/g, " ").trim(),
+      disabled: button.disabled,
+      localAction: button.getAttribute("data-local-action"),
+    }))
+  );
+}
+
+async function waitForLocalButton(page, pattern, label, timeoutMs = 60000) {
+  const started = Date.now();
+  let buttons = [];
+  while (Date.now() - started < timeoutMs) {
+    buttons = await buttonDebugText(page);
+    if (buttons.some((button) =>
+      button.localAction === "true"
+      && !button.disabled
+      && pattern.test(button.text)
+    )) {
+      return buttons;
+    }
+    await sleep(250);
+  }
+  assert.fail(`${label}\nbuttons: ${JSON.stringify(buttons, null, 2)}\nbody:\n${await visibleBodyText(page)}`);
 }
 
 async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
@@ -1768,6 +1851,152 @@ test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands 
       `${hostText}\n${guestText}`,
       /Private deck opening does not match slot|Sync failed|Match start failed/i
     );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Mulligan redraw stays synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const deck = deckUrlParam("60 Mountain");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${deck}`, "host-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${deck}`,
+      "guest-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    const initialText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(initialText, "match start should not sync-fail before mulligan");
+    assert.match(initialText, /KEEP HAND[\s\S]*MULLIGAN/i, "expected a visible opening-hand decision");
+
+    await waitForLocalButton(hostPage, /Mulligan/i, "expected Player 0 mulligan button to become local");
+    const hostMulligan = await activateLocalButton(hostPage, "host-mulligan", /Mulligan/i);
+    assert.ok(
+      hostMulligan,
+      `expected Player 0 to be able to mulligan\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nhost body:\n${await visibleBodyText(hostPage)}`
+    );
+    await sleep(3000);
+
+    const afterHostMulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(afterHostMulliganText, "host mulligan click should not sync-fail");
+    await sleep(25000);
+
+    try {
+      await waitForLocalButton(
+        guestPage,
+        /KEEP HAND/i,
+        "expected Player 1 to receive a local opening-hand decision after Player 0 mulligans",
+        120000,
+      );
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nhost body:\n${await visibleBodyText(hostPage)}\nhost errors: ${JSON.stringify(hostPage.__peerHarnessErrors || [], null, 2)}\nguest errors: ${JSON.stringify(guestPage.__peerHarnessErrors || [], null, 2)}`
+      );
+    }
+    const guestKeep = await activateLocalButton(guestPage, "guest-keep", /KEEP HAND/i);
+    assert.ok(
+      guestKeep,
+      `expected Player 1 to be able to keep after Player 0 keeps\nhost body:\n${await visibleBodyText(hostPage)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nguest body:\n${await visibleBodyText(guestPage)}`
+    );
+    await sleep(3000);
+    const afterGuestKeepCombined = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    try {
+      assertNoSyncFailureText(afterGuestKeepCombined, "Player 1 keep should not sync-fail");
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+      );
+    }
+
+    await waitForLocalButton(
+      hostPage,
+      /KEEP HAND/i,
+      "expected Player 0 to receive a fresh local keep decision after Player 1 keeps",
+      120000,
+    );
+    const hostRedrawText = await waitForVisibleBodyText(
+      hostPage,
+      /KEEP HAND[\s\S]*MULLIGAN/i,
+      "expected Player 0 to receive a fresh keep/mulligan decision after redraw",
+      120000,
+    );
+    assertNoSyncFailureText(hostRedrawText, "mulligan redraw should not sync-fail");
+
+    const hostKeep = await activateLocalButton(hostPage, "host-keep-redraw", /KEEP HAND/i);
+    assert.ok(hostKeep, "expected Player 0 to be able to keep the redraw hand");
+    await sleep(3000);
+    const afterHostKeepCombined = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    try {
+      assertNoSyncFailureText(afterHostKeepCombined, "Player 0 keep after redraw should not sync-fail");
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+      );
+    }
+
+    const bottomPromptText = await waitForVisibleBodyText(
+      hostPage,
+      /Choose 1 card\(s\) to put on the bottom of your library/i,
+      "expected Player 0 to bottom one card after keeping a mulligan hand",
+      120000,
+    );
+    assertNoSyncFailureText(bottomPromptText, "mulligan bottom-card prompt should not sync-fail");
+
+    const bottomChoice = await clickEnabledButton(hostPage, "host-bottom-card", /^Mountain$/i);
+    assert.ok(bottomChoice, "expected Player 0 to choose a Mountain to bottom");
+    const submitBottom = await activateLocalButton(hostPage, "host-submit-bottom-card", /SUBMIT/i);
+    assert.ok(submitBottom, "expected Player 0 bottom-card choice to be submittable");
+
+    const finalText = await waitForVisibleBodyText(
+      hostPage,
+      /PREGAME|BEGIN GAME|CONTINUE|UNTAP|UPKEEP|DRAW/i,
+      "expected mulligan flow to advance after bottoming a card",
+      120000,
+    );
+    const combinedFinalText = `${finalText}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(combinedFinalText, "full mulligan flow should stay synced");
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([

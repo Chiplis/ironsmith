@@ -6,6 +6,7 @@ import {
   actionQuorumThreshold,
   assertCurrentAuditPlayerCount,
   buildActionForkDisputeEvidence,
+  buildSignedDisconnectForfeitVote,
   buildSignedMatchGenesis,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
@@ -31,6 +32,7 @@ import {
   verifyCardOpeningAgainstManifest,
   verifyAuditPayload,
   verifyActionQuorumCertificate,
+  verifyDisconnectForfeitCertificate,
   verifyLiveAuditTranscript,
   verifyPrivateViewDisclosure,
   verifySignedMatchGenesis,
@@ -435,6 +437,97 @@ test("three-player live transcripts verify with a 2-of-3 action quorum", async (
     }, webcrypto),
     /expected at least 2/,
   );
+});
+
+test("disconnect forfeits verify with peer-signed timeout evidence", async () => {
+  const matchId = "m-disconnect-forfeit";
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    peerId: `peer-${index}`,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const votes = await Promise.all([0, 2].map((voter) =>
+    buildSignedDisconnectForfeitVote({
+      keyPair: keys[voter],
+      matchId,
+      basisSequence: 0,
+      forfeitedPlayer: 1,
+      forfeitedPeerId: "peer-1",
+      disconnectTimeoutMs: 60000,
+      disconnectedAtMs: 100000,
+      eligibleAtMs: 160000,
+      signedAtMs: 160500,
+      voter,
+    }, webcrypto)
+  ));
+  const disconnectCertificate = {
+    type: "ironsmith-disconnect-forfeit-v1",
+    matchId,
+    basisSequence: 0,
+    forfeitedPlayer: 1,
+    forfeitedPeerId: "peer-1",
+    disconnectTimeoutMs: 60000,
+    threshold: 2,
+    voters: [0, 2],
+    votes,
+  };
+  const command = {
+    type: "forfeit_player",
+    player: 1,
+    reason: "peer_claimed_disconnect_timeout",
+    disconnected_peer_id: "peer-1",
+    disconnect_timeout_ms: 60000,
+    disconnected_at_ms: 100000,
+    auto_forfeit_at_ms: 160000,
+    claimed_at_ms: 161000,
+    basis_sequence: 0,
+    disconnect_certificate: disconnectCertificate,
+  };
+
+  assert.equal(
+    (await verifyDisconnectForfeitCertificate({
+      certificate: disconnectCertificate,
+      command: { ...command, matchId },
+      players: [players[0], players[2]],
+    }, webcrypto)).valid,
+    true,
+  );
+  await assert.rejects(
+    () => verifyDisconnectForfeitCertificate({
+      certificate: {
+        ...disconnectCertificate,
+        voters: [0],
+        votes: votes.slice(0, 1),
+      },
+      command: { ...command, matchId },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /expected at least 2/,
+  );
+
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId,
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-after-disconnect-forfeit",
+  }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId,
+    players,
+    playerCount: 3,
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  });
+
+  assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
 });
 
 test("live transcript verifier validates action-fork dispute evidence", async () => {

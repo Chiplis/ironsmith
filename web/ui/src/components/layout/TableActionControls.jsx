@@ -17,7 +17,7 @@ export default function TableActionControls({
   onOpenLobby,
   deckLoadingMode = false,
   puzzleSetupMode = false,
-  }) {
+}) {
   const {
     game,
     state,

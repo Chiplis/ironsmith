@@ -270,6 +270,8 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.recompute_ui_decision()?;
         self.snapshot()
     }
@@ -307,6 +309,8 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.recompute_ui_decision()?;
         self.snapshot()
     }
@@ -365,6 +369,8 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.recompute_ui_decision()?;
         self.snapshot()
     }
@@ -379,6 +385,7 @@ impl WasmGame {
     #[wasm_bindgen(js_name = previewCryptoRequirements)]
     pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
         let checkpoint = self.capture_replay_checkpoint();
+        let pregame = self.pregame.clone();
         let pending_decision = self.pending_decision.clone();
         let pending_replay_action = self.pending_replay_action.clone();
         let pending_action_checkpoint = self.pending_action_checkpoint.clone();
@@ -406,6 +413,7 @@ impl WasmGame {
         };
 
         self.restore_replay_checkpoint(&checkpoint);
+        self.pregame = pregame;
         self.pending_decision = pending_decision;
         self.pending_replay_action = pending_replay_action;
         self.pending_action_checkpoint = pending_action_checkpoint;
@@ -482,9 +490,10 @@ impl WasmGame {
                 return Err(JsValue::from_str("hidden shuffle order contains duplicate cards"));
             }
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
-                return Err(JsValue::from_str(
-                    "cannot reseal library shuffle with non-hidden cards",
-                ));
+                return Err(JsValue::from_str(&format!(
+                    "cannot reseal library shuffle with non-hidden card {} at position {}",
+                    object_id.0, position
+                )));
             };
             if info.owner != owner {
                 return Err(JsValue::from_str("hidden shuffle library owner mismatch"));
@@ -532,6 +541,8 @@ impl WasmGame {
         let input: ApplyHiddenLibraryShuffleInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid hidden shuffle input: {e}")))?;
         self.reseal_verified_hidden_library_shuffle(input)?;
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
         self.recompute_ui_decision()?;
         self.snapshot()
     }

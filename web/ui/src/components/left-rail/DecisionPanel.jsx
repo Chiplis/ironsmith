@@ -6,12 +6,12 @@ import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
-import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
+import { currentPriorityPhaseLabel, isMainPhase, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Undo2 } from "lucide-react";
+import { Flag, Undo2 } from "lucide-react";
 
 const PRIORITY_ACTION_GROUPS = [
   { key: "play", label: "Play", kinds: ["play_land"] },
@@ -122,12 +122,15 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     holdRule,
     setHoldRule,
     multiplayer,
+    setStatus,
     startRematchSideboarding,
     readyForRematch,
+    submitMultiplayerCommand,
     playerAccentOverrides,
   } = useGame();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
+  const [surrendering, setSurrendering] = useState(false);
   const [visibleHoverGroups, setVisibleHoverGroups] = useState([]);
   const hideHoverGroupsTimerRef = useRef(null);
   const decision = state?.decision;
@@ -144,6 +147,17 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const canAct = decision && samePlayerId(decision.player, perspective);
+  const localPlayerIndex = multiplayer?.localPlayerIndex ?? perspective;
+  const localPlayer = players.find((player) =>
+    samePlayerId(player.id, localPlayerIndex)
+    || samePlayerId(player.index, localPlayerIndex)
+  ) || null;
+  const localPlayerLeft = Boolean(
+    localPlayer?.has_lost
+    || localPlayer?.hasLost
+    || localPlayer?.has_left_game
+    || localPlayer?.hasLeftGame
+  );
 
   const decisionPlayer = decision
     ? players.find((p) => samePlayerId(p.id, decision.player))
@@ -184,6 +198,22 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
+  const showSurrender = Boolean(
+    multiplayer?.matchStarted
+    && !showGameOverPanel
+    && !localPlayerLeft
+    && submitMultiplayerCommand
+  );
+  const canSurrender = Boolean(
+    showSurrender
+    && !surrendering
+    && !multiplayer?.submittingAction
+    && isPriorityDecision
+    && canAct
+    && samePlayerId(state?.active_player, localPlayerIndex)
+    && Number(stackSize || 0) === 0
+    && isMainPhase(state?.phase)
+  );
 
   const undoAvailable = !!state?.cancelable && (!decision || canAct);
   const undoDisabled = cancelling || !undoAvailable;
@@ -251,6 +281,36 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     rematchReady,
     rematchSideboarding,
     startRematchSideboarding,
+  ]);
+
+  const handleSurrender = useCallback(async () => {
+    if (!canSurrender) return;
+    const playerName = playerDisplayName(players, localPlayer) || `Player ${Number(localPlayerIndex) + 1}`;
+    if (!window.confirm(`Surrender as ${playerName}? This will be signed and broadcast to the match.`)) {
+      return;
+    }
+    setSurrendering(true);
+    try {
+      await submitMultiplayerCommand?.(
+        {
+          type: "forfeit_player",
+          player: Number(localPlayerIndex),
+          reason: "surrender",
+        },
+        `${playerName} surrendered`
+      );
+    } catch (err) {
+      setStatus?.(`Surrender failed: ${err?.message || err}`, true);
+    } finally {
+      setSurrendering(false);
+    }
+  }, [
+    canSurrender,
+    localPlayer,
+    localPlayerIndex,
+    players,
+    setStatus,
+    submitMultiplayerCommand,
   ]);
 
   return (
@@ -391,6 +451,23 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             <h3 className="m-0 text-[12px] font-bold whitespace-nowrap uppercase tracking-wider text-[#8ec4ff]">Action</h3>
             <span className="text-muted-foreground text-[11px] truncate flex-1 min-w-0">{metaText}</span>
             <div className="flex items-center gap-1">
+              {showSurrender ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-5 w-5 p-0 shrink-0 transition-all ${
+                    canSurrender
+                      ? "text-[#f7b267]/70 hover:bg-[#f7b267]/10 hover:text-[#ffd7a1] hover:shadow-[0_0_8px_rgba(247,178,103,0.15)]"
+                      : "text-muted-foreground/35 opacity-65"
+                  }`}
+                  disabled={!canSurrender}
+                  onClick={handleSurrender}
+                  title={canSurrender ? "Surrender" : "Surrender is available at sorcery speed"}
+                  aria-label={canSurrender ? "Surrender" : "Surrender unavailable"}
+                >
+                  <Flag className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"

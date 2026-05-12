@@ -328,6 +328,19 @@ function serializeMultiplayerCommand(command, _currentState) {
         ? undefined
         : String(command.match_clock_hash),
       remaining_ms: command.remaining_ms == null ? undefined : Number(command.remaining_ms),
+      disconnected_peer_id: command.disconnected_peer_id == null
+        ? undefined
+        : String(command.disconnected_peer_id),
+      disconnect_timeout_ms: command.disconnect_timeout_ms == null
+        ? undefined
+        : Number(command.disconnect_timeout_ms),
+      disconnected_at_ms: command.disconnected_at_ms == null
+        ? undefined
+        : Number(command.disconnected_at_ms),
+      auto_forfeit_at_ms: command.auto_forfeit_at_ms == null
+        ? undefined
+        : Number(command.auto_forfeit_at_ms),
+      disconnect_certificate: command.disconnect_certificate,
     };
   }
 
@@ -413,6 +426,19 @@ function resolveSyncedCommand(command) {
         ? undefined
         : String(command.match_clock_hash),
       remaining_ms: command.remaining_ms == null ? undefined : Number(command.remaining_ms),
+      disconnected_peer_id: command.disconnected_peer_id == null
+        ? undefined
+        : String(command.disconnected_peer_id),
+      disconnect_timeout_ms: command.disconnect_timeout_ms == null
+        ? undefined
+        : Number(command.disconnect_timeout_ms),
+      disconnected_at_ms: command.disconnected_at_ms == null
+        ? undefined
+        : Number(command.disconnected_at_ms),
+      auto_forfeit_at_ms: command.auto_forfeit_at_ms == null
+        ? undefined
+        : Number(command.auto_forfeit_at_ms),
+      disconnect_certificate: command.disconnect_certificate,
     };
   }
 
@@ -1841,6 +1867,7 @@ export function GameProvider({ children }) {
       updateRematchDecks,
       readyForRematch,
       exportAuditTranscript,
+      submitMultiplayerCommand,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     }),
@@ -1864,6 +1891,7 @@ export function GameProvider({ children }) {
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
       startRematchSideboarding, updateRematchDecks, readyForRematch,
       exportAuditTranscript,
+      submitMultiplayerCommand,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     ]

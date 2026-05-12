@@ -4,6 +4,7 @@ import {
   auditStateHash,
   actionQuorumThreshold,
   buildActionForkDisputeEvidence,
+  buildSignedDisconnectForfeitVote,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
   buildDeckSlotOpening,
@@ -15,6 +16,8 @@ import {
   CURRENT_AUDIT_MAX_PLAYERS,
   CURRENT_AUDIT_MIN_PLAYERS,
   CURRENT_AUDIT_PROTOCOL_VERSION,
+  DISCONNECT_AUTO_FORFEIT_MS,
+  DISCONNECT_FORFEIT_REASON,
   createAuditEncryptionKey,
   createAuditSessionKey,
   decryptPrivateAuditPayload,
@@ -40,6 +43,8 @@ import {
   verifyActionQuorumVote,
   verifyAuditPayload,
   verifyCardOpeningAgainstManifest,
+  verifyDisconnectForfeitCertificate,
+  verifyDisconnectForfeitVote,
   verifySignedMatchGenesis,
   verifySignedResyncEnvelope,
 } from "@/lib/multiplayer-audit";
@@ -464,6 +469,58 @@ function isActionTimeoutForfeitCommand(command) {
     );
 }
 
+function isDisconnectTimeoutForfeitCommand(command) {
+  return isForfeitCommand(command)
+    && String(command?.reason || "") === DISCONNECT_FORFEIT_REASON;
+}
+
+function isSelfForfeitCommand(command, actorIndex) {
+  return isForfeitCommand(command)
+    && !isActionTimeoutForfeitCommand(command)
+    && !isDisconnectTimeoutForfeitCommand(command)
+    && Number(command.player) === Number(actorIndex);
+}
+
+function normalizedTurnToken(value) {
+  return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function isMainPhaseName(phase) {
+  const normalized = normalizedTurnToken(phase);
+  return (
+    normalized === "firstmain"
+    || normalized === "firstmainphase"
+    || normalized === "nextmain"
+    || normalized === "nextmainphase"
+    || normalized === "secondmain"
+    || normalized === "secondmainphase"
+  );
+}
+
+function isSorcerySpeedForfeitState(uiState, playerIndex) {
+  const player = Number(playerIndex);
+  const decision = uiState?.decision || null;
+  return (
+    decision?.kind === "priority"
+    && Number(decision.player) === player
+    && Number(uiState?.active_player ?? uiState?.activePlayer ?? player) === player
+    && Number(uiState?.stack_size || 0) === 0
+    && isMainPhaseName(uiState?.phase)
+  );
+}
+
+function disconnectCertificateFromCommand(command) {
+  const certificate = command?.disconnect_certificate || command?.disconnectCertificate || null;
+  return certificate && typeof certificate === "object" ? certificate : null;
+}
+
+function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
+  const count = Math.max(0, Number(nonTargetPlayerCount || 0));
+  if (count <= 0) return 0;
+  if (count === 1) return 1;
+  return 2;
+}
+
 function timeoutVotePayload({
   matchId,
   basisSequence,
@@ -745,6 +802,65 @@ function cryptoRequirementsFromState(state) {
     : Array.isArray(state?.cryptoRequirements)
       ? state.cryptoRequirements
       : [];
+}
+
+function priorityActionKindForCommand(command, uiState = null) {
+  const direct = String(command?.action_ref?.kind || command?.actionRef?.kind || "").trim();
+  if (direct) return direct;
+  const index = Number(command?.action_index ?? command?.actionIndex);
+  const actions = uiState?.decision?.actions;
+  if (!Number.isSafeInteger(index) || !Array.isArray(actions)) return "";
+  return String(actions[index]?.action_ref?.kind || actions[index]?.actionRef?.kind || "").trim();
+}
+
+function isPregameNonShuffleCommand(command, uiState = null) {
+  const kind = priorityActionKindForCommand(command, uiState);
+  const decisionActions = Array.isArray(uiState?.decision?.actions)
+    ? uiState.decision.actions
+    : [];
+  const decisionActionKinds = new Set(decisionActions.map((action) =>
+    String(action?.action_ref?.kind || action?.actionRef?.kind || "").trim()
+  ));
+  const decisionActionLabels = new Set(decisionActions.map((action) =>
+    String(action?.label || "").trim().toLowerCase()
+  ));
+  const openingHandDecision =
+    (
+      decisionActionKinds.has("keep_opening_hand")
+      && decisionActionKinds.has("take_mulligan")
+    )
+    || (
+      decisionActionLabels.has("keep hand")
+      && decisionActionLabels.has("mulligan")
+    );
+  if (
+    command?.type === "priority_action"
+    && (
+      kind === "keep_opening_hand"
+      || kind === "continue_pregame"
+      || kind === "begin_game"
+      || (openingHandDecision && kind !== "take_mulligan")
+    )
+  ) {
+    return true;
+  }
+  const decision = uiState?.decision || null;
+  const description = String(decision?.description || decision?.context_text || "").toLowerCase();
+  if (
+    (command?.type === "select_objects" || command?.type === "select_options")
+    && /bottom of (your|their|his|her|its)?\s*library/.test(description)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function filterCryptoRequirementsForCommand(command, uiState, requirements = []) {
+  const list = Array.isArray(requirements) ? requirements : [];
+  if (!isPregameNonShuffleCommand(command, uiState)) return list;
+  return list.filter((requirement) =>
+    String(requirement?.type || requirement?.requirement_type || "") !== "verifiable_shuffle"
+  );
 }
 
 function openingMatchesRequirement(opening, requirement) {
@@ -1302,6 +1418,8 @@ function markHostPeerDisconnected(players, hostPeerId, lobbyId, fallbackHostInde
             ? createOfflinePeerId(stableLobbyId, player.index)
             : player.peerId,
         connected: false,
+        disconnectedAtMs: Date.now(),
+        autoForfeitAtMs: Date.now() + DISCONNECT_AUTO_FORFEIT_MS,
       };
     })
   );
@@ -1383,6 +1501,8 @@ function toPublicPlayer(player) {
     deckAuditManifest: publicDeckManifest(player.deckAuditManifest),
     ziffleKey: player.ziffleKey || null,
     connected: player.connected !== false,
+    disconnectedAtMs: player.disconnectedAtMs == null ? undefined : Number(player.disconnectedAtMs),
+    autoForfeitAtMs: player.autoForfeitAtMs == null ? undefined : Number(player.autoForfeitAtMs),
     ready: Boolean(player.ready),
     deckCount: Number(player.deckCount || 0),
     sideboardCount: Number(player.sideboardCount || 0),
@@ -1404,20 +1524,62 @@ function toLobbyPlayers(players) {
   return reindexPlayers(players).map(toLobbyPlayer);
 }
 
+function markPlayerConnectionState(players, peerId, connected, observedAtMs = Date.now()) {
+  const targetPeerId = String(peerId || "").trim();
+  return reindexPlayers((players || []).map((player) => {
+    if (String(player?.peerId || "").trim() !== targetPeerId) return player;
+    if (connected) {
+      const {
+        disconnectedAtMs: _disconnectedAtMs,
+        autoForfeitAtMs: _autoForfeitAtMs,
+        disconnectRemainingMs: _disconnectRemainingMs,
+        ...rest
+      } = player;
+      return {
+        ...rest,
+        connected: true,
+      };
+    }
+    const existingStartedAt = Number(player.disconnectedAtMs);
+    const disconnectedAtMs = Number.isFinite(existingStartedAt) && existingStartedAt > 0
+      ? existingStartedAt
+      : Math.max(0, Math.floor(Number(observedAtMs || Date.now())));
+    const autoForfeitAtMs = disconnectedAtMs + DISCONNECT_AUTO_FORFEIT_MS;
+    return {
+      ...player,
+      connected: false,
+      disconnectedAtMs,
+      autoForfeitAtMs,
+      disconnectRemainingMs: Math.max(0, autoForfeitAtMs - Date.now()),
+    };
+  }));
+}
+
 function buildConnectionWarnings(session) {
   if (!session || session.mode === "idle") return [];
   const warnings = [];
   const localPeerId = String(session.localPeerId || "").trim();
   const hostPeerId = String(session.hostPeerId || "").trim();
+  const nowMs = Date.now();
   for (const player of session.players || []) {
     if (player.connected !== false) continue;
     const peerId = String(player.peerId || "").trim();
+    const disconnectedAtMs = Math.max(0, Math.floor(Number(player.disconnectedAtMs || nowMs)));
+    const autoForfeitAtMs = Math.max(
+      disconnectedAtMs,
+      Math.floor(Number(player.autoForfeitAtMs || disconnectedAtMs + DISCONNECT_AUTO_FORFEIT_MS))
+    );
+    const remainingMs = Math.max(0, autoForfeitAtMs - nowMs);
     warnings.push({
       kind: peerId === hostPeerId ? "host_disconnected" : "peer_disconnected",
       playerIndex: Number(player.index || 0),
       peerId,
       name: sanitizePlayerName(player.name, `Player ${Number(player.index || 0) + 1}`),
       local: peerId === localPeerId,
+      disconnectedAtMs,
+      autoForfeitAtMs,
+      remainingMs,
+      expired: remainingMs <= 0,
       message:
         peerId === hostPeerId
           ? `${sanitizePlayerName(player.name, "Host")} disconnected`
@@ -1432,9 +1594,11 @@ function withConnectionWarnings(session) {
     ...session,
     players: Array.isArray(session?.players) ? session.players : [],
   };
+  const connectionWarnings = buildConnectionWarnings(next);
   return {
     ...next,
-    connectionWarnings: buildConnectionWarnings(next),
+    connectionWarnings,
+    disconnectTimeouts: connectionWarnings,
   };
 }
 
@@ -1628,6 +1792,7 @@ export function usePeerLobby({
     lastSequence: 0,
   });
   const timeoutClaimInFlightRef = useRef("");
+  const disconnectForfeitInFlightRef = useRef(new Set());
   const peerServerLabelRef = useRef(describePeerServer(initialPeerOptions));
   const hostMessageQueueRef = useRef(Promise.resolve());
   const clientMessageQueueRef = useRef(Promise.resolve());
@@ -4017,12 +4182,22 @@ export function usePeerLobby({
     }
   }, []);
 
-  const broadcastMatchPresence = useCallback((peerId, connected) => {
+  const broadcastMatchPresence = useCallback((peerId, connected, details = {}) => {
+    const player = (multiplayerRef.current.players || []).find((entry) =>
+      String(entry?.peerId || "") === String(peerId || "")
+    );
     broadcastToClients({
       type: "player_presence",
       protocolVersion: PROTOCOL_VERSION,
       peerId,
+      playerIndex: player?.index == null ? undefined : Number(player.index),
       connected: Boolean(connected),
+      disconnectedAtMs: details.disconnectedAtMs == null
+        ? undefined
+        : Number(details.disconnectedAtMs),
+      autoForfeitAtMs: details.autoForfeitAtMs == null
+        ? undefined
+        : Number(details.autoForfeitAtMs),
     });
   }, [broadcastToClients]);
 
@@ -4237,6 +4412,7 @@ export function usePeerLobby({
     const runtime = matchClockRef.current;
     const activePlayer = snapshot.activePlayerIndex;
     const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
+    const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
     const baseRemaining = normalizeMatchClockRemaining(
       runtime.baseRemainingMsByPlayer,
       runtime.playerCount,
@@ -4250,7 +4426,9 @@ export function usePeerLobby({
       );
       elapsedMs = isTimeoutForfeit
         ? Number(baseRemaining[activePlayer] || 0)
-        : Math.min(Number(baseRemaining[activePlayer] || 0), observedElapsed);
+        : isDisconnectForfeit
+          ? 0
+          : Math.min(Number(baseRemaining[activePlayer] || 0), observedElapsed);
     }
     const clock = {
       type: MATCH_CLOCK_AUDIT_TYPE,
@@ -4258,7 +4436,11 @@ export function usePeerLobby({
       matchId: currentAuditMatchId(),
       seq: Number(seq),
       actor: Number(actorIndex),
-      reason: isTimeoutForfeit ? "timeout_claim" : "action",
+      reason: isTimeoutForfeit
+        ? "timeout_claim"
+        : isDisconnectForfeit
+          ? "disconnect_timeout_claim"
+          : "action",
       policy: matchClockPolicyPayload(runtime.policy),
       activePlayer: activePlayer == null ? null : Number(activePlayer),
       elapsedMs,
@@ -4590,6 +4772,54 @@ export function usePeerLobby({
     }
   }
 
+  async function answerDisconnectForfeitVoteRequest(conn, message) {
+    try {
+      const requester = playerIndexForPeerId(conn?.peer);
+      const localVoter = resolveLocalPlayerIndex(multiplayerRef.current);
+      const forfeitedPlayer = normalizePlayerIndex(message?.forfeitedPlayer);
+      const basisSequence = Number(message?.basisSequence);
+      if (requester == null) {
+        throw new Error("Disconnect forfeit requester is not a match player");
+      }
+      if (normalizePlayerIndex(message?.requesterIndex) !== requester) {
+        throw new Error("Disconnect forfeit requester index does not match the peer");
+      }
+      if (forfeitedPlayer == null) {
+        throw new Error("Disconnect forfeit request targets an invalid player");
+      }
+      if (localVoter == null || Number(localVoter) === Number(forfeitedPlayer)) {
+        throw new Error("Disconnected player cannot vote on their own disconnect forfeit");
+      }
+      if (String(message?.matchId || "") !== currentAuditMatchId()) {
+        throw new Error("Disconnect forfeit vote request belongs to a different match");
+      }
+      if (basisSequence !== Number(multiplayerRef.current.lastAppliedSequence || 0)) {
+        throw new Error("Disconnect forfeit vote request is not based on the local transcript head");
+      }
+      const vote = await signDisconnectForfeitVoteForCommand({
+        type: "forfeit_player",
+        player: forfeitedPlayer,
+        reason: DISCONNECT_FORFEIT_REASON,
+        basis_sequence: basisSequence,
+        disconnected_peer_id: String(message?.forfeitedPeerId || ""),
+        disconnect_timeout_ms: Number(message?.disconnectTimeoutMs || DISCONNECT_AUTO_FORFEIT_MS),
+      });
+      safeSend(conn, {
+        type: "disconnect_forfeit_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        vote,
+      });
+    } catch (err) {
+      safeSend(conn, {
+        type: "disconnect_forfeit_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        error: toErrorMessage(err),
+      });
+    }
+  }
+
   async function collectTimeoutCertificateForCommand(command) {
     if (!isActionTimeoutForfeitCommand(command)) return null;
     const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
@@ -4665,6 +4895,192 @@ export function usePeerLobby({
       .filter((player) => !forfeited.has(Number(player.index)));
   }
 
+  function disconnectForfeitRoster(forfeitedPlayer) {
+    const target = Number(forfeitedPlayer);
+    return actionQuorumRoster()
+      .filter((player) => Number(player.index) !== target);
+  }
+
+  function playerForDisconnectForfeit(forfeitedPlayer) {
+    const target = Number(forfeitedPlayer);
+    return reindexPlayers(multiplayerRef.current.players || [])
+      .find((player) => Number(player.index) === target)
+      || reindexPlayers(matchStartPayloadRef.current?.players || [])
+        .find((player) => Number(player.index) === target)
+      || null;
+  }
+
+  async function signDisconnectForfeitVoteForCommand(command) {
+    const { keyPair } = await ensureAuditIdentity();
+    const voter = resolveLocalPlayerIndex(multiplayerRef.current);
+    const forfeitedPlayer = normalizePlayerIndex(command?.player);
+    if (voter == null || forfeitedPlayer == null || Number(voter) === Number(forfeitedPlayer)) {
+      throw new Error("Disconnected player cannot sign their own disconnect forfeit");
+    }
+    const target = playerForDisconnectForfeit(forfeitedPlayer);
+    const forfeitedPeerId = String(command?.disconnected_peer_id || target?.peerId || "").trim();
+    const disconnectTimeoutMs = Math.max(
+      0,
+      Math.floor(Number(command?.disconnect_timeout_ms || DISCONNECT_AUTO_FORFEIT_MS))
+    );
+    const disconnectedAtMs = Math.max(
+      0,
+      Math.floor(Number(target?.disconnectedAtMs || command?.disconnected_at_ms || 0))
+    );
+    if (!forfeitedPeerId) {
+      throw new Error("Disconnect forfeit is missing the disconnected peer id");
+    }
+    if (!target || target.connected !== false) {
+      throw new Error("Player is not currently marked disconnected");
+    }
+    if (!disconnectedAtMs) {
+      throw new Error("Disconnect forfeit is missing a disconnect observation timestamp");
+    }
+    const eligibleAtMs = disconnectedAtMs + disconnectTimeoutMs;
+    const signedAtMs = Date.now();
+    if (signedAtMs + MATCH_CLOCK_CLAIM_SKEW_MS < eligibleAtMs) {
+      throw new Error("Disconnect timeout has not elapsed");
+    }
+    return buildSignedDisconnectForfeitVote({
+      keyPair,
+      matchId: currentAuditMatchId(),
+      basisSequence: Number(command?.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      forfeitedPlayer,
+      forfeitedPeerId,
+      disconnectTimeoutMs,
+      disconnectedAtMs,
+      eligibleAtMs,
+      signedAtMs,
+      voter,
+    });
+  }
+
+  async function validateDisconnectForfeitCommand(command, options = {}) {
+    if (!isDisconnectTimeoutForfeitCommand(command)) return;
+    const forfeitedPlayer = normalizePlayerIndex(command.player);
+    const actorIndex = normalizePlayerIndex(options.actorIndex);
+    if (forfeitedPlayer == null) {
+      throw new Error("Disconnect forfeit targets an invalid player");
+    }
+    if (actorIndex != null && actorIndex === forfeitedPlayer) {
+      throw new Error("Disconnected player cannot claim their own disconnect forfeit");
+    }
+    const expectedBasisSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    if (Number(command.basis_sequence ?? expectedBasisSequence) !== expectedBasisSequence) {
+      throw new Error("Disconnect forfeit is not based on the local transcript head");
+    }
+    const certificate = disconnectCertificateFromCommand(command);
+    const roster = disconnectForfeitRoster(forfeitedPlayer);
+    await verifyDisconnectForfeitCertificate({
+      certificate,
+      command: {
+        ...command,
+        matchId: currentAuditMatchId(),
+      },
+      players: roster,
+      threshold: disconnectForfeitVoteThreshold(roster.length),
+    });
+  }
+
+  async function collectDisconnectForfeitCertificateForCommand(command) {
+    if (!isDisconnectTimeoutForfeitCommand(command)) return null;
+    const forfeitedPlayer = normalizePlayerIndex(command.player);
+    if (forfeitedPlayer == null) {
+      throw new Error("Disconnect forfeit targets an invalid player");
+    }
+    const roster = disconnectForfeitRoster(forfeitedPlayer);
+    const threshold = disconnectForfeitVoteThreshold(roster.length);
+    if (threshold <= 0) return null;
+
+    const target = playerForDisconnectForfeit(forfeitedPlayer);
+    const expected = {
+      matchId: currentAuditMatchId(),
+      basisSequence: Number(command.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      forfeitedPlayer,
+      forfeitedPeerId: String(command.disconnected_peer_id || target?.peerId || ""),
+      disconnectTimeoutMs: Math.max(
+        0,
+        Math.floor(Number(command.disconnect_timeout_ms || DISCONNECT_AUTO_FORFEIT_MS))
+      ),
+    };
+    const votes = [];
+    const seen = new Set();
+    const addVote = async (vote) => {
+      const voter = await verifyDisconnectForfeitVote({
+        vote,
+        expected,
+        players: roster,
+      });
+      if (seen.has(voter)) return;
+      seen.add(voter);
+      votes.push(cloneMultiplayerPayload(vote));
+    };
+
+    const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (roster.some((player) => Number(player.index) === Number(localPlayer))) {
+      await addVote(await signDisconnectForfeitVoteForCommand({
+        ...command,
+        disconnected_peer_id: expected.forfeitedPeerId,
+        disconnect_timeout_ms: expected.disconnectTimeoutMs,
+      }));
+    }
+
+    if (votes.length < threshold) {
+      ensureDirectPeerConnections(roster);
+      const pending = roster
+        .filter((player) => Number(player.index) !== Number(localPlayer))
+        .map(async (player) => {
+          if (!player?.peerId) {
+            throw new Error(`Missing peer route for disconnect voter ${Number(player.index) + 1}`);
+          }
+          const conn = await waitForZiffleRoute(player.peerId);
+          const requestId = makeZiffleRequestId("disconnect-forfeit-vote");
+          const waiter = waitForTimeoutVote(requestId);
+          safeSend(conn, {
+            type: "disconnect_forfeit_vote_request",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId,
+            ...expected,
+            requesterIndex: localPlayer,
+          });
+          return waiter;
+        });
+      const unsettled = new Set(pending);
+      while (votes.length < threshold && unsettled.size > 0) {
+        const settled = await Promise.race([...unsettled].map((promise) =>
+          promise.then(
+            (vote) => ({ promise, vote }),
+            (err) => ({ promise, err })
+          )
+        ));
+        unsettled.delete(settled.promise);
+        if (settled.err) continue;
+        await addVote(settled.vote);
+      }
+      for (const promise of unsettled) {
+        promise.catch(() => {});
+      }
+    }
+
+    if (votes.length < threshold) {
+      throw new Error(
+        `Disconnect forfeit certificate has ${votes.length} vote(s), expected at least ${threshold}`
+      );
+    }
+    votes.sort((left, right) => Number(left.voter) - Number(right.voter));
+    return {
+      type: "ironsmith-disconnect-forfeit-v1",
+      matchId: expected.matchId,
+      basisSequence: expected.basisSequence,
+      forfeitedPlayer: expected.forfeitedPlayer,
+      forfeitedPeerId: expected.forfeitedPeerId,
+      disconnectTimeoutMs: expected.disconnectTimeoutMs,
+      threshold,
+      voters: votes.map((vote) => Number(vote.voter)),
+      votes,
+    };
+  }
+
   function actionQuorumThresholdForMessage(message, players = actionQuorumRoster(message)) {
     const forfeited = forfeitedPlayersForQuorum();
     const activePlayerCount = reindexPlayers(
@@ -4676,6 +5092,7 @@ export function usePeerLobby({
     if (isForfeitCommand(message?.command)) {
       const target = Number(message.command.player);
       if (Number(message?.actorIndex) === target) return 0;
+      if (isDisconnectTimeoutForfeitCommand(message.command)) return 0;
       return players.length;
     }
     return actionQuorumThreshold(players.length);
@@ -4921,6 +5338,91 @@ export function usePeerLobby({
         actionCryptoRequirementsRef.current.delete(existingSeq);
       }
     }
+  }
+
+  function cryptoRequirementReplayKey(requirement) {
+    if (!requirement || typeof requirement !== "object") return "";
+    return canonicalMultiplayerPayload({
+      id: requirement.id ?? null,
+      type: requirement.type ?? requirement.requirement_type ?? null,
+      owner: requirement.owner ?? null,
+      viewer: requirement.viewer ?? null,
+      zone: requirement.zone ?? null,
+      slot: requirement.slot ?? null,
+      objectId: requirement.objectId ?? requirement.object_id ?? null,
+      commitment: requirement.commitment ?? null,
+      count: requirement.count ?? null,
+      from: requirement.from ?? null,
+      to: requirement.to ?? null,
+      beforeOrder: normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order),
+      afterOrder: normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order),
+      randomCountBefore: requirement.randomCountBefore ?? requirement.random_count_before ?? null,
+      randomCountAfter: requirement.randomCountAfter ?? requirement.random_count_after ?? null,
+      visibility: requirement.visibility ?? null,
+      reason: requirement.reason ?? null,
+    });
+  }
+
+  function freshCryptoRequirementsForSequence(seq, requirements = []) {
+    const sequence = Number(seq);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+      return Array.isArray(requirements) ? requirements : [];
+    }
+    const previous = new Set();
+    for (const [existingSeq, existingRequirements] of actionCryptoRequirementsRef.current.entries()) {
+      if (Number(existingSeq) >= sequence) continue;
+      for (const requirement of existingRequirements || []) {
+        const key = cryptoRequirementReplayKey(requirement);
+        if (key) previous.add(key);
+      }
+    }
+    return (Array.isArray(requirements) ? requirements : []).filter((requirement) => {
+      const key = cryptoRequirementReplayKey(requirement);
+      return !key || !previous.has(key);
+    });
+  }
+
+  function shuffleProofReplayKey(proof) {
+    if (!proof || typeof proof !== "object") return "";
+    return canonicalMultiplayerPayload({
+      requirementId: proof.requirementId ?? proof.requirement_id ?? null,
+      owner: proof.owner ?? null,
+      zone: proof.zone ?? "library",
+      deckHash: proof.deckHash ?? proof.deck_hash ?? null,
+      context: proof.context ?? null,
+      keyContext: proof.keyContext ?? proof.key_context ?? null,
+      beforeOrder: normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order),
+      afterOrder: normalizeShuffleOrder(proof.afterOrder ?? proof.after_order),
+    });
+  }
+
+  function shuffleProofAlreadyAppliedBefore(seq, proof) {
+    const sequence = Number(seq);
+    const key = shuffleProofReplayKey(proof);
+    if (!key || !Number.isSafeInteger(sequence) || sequence <= 0) return false;
+    return (actionHistoryRef.current || []).some((entry) =>
+      Number(entry?.seq) < sequence
+      && (entry?.audit?.shuffleProofs || []).some((existing) =>
+        shuffleProofReplayKey(existing) === key
+      )
+    );
+  }
+
+  function shuffleProofRequirementAlreadyRecordedBefore(seq, proof) {
+    const sequence = Number(seq);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) return false;
+    const proofAfterOrder = normalizeShuffleOrder(proof?.afterOrder ?? proof?.after_order);
+    return [...actionCryptoRequirementsRef.current.entries()].some(([existingSeq, requirements]) =>
+      Number(existingSeq) < sequence
+      && (requirements || []).some((requirement) =>
+        String(requirement?.type || requirement?.requirement_type || "") === "verifiable_shuffle"
+        && shuffleProofMatchesRequirement(proof, requirement)
+        && sameShuffleOrder(
+          proofAfterOrder,
+          requirement.afterOrder ?? requirement.after_order
+        )
+      )
+    );
   }
 
   function actionCryptoRequirementsForSequence(seq) {
@@ -5194,7 +5696,12 @@ export function usePeerLobby({
         ? (await gameRef.current.uiState())?.decision?.player
         : null;
       const isTimeoutForfeit = isActionTimeoutForfeitCommand(message.command);
-      if (isForfeitCommand(message.command) && !isTimeoutForfeit) {
+      const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(message.command);
+      const isSelfForfeit = isSelfForfeitCommand(message.command, message.actorIndex);
+      if (isSelfForfeit && !isSorcerySpeedForfeitState(liveStateForClock, message.actorIndex)) {
+        throw new Error("Surrender is only available at sorcery speed");
+      }
+      if (isForfeitCommand(message.command) && !isTimeoutForfeit && !isDisconnectForfeit) {
         if (Number(message.command.player) !== Number(message.actorIndex)) {
           throw new Error("A player can only forfeit themselves");
         }
@@ -5202,6 +5709,10 @@ export function usePeerLobby({
       if (isTimeoutForfeit) {
         await validateTimeoutForfeitCommand(message.command, liveStateForClock, {
           skewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+        });
+      } else if (isDisconnectForfeit) {
+        await validateDisconnectForfeitCommand(message.command, {
+          actorIndex: message.actorIndex,
         });
       } else if (
         expectedActor !== null
@@ -5216,7 +5727,14 @@ export function usePeerLobby({
         message.command,
         message.audit?.openings || []
       );
-      const cryptoRequirements = await previewRequirementsForCommand(localCommand);
+      const cryptoRequirements = filterCryptoRequirementsForCommand(
+        localCommand,
+        liveStateForClock,
+        freshCryptoRequirementsForSequence(
+          nextSequence,
+          await previewRequirementsForCommand(localCommand)
+        )
+      );
       rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
       await verifyShuffleProofsForRequirements(
         cryptoRequirements,
@@ -5237,13 +5755,29 @@ export function usePeerLobby({
         sequence: nextSequence,
       });
       await revealAuditOpenings(message.audit?.openings || [], { timing: "post" });
-      const appliedCryptoRequirements = cryptoRequirementsFromState(appliedState);
+      const appliedCryptoRequirements = filterCryptoRequirementsForCommand(
+        localCommand,
+        liveStateForClock,
+        freshCryptoRequirementsForSequence(
+          nextSequence,
+          cryptoRequirementsFromState(appliedState)
+        )
+      );
       rememberActionCryptoRequirements(nextSequence, appliedCryptoRequirements);
       await verifyShuffleProofsForRequirements(
         appliedCryptoRequirements,
         message.audit?.shuffleProofs || []
       );
-      await applyVerifiedShuffleProofs(message.audit?.shuffleProofs || []);
+      const actionCryptoRequirements = [...cryptoRequirements, ...appliedCryptoRequirements];
+      const actionShuffleProofs = (message.audit?.shuffleProofs || []).filter((proof) =>
+        !shuffleProofAlreadyAppliedBefore(nextSequence, proof)
+        && !shuffleProofRequirementAlreadyRecordedBefore(nextSequence, proof)
+        &&
+        actionCryptoRequirements.some((requirement) =>
+          shuffleProofMatchesRequirement(proof, requirement)
+        )
+      );
+      await applyVerifiedShuffleProofs(actionShuffleProofs);
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: appliedCryptoRequirements,
         audit: message.audit,
@@ -5251,6 +5785,10 @@ export function usePeerLobby({
       await revealLocalZiffleHand(matchStartPayloadRef.current, {
         skipIfHandUnchanged: true,
         stateHint: appliedState,
+        command: localCommand,
+        seq: nextSequence,
+        actorIndex: message.actorIndex,
+        requirements: actionCryptoRequirements,
       });
       await verifyCurrentPublicCheckpointHash(
         message.audit?.publicCheckpointHash,
@@ -5519,6 +6057,21 @@ export function usePeerLobby({
       if (type === "public_open" || type === "private_open") {
         const position = zifflePositionFromRequirement(requirement);
         if (position != null) exactPositions.add(position);
+      } else if (type === "verifiable_shuffle" && zone === "library") {
+        const afterOrder = normalizeShuffleOrder(requirement?.afterOrder ?? requirement?.after_order);
+        const libraryPrefixCount = Number(requirement?.count);
+        if (
+          Number.isSafeInteger(deckCount)
+          && deckCount > 0
+          && afterOrder.length === deckCount
+          && Number.isSafeInteger(libraryPrefixCount)
+          && libraryPrefixCount >= 0
+          && libraryPrefixCount <= afterOrder.length
+        ) {
+          for (let position = libraryPrefixCount; position < afterOrder.length; position += 1) {
+            exactPositions.add(position);
+          }
+        }
       } else if (
         (type === "public_view_window" || type === "private_view_window")
         && zone === "library"
@@ -5539,44 +6092,162 @@ export function usePeerLobby({
     );
   }
 
-  async function ziffleRevealAuthorizedByAction(message, requester, owner, positions, ceremony) {
+  function compactCryptoRequirementForDiagnostics(requirement) {
+    if (!requirement || typeof requirement !== "object") return null;
+    const beforeOrder = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
+    const afterOrder = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
+    return {
+      type: ziffleRequirementType(requirement),
+      owner: Number(requirement.owner),
+      viewer: ziffleRequirementViewer(requirement),
+      zone: ziffleRequirementZone(requirement),
+      count: requirement.count == null ? null : Number(requirement.count),
+      slot: requirement.slot == null ? null : Number(requirement.slot),
+      position: zifflePositionFromRequirement(requirement),
+      beforeOrderLength: beforeOrder.length,
+      afterOrderLength: afterOrder.length,
+      afterOrderFirst: afterOrder.length > 0 ? afterOrder[0] : null,
+      afterOrderLast: afterOrder.length > 0 ? afterOrder[afterOrder.length - 1] : null,
+    };
+  }
+
+  function compactActionAuthorizationForDiagnostics(auth) {
+    if (!auth || typeof auth !== "object") return null;
+    return {
+      matchId: String(auth.matchId || ""),
+      seq: Number(auth.seq || 0),
+      requesterIndex: auth.requesterIndex == null ? null : Number(auth.requesterIndex),
+      actorIndex: auth.actorIndex == null ? null : Number(auth.actorIndex),
+      commandType: String(auth.command?.type || ""),
+      actionKind: String(auth.command?.action_ref?.kind || ""),
+      requirements: (Array.isArray(auth.requirements) ? auth.requirements : [])
+        .map(compactCryptoRequirementForDiagnostics)
+        .filter(Boolean),
+    };
+  }
+
+  function actionAuthorizationRequirementMatchesPreview(previewed, attached) {
+    if (!previewed || !attached) return false;
+    const type = ziffleRequirementType(previewed);
+    if (!type || type !== ziffleRequirementType(attached)) return false;
+    if (Number(previewed.owner) !== Number(attached.owner)) return false;
+    if (ziffleRequirementZone(previewed) !== ziffleRequirementZone(attached)) return false;
+    if (type !== "verifiable_shuffle") return false;
+
+    const previewBefore = normalizeShuffleOrder(previewed.beforeOrder ?? previewed.before_order);
+    const attachedBefore = normalizeShuffleOrder(attached.beforeOrder ?? attached.before_order);
+    if (previewBefore.length > 0 && attachedBefore.length > 0 && !sameShuffleOrder(previewBefore, attachedBefore)) {
+      return false;
+    }
+
+    const previewAfter = normalizeShuffleOrder(previewed.afterOrder ?? previewed.after_order);
+    const attachedAfter = normalizeShuffleOrder(attached.afterOrder ?? attached.after_order);
+    if (previewAfter.length > 0 && attachedAfter.length > 0 && !sameShuffleOrder(previewAfter, attachedAfter)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function enrichPreviewedRequirementsFromAuthorization(previewedRequirements = [], attachedRequirements = []) {
+    return (previewedRequirements || []).map((previewed) => {
+      const attached = (attachedRequirements || []).find((candidate) =>
+        actionAuthorizationRequirementMatchesPreview(previewed, candidate)
+      );
+      if (!attached) return previewed;
+      return {
+        ...previewed,
+        count: previewed.count ?? attached.count,
+        beforeOrder: previewed.beforeOrder ?? attached.beforeOrder,
+        before_order: previewed.before_order ?? attached.before_order,
+        afterOrder: previewed.afterOrder ?? attached.afterOrder,
+        after_order: previewed.after_order ?? attached.after_order,
+      };
+    });
+  }
+
+  function playerLibrarySizeFromState(stateLike, owner) {
+    const player = (stateLike?.players || []).find((candidate) =>
+      Number(candidate?.id ?? candidate?.index) === Number(owner)
+    );
+    if (!player) return null;
+    const librarySize = Number(player.librarySize ?? player.library_size);
+    if (Number.isSafeInteger(librarySize) && librarySize >= 0) return librarySize;
+    if (Array.isArray(player.library)) return player.library.length;
+    return null;
+  }
+
+  function attachedMulliganShuffleRequirements(auth, liveState, owner) {
+    if (String(auth?.command?.action_ref?.kind || "") !== "take_mulligan") return [];
+    const librarySize = playerLibrarySizeFromState(liveState, owner);
+    if (!Number.isSafeInteger(librarySize) || librarySize < 0) return [];
+    return (Array.isArray(auth.requirements) ? auth.requirements : []).filter((requirement) =>
+      ziffleRequirementType(requirement) === "verifiable_shuffle"
+      && Number(requirement?.owner) === Number(owner)
+      && ziffleRequirementZone(requirement) === "library"
+      && Number(requirement?.count) === librarySize
+    );
+  }
+
+  async function ziffleRevealAuthorizedByAction(message, requester, owner, positions, ceremony, debug = null) {
     const auth = message?.actionAuthorization;
-    if (!auth || typeof auth !== "object") return false;
-    if (String(auth.matchId || "") !== String(currentAuditMatchId())) return false;
-    if (Number(auth.requesterIndex) !== Number(requester)) return false;
-    if (Number(requester) !== Number(owner)) return false;
+    const reject = (reason) => {
+      if (debug) debug.reason = reason;
+      return false;
+    };
+    if (!auth || typeof auth !== "object") return reject("missing_action_authorization");
+    if (String(auth.matchId || "") !== String(currentAuditMatchId())) return reject("match_id_mismatch");
+    if (Number(auth.requesterIndex) !== Number(requester)) return reject("requester_index_mismatch");
+    if (Number(requester) !== Number(owner)) return reject("requester_is_not_owner");
     const sequence = Number(auth.seq);
-    if (!Number.isSafeInteger(sequence) || sequence <= 0) return false;
-    if (!auth.command || typeof auth.command !== "object") return false;
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) return reject("invalid_sequence");
+    if (!auth.command || typeof auth.command !== "object") return reject("missing_command");
     const currentSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
     const expectedSeq = currentSequence + 1;
+    if (debug) {
+      debug.sequence = sequence;
+      debug.currentSequence = currentSequence;
+      debug.expectedSeq = expectedSeq;
+    }
 
     if (sequence <= currentSequence) {
       const applied = actionHistoryEntryForSequence(sequence);
-      if (!applied) return false;
+      if (!applied) return reject("missing_applied_action");
       if (canonicalMultiplayerPayload(applied.command) !== canonicalMultiplayerPayload(auth.command)) {
-        return false;
+        return reject("applied_command_mismatch");
       }
       if (
         auth.actorIndex !== null
         && auth.actorIndex !== undefined
         && Number(auth.actorIndex) !== Number(applied.actorIndex)
       ) {
-        return false;
+        return reject("applied_actor_mismatch");
       }
-      return ziffleRequirementsAuthorizeRevealPositions(
+      const storedRequirements = actionCryptoRequirementsForSequence(sequence);
+      if (debug) {
+        debug.storedRequirements = storedRequirements.map(compactCryptoRequirementForDiagnostics).filter(Boolean);
+      }
+      const authorized = ziffleRequirementsAuthorizeRevealPositions(
         actionCryptoRequirementsForSequence(sequence),
         requester,
         owner,
         positions,
         ceremony
       );
+      if (authorized && debug) debug.reason = "authorized_by_stored_requirements";
+      return authorized || reject("stored_requirements_do_not_authorize_positions");
     }
 
-    if (sequence !== expectedSeq) return false;
+    if (sequence !== expectedSeq) return reject("unexpected_sequence");
 
     const liveState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
-    if (!isDecisionCommandCompatible(liveState?.decision, auth.command)) return false;
+    const compatible = isDecisionCommandCompatible(liveState?.decision, auth.command);
+    if (debug) {
+      debug.liveDecisionKind = String(liveState?.decision?.kind || "");
+      debug.liveDecisionPlayer = liveState?.decision?.player == null ? null : Number(liveState.decision.player);
+      debug.commandCompatible = compatible;
+    }
+    if (!compatible) return reject("command_not_compatible_with_live_decision");
     if (
       auth.actorIndex !== null
       && auth.actorIndex !== undefined
@@ -5584,17 +6255,62 @@ export function usePeerLobby({
       && liveState?.decision?.player !== undefined
       && Number(auth.actorIndex) !== Number(liveState.decision.player)
     ) {
-      return false;
+      return reject("actor_index_mismatch");
     }
 
     const previewedRequirements = await previewRequirementsForCommand(auth.command);
-    return ziffleRequirementsAuthorizeRevealPositions(
+    if (debug) {
+      debug.previewedRequirements = previewedRequirements
+        .map(compactCryptoRequirementForDiagnostics)
+        .filter(Boolean);
+      debug.attachedRequirements = (Array.isArray(auth.requirements) ? auth.requirements : [])
+        .map(compactCryptoRequirementForDiagnostics)
+        .filter(Boolean);
+    }
+    if (ziffleRequirementsAuthorizeRevealPositions(
       previewedRequirements,
       requester,
       owner,
       positions,
       ceremony
+    )) {
+      if (debug) debug.reason = "authorized_by_previewed_requirements";
+      return true;
+    }
+    const enrichedRequirements = enrichPreviewedRequirementsFromAuthorization(
+      previewedRequirements,
+      Array.isArray(auth.requirements) ? auth.requirements : []
     );
+    if (debug) {
+      debug.enrichedRequirements = enrichedRequirements
+        .map(compactCryptoRequirementForDiagnostics)
+        .filter(Boolean);
+    }
+    const authorized = ziffleRequirementsAuthorizeRevealPositions(
+      enrichedRequirements,
+      requester,
+      owner,
+      positions,
+      ceremony
+    );
+    if (authorized && debug) debug.reason = "authorized_by_enriched_requirements";
+    if (authorized) return true;
+
+    const mulliganShuffleRequirements = attachedMulliganShuffleRequirements(auth, liveState, owner);
+    if (debug) {
+      debug.mulliganShuffleRequirements = mulliganShuffleRequirements
+        .map(compactCryptoRequirementForDiagnostics)
+        .filter(Boolean);
+    }
+    const authorizedByMulliganShuffle = ziffleRequirementsAuthorizeRevealPositions(
+      mulliganShuffleRequirements,
+      requester,
+      owner,
+      positions,
+      ceremony
+    );
+    if (authorizedByMulliganShuffle && debug) debug.reason = "authorized_by_attached_mulligan_shuffle";
+    return authorizedByMulliganShuffle || reject("requirements_do_not_authorize_positions");
   }
 
   async function answerZiffleRevealTokenRequest(conn, message) {
@@ -5643,6 +6359,7 @@ export function usePeerLobby({
         .map(compactZiffleCeremonyForDiagnostics)
         .filter(Boolean);
       const currentSession = multiplayerRef.current;
+      const actionAuthorizationDebug = {};
       diagnostics = {
         requestId: String(message.requestId || ""),
         requesterPeerId: String(message.requesterPeerId || ""),
@@ -5658,6 +6375,8 @@ export function usePeerLobby({
         requestedContext: String(message.ceremonyContext || ""),
         requestedCardPosition: Number(message.cardPosition),
         actionAuthorizationPresent: Boolean(message.actionAuthorization),
+        actionAuthorization: compactActionAuthorizationForDiagnostics(message.actionAuthorization),
+        actionAuthorizationDebug,
         attachedCeremonyPresent: Boolean(requestCeremony),
         attachedCeremony: requestCeremonySummary,
         attachedCeremonyRejectReason: requestCeremonyRejectReason,
@@ -5704,7 +6423,8 @@ export function usePeerLobby({
           requester,
           requestedOwner,
           cardPositions,
-          ceremony
+          ceremony,
+          actionAuthorizationDebug
         );
       for (const position of cardPositions) {
         if (
@@ -5979,11 +6699,20 @@ export function usePeerLobby({
     if (!currentGame || typeof currentGame.applyVerifiedHiddenLibraryShuffle !== "function") return;
     for (const proof of shuffleProofs || []) {
       if (String(proof?.zone || "library") !== "library") continue;
-      await currentGame.applyVerifiedHiddenLibraryShuffle({
-        owner: Number(proof.owner),
-        deckHash: String(proof.deckHash || ""),
-        afterOrder: normalizeShuffleOrder(proof.afterOrder),
-      });
+      const afterOrder = normalizeShuffleOrder(proof.afterOrder);
+      try {
+        await currentGame.applyVerifiedHiddenLibraryShuffle({
+          owner: Number(proof.owner),
+          deckHash: String(proof.deckHash || ""),
+          afterOrder,
+        });
+      } catch (err) {
+        throw new Error(
+          `${String(err?.message || err || "failed to apply verified shuffle")}; `
+          + `shuffle proof owner ${Number(proof.owner)} requirement ${String(proof.requirementId || "")} `
+          + `afterOrderLen ${afterOrder.length} firstAfterOrder ${afterOrder.slice(0, 12).join(",")}`
+        );
+      }
       liveZiffleCeremoniesRef.current.set(Number(proof.owner), cloneMultiplayerPayload(proof));
     }
   }
@@ -6416,6 +7145,7 @@ export function usePeerLobby({
       || typeof currentGame.exportSyncCheckpoint !== "function"
       || typeof currentGame.exportHiddenCardOpening !== "function"
       || typeof currentGame.ziffleRevealCard !== "function"
+      || typeof currentGame.ziffleRevealCards !== "function"
       || typeof currentGame.revealHiddenPosition !== "function"
     ) {
       return;
@@ -6457,6 +7187,7 @@ export function usePeerLobby({
     }
     const objects = new Map((checkpoint.objects || []).map((object) => [Number(object.id), object]));
     let changed = false;
+    const ziffleGroups = new Map();
     for (const objectId of handIds) {
       const object = objects.get(objectId);
       const hidden = object?.hiddenCard;
@@ -6530,54 +7261,89 @@ export function usePeerLobby({
         commitment: positionCommitment,
       });
       if (!ceremony) continue;
-	      const tokens = await collectZiffleRevealTokens(ceremony, position, options);
-      const reveal = await currentGame.ziffleRevealCard({
+      const groupKey = [
+        Number(localIndex),
+        String(ceremony.context || ""),
+        String(ceremony.deckHash || ""),
+      ].join(":");
+      if (!ziffleGroups.has(groupKey)) {
+        ziffleGroups.set(groupKey, {
+          ceremony,
+          entries: [],
+        });
+      }
+      ziffleGroups.get(groupKey).entries.push({
+        objectId,
+        position,
+        positionCommitment,
+        exported,
+      });
+    }
+
+    for (const { ceremony, entries } of ziffleGroups.values()) {
+      const positions = [...new Set(entries.map((entry) => Number(entry.position)))];
+      const tokens = await collectZiffleRevealTokensBatch(ceremony, positions, options);
+      const reveals = await currentGame.ziffleRevealCards({
         deckCount: Number(ceremony.deckCount),
         context: String(ceremony.context || ""),
         keyContext: ziffleKeyContextForCeremony(ceremony),
         keys: cloneMultiplayerPayload(ceremony.keys || []),
         steps: cloneMultiplayerPayload(ceremony.steps || []),
-        cardPosition: position,
+        cardPositions: positions,
         tokens,
       });
-      const originalSlot = Number(reveal.originalSlot);
-      const secret = (manifest.slotSecrets || []).find(
-        (entry) => Number(entry.slot) === originalSlot
+      const revealByPosition = new Map(
+        (Array.isArray(reveals) ? reveals : []).map((reveal) => [
+          Number(reveal.cardPosition),
+          Number(reveal.originalSlot),
+        ])
       );
-      if (!secret) {
-        throw new Error(`Missing private deck opening for ziffle slot ${originalSlot}`);
-      }
-      const opening = await buildDeckSlotOpening({
-        manifest,
-        slot: originalSlot,
-        card: secret.card,
-      });
-      await currentGame.revealHiddenPosition({
-        owner: Number(localIndex),
-        position,
-        originalSlot,
-        cardName: opening.card,
-        positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
-        commitment: opening.commitment,
-      }).catch((err) => {
-        if (!exported) throw err;
-      });
-      rememberLocalRevealedOpening(
-        {
-          ...opening,
-          objectId,
-          position,
-          positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
-        },
-        {
-          objectId,
-          position,
-          positionCommitment: positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position),
-          matchId: payload.auditMatchId,
+      for (const entry of entries) {
+        const position = Number(entry.position);
+        const originalSlot = revealByPosition.get(position);
+        if (!Number.isSafeInteger(originalSlot) || originalSlot < 0) {
+          throw new Error(`Missing ziffle reveal for position ${position}`);
         }
-      );
-      rememberZiffleOpeningPosition(localIndex, originalSlot, position);
-      changed = true;
+        const secret = (manifest.slotSecrets || []).find(
+          (candidate) => Number(candidate.slot) === originalSlot
+        );
+        if (!secret) {
+          throw new Error(`Missing private deck opening for ziffle slot ${originalSlot}`);
+        }
+        const opening = await buildDeckSlotOpening({
+          manifest,
+          slot: originalSlot,
+          card: secret.card,
+        });
+        const positionCommitment =
+          entry.positionCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position);
+        await currentGame.revealHiddenPosition({
+          owner: Number(localIndex),
+          position,
+          originalSlot,
+          cardName: opening.card,
+          positionCommitment,
+          commitment: opening.commitment,
+        }).catch((err) => {
+          if (!entry.exported) throw err;
+        });
+        rememberLocalRevealedOpening(
+          {
+            ...opening,
+            objectId: entry.objectId,
+            position,
+            positionCommitment,
+          },
+          {
+            objectId: entry.objectId,
+            position,
+            positionCommitment,
+            matchId: payload.auditMatchId,
+          }
+        );
+        rememberZiffleOpeningPosition(localIndex, originalSlot, position);
+        changed = true;
+      }
     }
     if (changed) {
       await currentGame.setPerspective(localIndex);
@@ -7890,6 +8656,12 @@ export function usePeerLobby({
         case "timeout_vote_response":
           resolveTimeoutVote(message);
           return;
+        case "disconnect_forfeit_vote_request":
+          await answerDisconnectForfeitVoteRequest(hostConnectionRef.current, message);
+          return;
+        case "disconnect_forfeit_vote_response":
+          resolveTimeoutVote(message);
+          return;
         case "action_quorum_vote_request":
           await answerActionQuorumVoteRequest(hostConnectionRef.current, message);
           return;
@@ -7953,14 +8725,26 @@ export function usePeerLobby({
           await applyStateResync(message);
           return;
         case "player_presence":
-          updateMultiplayer((prev) => ({
-            ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === message.peerId
-                ? { ...player, connected: message.connected !== false }
-                : player
-            ),
-          }));
+          updateMultiplayer((prev) => {
+            const peerId = String(message.peerId || "").trim();
+            const playerIndex = normalizePlayerIndex(message.playerIndex);
+            const players = (prev.players || []).some((player) => player.peerId === peerId)
+              ? prev.players
+              : (prev.players || []).map((player) =>
+                  playerIndex != null && Number(player.index) === playerIndex
+                    ? { ...player, peerId }
+                    : player
+                );
+            return {
+              ...prev,
+              players: markPlayerConnectionState(
+                players,
+                peerId,
+                message.connected !== false,
+                message.disconnectedAtMs == null ? Date.now() : Number(message.disconnectedAtMs)
+              ),
+            };
+          });
           return;
         case "apply_action": {
           await applySequencedActionMessage(message);
@@ -7974,6 +8758,7 @@ export function usePeerLobby({
       answerCryptoMaterialRequest,
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
+      answerDisconnectForfeitVoteRequest,
       applyMatchStart,
       applyStateResync,
       applySyncedCommand,
@@ -8004,21 +8789,19 @@ export function usePeerLobby({
       const departed = multiplayerRef.current.players.find(
         (player) => player.peerId === peerId
       );
-      updateMultiplayer((prev) => {
-        return {
-          ...prev,
-          players: reindexPlayers(
-            prev.players.map((player) =>
-              player.peerId === peerId ? { ...player, connected: false } : player
-            )
-          ),
-        };
-      });
+      const disconnectedAtMs = Date.now();
+      updateMultiplayer((prev) => ({
+        ...prev,
+        players: markPlayerConnectionState(prev.players, peerId, false, disconnectedAtMs),
+      }));
       if (departed) {
-        setStatus(`${departed.name} disconnected`);
+        setStatus(`${departed.name} disconnected; waiting 60s before auto-forfeit`);
       }
       if (multiplayerRef.current.matchStarted) {
-        broadcastMatchPresence(peerId, false);
+        broadcastMatchPresence(peerId, false, {
+          disconnectedAtMs,
+          autoForfeitAtMs: disconnectedAtMs + DISCONNECT_AUTO_FORFEIT_MS,
+        });
       } else {
         broadcastLobbyState();
       }
@@ -8075,6 +8858,12 @@ export function usePeerLobby({
       case "timeout_vote_response":
         resolveTimeoutVote(message);
         return;
+      case "disconnect_forfeit_vote_request":
+        await answerDisconnectForfeitVoteRequest(conn, message);
+        return;
+      case "disconnect_forfeit_vote_response":
+        resolveTimeoutVote(message);
+        return;
       case "action_quorum_vote_request":
         await answerActionQuorumVoteRequest(conn, message);
         return;
@@ -8094,6 +8883,7 @@ export function usePeerLobby({
     answerCryptoMaterialRequest,
     answerActionQuorumVoteRequest,
     answerTimeoutVoteRequest,
+    answerDisconnectForfeitVoteRequest,
     resolveActionQuorumVote,
     resolveCryptoMaterial,
     resolveRngCommit,
@@ -8114,12 +8904,6 @@ export function usePeerLobby({
           (player) => player.peerId === peerId
         );
         if (departed) {
-          updateMultiplayer((prev) => ({
-            ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === peerId ? { ...player, connected: false } : player
-            ),
-          }));
           setStatus(`${departed.name} disconnected from direct peer sync`, true);
         }
       }
@@ -8135,9 +8919,7 @@ export function usePeerLobby({
         if (multiplayerRef.current.matchStarted) {
           updateMultiplayer((prev) => ({
             ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === conn.peer ? { ...player, connected: true } : player
-            ),
+            players: markPlayerConnectionState(prev.players, conn.peer, true),
           }));
         }
         startConnectionHeartbeat(heartbeatKey, conn, () => {
@@ -8177,6 +8959,8 @@ export function usePeerLobby({
 		          || message?.type === "rng_reveal_response"
 		          || message?.type === "timeout_vote_request"
 		          || message?.type === "timeout_vote_response"
+		          || message?.type === "disconnect_forfeit_vote_request"
+		          || message?.type === "disconnect_forfeit_vote_response"
 		          || message?.type === "action_quorum_vote_request"
 		          || message?.type === "action_quorum_vote_response"
 		        ) {
@@ -8320,6 +9104,9 @@ export function usePeerLobby({
       case "timeout_vote_response":
         resolveTimeoutVote(message);
         return;
+      case "disconnect_forfeit_vote_response":
+        resolveTimeoutVote(message);
+        return;
       case "action_quorum_vote_response":
         resolveActionQuorumVote(message);
         return;
@@ -8337,6 +9124,9 @@ export function usePeerLobby({
         return;
       case "timeout_vote_request":
         await answerTimeoutVoteRequest(conn, message);
+        return;
+      case "disconnect_forfeit_vote_request":
+        await answerDisconnectForfeitVoteRequest(conn, message);
         return;
       case "action_quorum_vote_request":
         await answerActionQuorumVoteRequest(conn, message);
@@ -8570,9 +9360,7 @@ export function usePeerLobby({
           clientConnectionsRef.current.set(conn.peer, conn);
           const nextSession = updateMultiplayer((prev) => ({
             ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === conn.peer ? { ...player, connected: true } : player
-            ),
+            players: markPlayerConnectionState(prev.players, conn.peer, true),
           }));
           const matchPayload = buildHostedResyncPayload();
           if (!matchPayload) {
@@ -8724,6 +9512,7 @@ export function usePeerLobby({
       answerCryptoMaterialRequest,
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
+      answerDisconnectForfeitVoteRequest,
       buildHostedResyncPayload,
       broadcastMatchPresence,
       broadcastLobbyState,
@@ -8784,10 +9573,12 @@ export function usePeerLobby({
           || message?.type === "ziffle_reveal_token_response"
           || message?.type === "rng_commit_request"
           || message?.type === "rng_commit_response"
-          || message?.type === "rng_reveal_request"
+	          || message?.type === "rng_reveal_request"
 	          || message?.type === "rng_reveal_response"
 	          || message?.type === "timeout_vote_request"
 	          || message?.type === "timeout_vote_response"
+	          || message?.type === "disconnect_forfeit_vote_request"
+	          || message?.type === "disconnect_forfeit_vote_response"
 	          || message?.type === "action_quorum_vote_request"
 	          || message?.type === "action_quorum_vote_response"
 	        ) {
@@ -9028,6 +9819,10 @@ export function usePeerLobby({
                     ? createOfflinePeerId(lobbyId, player.index)
                     : player.peerId,
                 connected: false,
+                disconnectedAtMs: player.disconnectedAtMs || Date.now(),
+                autoForfeitAtMs:
+                  player.autoForfeitAtMs
+                  || (Date.now() + DISCONNECT_AUTO_FORFEIT_MS),
               };
             })
           );
@@ -9450,9 +10245,7 @@ export function usePeerLobby({
           hostConnectionRef.current = null;
           updateMultiplayer((prev) => ({
             ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === hostTarget ? { ...player, connected: false } : player
-            ),
+            players: markPlayerConnectionState(prev.players, hostTarget, false),
           }));
           if (promoteLocalPlayerToHost(reason)) return;
           scheduleHostReconnect(reason);
@@ -9466,9 +10259,7 @@ export function usePeerLobby({
           });
           updateMultiplayer((prev) => ({
             ...prev,
-            players: prev.players.map((player) =>
-              player.peerId === hostTarget ? { ...player, connected: true } : player
-            ),
+            players: markPlayerConnectionState(prev.players, hostTarget, true),
           }));
 	          const session = multiplayerRef.current;
 	          const localPeerId = String(session.localPeerId || peer.id || "").trim();
@@ -9579,10 +10370,12 @@ export function usePeerLobby({
             || message?.type === "ziffle_reveal_token_response"
             || message?.type === "rng_commit_request"
             || message?.type === "rng_commit_response"
-            || message?.type === "rng_reveal_request"
+	            || message?.type === "rng_reveal_request"
 	            || message?.type === "rng_reveal_response"
 	            || message?.type === "timeout_vote_request"
 	            || message?.type === "timeout_vote_response"
+	            || message?.type === "disconnect_forfeit_vote_request"
+	            || message?.type === "disconnect_forfeit_vote_response"
 	            || message?.type === "action_quorum_vote_request"
 	            || message?.type === "action_quorum_vote_response"
 	          ) {
@@ -9874,7 +10667,12 @@ export function usePeerLobby({
         }
         const expectedActor = preSubmitState?.decision?.player;
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
-        if (isForfeitCommand(command) && !isTimeoutForfeit) {
+        const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
+        const isSelfForfeit = isSelfForfeitCommand(command, session.localPlayerIndex);
+        if (isSelfForfeit && !isSorcerySpeedForfeitState(preSubmitState, session.localPlayerIndex)) {
+          throw new Error("Surrender is only available at sorcery speed");
+        }
+        if (isForfeitCommand(command) && !isTimeoutForfeit && !isDisconnectForfeit) {
           if (Number(command.player) !== Number(session.localPlayerIndex)) {
             throw new Error("A player can only forfeit themselves");
           }
@@ -9893,6 +10691,21 @@ export function usePeerLobby({
           }
           await validateTimeoutForfeitCommand(command, liveState, {
             skewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+          });
+        } else if (isDisconnectForfeit) {
+          if (!disconnectCertificateFromCommand(command)) {
+            const certificate = await collectDisconnectForfeitCertificateForCommand(command);
+            if (certificate) {
+              command = {
+                ...command,
+                disconnected_peer_id: command.disconnected_peer_id || certificate.forfeitedPeerId,
+                disconnect_timeout_ms: certificate.disconnectTimeoutMs,
+                disconnect_certificate: certificate,
+              };
+            }
+          }
+          await validateDisconnectForfeitCommand(command, {
+            actorIndex: session.localPlayerIndex,
           });
         } else if (
           expectedActor !== null
@@ -9917,7 +10730,14 @@ export function usePeerLobby({
           skewMs: 0,
         });
         stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
-        const cryptoRequirements = await previewRequirementsForCommand(command);
+        const cryptoRequirements = filterCryptoRequirementsForCommand(
+          command,
+          preSubmitState,
+          freshCryptoRequirementsForSequence(
+            nextSequence,
+            await previewRequirementsForCommand(command)
+          )
+        );
         rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
         const requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(
           command,
@@ -9958,7 +10778,14 @@ export function usePeerLobby({
           sequence: nextSequence,
         });
         await revealAuditOpenings(remoteCryptoMaterial.openings || [], { timing: "post" });
-        const appliedRequirements = cryptoRequirementsFromState(appliedState);
+        const appliedRequirements = filterCryptoRequirementsForCommand(
+          command,
+          preSubmitState,
+          freshCryptoRequirementsForSequence(
+            nextSequence,
+            cryptoRequirementsFromState(appliedState)
+          )
+        );
         rememberActionCryptoRequirements(nextSequence, appliedRequirements);
         const postShuffleRequirements = missingShuffleRequirements(
           appliedRequirements,
@@ -9979,6 +10806,10 @@ export function usePeerLobby({
         await revealLocalZiffleHand(matchStartPayloadRef.current, {
           skipIfHandUnchanged: true,
           stateHint: appliedState,
+          command,
+          seq: nextSequence,
+          actorIndex: session.localPlayerIndex,
+          requirements: [...cryptoRequirements, ...appliedRequirements],
         });
         const openingRequirements = appliedRequirements.length > 0
           ? [...cryptoRequirements, ...appliedRequirements]
@@ -10234,6 +11065,106 @@ export function usePeerLobby({
     const timerId = window.setInterval(() => {
       void tick();
     }, MATCH_CLOCK_TICK_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timerId);
+    };
+  }, [
+    multiplayer.matchStarted,
+    setStatus,
+    submitMultiplayerCommand,
+    updateMultiplayer,
+  ]);
+
+  useEffect(() => {
+    if (!multiplayer.matchStarted) {
+      disconnectForfeitInFlightRef.current.clear();
+      return undefined;
+    }
+
+    let disposed = false;
+    const tick = async () => {
+      if (disposed) return;
+      updateMultiplayer((prev) => {
+        const hasDisconnectedPlayers = (prev.players || []).some((player) =>
+          player.connected === false && player.disconnectedAtMs
+        );
+        if (!hasDisconnectedPlayers) return prev;
+        return {
+          ...prev,
+          players: (prev.players || []).map((player) => {
+            if (player.connected !== false || !player.disconnectedAtMs) return player;
+            const autoForfeitAtMs = Number(player.autoForfeitAtMs || 0)
+              || Number(player.disconnectedAtMs) + DISCONNECT_AUTO_FORFEIT_MS;
+            return {
+              ...player,
+              autoForfeitAtMs,
+              disconnectRemainingMs: Math.max(0, autoForfeitAtMs - Date.now()),
+            };
+          }),
+        };
+      });
+
+      const session = multiplayerRef.current;
+      if (
+        !session.matchStarted
+        || session.submittingAction
+        || session.localPlayerIndex == null
+        || awaitingStateResyncRef.current
+        || resyncingPeerIdsRef.current.size > 0
+      ) {
+        return;
+      }
+
+      const alreadyForfeited = forfeitedPlayersForQuorum();
+      const expired = (session.connectionWarnings || [])
+        .filter((warning) =>
+          !warning.local
+          && warning.expired
+          && !alreadyForfeited.has(Number(warning.playerIndex))
+        )
+        .sort((left, right) => Number(left.playerIndex) - Number(right.playerIndex));
+      if (expired.length === 0) return;
+
+      const warning = expired[0];
+      const claimKey = [
+        session.lastAppliedSequence,
+        warning.playerIndex,
+        warning.disconnectedAtMs,
+      ].join(":");
+      if (disconnectForfeitInFlightRef.current.has(claimKey)) return;
+      disconnectForfeitInFlightRef.current.add(claimKey);
+      const playerName = playerNameForIndex(session.players, warning.playerIndex);
+      const command = {
+        type: "forfeit_player",
+        player: Number(warning.playerIndex),
+        reason: DISCONNECT_FORFEIT_REASON,
+        disconnected_peer_id: String(warning.peerId || ""),
+        disconnect_timeout_ms: DISCONNECT_AUTO_FORFEIT_MS,
+        disconnected_at_ms: Number(warning.disconnectedAtMs || 0),
+        auto_forfeit_at_ms: Number(warning.autoForfeitAtMs || 0),
+        claimed_at_ms: Date.now(),
+        basis_sequence: Number(session.lastAppliedSequence || 0),
+      };
+      try {
+        await submitMultiplayerCommand(
+          command,
+          `${playerName} was peer-claimed disconnected for 60s`
+        );
+      } catch (err) {
+        disconnectForfeitInFlightRef.current.delete(claimKey);
+        const message = toErrorMessage(err);
+        if (!message.includes("Disconnect timeout has not elapsed")) {
+          setStatus(`Disconnect forfeit failed: ${message}`, true);
+          console.error(err);
+        }
+      }
+    };
+
+    void tick();
+    const timerId = window.setInterval(() => {
+      void tick();
+    }, 1000);
     return () => {
       disposed = true;
       window.clearInterval(timerId);

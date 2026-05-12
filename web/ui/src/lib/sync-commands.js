@@ -47,6 +47,9 @@ export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
+    if (String(command.reason || "") === "peer_claimed_disconnect_timeout") {
+      return command.player !== null && command.player !== undefined;
+    }
     return decision?.player !== null
       && decision?.player !== undefined
       && Number(decision.player) === Number(command.player);

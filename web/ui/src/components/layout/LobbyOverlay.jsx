@@ -49,7 +49,10 @@ function commanderDeckTarget(commanderCount) {
 }
 
 function formatPlayerStatus(player, localPeerId, format) {
-  if (player.connected === false) return "Offline";
+  if (player.connected === false) {
+    const remainingMs = Number(player.disconnectRemainingMs ?? player.autoForfeitAtMs - Date.now());
+    return `Offline ${formatCountdown(remainingMs)}`;
+  }
   if (player.ready) return player.peerId === localPeerId ? "You / Ready" : "Ready";
 
   if (normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER) {
@@ -63,6 +66,21 @@ function formatPlayerStatus(player, localPeerId, format) {
   return player.peerId === localPeerId
     ? `You / ${deckCount}/${LOBBY_DECK_SIZE}`
     : `${deckCount}/${LOBBY_DECK_SIZE}`;
+}
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function offlinePlayerSummary(players) {
+  const entries = Array.isArray(players) ? players : [];
+  if (entries.length === 0) return "";
+  return entries
+    .map((player) => `${player.name} ${formatCountdown(player.remainingMs)}`)
+    .join(", ");
 }
 
 function formatDeckRequirement(format) {
@@ -642,8 +660,8 @@ export default function LobbyOverlay({
                 {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
                   <div className="lobby-sheet-status border border-[#7d302f] bg-[#2b1114]/70 px-3 py-2 text-[13px] leading-5 text-[#ffb8c0]">
                     {offlinePlayers.length === 1
-                      ? `${offlinePlayers[0].name} is disconnected. Peer-to-peer action delivery is paused or degraded until they reconnect.`
-                      : `${offlinePlayers.map((player) => player.name).join(", ")} are disconnected. Peer-to-peer action delivery is paused or degraded until they reconnect.`}
+                      ? `${offlinePlayers[0].name} is disconnected. Wait ${formatCountdown(offlinePlayers[0].remainingMs)} for them to reconnect before auto-forfeit.`
+                      : `${offlinePlayerSummary(offlinePlayers)} are disconnected. Wait for reconnects or the auto-forfeit timers.`}
                   </div>
                 ) : null}
 

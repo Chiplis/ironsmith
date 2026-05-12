@@ -28,6 +28,13 @@ function formatTimerRemaining(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function disconnectCountdownLabel(warnings) {
+  const entries = Array.isArray(warnings) ? warnings : [];
+  if (entries.length === 0) return "";
+  const remainingMs = Math.min(...entries.map((warning) => Number(warning.remainingMs || 0)));
+  return formatTimerRemaining(remainingMs);
+}
+
 export default function Topbar({
   playerNames,
   setPlayerNames,
@@ -113,6 +120,7 @@ export default function Topbar({
         return display === "?" ? warning.name : display;
       }).join(", ")
     : "";
+  const disconnectCountdown = disconnectCountdownLabel(offlinePlayers);
   const legalTargetPlayerIds = new Set();
   if (state?.decision?.kind === "targets") {
     for (const req of state.decision.requirements || []) {
@@ -277,14 +285,14 @@ export default function Topbar({
             type="button"
             className="stone-pill inline-flex min-h-8 max-w-[240px] items-center gap-2 rounded-none border border-[#7d302f] bg-[#2b1114]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffb8c0]"
             onClick={onOpenLobby}
-            title={`Disconnected: ${connectionWarningLabel}`}
+            title={`Disconnected: ${connectionWarningLabel}. Auto-forfeit in ${disconnectCountdown}.`}
             aria-label={`Disconnected players: ${connectionWarningLabel}`}
           >
             <WifiOff className="size-3.5 shrink-0" />
             <span className="truncate">
               {offlinePlayers.length === 1
-                ? `${connectionWarningLabel} offline`
-                : `${offlinePlayers.length} offline`}
+                ? `${connectionWarningLabel} ${disconnectCountdown}`
+                : `${offlinePlayers.length} offline ${disconnectCountdown}`}
             </span>
           </button>
         ) : null}
