@@ -1135,6 +1135,37 @@ fn test_parse_devour_keyword_line_compiles_without_unsupported_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_afflict_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Afflict Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Afflict 1")
+        .expect("afflict keyword line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Afflict 1"),
+        "expected afflict keyword render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_afflict_equivalent_rules_text_does_not_render_keyword() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vedalken Ghoul Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever this creature becomes blocked, defending player loses 4 life.")
+        .expect("afflict-equivalent triggered text should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever this creature becomes blocked, defending player loses 4 life")
+            && !rendered.contains("Afflict 4"),
+        "expected explicit trigger text rather than afflict keyword promotion, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_bloodthirst_keyword_line_compiles_without_unsupported_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bloodthirst Parse Test")
         .card_types(vec![CardType::Creature])
@@ -1289,10 +1320,39 @@ fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
         .expect("partner-with keyword line should parse");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Partner")
-            && rendered.contains("card named proud mentor")
-            && rendered.contains("target player"),
-        "expected partner-with to render keyword plus ETB search trigger, got {rendered}"
+        rendered.contains("Partner with Proud Mentor")
+            && !rendered.contains("card named proud mentor")
+            && !rendered.contains("target player"),
+        "expected partner-with to render as a single keyword line, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("choices: [\n                        Target(\n                            Player(\n                                Any")
+            && (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
+            && debug.contains("is_search: true"),
+        "expected partner-with to keep exactly one target player and a real library-search effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_partner_with_attack_value_renders_oracle_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Impetuous Protege")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Warrior])
+        .parse_text(
+            "Partner with Proud Mentor\nWhenever this creature attacks, it gets +X/+0 until end of turn, where X is the greatest power among tapped creatures your opponents control.",
+        )
+        .expect("impetuous protege should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Partner with Proud Mentor.")
+            && rendered.contains(
+                "where X is the greatest power among tapped creatures your opponents control"
+            )
+            && !rendered.contains("opponent's tapped creatures"),
+        "expected partner-with and opponent-controlled value surface, got {rendered}"
     );
 }
 
@@ -4918,8 +4978,10 @@ fn test_parse_partner_with_keyword_line() {
 
     let rendered = unprocessed_compiled_lines(&def);
     assert!(
-        rendered.iter().any(|line| line == "Partner"),
-        "expected partner static keyword, got {rendered:?}"
+        rendered
+            .iter()
+            .any(|line| line == "Partner with Bebop Skull and Crossbones."),
+        "expected partner-with keyword surface, got {rendered:?}"
     );
     let search_lines = rendered
         .iter()
@@ -4930,7 +4992,7 @@ fn test_parse_partner_with_keyword_line() {
         .count();
     assert_eq!(
         search_lines, 1,
-        "expected exactly one partner-with search trigger, got {rendered:?}"
+        "expected exactly one partner-with line mentioning the named partner, got {rendered:?}"
     );
     let debug = format!("{def:#?}");
     assert!(

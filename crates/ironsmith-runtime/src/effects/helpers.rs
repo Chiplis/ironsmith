@@ -53,7 +53,7 @@ pub(crate) fn view_hidden_candidate_objects(
         let Some(object) = game.object(id) else {
             continue;
         };
-        if !object.zone.is_hidden() {
+        if !object.zone.is_hidden() && game.hidden_card_info(id).is_none() {
             continue;
         }
         grouped

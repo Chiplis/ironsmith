@@ -16,8 +16,8 @@ The runner launches four isolated Chromium browser contexts, injects the product
 | Four honest players | Every browser accepts the same actor-signed action log, verifies the transcript, and converges on one audit state hash. |
 | Non-active player disconnects | Connected peers continue only while the disconnected player is not required for priority; the UI warning path is exercised; the returning peer replays the canonical log and converges. |
 | Active priority holder disconnects | The game stalls at that player. A different player cannot submit a replacement action because the signed actor does not match the priority holder. |
-| Active priority holder times out | After the agreed action timer expires, another peer can submit a signed timeout-forfeit action for the stalled priority holder. |
-| Early timeout claim | Rejected until the receiving browser's local action timer has actually expired. |
+| Active priority holder times out | After the agreed match clock expires, another peer can submit a signed timeout-forfeit action for the stalled priority holder. |
+| Early timeout claim | Rejected until the receiving browser's local match clock has actually expired. |
 | Multiple players disconnect | Remaining peers keep the canonical log for actions they can legally process; returning peers replay missed actions and converge. |
 | Former host censors or withholds delivery | The actor-signed action reaches peers through mesh relay without host approval or host sequencing. |
 | Peer forges an action for another player | Rejected because `signer !== actor`; no state advances. |

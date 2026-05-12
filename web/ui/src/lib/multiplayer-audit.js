@@ -1,5 +1,7 @@
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
+const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
 
 export function canonicalJson(value) {
   return JSON.stringify(normalizeForJson(value));
@@ -395,6 +397,7 @@ export async function auditStateHash({
   seq,
   prevStateHash,
   command,
+  clock,
   openings = [],
   rngReveals = [],
   shuffleProofs = [],
@@ -408,6 +411,7 @@ export async function auditStateHash({
       seq,
       prevStateHash,
       command,
+      clock,
       openings,
       rngReveals,
       shuffleProofs,
@@ -426,6 +430,7 @@ export async function buildSignedActionEnvelope({
   signer = actor,
   prevStateHash,
   command,
+  clock,
   openings = [],
   rngReveals = [],
   shuffleProofs = [],
@@ -437,6 +442,7 @@ export async function buildSignedActionEnvelope({
     seq,
     prevStateHash,
     command,
+    clock,
     openings,
     rngReveals,
     shuffleProofs,
@@ -450,6 +456,7 @@ export async function buildSignedActionEnvelope({
     signer,
     prevStateHash,
     command,
+    clock,
     openings,
     rngReveals,
     shuffleProofs,
@@ -462,6 +469,80 @@ export async function buildSignedActionEnvelope({
     signatureAlgorithm: "ecdsa-p256-sha256",
     signature: await signAuditPayload(keyPair, payload, cryptoImpl),
   };
+}
+
+export function rngCommitmentPayload({
+  matchId,
+  seq,
+  requirementId,
+  requestId,
+  requester,
+  player,
+  commitmentHex,
+}) {
+  return {
+    domain: "ironsmith-rng-commit-response-v1",
+    matchId: String(matchId || ""),
+    seq: Number(seq),
+    requirementId: String(requirementId || ""),
+    requestId: String(requestId || ""),
+    requester: Number(requester),
+    player: Number(player),
+    commitmentHex: String(commitmentHex || ""),
+  };
+}
+
+export function rngRevealPayload({
+  matchId,
+  seq,
+  requirementId,
+  requestId,
+  commitRequestId,
+  requester,
+  player,
+  nonceHex,
+  commitmentHex,
+}) {
+  return {
+    domain: "ironsmith-rng-reveal-response-v1",
+    matchId: String(matchId || ""),
+    seq: Number(seq),
+    requirementId: String(requirementId || ""),
+    requestId: String(requestId || ""),
+    commitRequestId: String(commitRequestId || ""),
+    requester: Number(requester),
+    player: Number(player),
+    nonceHex: String(nonceHex || ""),
+    commitmentHex: String(commitmentHex || ""),
+  };
+}
+
+async function verifyMatchClockAuditChainEntry({
+  clock,
+  expectedClockHash,
+  expectedSeq,
+  expectedActor,
+}, cryptoImpl = globalThis.crypto) {
+  if (!clock) return expectedClockHash;
+  if (String(clock.type || "") !== "match_clock_v1") {
+    throw new Error(`Unsupported match clock audit at sequence ${expectedSeq}`);
+  }
+  if (Number(clock.seq) !== Number(expectedSeq) || Number(clock.actor) !== Number(expectedActor)) {
+    throw new Error(`Match clock audit does not match action ${expectedSeq}`);
+  }
+  if (String(clock.previousClockHash || "") !== String(expectedClockHash || INITIAL_MATCH_CLOCK_HASH)) {
+    throw new Error(`Match clock hash mismatch at sequence ${expectedSeq}`);
+  }
+  const payload = { ...clock };
+  delete payload.clockHash;
+  const computedHash = await sha256Hex(canonicalJson({
+    domain: MATCH_CLOCK_AUDIT_DOMAIN,
+    clock: payload,
+  }), cryptoImpl);
+  if (computedHash !== String(clock.clockHash || "")) {
+    throw new Error(`Match clock audit hash mismatch at sequence ${expectedSeq}`);
+  }
+  return String(clock.clockHash || "");
 }
 
 export function publicPlayerGenesisRecord(player) {
@@ -575,6 +656,14 @@ export function matchGenesisPayload(match) {
     openingHandSize: Number(match?.openingHandSize || 0),
     seed: Number(match?.seed || 0),
     timeoutMs: Number(match?.timeoutMs || 0),
+    initialPublicCheckpointHash: String(match?.initialPublicCheckpointHash || ""),
+    matchClockPolicy: match?.matchClockPolicy
+      ? {
+          type: String(match.matchClockPolicy.type || "per_player_match_clock_v1"),
+          initialMs: Number(match.matchClockPolicy.initialMs || match?.timeoutMs || 0),
+          graceMs: Number(match.matchClockPolicy.graceMs || 0),
+        }
+      : null,
     players,
     deckAuditManifests: Array.isArray(match?.deckAuditManifests)
       ? match.deckAuditManifests.map(publicDeckManifest)
@@ -612,6 +701,9 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
   const genesis = match?.genesis;
   if (!genesis || genesis.kind !== "ironsmith-match-genesis-v1") {
     throw new Error("Match start payload is missing signed genesis");
+  }
+  if (Number(match?.protocolVersion || 0) >= 9 && !String(match?.initialPublicCheckpointHash || "")) {
+    throw new Error("Match genesis is missing its initial public checkpoint hash");
   }
   const payload = matchGenesisPayload(match);
   const payloadHash = await sha256Hex(canonicalJson(payload), cryptoImpl);
@@ -958,11 +1050,36 @@ async function rngCommitmentForNonce(nonceHex, cryptoImpl) {
 async function verifyFairRandomReveal({
   reveal,
   expectedPlayers,
+  players,
   matchId,
   seq,
 }, cryptoImpl) {
   requireExactSortedPlayerEntries(reveal?.commits, expectedPlayers, "Fair-random commits");
   requireExactSortedPlayerEntries(reveal?.reveals, expectedPlayers, "Fair-random reveals");
+  for (const entry of reveal.commits || []) {
+    if (!entry?.signature) {
+      throw new Error("Fair-random commitment is missing its player signature");
+    }
+    const player = Number(entry.player);
+    const publicKey = await importAuditPublicKey(players.get(player)?.auditPublicKey || "", cryptoImpl);
+    const valid = await verifyAuditPayload(
+      publicKey,
+      rngCommitmentPayload({
+        matchId,
+        seq,
+        requirementId: reveal?.requirementId,
+        requestId: entry.requestId,
+        requester: entry.requester,
+        player,
+        commitmentHex: entry.commitmentHex,
+      }),
+      entry.signature,
+      cryptoImpl,
+    );
+    if (!valid) {
+      throw new Error("Fair-random commitment signature is invalid");
+    }
+  }
   for (const entry of reveal.reveals || []) {
     const expected = (reveal.commits || []).find(
       (commit) => Number(commit.player) === Number(entry.player)
@@ -973,6 +1090,30 @@ async function verifyFairRandomReveal({
     }
     if (entry.commitmentHex && actual !== String(entry.commitmentHex || "")) {
       throw new Error("Fair-random reveal commitment echo is invalid");
+    }
+    if (!entry?.signature) {
+      throw new Error("Fair-random reveal is missing its player signature");
+    }
+    const player = Number(entry.player);
+    const publicKey = await importAuditPublicKey(players.get(player)?.auditPublicKey || "", cryptoImpl);
+    const valid = await verifyAuditPayload(
+      publicKey,
+      rngRevealPayload({
+        matchId,
+        seq,
+        requirementId: reveal?.requirementId,
+        requestId: entry.requestId,
+        commitRequestId: entry.commitRequestId,
+        requester: entry.requester,
+        player,
+        nonceHex: entry.nonceHex,
+        commitmentHex: entry.commitmentHex,
+      }),
+      entry.signature,
+      cryptoImpl,
+    );
+    if (!valid) {
+      throw new Error("Fair-random reveal signature is invalid");
     }
   }
   const combinedSeedHex = await sha256Hex(canonicalJson({
@@ -1084,6 +1225,7 @@ export async function verifyLiveAuditTranscript(
   const expectedPlayers = sortedPlayerSeats(players);
   const manifests = transcriptDeckManifestMap(transcript);
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
+  let clockHash = INITIAL_MATCH_CLOCK_HASH;
   let expectedSeq = 1;
   for (const entry of transcript.actions || []) {
     const audit = entry?.audit;
@@ -1107,6 +1249,12 @@ export async function verifyLiveAuditTranscript(
     if (signer !== Number(audit.actor)) {
       throw new Error(`Action ${expectedSeq} was not signed by the acting player`);
     }
+    clockHash = await verifyMatchClockAuditChainEntry({
+      clock: audit.clock,
+      expectedClockHash: clockHash,
+      expectedSeq,
+      expectedActor: audit.actor,
+    }, cryptoImpl);
     const signerKey = await importAuditPublicKey(players.get(signer)?.auditPublicKey || "", cryptoImpl);
     const envelopePayload = {
       matchId: audit.matchId,
@@ -1115,6 +1263,7 @@ export async function verifyLiveAuditTranscript(
       signer,
       prevStateHash: audit.prevStateHash,
       command: audit.command,
+      clock: audit.clock,
       openings: audit.openings || [],
       rngReveals: audit.rngReveals || [],
       shuffleProofs: audit.shuffleProofs || [],
@@ -1140,6 +1289,7 @@ export async function verifyLiveAuditTranscript(
       await verifyFairRandomReveal({
         reveal,
         expectedPlayers,
+        players,
         matchId: audit.matchId,
         seq: audit.seq,
       }, cryptoImpl);
@@ -1154,6 +1304,7 @@ export async function verifyLiveAuditTranscript(
       seq: Number(audit.seq),
       prevStateHash: audit.prevStateHash,
       command: audit.command,
+      clock: audit.clock,
       openings: audit.openings || [],
       rngReveals: audit.rngReveals || [],
       shuffleProofs: audit.shuffleProofs || [],

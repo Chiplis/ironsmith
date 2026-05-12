@@ -60,6 +60,15 @@ impl EffectExecutor for SequenceEffect {
             }
 
             outcomes.push(outcome);
+            if ctx.decision_maker.awaiting_choice() {
+                let aggregate = EffectOutcome::aggregate(outcomes);
+                return Ok(EffectOutcome::with_details(
+                    aggregate.status,
+                    aggregate.value,
+                    events,
+                    execution_facts,
+                ));
+            }
         }
 
         let aggregate = EffectOutcome::aggregate(outcomes);
@@ -91,7 +100,41 @@ impl EffectExecutor for SequenceEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::BooleanContext;
+    use crate::ids::PlayerId;
     use crate::target::ChooseSpec;
+
+    #[derive(Clone, Debug)]
+    struct PendingChoiceEffect;
+
+    impl EffectExecutor for PendingChoiceEffect {
+        fn execute(
+            &self,
+            game: &mut GameState,
+            ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            let prompt = BooleanContext::new(ctx.controller, Some(ctx.source), "pause");
+            ctx.decision_maker.decide_boolean(game, &prompt);
+            Ok(EffectOutcome::count(0))
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturingDecisionMaker {
+        pending: bool,
+    }
+
+    impl DecisionMaker for CapturingDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+
+        fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+            self.pending = true;
+            false
+        }
+    }
 
     #[test]
     fn sequence_forwards_inner_target_spec() {
@@ -116,5 +159,29 @@ mod tests {
             .expect("sequence should execute");
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+    }
+
+    #[test]
+    fn sequence_stops_before_later_effects_when_inner_effect_needs_choice() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let starting_life = game.player(alice).expect("Alice exists").life;
+        let source = game.new_object_id();
+        let mut dm = CapturingDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+
+        SequenceEffect::new(vec![
+            Effect::new(PendingChoiceEffect),
+            Effect::gain_life(3),
+        ])
+        .execute(&mut game, &mut ctx)
+        .expect("sequence should surface the pending choice");
+
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert_eq!(
+            game.player(alice).expect("Alice exists").life,
+            starting_life,
+            "later sequence effects must not run before the pending choice is answered"
+        );
     }
 }

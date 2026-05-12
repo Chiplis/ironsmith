@@ -689,6 +689,17 @@ export class WasmGame {
      * @param {any} input
      * @returns {any}
      */
+    ziffleBuildRevealTokens(input) {
+        const ret = wasm.wasmgame_ziffleBuildRevealTokens(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
     ziffleBuildShuffleStep(input) {
         const ret = wasm.wasmgame_ziffleBuildShuffleStep(this.__wbg_ptr, input);
         if (ret[2]) {
@@ -713,6 +724,17 @@ export class WasmGame {
      */
     ziffleRevealCard(input) {
         const ret = wasm.wasmgame_ziffleRevealCard(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
+    ziffleRevealCards(input) {
+        const ret = wasm.wasmgame_ziffleRevealCards(this.__wbg_ptr, input);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

@@ -1634,6 +1634,93 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn mulligan_shuffle_requirement_reseals_drawn_hidden_hand_cards() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let bob = PlayerId::from_index(1);
+        for slot in 0..10 {
+            game.game.create_hidden_card_placeholder(
+                bob,
+                Zone::Library,
+                slot,
+                format!("bob-slot-{slot}"),
+            );
+        }
+        assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
+
+        let before = game.capture_crypto_audit_state();
+        let hand_ids = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .hand
+            .clone();
+        for id in hand_ids {
+            let _ = game.game.move_object_by_effect(id, Zone::Library);
+        }
+        game.game
+            .player_mut(bob)
+            .expect("Bob should still exist")
+            .library
+            .reverse();
+        assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
+        game.update_crypto_requirements_from(before);
+
+        let requirement = game
+            .last_crypto_requirements
+            .iter()
+            .find(|requirement| {
+                requirement.requirement_type == "verifiable_shuffle" && requirement.owner == 1
+            })
+            .expect("mulligan redraw should require a verifiable shuffle");
+        let before_order = requirement
+            .before_order
+            .as_ref()
+            .expect("shuffle requirement should include before order");
+        let after_order = requirement
+            .after_order
+            .as_ref()
+            .expect("shuffle requirement should include after order")
+            .clone();
+        assert_eq!(before_order.len(), 10);
+        assert_eq!(after_order.len(), 10);
+
+        let bob_hand = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .hand
+            .clone();
+        assert_eq!(bob_hand.len(), 2);
+        assert!(
+            bob_hand
+                .iter()
+                .all(|id| after_order.iter().any(|raw| *raw == id.0)),
+            "drawn hand cards must be part of the post-shuffle ziffle order"
+        );
+
+        game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+            owner: 1,
+            deck_hash: "mulligan-deck".to_string(),
+            after_order: after_order.clone(),
+        })
+        .expect("verified shuffle should reseal library and drawn hand cards");
+
+        for (position, raw_id) in after_order.iter().copied().enumerate() {
+            let info = game
+                .game
+                .hidden_card_info(ObjectId::from_raw(raw_id))
+                .expect("all shuffled hidden cards should still have metadata");
+            assert_eq!(info.owner, bob);
+            assert_eq!(info.slot, position as u16);
+            assert_eq!(
+                info.commitment,
+                format!("ziffle:mulligan-deck:{position}")
+            );
+        }
+    }
+
+    #[test]
     fn sync_checkpoint_preserves_hidden_card_placeholders() {
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);

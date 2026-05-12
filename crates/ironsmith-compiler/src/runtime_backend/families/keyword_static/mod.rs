@@ -5182,6 +5182,17 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
     }
 
+    let has_card_type_among = contains_any_keyword_static_phrase(
+        &filter_words,
+        &[&["card", "type", "among"], &["card", "types", "among"]],
+    );
+    if has_card_type_among {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported card-types-among dynamic value (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
+
     // "for each <counter> counter removed this way" (storage lands, mana batteries, etc.)
     // The remove-counters cost plumbs the removed total through `CostContext.x_value`,
     // so model the dynamic amount as `X`.
@@ -5235,6 +5246,13 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
 
     if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
         return Ok(Some(Value::CommanderCastCount(player)));
+    }
+
+    if contains_keyword_static_phrase(&filter_words, &["this", "way"]) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported this-way dynamic value (clause: '{}')",
+            words_all.join(" ")
+        )));
     }
 
     if let Ok(filter) = parse_object_filter(filter_tokens, false) {

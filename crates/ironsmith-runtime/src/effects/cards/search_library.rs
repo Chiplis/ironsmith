@@ -83,6 +83,20 @@ impl EffectExecutor for SearchLibraryEffect {
                         .collect()
                 })
                 .unwrap_or_default();
+            let unknown_hidden_cards: Vec<ObjectId> = if matching_cards.is_empty() {
+                library_cards
+                    .iter()
+                    .copied()
+                    .filter(|id| game.is_hidden_card_placeholder(*id))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let decision_candidates = if matching_cards.is_empty() {
+                unknown_hidden_cards
+            } else {
+                matching_cards.clone()
+            };
 
             // Let the player choose a card (or fail to find) using the spec-based system
             let may_fail_to_find = match self.search_mode {
@@ -90,9 +104,9 @@ impl EffectExecutor for SearchLibraryEffect {
                 SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => true,
             };
             let spec = if may_fail_to_find {
-                SearchSpec::new(ctx.source, matching_cards.clone(), self.reveal)
+                SearchSpec::new(ctx.source, decision_candidates, self.reveal)
             } else {
-                SearchSpec::mandatory(ctx.source, matching_cards.clone(), self.reveal)
+                SearchSpec::mandatory(ctx.source, decision_candidates, self.reveal)
             };
             let mut chosen_card = make_decision_with_fallback(
                 game,
@@ -111,6 +125,12 @@ impl EffectExecutor for SearchLibraryEffect {
 
             // If a card was chosen, move it to the destination
             if let Some(card_id) = chosen_card {
+                let chosen_matches = game
+                    .object(card_id)
+                    .is_some_and(|obj| self.filter.matches(obj, &filter_ctx, game));
+                if !chosen_matches && !game.is_hidden_card_placeholder(card_id) {
+                    return Err(ExecutionError::InvalidTarget);
+                }
                 // Verify the card is still in the library (in case decision maker did something weird)
                 let still_in_library = game
                     .player(player_id)
@@ -257,6 +277,50 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct PendingSearchDm {
+        calls: Vec<ViewCall>,
+        pending: bool,
+        candidates: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for PendingSearchDm {
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.calls.push(ViewCall {
+                viewer,
+                subject: ctx.subject,
+                zone: ctx.zone,
+                public: ctx.public,
+                cards: cards.to_vec(),
+            });
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.pending = true;
+            self.candidates = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            Vec::new()
+        }
+    }
+
     fn add_library_creature(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
         let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Creature])
@@ -320,6 +384,51 @@ mod tests {
             dm.calls
                 .iter()
                 .any(|call| call.public && call.cards == vec![found])
+        );
+    }
+
+    #[test]
+    fn search_library_prompts_with_hidden_library_placeholders() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let first = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "first-hidden-commitment".to_string(),
+        );
+        let second = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "second-hidden-commitment".to_string(),
+        );
+        let source = game.new_object_id();
+        let mut dm = PendingSearchDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = SearchLibraryEffect::new(
+            ObjectFilter::default().with_type(CardType::Instant),
+            Zone::Library,
+            PlayerFilter::You,
+            PlayerFilter::You,
+            true,
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("search should pause for hidden library choices");
+
+        assert!(dm.pending, "hidden library search should surface a prompt");
+        assert_eq!(dm.candidates, vec![first, second]);
+        assert!(
+            dm.calls.iter().any(|call| {
+                !call.public
+                    && call.viewer == alice
+                    && call.subject == alice
+                    && call.zone == Zone::Library
+                    && call.cards == vec![first, second]
+            }),
+            "hidden placeholders should be opened privately for the searching player"
         );
     }
 }

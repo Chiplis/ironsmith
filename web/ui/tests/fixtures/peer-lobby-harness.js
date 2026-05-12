@@ -1,6 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { usePeerLobby } from "/src/hooks/usePeerLobby.js";
+import { UI_NOTICE_EVENT } from "/src/lib/ui-notices.js";
+
+const ZIFFLE_PUBLIC_OPEN_OBJECT_ID = 4242;
+const ZIFFLE_PUBLIC_OPEN_POSITION = 53;
+const ZIFFLE_PUBLIC_OPEN_ORIGINAL_SLOT = 7;
+const ZIFFLE_PUBLIC_OPEN_CARD = "Mystical Tutor";
+const ZIFFLE_OPENED_LAND_OBJECT_ID = 4343;
+const ZIFFLE_OPENED_LAND_POSITION = 54;
+const ZIFFLE_OPENED_LAND_ORIGINAL_SLOT = 7;
+const ZIFFLE_OPENED_LAND_WRONG_REVEAL_SLOT = 13;
+const ZIFFLE_OPENED_LAND_CARD = "Island";
+const POST_PUBLIC_OPEN_OBJECT_ID = 4444;
+const POST_PUBLIC_OPEN_ORIGINAL_SLOT = 13;
+const POST_PUBLIC_OPEN_CARD = "Mystical Tutor";
 
 function createFakeGame() {
   let matchConfig = null;
@@ -9,7 +23,17 @@ function createFakeGame() {
   let nextObjectId = 1000;
   let battlefield = [];
   let addedHands = new Map();
+  let zifflePublicOpenRevealed = false;
+  let ziffleOpenedLandRevealed = false;
+  let postPublicOpenDispatched = false;
+  let omitOwnerOpenedLandPosition = false;
+  let failOpenedLandExport = false;
+  let includeOpenedLandInCheckpointHand = false;
   const syncEvents = [];
+  const instrumentation = {
+    exportPublicAuditCheckpoint: 0,
+    exportSyncCheckpoint: 0,
+  };
 
   const fakeHex = (label) => Array.from(String(label || "fixture"))
     .map((char) => char.charCodeAt(0).toString(16).padStart(2, "0"))
@@ -31,6 +55,44 @@ function createFakeGame() {
         kind: "test_priority_action",
         action_ref: {
           kind: "test_priority_action",
+          actor,
+          sequence: actionSequence,
+        },
+      },
+      {
+        index: 1,
+        kind: "ziffle_shuffle_action",
+        action_ref: {
+          kind: "ziffle_shuffle_action",
+          actor,
+          sequence: actionSequence,
+        },
+      },
+      {
+        index: 2,
+        kind: "ziffle_public_open_action",
+        action_ref: {
+          kind: "ziffle_public_open_action",
+          actor,
+          sequence: actionSequence,
+        },
+      },
+      {
+        index: 3,
+        kind: "play_land",
+        object_id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+        action_ref: {
+          kind: "play_land",
+          land_id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+          actor,
+          sequence: actionSequence,
+        },
+      },
+      {
+        index: 4,
+        kind: "post_public_open_action",
+        action_ref: {
+          kind: "post_public_open_action",
           actor,
           sequence: actionSequence,
         },
@@ -88,6 +150,32 @@ function createFakeGame() {
     );
   };
 
+  const zifflePublicOpenCommitment = () => String(
+    matchConfig?.hiddenDeckManifests?.[0]?.slotCommitments?.find((entry) =>
+      Number(entry?.slot) === ZIFFLE_PUBLIC_OPEN_POSITION
+    )?.commitment || ""
+  );
+  const ziffleCommitmentForPosition = (position) => String(
+    matchConfig?.hiddenDeckManifests?.[0]?.slotCommitments?.find((entry) =>
+      Number(entry?.slot) === Number(position)
+    )?.commitment || ""
+  );
+  const privateManifestForOwner = (owner) => {
+    try {
+      return Object.keys(window.localStorage || {})
+        .filter((key) => key.startsWith("ironsmith.auditDeckManifest.v1"))
+        .map((key) => JSON.parse(window.localStorage.getItem(key)))
+        .find((manifest) => Number(manifest?.owner) === Number(owner)) || null;
+    } catch {
+      return null;
+    }
+  };
+  const privateCommitmentForSlot = (owner, slot) => String(
+    privateManifestForOwner(owner)?.slotSecrets?.find((entry) =>
+      Number(entry?.slot) === Number(slot)
+    )?.commitment || ""
+  );
+
   return {
     validateMatchConfig: async () => ({ valid: true, issues: [] }),
     ziffleKeygen: async ({ context = "fixture", deckCount = 60 }) => ({
@@ -103,12 +191,167 @@ function createFakeGame() {
     ziffleVerifyShuffle: async ({ context = "fixture", deckCount = 60, steps = [] }) => ({
       deckHash: fakeHex(`verified:${context}:${deckCount}:${steps.length}`),
     }),
+    ziffleBuildRevealToken: async ({ context = "fixture", cardPosition = 0, player = 0 }) => ({
+      player: Number(player || 0),
+      cardPosition: Number(cardPosition || 0),
+      tokenHex: fakeHex(`reveal:${context}:${cardPosition}:${player}`),
+      proofHex: fakeHex(`reveal-proof:${context}:${cardPosition}:${player}`),
+    }),
+    ziffleRevealCard: async ({ cardPosition = 0 }) => {
+      if (Number(cardPosition) !== ZIFFLE_PUBLIC_OPEN_POSITION) {
+        if (Number(cardPosition) === ZIFFLE_OPENED_LAND_POSITION) {
+          return {
+            originalSlot: ZIFFLE_OPENED_LAND_WRONG_REVEAL_SLOT,
+            cardPosition: ZIFFLE_OPENED_LAND_POSITION,
+          };
+        }
+        throw new Error(`unexpected ziffle reveal position ${cardPosition}`);
+      }
+      return {
+        originalSlot: ZIFFLE_PUBLIC_OPEN_ORIGINAL_SLOT,
+        cardPosition: ZIFFLE_PUBLIC_OPEN_POSITION,
+      };
+    },
+    previewCryptoRequirements: async (command) => {
+      if (command?.action_ref?.kind === "ziffle_public_open_action") {
+        return [
+          {
+            id: "fixture-ziffle-public-open",
+            type: "public_open",
+            owner: 0,
+            zone: "library",
+            slot: ZIFFLE_PUBLIC_OPEN_POSITION,
+            objectId: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+            card: ZIFFLE_PUBLIC_OPEN_CARD,
+          },
+        ];
+      }
+      if (command?.action_ref?.kind === "post_public_open_action") {
+        return [
+          {
+            id: "fixture-post-public-open",
+            type: "public_open",
+            owner: 0,
+            zone: "hidden_zone",
+            slot: POST_PUBLIC_OPEN_ORIGINAL_SLOT,
+            objectId: POST_PUBLIC_OPEN_OBJECT_ID,
+            card: POST_PUBLIC_OPEN_CARD,
+          },
+        ];
+      }
+      if (
+        command?.action_ref?.kind === "play_land"
+        && Number(command?.action_ref?.land_id) === ZIFFLE_OPENED_LAND_OBJECT_ID
+      ) {
+        return [
+          {
+            id: "fixture-opened-land-public-open",
+            type: "public_open",
+            owner: 0,
+            zone: "battlefield",
+            slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
+            objectId: ZIFFLE_OPENED_LAND_OBJECT_ID,
+            card: ZIFFLE_OPENED_LAND_CARD,
+          },
+        ];
+      }
+      if (command?.action_ref?.kind !== "ziffle_shuffle_action") return [];
+      return [
+        {
+          id: "fixture-live-library-shuffle",
+          type: "verifiable_shuffle",
+          owner: 0,
+          zone: "library",
+          beforeOrder: [0, 1, 2],
+          afterOrder: [2, 1, 0],
+        },
+      ];
+    },
+    applyVerifiedHiddenLibraryShuffle: async () => buildState(),
+    revealHiddenSlot: async ({ owner, slot, commitment }) => {
+      if (
+        Number(owner) === 0
+        && Number(slot) === ZIFFLE_PUBLIC_OPEN_POSITION
+        && String(commitment || "") === zifflePublicOpenCommitment()
+      ) {
+        return buildState();
+      }
+      if (
+        Number(owner) === 0
+        && Number(slot) === POST_PUBLIC_OPEN_ORIGINAL_SLOT
+        && postPublicOpenDispatched
+      ) {
+        return buildState();
+      }
+      throw new Error("hidden card commitment does not match reveal");
+    },
+    revealHiddenPosition: async ({ owner, position, originalSlot, positionCommitment }) => {
+      if (
+        Number(owner) === 0
+        && Number(position) === ZIFFLE_PUBLIC_OPEN_POSITION
+        && Number(originalSlot) === ZIFFLE_PUBLIC_OPEN_ORIGINAL_SLOT
+        && String(positionCommitment || "") === zifflePublicOpenCommitment()
+      ) {
+        zifflePublicOpenRevealed = true;
+        return buildState();
+      }
+      if (
+        Number(owner) === 0
+        && Number(position) === ZIFFLE_OPENED_LAND_POSITION
+        && Number(originalSlot) === ZIFFLE_OPENED_LAND_ORIGINAL_SLOT
+        && String(positionCommitment || "") === ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION)
+      ) {
+        ziffleOpenedLandRevealed = true;
+        return buildState();
+      }
+      throw new Error("hidden ziffle position commitment does not match reveal");
+    },
+    exportHiddenCardOpening: async (objectId) => {
+      if (Number(objectId) !== ZIFFLE_PUBLIC_OPEN_OBJECT_ID) {
+        if (Number(objectId) === POST_PUBLIC_OPEN_OBJECT_ID) {
+          return {
+            owner: 0,
+            slot: POST_PUBLIC_OPEN_ORIGINAL_SLOT,
+            objectId: POST_PUBLIC_OPEN_OBJECT_ID,
+            object_id: POST_PUBLIC_OPEN_OBJECT_ID,
+            commitment: privateCommitmentForSlot(0, POST_PUBLIC_OPEN_ORIGINAL_SLOT),
+            card: POST_PUBLIC_OPEN_CARD,
+          };
+        }
+        if (Number(objectId) !== ZIFFLE_OPENED_LAND_OBJECT_ID) {
+          throw new Error(`unknown hidden object ${objectId}`);
+        }
+        if (failOpenedLandExport) {
+          throw new Error("object is not tracked as a hidden card");
+        }
+        return {
+          owner: 0,
+          slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
+          objectId: ZIFFLE_OPENED_LAND_OBJECT_ID,
+          object_id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+          commitment: privateCommitmentForSlot(0, ZIFFLE_OPENED_LAND_ORIGINAL_SLOT),
+          card: ZIFFLE_OPENED_LAND_CARD,
+        };
+      }
+      return {
+        owner: 0,
+        slot: ZIFFLE_PUBLIC_OPEN_POSITION,
+        objectId: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+        object_id: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+        commitment: zifflePublicOpenCommitment(),
+        card: ZIFFLE_PUBLIC_OPEN_CARD,
+      };
+    },
     startMatch: async (config) => {
       matchConfig = JSON.parse(JSON.stringify(config || {}));
       actionSequence = 0;
       nextObjectId = 1000;
       battlefield = [];
       addedHands = new Map();
+      zifflePublicOpenRevealed = false;
+      ziffleOpenedLandRevealed = false;
+      postPublicOpenDispatched = false;
+      failOpenedLandExport = false;
       return buildState();
     },
     setPerspective: async (index) => {
@@ -119,6 +362,21 @@ function createFakeGame() {
     dispatch: async (command) => {
       if (!actionRefAvailable(command)) {
         throw new Error(`invalid priority action ref: ${JSON.stringify(command?.action_ref || null)}`);
+      }
+      if (
+        command?.type === "priority_action"
+        && command?.action_ref?.kind === "play_land"
+        && Number(command?.action_ref?.land_id) === ZIFFLE_OPENED_LAND_OBJECT_ID
+        && Number(perspective) !== 0
+        && !ziffleOpenedLandRevealed
+      ) {
+        throw new Error("hidden card commitment does not match reveal");
+      }
+      if (
+        command?.type === "priority_action"
+        && command?.action_ref?.kind === "post_public_open_action"
+      ) {
+        postPublicOpenDispatched = true;
       }
       actionSequence += 1;
       battlefield = [
@@ -157,31 +415,84 @@ function createFakeGame() {
       return card.id;
     },
     cancelDecision: async () => buildState(),
-    exportSyncCheckpoint: async () => ({
-      matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
-      perspective,
-      actionSequence,
-      battlefield: JSON.parse(JSON.stringify(battlefield)),
-    }),
+    exportSyncCheckpoint: async () => {
+      instrumentation.exportSyncCheckpoint += 1;
+      const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
+      const openedLandHiddenCard = openedLandVisibleToLocal
+        ? {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
+            commitment: privateCommitmentForSlot(0, ZIFFLE_OPENED_LAND_ORIGINAL_SLOT),
+            ...(!omitOwnerOpenedLandPosition
+              ? {
+                  publicSlot: ZIFFLE_OPENED_LAND_POSITION,
+                  publicCommitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+                }
+              : {}),
+          }
+        : {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_POSITION,
+            commitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+          };
+      return {
+        matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
+        perspective,
+        actionSequence,
+        players: (matchConfig?.playerNames || ["Host", "Guest"]).map((_, index) => ({
+          id: index,
+          hand: includeOpenedLandInCheckpointHand && index === 0
+            ? [ZIFFLE_OPENED_LAND_OBJECT_ID]
+            : [],
+          library: index === 0 ? [ZIFFLE_PUBLIC_OPEN_OBJECT_ID, ZIFFLE_OPENED_LAND_OBJECT_ID] : [],
+        })),
+        objects: [
+          {
+            id: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+            owner: 0,
+            zone: "library",
+            hiddenCard: {
+              owner: 0,
+              slot: ZIFFLE_PUBLIC_OPEN_POSITION,
+              commitment: zifflePublicOpenCommitment(),
+            },
+          },
+          {
+            id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+            owner: 0,
+            zone: "hand",
+            hiddenCard: openedLandHiddenCard,
+          },
+        ],
+        battlefield: JSON.parse(JSON.stringify(battlefield)),
+      };
+    },
     exportRedactedSyncCheckpoint: async () => ({
       matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
       perspective,
       actionSequence,
       battlefield: JSON.parse(JSON.stringify(battlefield)),
     }),
-    exportPublicAuditCheckpoint: async () => ({
-      players: JSON.parse(JSON.stringify(matchConfig?.playerNames || [])),
-      startingLife: Number(matchConfig?.startingLife || 20),
-      format: String(matchConfig?.format || "normal"),
-      actionSequence,
-      battlefield: JSON.parse(JSON.stringify(battlefield)),
-    }),
+    exportPublicAuditCheckpoint: async () => {
+      instrumentation.exportPublicAuditCheckpoint += 1;
+      return {
+        players: JSON.parse(JSON.stringify(matchConfig?.playerNames || [])),
+        startingLife: Number(matchConfig?.startingLife || 20),
+        format: String(matchConfig?.format || "normal"),
+        actionSequence,
+        battlefield: JSON.parse(JSON.stringify(battlefield)),
+      };
+    },
     importSyncCheckpoint: async (checkpoint, perspectiveIndex = 0) => {
       matchConfig = JSON.parse(JSON.stringify(checkpoint?.matchConfig || {}));
       perspective = Number(perspectiveIndex ?? checkpoint?.perspective ?? 0);
       actionSequence = Number(checkpoint?.actionSequence || 0);
       battlefield = JSON.parse(JSON.stringify(checkpoint?.battlefield || []));
       addedHands = new Map();
+      zifflePublicOpenRevealed = false;
+      ziffleOpenedLandRevealed = false;
+      postPublicOpenDispatched = false;
+      failOpenedLandExport = false;
       const nextState = buildState();
       syncEvents.push({
         type: "sync_checkpoint_import",
@@ -192,15 +503,31 @@ function createFakeGame() {
       return nextState;
     },
     syncEvents: () => [...syncEvents],
+    instrumentation: () => ({ ...instrumentation }),
+    resetInstrumentation: () => {
+      instrumentation.exportPublicAuditCheckpoint = 0;
+      instrumentation.exportSyncCheckpoint = 0;
+    },
+    setOmitOwnerOpenedLandPosition: (enabled) => {
+      omitOwnerOpenedLandPosition = Boolean(enabled);
+    },
+    setFailOpenedLandExport: (enabled) => {
+      failOpenedLandExport = Boolean(enabled);
+    },
+    setIncludeOpenedLandInCheckpointHand: (enabled) => {
+      includeOpenedLandInCheckpointHand = Boolean(enabled);
+    },
   };
 }
 
 function Harness() {
   const [visibleState, setVisibleState] = useState(null);
   const statusEventsRef = useRef([]);
+  const noticeEventsRef = useRef([]);
   const syncEventsRef = useRef([]);
   const autoPassEnabledRef = useRef(false);
   const autoPassAttemptRef = useRef("");
+  const applyDelayMsRef = useRef(0);
   const game = useMemo(() => createFakeGame(), []);
 
   const setState = useCallback((nextState) => {
@@ -212,6 +539,14 @@ function Harness() {
       message: String(message || ""),
       isError: Boolean(isError),
     });
+  }, []);
+
+  useEffect(() => {
+    const listener = (event) => {
+      noticeEventsRef.current.push(event.detail || null);
+    };
+    window.addEventListener(UI_NOTICE_EVENT, listener);
+    return () => window.removeEventListener(UI_NOTICE_EVENT, listener);
   }, []);
 
   const applySyncedCommand = useCallback(async (command, label = "", syncContext = null) => {
@@ -227,6 +562,11 @@ function Harness() {
       perspective: nextState?.perspective ?? null,
     });
     setVisibleState(nextState);
+    if (applyDelayMsRef.current > 0) {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, applyDelayMsRef.current);
+      });
+    }
     return nextState;
   }, [game]);
 
@@ -278,6 +618,19 @@ function Harness() {
         autoPassEnabledRef.current = Boolean(enabled);
         autoPassAttemptRef.current = "";
       },
+      setApplyDelay: (delayMs = 0) => {
+        applyDelayMsRef.current = Math.max(0, Number(delayMs) || 0);
+      },
+      setOmitOwnerOpenedLandPosition: (enabled) => {
+        game.setOmitOwnerOpenedLandPosition(enabled);
+      },
+      setFailOpenedLandExport: (enabled) => {
+        game.setFailOpenedLandExport(enabled);
+      },
+      setIncludeOpenedLandInCheckpointHand: (enabled) => {
+        game.setIncludeOpenedLandInCheckpointHand(enabled);
+      },
+      resetInstrumentation: game.resetInstrumentation,
       silentlyAddCard: async ({ playerIndex, cardName, zone = "hand" } = {}) => {
         await game.addCardToZone(
           Number(playerIndex ?? lobby.multiplayer.localPlayerIndex ?? 0),
@@ -293,7 +646,10 @@ function Harness() {
         canStartHostedMatch: lobby.canStartHostedMatch,
         visibleState,
         statusEvents: [...statusEventsRef.current],
+        noticeEvents: [...noticeEventsRef.current],
         syncEvents: [...syncEventsRef.current, ...game.syncEvents()],
+        instrumentation: game.instrumentation(),
+        auditTranscript: lobby.exportAuditTranscript?.() || null,
       }),
     };
   });

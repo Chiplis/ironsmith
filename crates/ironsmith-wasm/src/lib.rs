@@ -375,6 +375,7 @@ struct CryptoAuditState {
     hidden_by_id: HashMap<ObjectId, HiddenAuditCard>,
     hidden_by_key: HashMap<(u8, u16, String), HiddenAuditCard>,
     libraries: HashMap<PlayerId, Vec<ObjectId>>,
+    hands: HashMap<PlayerId, Vec<ObjectId>>,
     random_count: u64,
 }
 
@@ -811,6 +812,103 @@ fn library_relative_order_changed(before: &[ObjectId], after: &[ObjectId]) -> bo
     before_common.len() > 1 && before_common != after_common
 }
 
+fn hidden_keys_for_order(
+    state: &CryptoAuditState,
+    order: &[ObjectId],
+) -> HashSet<(u8, u16, String)> {
+    order
+        .iter()
+        .filter_map(|id| state.hidden_by_id.get(id).map(hidden_audit_key))
+        .collect()
+}
+
+fn changed_hidden_hand_cards_after_shuffle(
+    player: PlayerId,
+    before: &CryptoAuditState,
+    after: &CryptoAuditState,
+) -> Vec<ObjectId> {
+    let mut drawn = Vec::new();
+    let Some(after_hand) = after.hands.get(&player) else {
+        return drawn;
+    };
+    for &object_id in after_hand {
+        let Some(after_card) = after.hidden_by_id.get(&object_id) else {
+            continue;
+        };
+        if after_card.owner != player || after_card.zone != Zone::Hand {
+            continue;
+        }
+        if before
+            .hidden_by_id
+            .get(&object_id)
+            .is_some_and(|card| card.owner == player && card.zone == Zone::Hand)
+        {
+            continue;
+        }
+        let Some(before_card) = before.hidden_by_key.get(&hidden_audit_key(after_card)) else {
+            continue;
+        };
+        if before_card.owner == player
+            && (before_card.zone == Zone::Library || before_card.object_id != after_card.object_id)
+        {
+            drawn.push(object_id);
+        }
+    }
+    drawn.reverse();
+    drawn
+}
+
+fn effective_after_shuffle_order(
+    player: PlayerId,
+    before: &CryptoAuditState,
+    after: &CryptoAuditState,
+) -> Vec<ObjectId> {
+    let mut order = after.libraries.get(&player).cloned().unwrap_or_default();
+    order.extend(changed_hidden_hand_cards_after_shuffle(
+        player, before, after,
+    ));
+    order
+}
+
+fn effective_before_shuffle_order(
+    player: PlayerId,
+    before: &CryptoAuditState,
+    after: &CryptoAuditState,
+    after_order: &[ObjectId],
+) -> Vec<ObjectId> {
+    let after_keys = hidden_keys_for_order(after, after_order);
+    let mut order = Vec::new();
+    let mut seen = HashSet::new();
+    let mut append_matching = |ids: Option<&Vec<ObjectId>>, order: &mut Vec<ObjectId>| {
+        let Some(ids) = ids else {
+            return;
+        };
+        for &id in ids {
+            let Some(card) = before.hidden_by_id.get(&id) else {
+                continue;
+            };
+            if card.owner == player
+                && after_keys.contains(&hidden_audit_key(card))
+                && seen.insert(id)
+            {
+                order.push(id);
+            }
+        }
+    };
+    append_matching(before.libraries.get(&player), &mut order);
+    append_matching(before.hands.get(&player), &mut order);
+    let mut remaining: Vec<_> = before
+        .hidden_by_id
+        .iter()
+        .filter_map(|(&id, card)| {
+            (card.owner == player && after_keys.contains(&hidden_audit_key(card))).then_some(id)
+        })
+        .collect();
+    remaining.sort_by_key(|id| id.0);
+    append_matching(Some(&remaining), &mut order);
+    order
+}
+
 impl WasmGame {
     fn capture_crypto_audit_state(&self) -> CryptoAuditState {
         let mut state = CryptoAuditState {
@@ -836,6 +934,7 @@ impl WasmGame {
         }
         for player in &self.game.players {
             state.libraries.insert(player.id, player.library.clone());
+            state.hands.insert(player.id, player.hand.clone());
         }
         state
     }
@@ -1011,12 +1110,15 @@ impl WasmGame {
 
         let mut shuffle_requirements = 0u64;
         for (player, before_order) in &before.libraries {
-            let Some(after_order) = after.libraries.get(player) else {
+            let Some(after_library_order) = after.libraries.get(player) else {
                 continue;
             };
-            if !library_relative_order_changed(before_order, after_order) {
+            if !library_relative_order_changed(before_order, after_library_order) {
                 continue;
             }
+            let after_shuffle_order = effective_after_shuffle_order(*player, &before, &after);
+            let before_shuffle_order =
+                effective_before_shuffle_order(*player, &before, &after, &after_shuffle_order);
             shuffle_requirements = shuffle_requirements.saturating_add(1);
             push_requirement_unique(
                 &mut requirements,
@@ -1036,8 +1138,8 @@ impl WasmGame {
                     count: None,
                     from: None,
                     to: None,
-                    before_order: Some(before_order.iter().map(|id| id.0).collect()),
-                    after_order: Some(after_order.iter().map(|id| id.0).collect()),
+                    before_order: Some(before_shuffle_order.iter().map(|id| id.0).collect()),
+                    after_order: Some(after_shuffle_order.iter().map(|id| id.0).collect()),
                     random_count_before: Some(before.random_count),
                     random_count_after: Some(after.random_count),
                 },
@@ -2884,6 +2986,8 @@ struct TranscriptRandomSeedsInput {
 struct ApplyHiddenLibraryShuffleInput {
     owner: u8,
     deck_hash: String,
+    #[serde(default)]
+    after_order: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2943,6 +3047,8 @@ struct ZiffleShuffleStepOutput {
 struct ZiffleBuildShuffleStepInput {
     deck_count: usize,
     context: String,
+    #[serde(default)]
+    key_context: String,
     keys: Vec<ZifflePublicKeyInput>,
     steps: Vec<ZiffleShuffleStepInput>,
     shuffler: u8,
@@ -2954,6 +3060,8 @@ struct ZiffleBuildShuffleStepInput {
 struct ZiffleVerifyShuffleInput {
     deck_count: usize,
     context: String,
+    #[serde(default)]
+    key_context: String,
     keys: Vec<ZifflePublicKeyInput>,
     steps: Vec<ZiffleShuffleStepInput>,
 }
@@ -2971,6 +3079,8 @@ struct ZiffleVerifyShuffleOutput {
 struct ZiffleBuildRevealTokenInput {
     deck_count: usize,
     context: String,
+    #[serde(default)]
+    key_context: String,
     keys: Vec<ZifflePublicKeyInput>,
     steps: Vec<ZiffleShuffleStepInput>,
     card_position: usize,
@@ -2979,9 +3089,34 @@ struct ZiffleBuildRevealTokenInput {
     entropy_hex: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleBuildRevealTokensInput {
+    deck_count: usize,
+    context: String,
+    #[serde(default)]
+    key_context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+    card_positions: Vec<usize>,
+    public_key_hex: String,
+    secret_key_hex: String,
+    entropy_hex: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ZiffleRevealTokenInput {
+    player: u8,
+    public_key_hex: String,
+    token_hex: String,
+    proof_hex: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealTokenBatchInput {
+    card_position: usize,
     player: u8,
     public_key_hex: String,
     token_hex: String,
@@ -2997,15 +3132,40 @@ struct ZiffleRevealTokenOutput {
     proof_hex: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealTokenBatchOutput {
+    card_position: usize,
+    player: u8,
+    public_key_hex: String,
+    token_hex: String,
+    proof_hex: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ZiffleRevealCardInput {
     deck_count: usize,
     context: String,
+    #[serde(default)]
+    key_context: String,
     keys: Vec<ZifflePublicKeyInput>,
     steps: Vec<ZiffleShuffleStepInput>,
     card_position: usize,
     tokens: Vec<ZiffleRevealTokenInput>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZiffleRevealCardsInput {
+    deck_count: usize,
+    context: String,
+    #[serde(default)]
+    key_context: String,
+    keys: Vec<ZifflePublicKeyInput>,
+    steps: Vec<ZiffleShuffleStepInput>,
+    card_positions: Vec<usize>,
+    tokens: Vec<ZiffleRevealTokenBatchInput>,
 }
 
 #[derive(Debug, Clone, Serialize)]

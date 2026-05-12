@@ -18,7 +18,11 @@ import {
   exportAuditEncryptionPublicKey,
   exportAuditPublicKey,
   importAuditPublicKey,
+  rngCommitmentPayload,
+  rngRevealPayload,
   publicCheckpointHash,
+  sha256Hex,
+  signAuditPayload,
   verifyCardOpeningAgainstManifest,
   verifyAuditPayload,
   verifyLiveAuditTranscript,
@@ -108,6 +112,68 @@ test("signed audit envelopes verify and reject tampering", async () => {
       webcrypto,
     ),
     false,
+  );
+});
+
+test("live audit transcript verifier checks signed match clock chain", async () => {
+  const actorKey = await createAuditSessionKey(webcrypto);
+  const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const clock = {
+    type: "match_clock_v1",
+    version: 1,
+    matchId: "m-clock",
+    seq: 1,
+    actor: 0,
+    reason: "action",
+    policy: {
+      type: "per_player_match_clock_v1",
+      initialMs: 900000,
+      graceMs: 2000,
+    },
+    activePlayer: 0,
+    elapsedMs: 1250,
+    remainingMsByPlayer: [898750, 900000],
+    previousClockHash: "0".repeat(64),
+    basisSequence: 0,
+  };
+  clock.clockHash = await sha256Hex(canonicalJson({
+    domain: "ironsmith-match-clock-audit-v1",
+    clock,
+  }), webcrypto);
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: actorKey,
+    matchId: "m-clock",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    clock,
+    publicCheckpointHash: "public-checkpoint-after-clock",
+  }, webcrypto);
+  const transcript = {
+    kind: "ironsmith-live-browser-audit-v1",
+    initialStateHash: "0".repeat(64),
+    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  };
+
+  assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      ...transcript,
+      actions: [{
+        ...transcript.actions[0],
+        audit: {
+          ...audit,
+          clock: {
+            ...audit.clock,
+            elapsedMs: 0,
+          },
+        },
+      }],
+    }, webcrypto),
+    /Match clock audit hash mismatch/,
   );
 });
 
@@ -386,6 +452,98 @@ test("live audit transcript verifier rejects incomplete fair-random reveals", as
     }, webcrypto),
     /must include every player exactly once/,
   );
+});
+
+test("live audit transcript verifier accepts signed fair-random reveals", async () => {
+  const playerKeys = [
+    await createAuditSessionKey(webcrypto),
+    await createAuditSessionKey(webcrypto),
+  ];
+  const playerPublicKeys = await Promise.all(
+    playerKeys.map((keyPair) => exportAuditPublicKey(keyPair, webcrypto))
+  );
+  const matchId = "m-rng-signed";
+  const seq = 1;
+  const requirementId = "rng-1";
+  const commits = [];
+  const reveals = [];
+  for (let player = 0; player < playerKeys.length; player += 1) {
+    const requestId = `commit-${player}`;
+    const revealRequestId = `reveal-${player}`;
+    const nonceHex = `000000000000000000000000000000000000000000000000000000000000000${player}`;
+    const commitmentHex = await sha256Hex(canonicalJson({
+      domain: "ironsmith-rng-commit-v1",
+      nonceHex,
+    }), webcrypto);
+    const commitPayload = rngCommitmentPayload({
+      matchId,
+      seq,
+      requirementId,
+      requestId,
+      requester: 0,
+      player,
+      commitmentHex,
+    });
+    commits.push({
+      player,
+      requester: 0,
+      requestId,
+      commitmentHex,
+      signature: await signAuditPayload(playerKeys[player], commitPayload, webcrypto),
+    });
+    const revealPayload = rngRevealPayload({
+      matchId,
+      seq,
+      requirementId,
+      requestId: revealRequestId,
+      commitRequestId: requestId,
+      requester: 0,
+      player,
+      nonceHex,
+      commitmentHex,
+    });
+    reveals.push({
+      player,
+      requester: 0,
+      requestId: revealRequestId,
+      commitRequestId: requestId,
+      nonceHex,
+      commitmentHex,
+      signature: await signAuditPayload(playerKeys[player], revealPayload, webcrypto),
+    });
+  }
+  const command = { type: "priority_action", action_index: 0 };
+  const rngReveal = {
+    type: "commit_reveal_random",
+    requirementId,
+    commits,
+    reveals,
+    combinedSeedHex: await sha256Hex(canonicalJson({
+      domain: "ironsmith-combined-rng-v1",
+      matchId,
+      seq,
+      requirementId,
+      commits,
+      reveals,
+    }), webcrypto),
+  };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: playerKeys[0],
+    matchId,
+    seq,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    rngReveals: [rngReveal],
+    publicCheckpointHash: "public-checkpoint-after-rng",
+  }, webcrypto);
+
+  assert.equal((await verifyLiveAuditTranscript({
+    kind: "ironsmith-live-browser-audit-v1",
+    initialStateHash: "0".repeat(64),
+    players: playerPublicKeys.map((auditPublicKey, seat) => ({ seat, auditPublicKey })),
+    actions: [{ seq, actorIndex: 0, command, audit }],
+  }, webcrypto)).valid, true);
 });
 
 test("live audit transcript verifier requires a shuffle-proof verifier", async () => {

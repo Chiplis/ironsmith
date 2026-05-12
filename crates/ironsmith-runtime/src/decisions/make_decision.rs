@@ -100,6 +100,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 }
             }
             let result = dm.decide_objects(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_objects(result, fallback)
         }
         DecisionContext::SelectOptions(ctx) => {
@@ -394,6 +397,10 @@ impl FromPrimitiveResponse for ObjectId {
 
 // Implement for Option<ObjectId> (optional object selection)
 impl FromPrimitiveResponse for Option<ObjectId> {
+    fn pending_response(_fallback: Self) -> Self {
+        None
+    }
+
     fn from_objects(result: Vec<ObjectId>, _fallback: Self) -> Self {
         result.into_iter().next()
     }

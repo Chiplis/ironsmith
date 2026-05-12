@@ -54,6 +54,28 @@ fn push_unique_subtype(subtypes: &mut Vec<Subtype>, subtype: Subtype) {
     subtypes.push(subtype);
 }
 
+fn reject_lossy_for_each_fallback(
+    tokens: &[OwnedLexToken],
+    full_clause_words: &[&str],
+) -> Result<(), CardTextError> {
+    let words = token_word_refs(tokens);
+    let has_card_type_among = word_slice_contains_sequence(&words, &["card", "type", "among"])
+        || word_slice_contains_sequence(&words, &["card", "types", "among"]);
+    if has_card_type_among {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported card-types-among create count (clause: '{}')",
+            full_clause_words.join(" ")
+        )));
+    }
+    if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported this-way create count (clause: '{}')",
+            full_clause_words.join(" ")
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn looks_like_pt_word(word: &str) -> bool {
     let Some((power, toughness)) = str_split_once_char(word, '/') else {
         return false;
@@ -729,6 +751,7 @@ pub(crate) fn parse_create(
         } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
             for_each_dynamic_count = Some(dynamic.with_surface_hint(ValueSurfaceHint::ForEach));
         } else {
+            reject_lossy_for_each_fallback(filter_tokens, &clause_words)?;
             let filter = parse_object_filter(filter_tokens, false)?;
             for_each_object_filter = Some(filter);
         }
@@ -1324,6 +1347,7 @@ fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, C
         return Ok(dynamic.with_surface_hint(ValueSurfaceHint::ForEach));
     }
 
+    reject_lossy_for_each_fallback(tokens, &words)?;
     Ok(Value::Count(parse_object_filter(tokens, false)?)
         .with_surface_hint(ValueSurfaceHint::ForEach))
 }

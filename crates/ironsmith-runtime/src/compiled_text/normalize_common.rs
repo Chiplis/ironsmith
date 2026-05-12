@@ -5729,6 +5729,20 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     {
         return format!("cards in {} hand", describe_possessive_player_filter(owner));
     }
+    if filter.zone == Some(Zone::Battlefield)
+        && filter.controller == Some(PlayerFilter::Opponent)
+        && filter.owner.is_none()
+    {
+        let mut bare = filter.clone();
+        bare.controller = None;
+        let subject = pluralize_noun_phrase(
+            strip_indefinite_article(&bare.description())
+                .trim()
+                .trim_end_matches(" on the battlefield")
+                .trim(),
+        );
+        return format!("{subject} your opponents control");
+    }
 
     let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -11220,7 +11234,7 @@ mod tests {
                 )]),
                 choices: Vec::new(),
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some("keyword:toxic 1".to_string()),
             }),
             functional_zones: vec![Zone::Battlefield],
         };

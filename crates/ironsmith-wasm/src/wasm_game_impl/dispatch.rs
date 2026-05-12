@@ -452,10 +452,10 @@ impl WasmGame {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = applyVerifiedHiddenLibraryShuffle)]
-    pub fn apply_verified_hidden_library_shuffle(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
-        let input: ApplyHiddenLibraryShuffleInput = serde_wasm_bindgen::from_value(input)
-            .map_err(|e| JsValue::from_str(&format!("invalid hidden shuffle input: {e}")))?;
+    fn reseal_verified_hidden_library_shuffle(
+        &mut self,
+        input: ApplyHiddenLibraryShuffleInput,
+    ) -> Result<(), JsValue> {
         let owner = PlayerId::from_index(input.owner);
         let library = self
             .game
@@ -463,9 +463,23 @@ impl WasmGame {
             .ok_or_else(|| JsValue::from_str("hidden shuffle owner is not present"))?
             .library
             .clone();
-        for (position, object_id) in library.iter().copied().enumerate() {
+        let order = if input.after_order.is_empty() {
+            library
+        } else {
+            input
+                .after_order
+                .iter()
+                .copied()
+                .map(ObjectId::from_raw)
+                .collect()
+        };
+        let mut seen = HashSet::new();
+        for (position, object_id) in order.iter().copied().enumerate() {
             if position > u16::MAX as usize {
                 return Err(JsValue::from_str("hidden shuffle library is too large"));
+            }
+            if !seen.insert(object_id) {
+                return Err(JsValue::from_str("hidden shuffle order contains duplicate cards"));
             }
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
                 return Err(JsValue::from_str(
@@ -475,11 +489,31 @@ impl WasmGame {
             if info.owner != owner {
                 return Err(JsValue::from_str("hidden shuffle library owner mismatch"));
             }
+            let Some(zone) = self.game.object(object_id).map(|object| object.zone) else {
+                return Err(JsValue::from_str("hidden shuffle card is not present"));
+            };
+            if self
+                .game
+                .object(object_id)
+                .is_some_and(|object| object.card.is_some())
+            {
+                self.game.set_hidden_card_info(
+                    object_id,
+                    ironsmith::game_state::HiddenCardInfo {
+                        owner,
+                        zone,
+                        public_slot: Some(position as u16),
+                        public_commitment: Some(format!("ziffle:{}:{}", input.deck_hash, position)),
+                        ..info
+                    },
+                );
+                continue;
+            }
             self.game.set_hidden_card_info(
                 object_id,
                 ironsmith::game_state::HiddenCardInfo {
                     owner,
-                    zone: Zone::Library,
+                    zone,
                     slot: position as u16,
                     commitment: format!("ziffle:{}:{}", input.deck_hash, position),
                     public_slot: None,
@@ -487,6 +521,17 @@ impl WasmGame {
                 },
             );
         }
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = applyVerifiedHiddenLibraryShuffle)]
+    pub fn apply_verified_hidden_library_shuffle(
+        &mut self,
+        input: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let input: ApplyHiddenLibraryShuffleInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid hidden shuffle input: {e}")))?;
+        self.reseal_verified_hidden_library_shuffle(input)?;
         self.recompute_ui_decision()?;
         self.snapshot()
     }

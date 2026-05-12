@@ -211,9 +211,11 @@ export class WasmGame {
     uiState(): any;
     validateMatchConfig(config: any): any;
     ziffleBuildRevealToken(input: any): any;
+    ziffleBuildRevealTokens(input: any): any;
     ziffleBuildShuffleStep(input: any): any;
     ziffleKeygen(input: any): any;
     ziffleRevealCard(input: any): any;
+    ziffleRevealCards(input: any): any;
     ziffleVerifyShuffle(input: any): any;
 }
 
@@ -285,7 +287,9 @@ export interface InitOutput {
     readonly wasmgame_ziffleBuildShuffleStep: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleVerifyShuffle: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleBuildRevealToken: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleBuildRevealTokens: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCard: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_ziffleRevealCards: (a: number, b: any) => [number, number, number];
     readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

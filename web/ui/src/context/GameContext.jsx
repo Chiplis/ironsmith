@@ -324,6 +324,10 @@ function serializeMultiplayerCommand(command, _currentState) {
       deadline_at_ms: command.deadline_at_ms == null ? undefined : Number(command.deadline_at_ms),
       claimed_at_ms: command.claimed_at_ms == null ? undefined : Number(command.claimed_at_ms),
       basis_sequence: command.basis_sequence == null ? undefined : Number(command.basis_sequence),
+      match_clock_hash: command.match_clock_hash == null
+        ? undefined
+        : String(command.match_clock_hash),
+      remaining_ms: command.remaining_ms == null ? undefined : Number(command.remaining_ms),
     };
   }
 
@@ -405,6 +409,10 @@ function resolveSyncedCommand(command) {
       deadline_at_ms: command.deadline_at_ms == null ? undefined : Number(command.deadline_at_ms),
       claimed_at_ms: command.claimed_at_ms == null ? undefined : Number(command.claimed_at_ms),
       basis_sequence: command.basis_sequence == null ? undefined : Number(command.basis_sequence),
+      match_clock_hash: command.match_clock_hash == null
+        ? undefined
+        : String(command.match_clock_hash),
+      remaining_ms: command.remaining_ms == null ? undefined : Number(command.remaining_ms),
     };
   }
 

@@ -65,6 +65,8 @@ pub(crate) trait TaggedConstraintSubject {
     fn subject_mana_value(&self) -> i32;
     fn subject_attached_to(&self) -> Option<ObjectId>;
     fn subject_attached_to_player(&self) -> Option<PlayerId>;
+    fn subject_attachments(&self) -> &[ObjectId];
+    fn subject_was_enchanted(&self) -> bool;
 }
 
 pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
@@ -125,6 +127,14 @@ impl TaggedConstraintSubject for Object {
 
     fn subject_attached_to_player(&self) -> Option<PlayerId> {
         self.attached_to.and_then(|target| target.player_id())
+    }
+
+    fn subject_attachments(&self) -> &[ObjectId] {
+        &self.attachments
+    }
+
+    fn subject_was_enchanted(&self) -> bool {
+        false
     }
 }
 
@@ -213,6 +223,14 @@ impl TaggedConstraintSubject for ObjectSnapshot {
     fn subject_attached_to_player(&self) -> Option<PlayerId> {
         self.attached_to.and_then(|target| target.player_id())
     }
+
+    fn subject_attachments(&self) -> &[ObjectId] {
+        &self.attachments
+    }
+
+    fn subject_was_enchanted(&self) -> bool {
+        self.was_enchanted
+    }
 }
 
 impl TailMatchSubject for ObjectSnapshot {
@@ -256,6 +274,39 @@ impl TailMatchSubject for ObjectSnapshot {
 
     fn tail_is_commander(&self, _game: &crate::game_state::GameState) -> bool {
         self.is_commander
+    }
+}
+
+fn subject_has_attached_subtype(
+    subject: &impl TaggedConstraintSubject,
+    subtype: Subtype,
+    game: &GameState,
+) -> bool {
+    subject.subject_attachments().iter().any(|attachment_id| {
+        game.object(*attachment_id)
+            .is_some_and(|attachment| attachment.subtypes.contains(&subtype))
+    })
+}
+
+fn intrinsic_attachment_tag_constraint_matches_subject(
+    subject: &impl TaggedConstraintSubject,
+    tag: &TagKey,
+    relation: TaggedOpbjectRelation,
+    game: &GameState,
+) -> Option<bool> {
+    let matches_intrinsic = match tag.as_str() {
+        "equipped" => subject_has_attached_subtype(subject, Subtype::Equipment, game),
+        "enchanted" => {
+            subject.subject_was_enchanted()
+                || subject_has_attached_subtype(subject, Subtype::Aura, game)
+        }
+        _ => return None,
+    };
+
+    match relation {
+        TaggedOpbjectRelation::IsTaggedObject => Some(matches_intrinsic),
+        TaggedOpbjectRelation::IsNotTaggedObject => Some(!matches_intrinsic),
+        _ => None,
     }
 }
 
@@ -1289,6 +1340,17 @@ impl ObjectFilterExt for ObjectFilter {
 
         for constraint in &self.tagged_constraints {
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
+                if let Some(matches) = intrinsic_attachment_tag_constraint_matches_subject(
+                    subject,
+                    &constraint.tag,
+                    constraint.relation,
+                    game,
+                ) {
+                    if !matches {
+                        return false;
+                    }
+                    continue;
+                }
                 if Self::tagged_constraint_requires_existing_tag(constraint.relation) {
                     return false;
                 }
@@ -5031,6 +5093,63 @@ mod tests {
         assert!(
             filter.matches(creature, &ctx, &game),
             "equipped creature should match regardless of equipment controller"
+        );
+    }
+
+    #[test]
+    fn test_filter_matches_intrinsically_equipped_creature_without_tag_context() {
+        let mut game = setup_modified_filter_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature_id = create_modified_test_creature(&mut game, alice);
+        let equipment_id = create_modified_test_equipment(&mut game, bob);
+
+        game.object_mut(creature_id)
+            .expect("creature exists")
+            .attachments
+            .push(equipment_id);
+
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("equipped"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        let ctx = FilterContext::new(alice).with_source(creature_id);
+        let creature = game.object(creature_id).expect("creature exists");
+        assert!(
+            filter.matches(creature, &ctx, &game),
+            "unbound equipped adjective should match a creature with Equipment attached"
+        );
+    }
+
+    #[test]
+    fn test_filter_matches_intrinsically_equipped_snapshot_without_tag_context() {
+        let mut game = setup_modified_filter_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature_id = create_modified_test_creature(&mut game, alice);
+        let equipment_id = create_modified_test_equipment(&mut game, bob);
+
+        game.object_mut(creature_id)
+            .expect("creature exists")
+            .attachments
+            .push(equipment_id);
+
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("equipped"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        let ctx = FilterContext::new(alice).with_source(creature_id);
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(creature_id).expect("creature exists"),
+            &game,
+        );
+        assert!(
+            filter.matches_snapshot(&snapshot, &ctx, &game),
+            "unbound equipped adjective should match LKI for a creature with Equipment attached"
         );
     }
 

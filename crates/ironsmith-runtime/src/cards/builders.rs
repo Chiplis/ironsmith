@@ -2392,13 +2392,20 @@ impl CardDefinitionBuilder {
     ///
     /// Toxic N means "Players dealt combat damage by this creature also get N poison counters."
     pub fn toxic(self, amount: u32) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_deals_combat_damage_to_player(),
-            vec![Effect::poison_counters_player(
-                amount as i32,
-                PlayerFilter::DamagedPlayer,
-            )],
-        ))
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_deals_combat_damage_to_player(),
+                effects: vec![Effect::poison_counters_player(
+                    amount as i32,
+                    PlayerFilter::DamagedPlayer,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:toxic {amount}")),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add battle cry.
@@ -2904,10 +2911,16 @@ impl CardDefinitionBuilder {
     /// Devour means "As this creature enters, you may sacrifice any number of creatures.
     /// This creature enters with N times that many +1/+1 counters on it."
     pub fn devour(self, multiplier: u32) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![Effect::devour(multiplier)],
-        ))
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_enters_battlefield(),
+                effects: vec![Effect::devour(multiplier)].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:devour {multiplier}")),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add amplify N.
@@ -3515,13 +3528,20 @@ impl CardDefinitionBuilder {
     ///
     /// Afflict means "Whenever this creature becomes blocked, defending player loses N life."
     pub fn afflict(self, amount: u32) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_becomes_blocked(),
-            vec![Effect::lose_life_player(
-                amount as i32,
-                PlayerFilter::Defending,
-            )],
-        ))
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_becomes_blocked(),
+                effects: vec![Effect::lose_life_player(
+                    amount as i32,
+                    PlayerFilter::Defending,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:afflict {amount}")),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add afterlife N.

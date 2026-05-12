@@ -404,20 +404,253 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
         .and_then(generated_definition_unsupported_mechanics_message);
     let mut snapshot = snapshot_from_attempt(payload, &attempt);
     if snapshot.parse_status == ParseStatus::StrictCompiled && snapshot.has_unimplemented {
-        snapshot.parse_status = ParseStatus::ParseFailed;
-        snapshot.parse_error = Some(unsupported_mechanics_message.unwrap_or_else(|| {
-            "generated definition still contains unimplemented content".to_string()
-        }));
-        snapshot.compiled_text = None;
-        snapshot.compiled_card_definition = None;
-        snapshot.oracle_coverage = 0.0;
-        snapshot.compiled_coverage = 0.0;
-        snapshot.similarity_score = 0.0;
-        snapshot.line_delta = 0;
-        snapshot.semantic_mismatch = false;
-        snapshot.content_hash = snapshot.compute_content_hash();
+        mark_authoritative_snapshot_parse_failed(
+            &mut snapshot,
+            unsupported_mechanics_message.unwrap_or_else(|| {
+                "generated definition still contains unimplemented content".to_string()
+            }),
+        );
+    } else if let Some(parse_error) = authoritative_semantic_marker_parse_error(&snapshot) {
+        mark_authoritative_snapshot_parse_failed(&mut snapshot, parse_error);
     }
     snapshot
+}
+
+fn mark_authoritative_snapshot_parse_failed(
+    snapshot: &mut CompilationSnapshot,
+    parse_error: String,
+) {
+    snapshot.parse_status = ParseStatus::ParseFailed;
+    snapshot.parse_error = Some(parse_error);
+    snapshot.compiled_text = None;
+    snapshot.compiled_card_definition = None;
+    snapshot.oracle_coverage = 0.0;
+    snapshot.compiled_coverage = 0.0;
+    snapshot.similarity_score = 0.0;
+    snapshot.line_delta = 0;
+    snapshot.semantic_mismatch = false;
+    snapshot.content_hash = snapshot.compute_content_hash();
+}
+
+fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> Option<String> {
+    if snapshot.parse_status != ParseStatus::StrictCompiled {
+        return None;
+    }
+    let compiled_text = snapshot.compiled_text.as_deref()?;
+    let oracle = snapshot.normalized_oracle_text.to_ascii_lowercase();
+    let compiled = compiled_text.to_ascii_lowercase();
+
+    let internal_markers = [
+        ("valuecomparison {", "value-comparison-debug"),
+        ("tagged '", "tagged-object-reference"),
+        ("tagged object '", "tagged-object-reference"),
+        ("that object matches", "object-predicate-debug"),
+    ];
+    for (marker, label) in internal_markers {
+        if compiled.contains(marker) {
+            return Some(format!("compiled text contains internal marker: {label}"));
+        }
+    }
+
+    let malformed_markers = [
+        ("whenever target ", "malformed-whenever-target"),
+        ("whenever destroy ", "malformed-whenever-destroy"),
+        ("whenever reveal ", "malformed-whenever-reveal"),
+        ("whenever as long as ", "malformed-whenever-as-long-as"),
+        ("this spell token", "malformed-spell-token"),
+        ("you may if ", "malformed-conditional-permission"),
+        ("for each opponent,.", "malformed-empty-per-opponent-effect"),
+        ("permanents loses", "malformed-permanents-loses"),
+    ];
+    for (marker, label) in malformed_markers {
+        if compiled.contains(marker) {
+            return Some(format!("compiled text contains malformed output: {label}"));
+        }
+    }
+
+    let dropped_required_all = [
+        (
+            "noncreature card exiled this way",
+            ["noncreature", "this way"].as_slice(),
+            "noncreature-exiled-this-way",
+        ),
+        (
+            "note one of its creature types",
+            ["note"].as_slice(),
+            "noted-creature-types",
+        ),
+        ("noted for", ["noted"].as_slice(), "noted-creature-types"),
+    ];
+    for (oracle_marker, compiled_markers, label) in dropped_required_all {
+        if oracle.contains(oracle_marker)
+            && !compiled_markers
+                .iter()
+                .all(|marker| compiled.contains(marker))
+        {
+            return Some(format!(
+                "compiled text dropped required semantic marker: {label}"
+            ));
+        }
+    }
+
+    let required_marker_groups = [
+        (["at random"].as_slice(), ["random"].as_slice(), "at-random"),
+        (
+            ["command zone"].as_slice(),
+            ["command zone"].as_slice(),
+            "command-zone",
+        ),
+        (
+            ["same name"].as_slice(),
+            ["same name", "that name", "different name"].as_slice(),
+            "same-name",
+        ),
+        (["instead"].as_slice(), ["instead"].as_slice(), "instead"),
+        (
+            ["rather than"].as_slice(),
+            ["rather than"].as_slice(),
+            "rather-than",
+        ),
+        (
+            ["as though"].as_slice(),
+            ["as though"].as_slice(),
+            "as-though",
+        ),
+        (
+            ["without paying"].as_slice(),
+            ["without paying"].as_slice(),
+            "without-paying",
+        ),
+        (
+            ["only once"].as_slice(),
+            ["only once"].as_slice(),
+            "only-once",
+        ),
+        (
+            ["additional cost"].as_slice(),
+            ["additional cost"].as_slice(),
+            "additional-cost",
+        ),
+        (
+            ["spend this mana only"].as_slice(),
+            ["spend this mana only"].as_slice(),
+            "spend-this-mana-only",
+        ),
+        (["crew"].as_slice(), ["crew"].as_slice(), "crew"),
+        (
+            ["roll ", "dice"].as_slice(),
+            ["roll", "die", "dice"].as_slice(),
+            "roll-die",
+        ),
+        (
+            ["can't be blocked"].as_slice(),
+            ["can't be blocked"].as_slice(),
+            "cant-be-blocked",
+        ),
+        (
+            ["card named"].as_slice(),
+            ["named"].as_slice(),
+            "card-named",
+        ),
+        (
+            ["no creatures with decayed"].as_slice(),
+            ["no creatures with decayed"].as_slice(),
+            "no-creatures-with-decayed",
+        ),
+        (
+            ["each basic land type"].as_slice(),
+            ["each basic land type"].as_slice(),
+            "each-basic-land-type",
+        ),
+        (
+            ["more cards in hand than"].as_slice(),
+            ["more cards in hand than"].as_slice(),
+            "more-cards-in-hand-than",
+        ),
+        (
+            ["each opponent loses"].as_slice(),
+            ["each opponent loses"].as_slice(),
+            "each-opponent-loses",
+        ),
+        (
+            ["you gain x life", "you gain 3 life"].as_slice(),
+            ["you gain"].as_slice(),
+            "you-gain-life",
+        ),
+        (
+            ["reveals their hand", "reveals that player hand"].as_slice(),
+            ["reveals their hand", "reveals that player hand"].as_slice(),
+            "reveals-hand",
+        ),
+        (
+            ["second spell you cast each turn"].as_slice(),
+            ["second spell"].as_slice(),
+            "second-spell-each-turn",
+        ),
+        (
+            ["target creature you control deals damage equal to its power"].as_slice(),
+            ["target creature you control deals damage equal to its power"].as_slice(),
+            "target-creature-power-damage-source",
+        ),
+        (
+            ["put into exile from the battlefield"].as_slice(),
+            ["exile"].as_slice(),
+            "put-into-exile-from-battlefield",
+        ),
+        (
+            ["attacked or blocked this turn"].as_slice(),
+            ["attacked or blocked this turn"].as_slice(),
+            "attacked-or-blocked-this-turn",
+        ),
+        (
+            ["one or more cards leave your graveyard"].as_slice(),
+            ["one or more cards leave your graveyard"].as_slice(),
+            "cards-leave-your-graveyard",
+        ),
+        (
+            ["enter as a copy"].as_slice(),
+            ["enter as a copy"].as_slice(),
+            "enter-as-copy",
+        ),
+    ];
+    for (oracle_markers, compiled_markers, label) in required_marker_groups {
+        if oracle_markers.iter().any(|marker| oracle.contains(marker))
+            && !compiled_markers
+                .iter()
+                .any(|marker| compiled.contains(marker))
+        {
+            return Some(format!(
+                "compiled text dropped required semantic marker: {label}"
+            ));
+        }
+    }
+
+    let guarded_markers = [
+        (
+            ["shares a card type", "share a card type"],
+            ["shares a card type", "share a card type"],
+            "shares-a-card-type",
+        ),
+        (
+            ["card type among", "card types among"],
+            ["card type among", "card types among"],
+            "card-types-among",
+        ),
+    ];
+
+    for (oracle_markers, compiled_markers, label) in guarded_markers {
+        if oracle_markers.iter().any(|marker| oracle.contains(marker))
+            && !compiled_markers
+                .iter()
+                .any(|marker| compiled.contains(marker))
+        {
+            return Some(format!(
+                "compiled text dropped required semantic marker: {label}"
+            ));
+        }
+    }
+
+    None
 }
 
 pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> CompilationSnapshot {
@@ -499,7 +732,10 @@ impl CompilationSnapshot {
                 similarity_score,
                 line_delta,
                 semantic_mismatch,
-                generated_definition_has_unimplemented_content(definition),
+                generated_definition_has_unimplemented_content(definition)
+                    || compiled
+                        .iter()
+                        .any(|line| line.to_ascii_lowercase().contains("unsupported effect")),
             )
         } else {
             (
@@ -2495,6 +2731,51 @@ CardDefinition {
         }
     }
 
+    fn tarmogoyf_payload() -> CardPayload {
+        CardPayload {
+            name: "Tarmogoyf".to_string(),
+            parse_name: None,
+            oracle_text:
+                "This creature's power is equal to the number of card types among cards in all graveyards and its toughness is equal to that number plus 1."
+                    .to_string(),
+            raw_oracle_text:
+                "This creature's power is equal to the number of card types among cards in all graveyards and its toughness is equal to that number plus 1."
+                    .to_string(),
+            metadata_lines: vec![
+                "Mana cost: {1}{G}".to_string(),
+                "Type: Creature — Lhurgoyf".to_string(),
+                "Power/Toughness: */1+*".to_string(),
+            ],
+            parse_input:
+                "Mana cost: {1}{G}\nType: Creature — Lhurgoyf\nPower/Toughness: */1+*\nThis creature's power is equal to the number of card types among cards in all graveyards and its toughness is equal to that number plus 1."
+                    .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    fn holistic_wisdom_payload() -> CardPayload {
+        CardPayload {
+            name: "Holistic Wisdom".to_string(),
+            parse_name: None,
+            oracle_text:
+                "{2}, Exile a card from your hand: Return target card from your graveyard to your hand if it shares a card type with the card exiled this way."
+                    .to_string(),
+            raw_oracle_text:
+                "{2}, Exile a card from your hand: Return target card from your graveyard to your hand if it shares a card type with the card exiled this way."
+                    .to_string(),
+            metadata_lines: vec![
+                "Mana cost: {1}{G}{G}".to_string(),
+                "Type: Enchantment".to_string(),
+            ],
+            parse_input:
+                "Mana cost: {1}{G}{G}\nType: Enchantment\n{2}, Exile a card from your hand: Return target card from your graveyard to your hand if it shares a card type with the card exiled this way."
+                    .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
     fn battle_cry_payload() -> CardPayload {
         CardPayload {
             name: "Accorder Paladin".to_string(),
@@ -2596,6 +2877,260 @@ CardDefinition {
             snapshot.compiled_text.is_some(),
             "semantic mismatch snapshots should keep their compiled text"
         );
+    }
+
+    #[test]
+    fn authoritative_snapshot_rejects_dropped_card_types_among_marker() {
+        let snapshot = compile_authoritative_snapshot_from_payload(&tarmogoyf_payload());
+
+        assert_eq!(snapshot.parse_status, ParseStatus::ParseFailed);
+        assert_eq!(
+            snapshot.parse_error.as_deref(),
+            Some("compiled text dropped required semantic marker: card-types-among")
+        );
+        assert!(snapshot.compiled_text.is_none());
+    }
+
+    #[test]
+    fn authoritative_snapshot_rejects_dropped_shared_card_type_marker() {
+        let snapshot = compile_authoritative_snapshot_from_payload(&holistic_wisdom_payload());
+
+        assert_eq!(snapshot.parse_status, ParseStatus::ParseFailed);
+        assert_eq!(
+            snapshot.parse_error.as_deref(),
+            Some("compiled text dropped required semantic marker: shares-a-card-type")
+        );
+        assert!(snapshot.compiled_text.is_none());
+    }
+
+    #[test]
+    fn authoritative_marker_guard_rejects_internal_compiled_text() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.compiled_text = Some(
+            "This artifact is a creature as long as ValueComparison { left: CountersOnSource }."
+                .to_string(),
+        );
+        assert_eq!(
+            authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+            Some("compiled text contains internal marker: value-comparison-debug")
+        );
+
+        snapshot.compiled_text = Some(
+            "Put the tagged object 'searched_outside_game' into its owner's hand.".to_string(),
+        );
+        assert_eq!(
+            authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+            Some("compiled text contains internal marker: tagged-object-reference")
+        );
+
+        snapshot.compiled_text = Some(
+            "If that object matches attacking permanent, draw a card.".to_string(),
+        );
+        assert_eq!(
+            authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+            Some("compiled text contains internal marker: object-predicate-debug")
+        );
+    }
+
+    #[test]
+    fn authoritative_marker_guard_rejects_malformed_compiled_text() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+
+        for (compiled, expected) in [
+            (
+                "Whenever Target creature gets +2/+0 until end of turn.",
+                "compiled text contains malformed output: malformed-whenever-target",
+            ),
+            (
+                "Whenever Destroy target artifact.",
+                "compiled text contains malformed output: malformed-whenever-destroy",
+            ),
+            (
+                "Whenever Reveal the top four cards of your library.",
+                "compiled text contains malformed output: malformed-whenever-reveal",
+            ),
+            (
+                "Whenever As long as this creature is paired, both creatures have flying.",
+                "compiled text contains malformed output: malformed-whenever-as-long-as",
+            ),
+            (
+                "This spell token can't block.",
+                "compiled text contains malformed output: malformed-spell-token",
+            ),
+            (
+                "You may If that card is an artifact, cast it.",
+                "compiled text contains malformed output: malformed-conditional-permission",
+            ),
+            (
+                "Whenever a creature dies, for each opponent,.",
+                "compiled text contains malformed output: malformed-empty-per-opponent-effect",
+            ),
+            (
+                "When this creature dies, permanents loses all abilities.",
+                "compiled text contains malformed output: malformed-permanents-loses",
+            ),
+        ] {
+            snapshot.compiled_text = Some(compiled.to_string());
+            assert_eq!(
+                authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn authoritative_marker_guard_rejects_dropped_required_words() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+
+        for (oracle, compiled, expected) in [
+            (
+                "Choose a creature at random.",
+                "Choose a creature.",
+                "compiled text dropped required semantic marker: at-random",
+            ),
+            (
+                "Put your commander into your hand from the command zone.",
+                "Return a commander permanent you own to its owner's hand.",
+                "compiled text dropped required semantic marker: command-zone",
+            ),
+            (
+                "Destroy all permanents with the same name as that permanent.",
+                "Destroy all permanents.",
+                "compiled text dropped required semantic marker: same-name",
+            ),
+            (
+                "Exile that card instead of putting it into your graveyard.",
+                "Exile that card.",
+                "compiled text dropped required semantic marker: instead",
+            ),
+            (
+                "You may pay {0} rather than pay this spell's mana cost.",
+                "You may pay {0}.",
+                "compiled text dropped required semantic marker: rather-than",
+            ),
+            (
+                "Creatures can attack as though they didn't have defender.",
+                "Creatures have defender.",
+                "compiled text dropped required semantic marker: as-though",
+            ),
+            (
+                "You may cast that card without paying its mana cost.",
+                "You may cast that card.",
+                "compiled text dropped required semantic marker: without-paying",
+            ),
+            (
+                "This ability triggers only once each turn.",
+                "This ability triggers each turn.",
+                "compiled text dropped required semantic marker: only-once",
+            ),
+            (
+                "As an additional cost to cast this spell, sacrifice a creature.",
+                "Sacrifice a creature.",
+                "compiled text dropped required semantic marker: additional-cost",
+            ),
+            (
+                "Spend this mana only to cast artifact spells.",
+                "Add one mana.",
+                "compiled text dropped required semantic marker: spend-this-mana-only",
+            ),
+            (
+                "It gains crew 2 until end of turn.",
+                "It gains haste until end of turn.",
+                "compiled text dropped required semantic marker: crew",
+            ),
+            (
+                "Whenever you roll one or more dice, draw a card.",
+                "Whenever an event happens, draw a card.",
+                "compiled text dropped required semantic marker: roll-die",
+            ),
+            (
+                "This creature can't be blocked.",
+                "This creature has menace.",
+                "compiled text dropped required semantic marker: cant-be-blocked",
+            ),
+            (
+                "Search your library for a card named Lightning Bolt.",
+                "Search your library for a card.",
+                "compiled text dropped required semantic marker: card-named",
+            ),
+            (
+                "At the beginning of your end step, if you control no creatures with decayed, create a Zombie token.",
+                "At the beginning of your end step, if you control no creature, create a Zombie token.",
+                "compiled text dropped required semantic marker: no-creatures-with-decayed",
+            ),
+            (
+                "Put a +1/+1 counter on Pako for each noncreature card exiled this way.",
+                "Put that many +1/+1 counters on Pako.",
+                "compiled text dropped required semantic marker: noncreature-exiled-this-way",
+            ),
+            (
+                "Each player chooses from the lands they control a land of each basic land type.",
+                "Each player chooses a basic land.",
+                "compiled text dropped required semantic marker: each-basic-land-type",
+            ),
+            (
+                "Target player who has more cards in hand than they do may discard their hand.",
+                "You discard your hand.",
+                "compiled text dropped required semantic marker: more-cards-in-hand-than",
+            ),
+            (
+                "Each opponent loses 3 life and you gain 3 life.",
+                "You draw three cards.",
+                "compiled text dropped required semantic marker: each-opponent-loses",
+            ),
+            (
+                "When this artifact enters, note one of its creature types.",
+                "When this artifact enters, create a token.",
+                "compiled text dropped required semantic marker: noted-creature-types",
+            ),
+            (
+                "Target player reveals their hand.",
+                "Target player discards a card.",
+                "compiled text dropped required semantic marker: reveals-hand",
+            ),
+            (
+                "The second spell you cast each turn costs {2} less to cast.",
+                "Spells you cast cost {2} less to cast.",
+                "compiled text dropped required semantic marker: second-spell-each-turn",
+            ),
+            (
+                "Target creature you control deals damage equal to its power to each other creature.",
+                "For each other creature, this spell deals X damage to that object, where X is this creature's power.",
+                "compiled text dropped required semantic marker: target-creature-power-damage-source",
+            ),
+            (
+                "When this creature dies or is put into exile from the battlefield, you may put it into its owner's library.",
+                "When this creature dies or leaves the battlefield, you may put it into its owner's library.",
+                "compiled text dropped required semantic marker: put-into-exile-from-battlefield",
+            ),
+            (
+                "Target opponent sacrifices a creature that attacked or blocked this turn.",
+                "Target opponent sacrifices a blocked creature.",
+                "compiled text dropped required semantic marker: attacked-or-blocked-this-turn",
+            ),
+            (
+                "Whenever one or more cards leave your graveyard, this creature deals 1 damage to each opponent.",
+                "Whenever a creature card in your graveyard leaves, this creature deals 1 damage.",
+                "compiled text dropped required semantic marker: cards-leave-your-graveyard",
+            ),
+            (
+                "You may have this creature enter as a copy of any creature on the battlefield.",
+                "This creature enters with a +1/+1 counter on it.",
+                "compiled text dropped required semantic marker: enter-as-copy",
+            ),
+        ] {
+            snapshot.normalized_oracle_text = oracle.to_string();
+            snapshot.compiled_text = Some(compiled.to_string());
+            assert_eq!(
+                authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+                Some(expected)
+            );
+        }
+
+        snapshot.normalized_oracle_text =
+            "Destroy all permanents with the same name as that permanent.".to_string();
+        snapshot.compiled_text = Some("Destroy all permanents with that name.".to_string());
+        assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
     }
 
     #[test]

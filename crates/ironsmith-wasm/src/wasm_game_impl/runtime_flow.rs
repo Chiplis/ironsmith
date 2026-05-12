@@ -1642,6 +1642,8 @@ mod live_action_rollback_tests {
     use ironsmith::alternative_cast::CastingMethod;
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::cost::OptionalCostsPaid;
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::decisions::context::{DecisionContext, PriorityContext};
     use ironsmith::decisions::context::SelectableOption;
     use ironsmith::events::cause::EventCause;
     use ironsmith::game_loop::{CastStage, PendingCast};
@@ -1651,6 +1653,36 @@ mod live_action_rollback_tests {
     use ironsmith::provenance::ProvNodeId;
     use ironsmith::types::CardType;
     use ironsmith::zone::Zone;
+
+    fn dispatch_priority_action_matching<F>(wasm: &mut WasmGame, mut predicate: F)
+    where
+        F: FnMut(&LegalAction) -> bool,
+    {
+        let pending_ctx = wasm
+            .pending_decision
+            .take()
+            .expect("expected pending priority decision");
+        let DecisionContext::Priority(priority) = &pending_ctx else {
+            panic!("expected priority decision, got {pending_ctx:?}");
+        };
+        let index = priority
+            .actions
+            .iter()
+            .position(&mut predicate)
+            .unwrap_or_else(|| panic!("expected matching priority action in {:?}", priority.actions));
+        wasm.dispatch_live_priority_response(
+            pending_ctx,
+            UiCommand::PriorityAction {
+                action_index: Some(index),
+                action_ref: None,
+            },
+        )
+        .expect("priority action should dispatch");
+    }
+
+    fn dispatch_pass_priority(wasm: &mut WasmGame) {
+        dispatch_priority_action_matching(wasm, |action| matches!(action, LegalAction::PassPriority));
+    }
 
     #[test]
     fn live_action_error_restore_returns_to_pre_cast_priority_state() {
@@ -1802,5 +1834,79 @@ mod live_action_rollback_tests {
             !advertised_cast,
             "Charismatic Conqueror should not be castable from two tapped lands and no floating mana"
         );
+    }
+
+    #[test]
+    fn mystical_tutor_resolution_prompts_for_hidden_library_choice() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let mystical_tutor = ironsmith_registry::compile_to_runtime_definition(
+            "Mystical Tutor",
+            "Mana Cost: {U}\nType: Instant\nSearch your library for an instant or sorcery card, reveal it, then shuffle and put that card on top.",
+            false,
+        )
+        .expect("Mystical Tutor should compile");
+        let spell = wasm
+            .game
+            .create_object_from_definition(&mystical_tutor, alice, Zone::Hand);
+        wasm.game
+            .player_mut(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .add(ManaSymbol::Blue, 1);
+        let hidden_library_ids: Vec<ObjectId> = (0..3)
+            .map(|slot| {
+                wasm.game.create_hidden_card_placeholder(
+                    alice,
+                    Zone::Library,
+                    slot,
+                    format!("alice-hidden-library-{slot}"),
+                )
+            })
+            .collect();
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == spell
+            )
+        });
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectObjects(ctx)) => {
+                assert_eq!(ctx.player, alice);
+                assert_eq!(
+                    ctx.candidates
+                        .iter()
+                        .filter(|candidate| candidate.legal)
+                        .map(|candidate| candidate.id)
+                        .collect::<Vec<_>>(),
+                    hidden_library_ids,
+                    "Mystical Tutor should prompt with hidden library candidates"
+                );
+            }
+            other => panic!("expected Mystical Tutor search prompt, got {other:?}"),
+        }
     }
 }

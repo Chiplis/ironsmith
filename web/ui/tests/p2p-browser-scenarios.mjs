@@ -11,7 +11,7 @@ const auditModulePath = resolve(repoRoot, "web/ui/src/lib/multiplayer-audit.js")
 
 const MATCH_ID_PREFIX = "browser-p2p-audit";
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
-const PROTOCOL_VERSION = 7;
+const PROTOCOL_VERSION = 8;
 
 function playerDeck(seat) {
   return [
@@ -100,6 +100,12 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     matchId,
     connected: true,
     timeoutMs: Number(config.timeoutMs || 300000),
+    clockGraceMs: Number(config.clockGraceMs || 5),
+    remainingMsByPlayer: Array.from(
+      { length: playerCount },
+      () => Number(config.timeoutMs || 300000)
+    ),
+    clockHash: "${INITIAL_AUDIT_STATE_HASH}",
     timerStartedAt: Date.now(),
     warnings: [],
     players: [],
@@ -157,6 +163,91 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     }
   }
 
+  async function matchClockHash(clock) {
+    const payload = { ...clock };
+    delete payload.clockHash;
+    return audit.sha256Hex(audit.canonicalJson({
+      domain: "ironsmith-match-clock-audit-v1",
+      clock: payload,
+    }));
+  }
+
+  async function buildMatchClockAudit({ command, actor, seq }) {
+    const timeoutForfeit = command?.type === "forfeit_player"
+      && (
+        command?.reason === "peer_claimed_match_clock_timeout"
+        || command?.reason === "match_clock_timeout"
+        || command?.reason === "peer_claimed_action_timeout"
+        || command?.reason === "action_timeout"
+      );
+    const activePlayer = Number(state.expectedActor);
+    const remaining = state.remainingMsByPlayer.slice();
+    const observedElapsed = Math.max(0, Date.now() - state.timerStartedAt);
+    const elapsedMs = timeoutForfeit
+      ? Number(remaining[activePlayer] || 0)
+      : Math.min(Number(remaining[activePlayer] || 0), observedElapsed);
+    remaining[activePlayer] = Math.max(0, Number(remaining[activePlayer] || 0) - elapsedMs);
+    const clock = {
+      type: "match_clock_v1",
+      version: 1,
+      matchId,
+      seq: Number(seq),
+      actor: Number(actor),
+      reason: timeoutForfeit ? "timeout_claim" : "action",
+      policy: {
+        type: "per_player_match_clock_v1",
+        initialMs: state.timeoutMs,
+        graceMs: state.clockGraceMs,
+      },
+      activePlayer,
+      elapsedMs,
+      remainingMsByPlayer: remaining,
+      previousClockHash: state.clockHash,
+      basisSequence: state.lastSeq,
+    };
+    clock.clockHash = await matchClockHash(clock);
+    return clock;
+  }
+
+  async function verifyMatchClockAudit(clock, command, actor, seq) {
+    if (!clock || typeof clock !== "object") {
+      throw new Error("Missing match clock audit");
+    }
+    if (String(clock.previousClockHash || "") !== state.clockHash) {
+      throw new Error("Match clock hash mismatch");
+    }
+    if (String(clock.clockHash || "") !== await matchClockHash(clock)) {
+      throw new Error("Match clock audit hash mismatch");
+    }
+    if (Number(clock.seq) !== Number(seq) || Number(clock.actor) !== Number(actor)) {
+      throw new Error("Match clock audit does not match action");
+    }
+    const activePlayer = Number(state.expectedActor);
+    if (Number(clock.activePlayer) !== activePlayer) {
+      throw new Error("Match clock active player mismatch");
+    }
+    const expectedRemaining = state.remainingMsByPlayer.slice();
+    expectedRemaining[activePlayer] = Math.max(
+      0,
+      Number(expectedRemaining[activePlayer] || 0) - Number(clock.elapsedMs || 0)
+    );
+    if (audit.canonicalJson(expectedRemaining) !== audit.canonicalJson(clock.remainingMsByPlayer || [])) {
+      throw new Error("Match clock remaining time mismatch");
+    }
+    const timeoutForfeit = command?.type === "forfeit_player"
+      && (
+        command?.reason === "peer_claimed_match_clock_timeout"
+        || command?.reason === "match_clock_timeout"
+        || command?.reason === "peer_claimed_action_timeout"
+        || command?.reason === "action_timeout"
+      );
+    if (timeoutForfeit && Number((clock.remainingMsByPlayer || [])[activePlayer] || 0) !== 0) {
+      throw new Error("Match clock has not expired");
+    }
+    state.remainingMsByPlayer = (clock.remainingMsByPlayer || []).map((value) => Math.max(0, Number(value || 0)));
+    state.clockHash = String(clock.clockHash || "");
+  }
+
   async function receive(message) {
     if (!state.connected) {
       return { status: "offline", seat };
@@ -191,7 +282,9 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
       }
       const timeoutForfeit = entry.command?.type === "forfeit_player"
         && (
-          entry.command?.reason === "peer_claimed_action_timeout"
+          entry.command?.reason === "peer_claimed_match_clock_timeout"
+          || entry.command?.reason === "match_clock_timeout"
+          || entry.command?.reason === "peer_claimed_action_timeout"
           || entry.command?.reason === "action_timeout"
         );
       if (timeoutForfeit) {
@@ -201,11 +294,12 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         }
         const deadlineAt = Number(entry.command?.deadline_at_ms || (state.timerStartedAt + state.timeoutMs));
         if (Date.now() + 50 < deadlineAt) {
-          throw new Error("Action timer has not expired");
+          throw new Error("Match clock has not expired");
         }
       } else if (actor !== state.expectedActor) {
         throw new Error(\`Action \${seq} was signed by player \${actor}, but player \${state.expectedActor} has priority\`);
       }
+      await verifyMatchClockAudit(auditEnvelope.clock, entry.command, actor, seq);
       const player = state.players.find((candidate) => Number(candidate.seat) === signer);
       if (!player?.auditPublicKey) {
         throw new Error(\`Missing audit public key for player \${signer}\`);
@@ -218,10 +312,12 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         signer,
         prevStateHash: auditEnvelope.prevStateHash,
         command: auditEnvelope.command,
+        clock: auditEnvelope.clock,
         openings: auditEnvelope.openings || [],
         rngReveals: auditEnvelope.rngReveals || [],
         shuffleProofs: auditEnvelope.shuffleProofs || [],
         privateViewProofs: auditEnvelope.privateViewProofs || [],
+        publicCheckpointHash: auditEnvelope.publicCheckpointHash,
         nextStateHash: auditEnvelope.nextStateHash,
       };
       const valid = await audit.verifyAuditPayload(signerKey, envelopePayload, auditEnvelope.signature || "");
@@ -233,10 +329,12 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         seq,
         prevStateHash: auditEnvelope.prevStateHash,
         command: auditEnvelope.command,
+        clock: auditEnvelope.clock,
         openings: auditEnvelope.openings || [],
         rngReveals: auditEnvelope.rngReveals || [],
         shuffleProofs: auditEnvelope.shuffleProofs || [],
         privateViewProofs: auditEnvelope.privateViewProofs || [],
+        publicCheckpointHash: auditEnvelope.publicCheckpointHash,
       });
       if (computedHash !== auditEnvelope.nextStateHash) {
         throw new Error(\`Audit next state hash mismatch at sequence \${seq}\`);
@@ -271,6 +369,7 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
   }
 
   async function signedMessage({ command, actor = seat, signer = actor, seq = state.lastSeq + 1, prevStateHash = state.stateHash, openings = [], rngReveals = [], shuffleProofs = [], privateViewProofs = [] }) {
+    const clock = await buildMatchClockAudit({ command, actor, seq });
     const envelope = await audit.buildSignedActionEnvelope({
       keyPair,
       matchId,
@@ -279,10 +378,12 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
       signer,
       prevStateHash,
       command,
+      clock,
       openings,
       rngReveals,
       shuffleProofs,
       privateViewProofs,
+      publicCheckpointHash: \`public-checkpoint-\${seq}\`,
     });
     return {
       protocolVersion: ${PROTOCOL_VERSION},
@@ -395,8 +496,9 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         command: {
           type: "forfeit_player",
           player: Number(player),
-          reason: "peer_claimed_action_timeout",
+          reason: "peer_claimed_match_clock_timeout",
           timeout_ms: state.timeoutMs,
+          match_clock_hash: state.clockHash,
           deadline_started_at_ms: startedAt,
           deadline_at_ms: deadlineAt,
           claimed_at_ms: Date.now(),
@@ -480,6 +582,7 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         matchId,
         initialStateHash: "${INITIAL_AUDIT_STATE_HASH}",
         players: state.players,
+        deckAuditManifests: state.publicDecks,
         actions: state.transcript,
       });
     },
@@ -742,7 +845,7 @@ async function runScenarios(env) {
     assert.deepEqual(verified.map((entry) => entry.verifiedActions), [2, 2, 2, 2]);
     return {
       name: "priority-holder-times-out-and-forfeits",
-      outcome: "After the action timer expires, another peer can submit a signed timeout-forfeit action for the stalled priority holder.",
+      outcome: "After the match clock expires, another peer can submit a signed timeout-forfeit action for the stalled priority holder.",
       finalStateHash: state[0].stateHash,
     };
   }));
@@ -750,13 +853,13 @@ async function runScenarios(env) {
   results.push(await withTable(env, "cheat-early-timeout-forfeit", async (table) => {
     await broadcast(table, 0, await sign(table, 0, "signPass"));
     const earlyTimeout = await sign(table, 2, "signTimeoutForfeit", 1, 10000);
-    const rejection = await expectReject(deliver(table, 0, earlyTimeout), /Action timer has not expired/);
+    const rejection = await expectReject(deliver(table, 0, earlyTimeout), /Match clock has not expired/);
     const state = await snapshots(table);
     assert.deepEqual(state.map((entry) => entry.lastSeq), [1, 1, 1, 1]);
     assertSameHash(state);
     return {
       name: "cheat-early-timeout-forfeit",
-      outcome: "A peer cannot falsely forfeit the priority holder before the locally verified deadline has passed.",
+      outcome: "A peer cannot falsely forfeit the priority holder before the locally verified match clock has expired.",
       rejection,
     };
   }));

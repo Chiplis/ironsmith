@@ -6017,6 +6017,79 @@ fn demonic_consultation_resolution_prompts_for_card_name_in_wasm_flow() {
 }
 
 #[test]
+fn mystical_tutor_resolution_prompts_for_hidden_library_choice_in_wasm_flow() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let spell_id = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Mystical Tutor".to_string(), "hand".to_string(), true)
+            .expect("Mystical Tutor should be added to hand"),
+    );
+    wasm.game
+        .player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let hidden_library_ids: Vec<ObjectId> = (0..3)
+        .map(|slot| {
+            wasm.game.create_hidden_card_placeholder(
+                alice,
+                Zone::Library,
+                slot,
+                format!("alice-hidden-library-{slot}"),
+            )
+        })
+        .collect();
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    dispatch_matching_priority_action(
+        &mut wasm,
+        |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+    );
+
+    dispatch_pass_priority(&mut wasm);
+    dispatch_pass_priority(&mut wasm);
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectObjects(ctx)) => {
+            assert_eq!(ctx.player, alice);
+            assert_eq!(
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .collect::<Vec<_>>(),
+                hidden_library_ids,
+                "Mystical Tutor should pause on the owner with hidden library candidates"
+            );
+        }
+        other => panic!("expected Mystical Tutor hidden-library prompt, got {other:?}"),
+    }
+
+    assert!(
+        wasm.active_audit_viewed_cards.iter().any(|view| {
+            view.viewer == alice
+                && view.subject == alice
+                && view.zone == Zone::Library
+                && !view.public
+                && view.cards == hidden_library_ids
+        }),
+        "WASM dispatch should retain the private library view for audit material"
+    );
+}
+
+#[test]
 fn krrik_casting_black_spell_surfaces_pay_two_life_option_in_wasm_flow() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);

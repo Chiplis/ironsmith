@@ -664,6 +664,133 @@ fn capitalize_first_ascii(s: &str) -> String {
     }
 }
 
+fn title_case_card_name_surface(name: &str) -> String {
+    let small_words = [
+        "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "of", "or", "the", "to",
+        "with",
+    ];
+    name.split_whitespace()
+        .enumerate()
+        .map(|(idx, word)| {
+            if idx > 0 && small_words.contains(&word) {
+                word.to_string()
+            } else {
+                capitalize_first_ascii(word)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn target_any_player_spec() -> ChooseSpec {
+    ChooseSpec::Target(Box::new(ChooseSpec::Player(PlayerFilter::Any)))
+}
+
+fn target_any_player_filter() -> PlayerFilter {
+    PlayerFilter::Target(Box::new(PlayerFilter::Any))
+}
+
+fn describe_structural_partner_with_pair(first: &Ability, second: &Ability) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &first.kind else {
+        return None;
+    };
+    if static_ability.id() != crate::static_abilities::StaticAbilityId::Partner {
+        return None;
+    }
+
+    let AbilityKind::Triggered(triggered) = &second.kind else {
+        return None;
+    };
+    if triggered.choices.as_slice() != [target_any_player_spec()].as_slice() {
+        return None;
+    }
+
+    let zone_change = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if zone_change.from != crate::triggers::ZonePattern::Any
+        || zone_change.to != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || zone_change.player != crate::triggers::PlayerRelation::Any
+        || zone_change.count_mode != crate::triggers::CountMode::Each
+        || !zone_change.this_object
+        || zone_change.object_filter != ObjectFilter::default()
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [may_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(target_any_player_filter()) {
+        return None;
+    }
+    let [target_effect, sequence_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target_only.target != target_any_player_spec() {
+        return None;
+    }
+
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, for_each_effect, shuffle_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let partner_name = choose.filter.name.as_deref()?;
+    if choose.filter.zone != Some(Zone::Library)
+        || choose.filter.owner != Some(target_any_player_filter())
+        || choose.count != ChoiceCount::exactly(1)
+        || choose.count_value.is_some()
+        || choose.chooser != target_any_player_filter()
+        || choose.zone != Some(Zone::Library)
+        || !choose.additional_zones.is_empty()
+        || !choose.is_search
+        || !choose.reveal
+        || choose.search_mode != crate::effect::SearchSelectionMode::Exact
+        || choose.top_only
+        || choose.replace_tagged_objects
+    {
+        return None;
+    }
+
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.tag != choose.tag {
+        return None;
+    }
+    let [move_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.target != ChooseSpec::Iterated
+        || move_to_zone.zone != Zone::Hand
+        || move_to_zone.to_top
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_to_zone.enters_tapped
+    {
+        return None;
+    }
+
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.player != target_any_player_filter()
+        || shuffle.target_spec != Some(target_any_player_spec())
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Partner with {}",
+        title_case_card_name_surface(partner_name)
+    ))
+}
+
 fn describe_structural_echo_pair(first: &Ability, second: &Ability) -> Option<String> {
     let AbilityKind::Static(static_ability) = &first.kind else {
         return None;
@@ -1826,6 +1953,17 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             if let Some(keyword) = describe_structural_ingest_keyword(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
+                continue;
+            }
+            if ability_idx + 1 < def.abilities.len()
+                && let Some(partner_with) =
+                    describe_structural_partner_with_pair(ability, &def.abilities[ability_idx + 1])
+            {
+                output.push(format!(
+                    "Keyword ability {}: {partner_with}",
+                    ability_idx + 1
+                ));
+                ability_idx += 2;
                 continue;
             }
             if ability_idx + 1 < def.abilities.len()

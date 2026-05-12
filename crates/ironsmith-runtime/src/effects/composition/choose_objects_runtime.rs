@@ -498,6 +498,16 @@ fn collect_candidates_in_zone(
                         .rev()
                         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                     {
+                        if effect.is_search
+                            && (game.is_hidden_card_placeholder(id)
+                                || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
+                        {
+                            top_matches.push(id);
+                            if top_matches.len() >= top_only_limit {
+                                break;
+                            }
+                            continue;
+                        }
                         if !hidden_zone_filter.matches(obj, &filter_ctx, game) {
                             continue;
                         }
@@ -513,9 +523,18 @@ fn collect_candidates_in_zone(
                     .iter()
                     .filter_map(|owner_id| game.player(*owner_id))
                     .flat_map(|player| player.library.iter())
-                    .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                    .filter(|(_, obj)| hidden_zone_filter.matches(obj, &filter_ctx, game))
-                    .map(|(id, _)| id)
+                    .filter_map(|&id| {
+                        let obj = game.object(id)?;
+                        if effect.is_search
+                            && (game.is_hidden_card_placeholder(id)
+                                || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
+                        {
+                            return Some(id);
+                        }
+                        hidden_zone_filter
+                            .matches(obj, &filter_ctx, game)
+                            .then_some(id)
+                    })
                     .collect()
             }
         }
@@ -557,6 +576,37 @@ fn collect_candidates(
         }
     }
     Ok(candidates)
+}
+
+fn hidden_library_search_candidates(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    owner: PlayerId,
+) -> Vec<ObjectId> {
+    let Some(player) = game.player(owner) else {
+        return Vec::new();
+    };
+    let mut ids: Box<dyn Iterator<Item = ObjectId> + '_> = if effect.top_only {
+        Box::new(player.library.iter().rev().copied())
+    } else {
+        Box::new(player.library.iter().copied())
+    };
+    let mut candidates = Vec::new();
+    let limit = if effect.top_only {
+        top_only_selection_limit(effect, ctx.x_value)
+    } else {
+        usize::MAX
+    };
+    for id in ids.by_ref() {
+        if candidates.len() >= limit {
+            break;
+        }
+        if game.is_hidden_card_placeholder(id) {
+            candidates.push(id);
+        }
+    }
+    candidates
 }
 
 fn compute_choice_bounds(count: ChoiceCount, candidate_count: usize) -> (usize, usize) {
@@ -735,7 +785,13 @@ fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<Ob
     candidates
         .iter()
         .copied()
-        .filter(|id| game.object(*id).is_some_and(|obj| !obj.zone.is_hidden()))
+        .filter(|id| {
+            game.object(*id).is_some_and(|obj| {
+                !obj.zone.is_hidden()
+                    && obj.zone != Zone::Library
+                    && !game.is_hidden_card_placeholder(*id)
+            })
+        })
         .collect()
 }
 
@@ -940,7 +996,33 @@ pub(crate) fn run_choose_objects(
             )
         });
 
-        let candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+        let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+        let hidden_library_candidates =
+            if effect.is_search && search_zones.as_slice() == [Zone::Library] {
+                library_owner
+                    .map(|owner| hidden_library_search_candidates(effect, game, ctx, owner))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+        for id in &hidden_library_candidates {
+            if !candidates.contains(id) {
+                candidates.push(*id);
+            }
+        }
+        if candidates.is_empty() && effect.is_search && search_zones.contains(&Zone::Library) {
+            for player in &game.players {
+                for &id in &player.library {
+                    let is_hidden_library_card = game.is_hidden_card_placeholder(id)
+                        || game
+                            .object(id)
+                            .is_some_and(|obj| obj.zone == Zone::Library && obj.name == "Hidden Card");
+                    if is_hidden_library_card && !candidates.contains(&id) {
+                        candidates.push(id);
+                    }
+                }
+            }
+        }
         if candidates.is_empty() {
             if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
                 ctx.clear_object_tag(effect.tag.as_str());
@@ -996,7 +1078,9 @@ pub(crate) fn run_choose_objects(
             });
         }
 
-        let has_hidden_search_zones = effect.is_search && search_zones.iter().any(Zone::is_hidden);
+        let has_hidden_search_zones = effect.is_search
+            && (search_zones.iter().any(Zone::is_hidden)
+                || !hidden_library_candidates.is_empty());
         if has_hidden_search_zones && library_owner.is_none() {
             view_hidden_candidate_objects(
                 game,
@@ -1255,6 +1339,99 @@ mod tests {
         );
     }
 
+    #[test]
+    fn library_search_prompts_with_hidden_placeholders() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "first-hidden-library-card".to_string(),
+        );
+        let second = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "second-hidden-library-card".to_string(),
+        );
+        let source = game.new_object_id();
+        let mut dm = SearchPromptDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let filter = ObjectFilter::default()
+            .with_type(CardType::Instant)
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::Library);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "found")
+            .as_search()
+            .reveal()
+            .in_zone(Zone::Library);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("hidden library search should pause for a choice");
+
+        assert!(dm.captured, "search should surface a decision prompt");
+        assert_eq!(dm.candidates, vec![first, second]);
+        assert!(
+            dm.viewed_cards.iter().any(|(viewer, subject, zone, public, cards)| {
+                *viewer == alice
+                    && *subject == alice
+                    && *zone == Zone::Library
+                    && !*public
+                    && cards == &vec![first, second]
+            }),
+            "hidden library placeholders should be privately viewed before choosing"
+        );
+    }
+
+    #[test]
+    fn sequenced_library_search_stops_on_hidden_placeholder_prompt() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "first-hidden-library-card".to_string(),
+        );
+        let second = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "second-hidden-library-card".to_string(),
+        );
+        let source = game.new_object_id();
+        let mut dm = SearchPromptDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let filter = ObjectFilter::default()
+            .with_type(CardType::Instant)
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::Library);
+        let choose = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "found")
+            .as_search()
+            .reveal()
+            .in_zone(Zone::Library);
+        let sequence = crate::effects::SequenceEffect::new(vec![
+            crate::effect::Effect::new(choose),
+            crate::effect::Effect::shuffle_library_player(PlayerFilter::You),
+        ]);
+
+        sequence
+            .execute(&mut game, &mut ctx)
+            .expect("hidden library sequence should pause for a choice");
+
+        assert!(dm.captured, "sequence should preserve the search prompt");
+        assert_eq!(dm.candidates, vec![first, second]);
+        assert_eq!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .library,
+            vec![first, second],
+            "sequence should not run later effects while the search prompt is pending"
+        );
+    }
+
     fn create_hand_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
         let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
             .card_types(vec![CardType::Creature])
@@ -1290,6 +1467,50 @@ mod tests {
                 .map(|candidate| candidate.id)
                 .take(ctx.min)
                 .collect()
+        }
+    }
+
+    #[derive(Default)]
+    struct SearchPromptDecisionMaker {
+        captured: bool,
+        candidates: Vec<ObjectId>,
+        viewed_cards: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+    }
+
+    impl DecisionMaker for SearchPromptDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.captured
+        }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.viewed_cards.push((
+                viewer,
+                ctx.subject,
+                ctx.zone,
+                ctx.public,
+                cards.to_vec(),
+            ));
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.captured = true;
+            self.candidates = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            Vec::new()
         }
     }
 

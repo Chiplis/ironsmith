@@ -603,13 +603,20 @@ impl CardDefinitionBuilder {
     }
 
     pub fn toxic(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
-            vec![crate::effect::Effect::poison_counters_player(
-                amount as i32,
-                crate::target::PlayerFilter::DamagedPlayer,
-            )],
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                effects: vec![crate::effect::Effect::poison_counters_player(
+                    amount as i32,
+                    crate::target::PlayerFilter::DamagedPlayer,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:toxic {amount}")),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn ward_generic(self, amount: u32) -> Self {
@@ -632,13 +639,20 @@ impl CardDefinitionBuilder {
     }
 
     pub fn afflict(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_becomes_blocked(),
-            vec![crate::effect::Effect::lose_life_player(
-                amount as i32,
-                crate::target::PlayerFilter::Defending,
-            )],
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_becomes_blocked(),
+                effects: vec![crate::effect::Effect::lose_life_player(
+                    amount as i32,
+                    crate::target::PlayerFilter::Defending,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:afflict {amount}")),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn amplify(self, amount: u32) -> Self {
@@ -649,10 +663,16 @@ impl CardDefinitionBuilder {
     }
 
     pub fn devour(self, multiplier: u32) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![crate::effect::Effect::devour(multiplier)],
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                effects: vec![crate::effect::Effect::devour(multiplier)].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:devour {multiplier}")),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn afterlife(self, amount: u32) -> Self {

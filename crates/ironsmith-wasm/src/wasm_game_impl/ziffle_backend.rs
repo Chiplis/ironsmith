@@ -102,15 +102,35 @@ fn aggregate_public_key(
     Ok((verified, AggregatePublicKey::new(&public_keys)))
 }
 
+fn ziffle_key_context<'a>(key_context: &'a str, context: &'a str) -> &'a str {
+    let key_context = key_context.trim();
+    if key_context.is_empty() {
+        context
+    } else {
+        key_context
+    }
+}
+
 fn verify_ziffle_steps<const N: usize>(
     context: &[u8],
+    key_context: &[u8],
     keys: &[ZifflePublicKeyInput],
     steps: &[ZiffleShuffleStepInput],
 ) -> Result<Option<Verified<MaskedDeck<N>>>, JsValue> {
     let shuffle = Shuffle::<N>::default();
-    let (_, aggregate) = aggregate_public_key(keys, context)?;
+    let (verified_keys, aggregate) = aggregate_public_key(keys, key_context)?;
     let mut verified_deck = None;
     for (index, step) in steps.iter().enumerate() {
+        let expected_shuffler = verified_keys
+            .get(index)
+            .map(|(player, _, _)| *player)
+            .ok_or_else(|| JsValue::from_str("ziffle shuffle has more steps than player keys"))?;
+        if step.shuffler != expected_shuffler {
+            return Err(JsValue::from_str(&format!(
+                "ziffle shuffle step {index} was attributed to player {}, expected player {expected_shuffler}",
+                step.shuffler
+            )));
+        }
         let deck: MaskedDeck<N> = ziffle_from_hex(&step.deck_hex, "ziffle masked deck")?;
         let proof: ShuffleProof<N> = ziffle_from_hex(&step.proof_hex, "ziffle shuffle proof")?;
         verified_deck = Some(if index == 0 {
@@ -133,9 +153,19 @@ fn build_ziffle_shuffle_step<const N: usize>(
     input: ZiffleBuildShuffleStepInput,
 ) -> Result<ZiffleShuffleStepOutput, JsValue> {
     let context = input.context.as_bytes();
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
     let shuffle = Shuffle::<N>::default();
-    let (_, aggregate) = aggregate_public_key(&input.keys, context)?;
-    let previous = verify_ziffle_steps::<N>(context, &input.keys, &input.steps)?;
+    let (verified_keys, aggregate) = aggregate_public_key(&input.keys, key_context)?;
+    let expected_shuffler = verified_keys
+        .get(input.steps.len())
+        .map(|(player, _, _)| *player)
+        .ok_or_else(|| JsValue::from_str("ziffle shuffle already has one step for every player"))?;
+    if input.shuffler != expected_shuffler {
+        return Err(JsValue::from_str(&format!(
+            "ziffle shuffle step must be built by player {expected_shuffler}"
+        )));
+    }
+    let previous = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?;
     let mut rng = rng_from_entropy_hex(&input.entropy_hex)?;
     let (deck, proof) = if let Some(previous) = previous.as_ref() {
         shuffle.shuffle_deck(&mut rng, aggregate, previous, context)
@@ -155,7 +185,11 @@ fn verify_ziffle_shuffle<const N: usize>(
     input: ZiffleVerifyShuffleInput,
 ) -> Result<ZiffleVerifyShuffleOutput, JsValue> {
     let context = input.context.as_bytes();
-    verify_ziffle_steps::<N>(context, &input.keys, &input.steps)?
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
+    if input.steps.len() != input.keys.len() {
+        return Err(JsValue::from_str("ziffle final shuffle must include one step per player"));
+    }
+    verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
         .ok_or_else(|| JsValue::from_str("ziffle ceremony has no shuffle steps"))?;
     let deck_hex = input
         .steps
@@ -173,7 +207,8 @@ fn build_ziffle_reveal_token<const N: usize>(
     input: ZiffleBuildRevealTokenInput,
 ) -> Result<ZiffleRevealTokenOutput, JsValue> {
     let context = input.context.as_bytes();
-    let verified_deck = verify_ziffle_steps::<N>(context, &input.keys, &input.steps)?
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
+    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
         .ok_or_else(|| JsValue::from_str("ziffle ceremony has no shuffle steps"))?;
     let card = verified_deck
         .get(input.card_position)
@@ -195,12 +230,46 @@ fn build_ziffle_reveal_token<const N: usize>(
     })
 }
 
+fn build_ziffle_reveal_tokens<const N: usize>(
+    input: ZiffleBuildRevealTokensInput,
+) -> Result<Vec<ZiffleRevealTokenBatchOutput>, JsValue> {
+    let context = input.context.as_bytes();
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
+    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+        .ok_or_else(|| JsValue::from_str("ziffle ceremony has no shuffle steps"))?;
+    let secret_key: SecretKey = ziffle_from_hex(&input.secret_key_hex, "ziffle secret key")?;
+    let public_key: PublicKey = ziffle_from_hex(&input.public_key_hex, "ziffle public key")?;
+    let player = input
+        .keys
+        .iter()
+        .find(|key| key.public_key_hex == input.public_key_hex)
+        .map(|key| key.player)
+        .unwrap_or(0);
+    let mut rng = rng_from_entropy_hex(&input.entropy_hex)?;
+    let mut out = Vec::with_capacity(input.card_positions.len());
+    for card_position in input.card_positions {
+        let card = verified_deck
+            .get(card_position)
+            .ok_or_else(|| JsValue::from_str("ziffle card position is out of range"))?;
+        let (token, proof) = card.reveal_token(&mut rng, &secret_key, public_key, context);
+        out.push(ZiffleRevealTokenBatchOutput {
+            card_position,
+            player,
+            public_key_hex: input.public_key_hex.clone(),
+            token_hex: ziffle_to_hex(&token)?,
+            proof_hex: ziffle_to_hex(&proof)?,
+        });
+    }
+    Ok(out)
+}
+
 fn reveal_ziffle_card<const N: usize>(
     input: ZiffleRevealCardInput,
 ) -> Result<ZiffleRevealCardOutput, JsValue> {
     let context = input.context.as_bytes();
-    let (keys, _) = aggregate_public_key(&input.keys, context)?;
-    let verified_deck = verify_ziffle_steps::<N>(context, &input.keys, &input.steps)?
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
+    let (keys, _) = aggregate_public_key(&input.keys, key_context)?;
+    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
         .ok_or_else(|| JsValue::from_str("ziffle ceremony has no shuffle steps"))?;
     let card = verified_deck
         .get(input.card_position)
@@ -236,6 +305,57 @@ fn reveal_ziffle_card<const N: usize>(
         card_position: input.card_position,
         original_slot,
     })
+}
+
+fn reveal_ziffle_cards<const N: usize>(
+    input: ZiffleRevealCardsInput,
+) -> Result<Vec<ZiffleRevealCardOutput>, JsValue> {
+    let context = input.context.as_bytes();
+    let key_context = ziffle_key_context(&input.key_context, &input.context).as_bytes();
+    let (keys, _) = aggregate_public_key(&input.keys, key_context)?;
+    let verified_deck = verify_ziffle_steps::<N>(context, key_context, &input.keys, &input.steps)?
+        .ok_or_else(|| JsValue::from_str("ziffle ceremony has no shuffle steps"))?;
+    let shuffle = Shuffle::<N>::default();
+    let mut out = Vec::with_capacity(input.card_positions.len());
+    for card_position in input.card_positions {
+        let card = verified_deck
+            .get(card_position)
+            .ok_or_else(|| JsValue::from_str("ziffle card position is out of range"))?;
+        let mut verified_tokens = Vec::with_capacity(keys.len());
+        for (player, _, verified_public_key) in &keys {
+            let token_input = input
+                .tokens
+                .iter()
+                .find(|token| token.player == *player && token.card_position == card_position)
+                .ok_or_else(|| {
+                    JsValue::from_str(&format!(
+                        "missing ziffle reveal token for player {player} at position {card_position}"
+                    ))
+                })?;
+            let token: RevealToken =
+                ziffle_from_hex(&token_input.token_hex, "ziffle reveal token")?;
+            let proof: RevealTokenProof =
+                ziffle_from_hex(&token_input.proof_hex, "ziffle reveal-token proof")?;
+            verified_tokens.push(
+                proof
+                    .verify(*verified_public_key, token, card, context)
+                    .ok_or_else(|| {
+                        JsValue::from_str(&format!(
+                            "ziffle reveal-token proof failed for player {player}"
+                        ))
+                    })?,
+            );
+        }
+        let aggregate = AggregateRevealToken::new(&verified_tokens);
+        let original_slot = shuffle
+            .reveal_card(aggregate, card)
+            .ok_or_else(|| JsValue::from_str("ziffle aggregate reveal failed"))?;
+        out.push(ZiffleRevealCardOutput {
+            card_position,
+            original_slot,
+        });
+    }
+    Ok(out)
 }
 
 macro_rules! ziffle_dispatch {
@@ -394,6 +514,18 @@ impl WasmGame {
         })
     }
 
+    #[wasm_bindgen(js_name = ziffleBuildRevealTokens)]
+    pub fn ziffle_build_reveal_tokens(&self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: ZiffleBuildRevealTokensInput =
+            serde_wasm_bindgen::from_value(input).map_err(|e| {
+                JsValue::from_str(&format!("invalid ziffle reveal tokens input: {e}"))
+            })?;
+        let output = ziffle_dispatch!(input.deck_count, build_ziffle_reveal_tokens, input)?;
+        serde_wasm_bindgen::to_value(&output).map_err(|e| {
+            JsValue::from_str(&format!("failed to encode ziffle reveal tokens output: {e}"))
+        })
+    }
+
     #[wasm_bindgen(js_name = ziffleRevealCard)]
     pub fn ziffle_reveal_card(&self, input: JsValue) -> Result<JsValue, JsValue> {
         let input: ZiffleRevealCardInput = serde_wasm_bindgen::from_value(input)
@@ -401,6 +533,16 @@ impl WasmGame {
         let output = ziffle_dispatch!(input.deck_count, reveal_ziffle_card, input)?;
         serde_wasm_bindgen::to_value(&output)
             .map_err(|e| JsValue::from_str(&format!("failed to encode ziffle reveal output: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = ziffleRevealCards)]
+    pub fn ziffle_reveal_cards(&self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: ZiffleRevealCardsInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid ziffle reveals input: {e}")))?;
+        let output = ziffle_dispatch!(input.deck_count, reveal_ziffle_cards, input)?;
+        serde_wasm_bindgen::to_value(&output).map_err(|e| {
+            JsValue::from_str(&format!("failed to encode ziffle reveals output: {e}"))
+        })
     }
 }
 
@@ -436,6 +578,7 @@ mod ziffle_backend_tests {
             let step = build_ziffle_shuffle_step::<10>(ZiffleBuildShuffleStepInput {
                 deck_count: 10,
                 context: context.clone(),
+                key_context: String::new(),
                 keys: keys.clone(),
                 steps: steps.clone(),
                 shuffler: player,
@@ -451,6 +594,7 @@ mod ziffle_backend_tests {
         let verified = verify_ziffle_shuffle::<10>(ZiffleVerifyShuffleInput {
             deck_count: 10,
             context: context.clone(),
+            key_context: String::new(),
             keys: keys.clone(),
             steps: steps.clone(),
         })
@@ -462,6 +606,7 @@ mod ziffle_backend_tests {
             let token = build_ziffle_reveal_token::<10>(ZiffleBuildRevealTokenInput {
                 deck_count: 10,
                 context: context.clone(),
+                key_context: String::new(),
                 keys: keys.clone(),
                 steps: steps.clone(),
                 card_position: 0,
@@ -480,6 +625,7 @@ mod ziffle_backend_tests {
         let reveal = reveal_ziffle_card::<10>(ZiffleRevealCardInput {
             deck_count: 10,
             context,
+            key_context: String::new(),
             keys,
             steps,
             card_position: 0,
@@ -487,5 +633,52 @@ mod ziffle_backend_tests {
         })
         .expect("card should reveal");
         assert!(reveal.original_slot < 10);
+    }
+
+    #[test]
+    fn ziffle_helpers_allow_action_shuffle_context_with_match_keys() {
+        let key_context = "ironsmith-wasm-ziffle-match".to_string();
+        let shuffle_context = "ironsmith-wasm-ziffle-match:action:7:shuffle:p0".to_string();
+        let shuffle = Shuffle::<10>::default();
+        let mut key_rng =
+            rng_from_entropy_hex("abcdef00112233445566778899").expect("key rng should build");
+        let mut keys = Vec::new();
+        for player in 0..2u8 {
+            let (_, public_key, ownership_proof) =
+                shuffle.keygen(&mut key_rng, key_context.as_bytes());
+            keys.push(ZifflePublicKeyInput {
+                player,
+                public_key_hex: ziffle_to_hex(&public_key).expect("public key hex"),
+                ownership_proof_hex: ziffle_to_hex(&ownership_proof).expect("proof hex"),
+            });
+        }
+
+        let mut steps = Vec::new();
+        for shuffler in 0..2u8 {
+            let step = build_ziffle_shuffle_step::<10>(ZiffleBuildShuffleStepInput {
+                deck_count: 10,
+                context: shuffle_context.clone(),
+                key_context: key_context.clone(),
+                keys: keys.clone(),
+                steps: steps.clone(),
+                shuffler,
+                entropy_hex: format!("feedface0002{shuffler:02x}"),
+            })
+            .expect("shuffle step should verify ownership under key context");
+            steps.push(ZiffleShuffleStepInput {
+                shuffler: step.shuffler,
+                deck_hex: step.deck_hex,
+                proof_hex: step.proof_hex,
+            });
+        }
+        let verified = verify_ziffle_shuffle::<10>(ZiffleVerifyShuffleInput {
+            deck_count: 10,
+            context: shuffle_context,
+            key_context,
+            keys,
+            steps,
+        })
+        .expect("shuffle should verify with distinct key and shuffle contexts");
+        assert!(!verified.deck_hash.is_empty());
     }
 }

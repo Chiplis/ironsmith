@@ -89,16 +89,22 @@ export default function Topbar({
   const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
   const compactPhaseLabel = formatStep(state?.step) || formatPhase(state?.phase) || "Phase";
   const connectionWarnings = multiplayer?.connectionWarnings || [];
-  const actionTimer = multiplayer?.actionTimer || null;
-  const timerPlayer = players.find((player) =>
-    Number(player.id) === Number(actionTimer?.currentPlayerIndex)
-    || Number(player.index) === Number(actionTimer?.currentPlayerIndex)
-  );
-  const showActionTimer = Boolean(
+  const matchClock = multiplayer?.matchClock || multiplayer?.actionTimer || null;
+  const matchClockEntries = Array.isArray(matchClock?.remainingMsByPlayer)
+    ? matchClock.remainingMsByPlayer.map((remainingMs, index) => ({
+        player: players.find((candidate) =>
+          Number(candidate.id) === Number(index) || Number(candidate.index) === Number(index)
+        ) || { index },
+        index,
+        remainingMs,
+        active: Number(matchClock.activePlayerIndex ?? matchClock.currentPlayerIndex) === Number(index),
+        expired: Number(remainingMs || 0) <= 0,
+      }))
+    : [];
+  const showMatchClock = Boolean(
     multiplayer?.matchStarted
-    && actionTimer?.enabled
-    && actionTimer.currentPlayerIndex != null
-    && actionTimer.remainingMs != null
+    && matchClock?.enabled
+    && matchClockEntries.length > 0
   );
   const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
   const connectionWarningLabel = offlinePlayers.length > 0
@@ -282,19 +288,28 @@ export default function Topbar({
             </span>
           </button>
         ) : null}
-        {showActionTimer ? (
+        {showMatchClock ? (
           <div
-            className={`stone-pill inline-flex min-h-8 max-w-[260px] items-center gap-2 rounded-none border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-              actionTimer.expired
-                ? "border-[#7d302f] bg-[#2b1114]/90 text-[#ffb8c0]"
-                : "border-[#5f4a22] bg-[#231c0e]/90 text-[#ffd98a]"
-            }`}
-            title={`${playerDisplayName(players, timerPlayer) || "Current player"} action timer`}
-            aria-label={`${playerDisplayName(players, timerPlayer) || "Current player"} action timer ${formatTimerRemaining(actionTimer.remainingMs)}`}
+            className="stone-pill inline-flex min-h-8 max-w-[520px] items-center gap-2 overflow-hidden rounded-none border border-[#5f4a22] bg-[#231c0e]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd98a]"
+            title="Match clocks"
+            aria-label="Per-player match clocks"
           >
             <Clock3 className="size-3.5 shrink-0" />
-            <span className="truncate">
-              {playerDisplayName(players, timerPlayer) || "Player"} {formatTimerRemaining(actionTimer.remainingMs)}
+            <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {matchClockEntries.map((entry) => (
+                <span
+                  key={entry.index}
+                  className={`whitespace-nowrap ${
+                    entry.expired
+                      ? "text-[#ffb8c0]"
+                      : entry.active
+                        ? "text-[#fff1cd]"
+                        : "text-[#c9b98f]"
+                  }`}
+                >
+                  {playerDisplayName(players, entry.player) || `P${entry.index + 1}`} {formatTimerRemaining(entry.remainingMs)}
+                </span>
+              ))}
             </span>
           </div>
         ) : null}

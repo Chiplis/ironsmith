@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -13,6 +14,8 @@ const UI_ROOT = path.resolve(__dirname, "..");
 const HARNESS_PATH = "/tests/fixtures/peer-lobby-harness.html";
 const HOST_DECK = "60 Island";
 const GUEST_DECK = "60 Mountain";
+const HOST_ZIFFLE_PUBLIC_OPEN_DECK = "7 Island\n1 Mystical Tutor\n52 Mountain";
+const HOST_ZIFFLE_OPENED_LAND_DECK = "7 Mountain\n1 Island\n5 Mountain\n1 Mystical Tutor\n46 Mountain";
 const FOUR_PLAYER_DECKS = [
   "60 Island",
   "60 Mountain",
@@ -222,18 +225,22 @@ async function openFullUiPage(context, url, label) {
       pageErrors.push(message.text());
     }
   });
+  await page.route("https://api.scryfall.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        object: "card",
+        name: "Test Card",
+        image_uris: {},
+        card_faces: [],
+      }),
+    })
+  );
   await page.goto(url);
   page.__peerHarnessErrors = pageErrors;
   page.__peerHarnessLabel = label;
   return page;
-}
-
-async function enabledButtonLabels(page) {
-  return page.locator("button:enabled").evaluateAll((buttons) =>
-    buttons
-      .map((button) => (button.innerText || button.textContent || "").replace(/\s+/g, " ").trim())
-      .filter(Boolean)
-  );
 }
 
 async function clickLocalButton(page, label, textPattern = null) {
@@ -256,12 +263,63 @@ async function clickLocalButton(page, label, textPattern = null) {
   }
 }
 
+async function clickEnabledButton(page, label, textPattern) {
+  const button = page.locator("button:enabled").filter({ hasText: textPattern }).first();
+  if ((await button.count()) === 0) return null;
+  try {
+    const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+    await button.press("Enter", { timeout: 3000 });
+    return { label, text };
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!message.includes("Timeout") && !message.includes("detached")) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+async function clickLastEnabledButton(page, label, textPattern) {
+  const button = page.locator("button:enabled").filter({ hasText: textPattern }).last();
+  if ((await button.count()) === 0) return null;
+  try {
+    const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+    await button.press("Enter", { timeout: 3000 });
+    return { label, text };
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!message.includes("Timeout") && !message.includes("detached")) {
+      throw err;
+    }
+    return null;
+  }
+}
+
 async function clickLocalDecisionButton(page, label) {
   return clickLocalButton(page, label);
 }
 
 async function visibleBodyText(page) {
   return page.locator("body").innerText();
+}
+
+async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
+  const started = Date.now();
+  let text = "";
+  while (Date.now() - started < timeoutMs) {
+    text = await visibleBodyText(page);
+    if (pattern.test(text)) return text;
+    await sleep(500);
+  }
+  assert.fail(`${label}\nLast body text:\n${text}`);
+}
+
+function assertNoSyncFailureText(text, label = "unexpected sync failure") {
+  assert.doesNotMatch(
+    text,
+    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|hidden card commitment does not match reveal|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
+    label
+  );
 }
 
 test("PeerJS remote apply gates auto-pass until sequence append completes", { timeout: 60000 }, async () => {
@@ -347,6 +405,935 @@ test("PeerJS remote apply gates auto-pass until sequence append completes", { ti
       syncedCommandEvents(guestAfterAutoPass).map((event) => event.syncContext?.sequence),
       [1, 2],
       "guest should not reuse the remote action sequence for its immediate auto-pass",
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS click during the final sync window is submitted after the previous action clears", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for submit-idle wait test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for submit-idle wait test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts submit-idle wait match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives submit-idle wait match");
+    await guestPage.evaluate(() => window.__peerHarness.setApplyDelay(800));
+
+    await hostPage.evaluate(() => {
+      window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      }, "host action before guest quick click");
+    });
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.submittingAction
+        && snap.visibleState?.snapshot_id === 1
+        && Number(snap.visibleState?.decision?.player) === Number(snap.multiplayer.localPlayerIndex),
+      "guest renders its next decision while previous action is still syncing",
+    );
+
+    await guestPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = snap.visibleState?.decision?.actions?.[0];
+      if (!action?.action_ref) {
+        throw new Error("guest has no local action to submit during sync");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "guest click while sync finishing");
+    });
+
+    const hostAfterGuestClick = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "host receives guest click after previous sync clears",
+    );
+    const guestAfterGuestClick = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "guest applies click submitted during previous sync",
+    );
+
+    assert.deepEqual(
+      syncedCommandEvents(guestAfterGuestClick).map((event) => event.syncContext?.sequence),
+      [1, 2],
+      "guest should apply the remote action and the queued local click in order",
+    );
+    assert.equal(hostAfterGuestClick.multiplayer.lastAppliedSequence, 2);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS client actions can collect host ziffle shuffle steps", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for client ziffle shuffle test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for client ziffle shuffle test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts client ziffle shuffle match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives client ziffle shuffle match");
+
+    await hostPage.evaluate(() => window.__peerHarness.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: {
+        kind: "test_priority_action",
+        actor: 0,
+        sequence: 0,
+      },
+    }, "host action before guest ziffle shuffle"));
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1
+        && Number(snap.visibleState?.decision?.player) === Number(snap.multiplayer.localPlayerIndex),
+      "guest owns the next action before ziffle shuffle",
+    );
+
+    await guestPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        entry.action_ref?.kind === "ziffle_shuffle_action"
+      );
+      if (!action?.action_ref) {
+        throw new Error("guest has no ziffle shuffle action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "guest ziffle shuffle action");
+    });
+
+    const hostAfterShuffle = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "host applies guest ziffle shuffle action",
+    );
+    const guestAfterShuffle = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "guest applies its ziffle shuffle action",
+    );
+
+    const statusText = [
+      ...hostAfterShuffle.statusEvents,
+      ...guestAfterShuffle.statusEvents,
+    ].map((event) => event.message).join("\n");
+    assert.match(
+      statusText,
+      /Waiting for cryptographic shuffle material from Host/,
+      "client should request the host's live ziffle shuffle step",
+    );
+    assert.doesNotMatch(statusText, /Timed out waiting for ziffle shuffle step|Sync failed|Ziffle setup failed/i);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS remote public openings can prove ziffle positions against original deck slots", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_PUBLIC_OPEN_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for ziffle public-open test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for ziffle public-open test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts ziffle public-open match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives ziffle public-open match");
+
+    await hostPage.evaluate(() => window.__peerHarness.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: {
+        kind: "test_priority_action",
+        actor: 0,
+        sequence: 0,
+      },
+    }, "host action before guest public open"));
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1
+        && Number(snap.visibleState?.decision?.player) === Number(snap.multiplayer.localPlayerIndex),
+      "guest owns the next action before ziffle public open",
+    );
+
+    await guestPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        entry.action_ref?.kind === "ziffle_public_open_action"
+      );
+      if (!action?.action_ref) {
+        throw new Error("guest has no ziffle public-open action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "guest ziffle public-open action");
+    });
+
+    const hostAfterOpen = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "host applies guest ziffle public-open action",
+    );
+    const guestAfterOpen = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "guest applies its ziffle public-open action",
+    );
+
+    const statusText = [
+      ...hostAfterOpen.statusEvents,
+      ...guestAfterOpen.statusEvents,
+    ].map((event) => event.message).join("\n");
+    assert.match(
+      statusText,
+      /Waiting for cryptographic reveal material from Guest/,
+      "host should request the guest's reveal token for the ziffle position",
+    );
+    assert.doesNotMatch(
+      statusText,
+      /does not match slot|hidden card commitment does not match reveal|Sync failed|Timed out waiting for ziffle reveal|Missing ziffle ceremony/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS opened ziffle hand cards keep original slots when played", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for opened ziffle land test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for opened ziffle land test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts opened ziffle land match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives opened ziffle land match");
+
+    await hostPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        Number(entry.action_ref?.land_id) === 4343
+      );
+      if (!action?.action_ref) {
+        throw new Error("host has no opened ziffle land action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "host opened ziffle land action");
+    });
+
+    const hostAfterLand = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies opened ziffle land action",
+    );
+    const guestAfterLand = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "guest applies opened ziffle land action",
+    );
+    const statusText = [
+      ...hostAfterLand.statusEvents,
+      ...guestAfterLand.statusEvents,
+      ...hostAfterLand.noticeEvents,
+      ...guestAfterLand.noticeEvents,
+    ].map((event) => `${event?.title || ""} ${event?.body || event?.message || ""}`).join("\n");
+    assert.doesNotMatch(
+      statusText,
+      /Private deck opening does not match slot|hidden card commitment does not match reveal|Sync failed/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS opened ziffle hand cards use cached positions when object export is gone", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for cached ziffle land test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for cached ziffle land test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.setIncludeOpenedLandInCheckpointHand(true));
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts cached ziffle land match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives cached ziffle land match");
+    await hostPage.evaluate(() => window.__peerHarness.setFailOpenedLandExport(true));
+
+    await hostPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        Number(entry.action_ref?.land_id) === 4343
+      );
+      if (!action?.action_ref) {
+        throw new Error("host has no opened ziffle land action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "host cached ziffle land action");
+    });
+
+    const hostAfterLand = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies cached ziffle land action",
+    );
+    const guestAfterLand = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "guest applies cached ziffle land action",
+    );
+    const signedOpenings = hostAfterLand.auditTranscript?.actions?.at(-1)?.audit?.openings || [];
+    assert.ok(
+      signedOpenings.some((opening) =>
+        Number(opening.objectId) === 4343
+        && Number(opening.owner) === 0
+        && Number(opening.slot) === 7
+        && opening.position != null
+      ),
+      `expected cached opened-land audit opening to retain its ziffle position: ${JSON.stringify(signedOpenings)}`,
+    );
+    const noticeText = [
+      ...hostAfterLand.statusEvents,
+      ...guestAfterLand.statusEvents,
+      ...hostAfterLand.noticeEvents,
+      ...guestAfterLand.noticeEvents,
+    ].map((event) => `${event?.title || ""} ${event?.body || event?.message || ""}`).join("\n");
+    assert.doesNotMatch(
+      noticeText,
+      /Private deck opening does not match slot|hidden card commitment does not match reveal|Sync failed/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS receivers infer ziffle positions for opened hand cards when audit openings omit them", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for inferred ziffle land test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for inferred ziffle land test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts inferred ziffle land match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives inferred ziffle land match");
+    await hostPage.evaluate(() => window.__peerHarness.setOmitOwnerOpenedLandPosition(true));
+
+    await hostPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        Number(entry.action_ref?.land_id) === 4343
+      );
+      if (!action?.action_ref) {
+        throw new Error("host has no opened ziffle land action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "host opened ziffle land without position metadata");
+    });
+
+    const hostAfterLand = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies inferred ziffle land action",
+    );
+    const guestAfterLand = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "guest applies inferred ziffle land action",
+    );
+    const noticeText = [
+      ...hostAfterLand.statusEvents,
+      ...guestAfterLand.statusEvents,
+      ...hostAfterLand.noticeEvents,
+      ...guestAfterLand.noticeEvents,
+    ].map((event) => `${event?.title || ""} ${event?.body || event?.message || ""}`).join("\n");
+    assert.doesNotMatch(
+      noticeText,
+      /hidden card commitment does not match reveal|hidden ziffle position commitment does not match reveal|Sync failed/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS post-timed remote openings are revealed after dispatch", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for post-timed opening test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for post-timed opening test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts post-timed opening match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives post-timed opening match");
+
+    await hostPage.evaluate(() => window.__peerHarness.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: {
+        kind: "test_priority_action",
+        actor: 0,
+        sequence: 0,
+      },
+    }, "host action before guest post-timed opening"));
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1
+        && Number(snap.visibleState?.decision?.player) === Number(snap.multiplayer.localPlayerIndex),
+      "guest owns the next action before post-timed opening",
+    );
+
+    await guestPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        entry.action_ref?.kind === "post_public_open_action"
+      );
+      if (!action?.action_ref) {
+        throw new Error("guest has no post-timed public-open action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "guest post-timed public-open action");
+    });
+
+    const hostAfterOpen = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "host applies guest post-timed public-open action",
+    );
+    const guestAfterOpen = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "guest applies its post-timed public-open action",
+    );
+    const noticeText = [
+      ...hostAfterOpen.statusEvents,
+      ...guestAfterOpen.statusEvents,
+      ...hostAfterOpen.noticeEvents,
+      ...guestAfterOpen.noticeEvents,
+    ].map((event) => `${event?.title || ""} ${event?.body || event?.message || ""}`).join("\n");
+    assert.doesNotMatch(
+      noticeText,
+      /hidden card commitment does not match reveal|Resync checkpoint hash mismatch|Sync failed/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS duplicate local click is dropped when the action is stale after sync", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for duplicate local click test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for duplicate local click test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts duplicate local click match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives duplicate local click match");
+
+    await hostPage.evaluate(async () => {
+      const command = {
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      };
+      const first = window.__peerHarness.submitMultiplayerCommand(command, "host first click");
+      const second = window.__peerHarness.submitMultiplayerCommand(command, "host duplicate click");
+      await Promise.allSettled([first, second]);
+    });
+
+    const hostAfterClick = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies only the first duplicate local click",
+    );
+    await sleep(1000);
+    const hostAfterIdle = await snapshot(hostPage);
+    const guestAfterIdle = await snapshot(guestPage);
+    assert.equal(hostAfterIdle.multiplayer.lastAppliedSequence, 1);
+    assert.equal(guestAfterIdle.multiplayer.lastAppliedSequence, 1);
+    assert.equal(
+      syncedCommandEvents(hostAfterClick).length,
+      1,
+      "duplicate stale local click should not append a second action",
+    );
+    assert.match(
+      hostAfterIdle.statusEvents.map((event) => event.message).join("\n"),
+      /That action is no longer available/,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS local pass reuses checkpoint hash and skips unchanged ziffle hand scan", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for checkpoint export count test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for checkpoint export count test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts checkpoint export count match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives checkpoint export count match");
+    await hostPage.evaluate(() => window.__peerHarness.resetInstrumentation());
+
+    await hostPage.evaluate(() => {
+      window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      }, "host local pass");
+    });
+
+    const hostAfterPass = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies local pass for checkpoint export count test",
+    );
+
+    assert.equal(
+      hostAfterPass.instrumentation.exportPublicAuditCheckpoint,
+      1,
+      "local pass should export/hash the public audit checkpoint once",
+    );
+    assert.equal(
+      hostAfterPass.instrumentation.exportSyncCheckpoint,
+      0,
+      "local pass with unchanged hand should not export a sync checkpoint for ziffle hand reveal",
     );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
@@ -780,6 +1767,195 @@ test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands 
     assert.doesNotMatch(
       `${hostText}\n${guestText}`,
       /Private deck opening does not match slot|Sync failed|Match start failed/i
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library choice", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const hostDeck = deckUrlParam("30 Island\n30 Mystical Tutor");
+    const guestDeck = deckUrlParam("60 Mountain");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${hostDeck}`, "host-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${guestDeck}`,
+      "guest-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    let playedIsland = false;
+    let castTutor = false;
+    let paidTutor = false;
+    let guestResolved = false;
+
+    for (let step = 0; step < 120; step += 1) {
+      const combinedText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+      assertNoSyncFailureText(combinedText);
+
+      if (!playedIsland && await clickLocalButton(hostPage, "host-play-island", /PLAY ISLAND/i)) {
+        playedIsland = true;
+        await sleep(3000);
+        continue;
+      }
+
+      if (playedIsland && !castTutor && await clickLocalButton(hostPage, "host-cast-tutor", /MYSTICAL TUTOR/i)) {
+        castTutor = true;
+        await sleep(3000);
+        continue;
+      }
+
+      if (castTutor && !paidTutor) {
+        const paid = await clickLocalButton(hostPage, "host-pay-tutor", /PAY|MANA|BLUE|ISLAND|\{U\}|U$/i)
+          || await clickEnabledButton(hostPage, "host-tap-island", /TAP ISLAND|ADD/i);
+        if (paid) {
+          paidTutor = true;
+          await sleep(6000);
+          continue;
+        }
+      }
+
+      if (paidTutor && !guestResolved && await clickLocalButton(guestPage, "guest-resolve-tutor", /RESOLVE|PASS/i)) {
+        guestResolved = true;
+        const searchText = await waitForVisibleBodyText(
+          hostPage,
+          /CHOOSE OBJECTS[\s\S]*Search library[\s\S]*Mystical Tutor/i,
+          "expected Mystical Tutor to create a searchable library decision",
+          90000,
+        );
+        assertNoSyncFailureText(searchText, "search decision should not sync-fail");
+
+        await clickEnabledButton(hostPage, "host-finish-viewing-library", /^DONE$/i);
+        const choseTutor = await clickLastEnabledButton(hostPage, "host-choose-mystical-tutor", /^Mystical Tutor$/i);
+        assert.ok(choseTutor, "expected a Mystical Tutor choice in the searched library");
+        const submittedChoice = await clickLocalButton(hostPage, "host-submit-tutor-choice", /SUBMIT|DONE/i);
+        assert.ok(submittedChoice, "expected the searched card choice to be submittable");
+        break;
+      }
+
+      if (!playedIsland) {
+        const hostAdvanced = await clickLocalButton(hostPage, "host-setup", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (hostAdvanced) {
+          await sleep(4500);
+          continue;
+        }
+        const guestAdvanced = await clickLocalButton(guestPage, "guest-setup", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (guestAdvanced) {
+          await sleep(4500);
+          continue;
+        }
+      }
+
+      await sleep(1000);
+    }
+
+    assert.equal(playedIsland, true, "expected host to play Island");
+    assert.equal(castTutor, true, "expected host to cast Mystical Tutor");
+    assert.equal(paidTutor, true, "expected host to pay for Mystical Tutor");
+    assert.equal(guestResolved, true, "expected guest to resolve Mystical Tutor");
+
+    const resolvedText = await waitForVisibleBodyText(
+      hostPage,
+      /GY\s*1[\s\S]*Mystical Tutor[\s\S]*Instant[\s\S]*Graveyard/i,
+      "expected Mystical Tutor to finish resolving into its owner's graveyard",
+      90000,
+    );
+    const guestResolvedText = await waitForVisibleBodyText(
+      guestPage,
+      /CHIPLIS[\s\S]*GY\s*1/i,
+      "expected guest peer to apply the resolved Mystical Tutor",
+      90000,
+    );
+    const finalCombinedText = `${resolvedText}\n${guestResolvedText}`;
+    assertNoSyncFailureText(finalCombinedText, "Mystical Tutor full flow should stay synced");
+    assert.doesNotMatch(finalCombinedText, /1 stack entry|STACK\s*1/i);
+
+    let drewToppedCard = false;
+    let lastAdvanceText = "";
+    for (let step = 0; step < 180; step += 1) {
+      const combinedText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+      lastAdvanceText = combinedText;
+      assertNoSyncFailureText(combinedText, "drawing the Mystical Tutor target should stay synced");
+      if (/CHIPLIS[\s\S]*HAND\s*6[\s\S]*GY\s*1[\s\S]*DECK\s*52/i.test(combinedText)) {
+        drewToppedCard = true;
+        break;
+      }
+      if (/DISCARD[\s\S]*Discard 1 card/i.test(combinedText)) {
+        const hostDiscardChoice = await clickEnabledButton(hostPage, "host-discard-choice", /^(Island|Mountain|Mystical Tutor)$/i);
+        if (hostDiscardChoice) {
+          const hostDiscardSubmit = await clickLocalButton(hostPage, "host-submit-discard", /SUBMIT/i);
+          if (hostDiscardSubmit) {
+            await sleep(2200);
+            continue;
+          }
+        }
+        const guestDiscardChoice = await clickEnabledButton(guestPage, "guest-discard-choice", /^(Island|Mountain|Mystical Tutor)$/i);
+        if (guestDiscardChoice) {
+          const guestDiscardSubmit = await clickLocalButton(guestPage, "guest-submit-discard", /SUBMIT/i);
+          if (guestDiscardSubmit) {
+            await sleep(2200);
+            continue;
+          }
+        }
+      }
+
+      const hostClicked = await clickLocalDecisionButton(hostPage, "host-advance-after-tutor");
+      if (hostClicked) {
+        await sleep(2200);
+        continue;
+      }
+      const guestClicked = await clickLocalDecisionButton(guestPage, "guest-advance-after-tutor");
+      if (guestClicked) {
+        await sleep(2200);
+        continue;
+      }
+      await sleep(1000);
+    }
+    assert.equal(
+      drewToppedCard,
+      true,
+      `expected Player 0 to draw the card Mystical Tutor put on top\n${lastAdvanceText}`
     );
     assertNoPageErrors(hostPage, guestPage);
   } finally {

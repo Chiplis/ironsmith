@@ -1,6 +1,6 @@
 use ironsmith_tools::{
-    CardPayload, CardStatusDb, compile_snapshot_from_payload, compile_strict_snapshot_from_payload,
-    default_db_path, load_canonical_cards,
+    CardPayload, CardStatusDb, compile_authoritative_snapshot_from_payload,
+    compile_strict_snapshot_from_payload, default_db_path, load_canonical_cards,
 };
 use rayon::prelude::*;
 use std::{
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if args.strict_only {
                     compile_strict_snapshot_from_payload(payload)
                 } else {
-                    compile_snapshot_from_payload(payload)
+                    compile_authoritative_snapshot_from_payload(payload)
                 }
             })
             .collect::<Vec<_>>();

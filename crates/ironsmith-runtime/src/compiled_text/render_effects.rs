@@ -29711,6 +29711,16 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(afterlife);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(afflict) = describe_structural_afflict_keyword(triggered)
+    {
+        return Some(afflict);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(devour) = describe_structural_devour_keyword(triggered)
+    {
+        return Some(devour);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(toxic) = describe_structural_toxic_keyword(triggered)
     {
         return Some(toxic);
@@ -30581,6 +30591,61 @@ fn is_fabricate_servo_token(create: &crate::effects::CreateTokenEffect) -> bool 
         && token.abilities.is_empty()
 }
 
+fn describe_structural_afflict_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:afflict"))
+    {
+        return None;
+    }
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ThisBecomesBlockedTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let lose = effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if !matches!(lose.player, ChooseSpec::Player(PlayerFilter::Defending)) {
+        return None;
+    }
+    let Value::Fixed(amount) = lose.amount else {
+        return None;
+    };
+    (amount > 0).then(|| format!("Afflict {amount}"))
+}
+
+fn describe_structural_devour_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:devour"))
+    {
+        return None;
+    }
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
+    Some(format!("Devour {}", devour.multiplier))
+}
+
 fn describe_structural_mentor_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -31074,6 +31139,13 @@ fn describe_structural_afterlife_keyword(
 pub(super) fn describe_structural_toxic_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:toxic"))
+    {
+        return None;
+    }
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
         || triggered

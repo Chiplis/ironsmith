@@ -48,9 +48,11 @@ const WORKER_METHODS = [
   "revealHiddenPosition",
   "revealHiddenSlot",
   "ziffleBuildRevealToken",
+  "ziffleBuildRevealTokens",
   "ziffleBuildShuffleStep",
   "ziffleKeygen",
   "ziffleRevealCard",
+  "ziffleRevealCards",
   "ziffleVerifyShuffle",
 ];
 
