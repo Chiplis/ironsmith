@@ -3,13 +3,17 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import {
   auditStateHash,
+  actionQuorumThreshold,
+  assertCurrentAuditPlayerCount,
   buildSignedMatchGenesis,
   buildSignedActionEnvelope,
+  buildSignedActionQuorumVote,
   buildSignedPlayerGenesis,
   buildSignedResyncEnvelope,
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
   canonicalJson,
+  CURRENT_AUDIT_PROTOCOL_VERSION,
   decklistHashForCards,
   publicDeckManifest,
   createAuditSessionKey,
@@ -25,11 +29,182 @@ import {
   signAuditPayload,
   verifyCardOpeningAgainstManifest,
   verifyAuditPayload,
+  verifyActionQuorumCertificate,
   verifyLiveAuditTranscript,
   verifyPrivateViewDisclosure,
   verifySignedMatchGenesis,
   verifySignedResyncEnvelope,
 } from "../src/lib/multiplayer-audit.js";
+
+function cloneTestPayload(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+async function buildCurrentProtocolTranscript({
+  matchId,
+  players,
+  actions,
+  deckAuditManifests = [],
+  initialPublicCheckpointHash = "initial-public-checkpoint",
+  playerCount = null,
+}) {
+  const suppliedPlayers = players.map((player, offset) => ({
+    ...player,
+    index: Number(player.index ?? player.seat ?? offset),
+  }));
+  const highestSeat = suppliedPlayers.reduce(
+    (max, player) => Math.max(max, Number(player.index)),
+    -1,
+  );
+  const targetPlayerCount = Math.max(
+    2,
+    Number(playerCount || 0),
+    highestSeat + 1,
+    suppliedPlayers.length,
+  );
+  assertCurrentAuditPlayerCount(targetPlayerCount, "Test transcript");
+  const sourceBySeat = new Map(suppliedPlayers.map((player) => [Number(player.index), player]));
+  for (let index = 0; index < targetPlayerCount; index += 1) {
+    if (!sourceBySeat.has(index)) {
+      sourceBySeat.set(index, { index });
+    }
+  }
+  const privatePlayers = [];
+  const normalizedDeckAuditManifests = [];
+  for (const index of [...sourceBySeat.keys()].sort((left, right) => left - right)) {
+    const player = sourceBySeat.get(index);
+    const keyPair = player.keyPair || await createAuditSessionKey(webcrypto);
+    const encryptionKeyPair = player.encryptionKeyPair || await createAuditEncryptionKey(webcrypto);
+    const auditPublicKey = player.auditPublicKey || await exportAuditPublicKey(keyPair, webcrypto);
+    const auditEncryptionPublicKey =
+      player.auditEncryptionPublicKey
+      || await exportAuditEncryptionPublicKey(encryptionKeyPair, webcrypto);
+    const manifest = publicDeckManifest(
+      deckAuditManifests[index]
+      || player.deckAuditManifest
+      || await buildPrivateDeckManifest({
+        matchId,
+        owner: index,
+        deck: [],
+        saltForSlot: (slot) => `test-empty-deck-${index}-${slot}`,
+      }, webcrypto)
+    );
+    normalizedDeckAuditManifests[index] = manifest;
+    const entry = {
+      peerId: String(player.peerId || `peer-${index}`),
+      name: String(player.name || `Player ${index + 1}`),
+      index,
+      auditPublicKey,
+      auditEncryptionPublicKey,
+      deckAuditManifest: manifest,
+      ziffleKey: player.ziffleKey || {
+        player: index,
+        publicKeyHex: `test-ziffle-key-${index}`,
+        ownershipProofHex: `test-ziffle-proof-${index}`,
+      },
+      deckCount: Number(player.deckCount || manifest?.deckCount || 0),
+      sideboardCount: Number(player.sideboardCount || manifest?.sideboardCount || 0),
+      commanderCount: Number(player.commanderCount || manifest?.commanderCount || 0),
+      keyPair,
+    };
+    entry.playerGenesisSignature = await buildSignedPlayerGenesis({
+      keyPair,
+      matchId,
+      protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+      timeoutMs: 300000,
+      player: entry,
+    }, webcrypto);
+    privatePlayers.push(entry);
+  }
+  const normalizedPlayers = privatePlayers.map((player) => {
+    const entry = { ...player };
+    delete entry.keyPair;
+    return entry;
+  });
+  const ziffleKeys = normalizedPlayers.map((player) => player.ziffleKey);
+  const ziffleCeremonies = normalizedPlayers.map((player) => ({
+    owner: Number(player.index),
+    deckCount: Number(player.deckCount || 0),
+    context: matchId,
+    keyContext: matchId,
+    keys: ziffleKeys,
+    steps: normalizedPlayers.map((shuffler) => ({
+      shuffler: Number(shuffler.index),
+      deckHex: `test-deck-${player.index}-${shuffler.index}`,
+      proofHex: `test-proof-${player.index}-${shuffler.index}`,
+    })),
+    deckHash: `test-ziffle-deck-${player.index}`,
+  }));
+  const host = privatePlayers[0];
+  const match = {
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    auditMatchId: matchId,
+    lobbyId: matchId,
+    hostPeerId: host.peerId,
+    format: "normal",
+    startingLife: 20,
+    openingHandSize: 7,
+    seed: 1,
+    timeoutMs: 300000,
+    initialPublicCheckpointHash,
+    matchClockPolicy: {
+      type: "per_player_match_clock_v1",
+      initialMs: 300000,
+      graceMs: 2000,
+    },
+    players: normalizedPlayers,
+    deckAuditManifests: normalizedDeckAuditManifests,
+    ziffleKeys,
+    ziffleCeremonies,
+  };
+  match.genesis = await buildSignedMatchGenesis({
+    keyPair: host.keyPair,
+    match,
+    hostSeat: host.index,
+  }, webcrypto);
+  const actionsWithQuorum = await Promise.all(actions.map(async (entry) => {
+    const action = cloneTestPayload(entry);
+    if (!action?.audit || action.audit.quorumCertificate || action.quorumCertificate) {
+      return action;
+    }
+    const threshold = actionQuorumThreshold(privatePlayers.length);
+    if (threshold <= 0) return action;
+    const quorumVoters = privatePlayers.slice(0, threshold);
+    const votes = await Promise.all(quorumVoters.map((player) =>
+      buildSignedActionQuorumVote({
+        keyPair: player.keyPair,
+        action,
+        voter: player.index,
+      }, webcrypto)
+    ));
+    action.audit.quorumCertificate = {
+      type: "ironsmith-action-quorum-v1",
+      matchId: String(action.audit.matchId || ""),
+      seq: Number(action.audit.seq || action.seq || 0),
+      actor: Number(action.audit.actor ?? action.actorIndex ?? 0),
+      prevStateHash: String(action.audit.prevStateHash || ""),
+      nextStateHash: String(action.audit.nextStateHash || ""),
+      publicCheckpointHash: String(action.audit.publicCheckpointHash || ""),
+      actionSignature: String(action.audit.signature || ""),
+      threshold,
+      voters: votes.map((vote) => Number(vote.voter)),
+      votes,
+    };
+    return action;
+  }));
+  return {
+    kind: "ironsmith-live-browser-audit-v1",
+    match,
+    matchId,
+    lobbyId: matchId,
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    signatureAlgorithm: "ecdsa-p256-sha256",
+    genesis: match.genesis,
+    initialStateHash: "0".repeat(64),
+    initialPublicCheckpointHash,
+    actions: actionsWithQuorum,
+  };
+}
 
 test("canonicalJson sorts object keys recursively", () => {
   assert.equal(
@@ -115,6 +290,138 @@ test("signed audit envelopes verify and reject tampering", async () => {
   );
 });
 
+test("action quorum certificates require fork-safe votes for 3/4 player games", async () => {
+  assert.equal(actionQuorumThreshold(2), 0);
+  assert.equal(actionQuorumThreshold(3), 3);
+  assert.equal(actionQuorumThreshold(4), 3);
+  assert.throws(() => actionQuorumThreshold(5), /requires 2, 3, or 4 players/);
+
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-quorum",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-after-action",
+  }, webcrypto);
+  const action = { seq: 1, actorIndex: 0, command, audit };
+  const votes = await Promise.all([0, 1, 2].map((voter) =>
+    buildSignedActionQuorumVote({
+      keyPair: keys[voter],
+      action,
+      voter,
+    }, webcrypto)
+  ));
+  audit.quorumCertificate = {
+    type: "ironsmith-action-quorum-v1",
+    matchId: audit.matchId,
+    seq: audit.seq,
+    actor: audit.actor,
+    prevStateHash: audit.prevStateHash,
+    nextStateHash: audit.nextStateHash,
+    publicCheckpointHash: audit.publicCheckpointHash,
+    actionSignature: audit.signature,
+    threshold: 3,
+    voters: [0, 1, 2],
+    votes,
+  };
+
+  assert.equal(
+    (await verifyActionQuorumCertificate({
+      certificate: audit.quorumCertificate,
+      action,
+      players,
+    }, webcrypto)).valid,
+    true,
+  );
+  assert.equal(
+    (await verifyLiveAuditTranscript(await buildCurrentProtocolTranscript({
+      matchId: "m-quorum",
+      players: players.map((player, index) => ({
+        index: player.index,
+        keyPair: keys[index],
+        auditPublicKey: player.auditPublicKey,
+      })),
+      actions: [action],
+    }), webcrypto)).valid,
+    true,
+  );
+  await assert.rejects(
+    () => verifyActionQuorumCertificate({
+      certificate: {
+        ...audit.quorumCertificate,
+        votes: votes.slice(0, 2),
+      },
+      action,
+      players,
+    }, webcrypto),
+    /expected at least 3/,
+  );
+});
+
+test("two-player transcripts remain tamper-evident without action quorum", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-two-player",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-after-two-player-action",
+  }, webcrypto);
+  const action = { seq: 1, actorIndex: 0, command, audit };
+
+  assert.equal(
+    (await verifyActionQuorumCertificate({
+      certificate: null,
+      action,
+      players,
+    }, webcrypto)).threshold,
+    0,
+  );
+
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-two-player",
+    players,
+    playerCount: 2,
+    actions: [action],
+  });
+  assert.equal(transcript.actions[0].audit.quorumCertificate, undefined);
+  assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      ...transcript,
+      actions: [{
+        ...transcript.actions[0],
+        command: { type: "draw_cards", player: 0, count: 1 },
+      }],
+    }, webcrypto),
+    /command mismatch/,
+  );
+});
+
 test("live audit transcript verifier checks signed match clock chain", async () => {
   const actorKey = await createAuditSessionKey(webcrypto);
   const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
@@ -151,12 +458,11 @@ test("live audit transcript verifier checks signed match clock chain", async () 
     clock,
     publicCheckpointHash: "public-checkpoint-after-clock",
   }, webcrypto);
-  const transcript = {
-    kind: "ironsmith-live-browser-audit-v1",
-    initialStateHash: "0".repeat(64),
-    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-clock",
+    players: [{ index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey }],
     actions: [{ seq: 1, actorIndex: 0, command, audit }],
-  };
+  });
 
   assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
   await assert.rejects(
@@ -321,11 +627,10 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
     command,
     publicCheckpointHash: "public-checkpoint-after-seq-1",
   }, webcrypto);
-  const transcript = {
-    kind: "ironsmith-live-browser-audit-v1",
-    initialStateHash: "0".repeat(64),
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m",
     players: [
-      { seat: 1, auditPublicKey: actorPublicKey },
+      { index: 1, keyPair: actorKey, auditPublicKey: actorPublicKey },
     ],
     actions: [
       {
@@ -336,7 +641,7 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
         audit,
       },
     ],
-  };
+  });
 
   const report = await verifyLiveAuditTranscript(transcript, webcrypto);
   assert.equal(report.valid, true);
@@ -356,10 +661,6 @@ test("live audit transcript verifier requires actor-signed actions", async () =>
           ...transcript.actions[0],
           audit: { ...audit, signer: 0 },
         },
-      ],
-      players: [
-        { seat: 0, auditPublicKey: actorPublicKey },
-        { seat: 1, auditPublicKey: actorPublicKey },
       ],
     }, webcrypto),
     /not signed by the acting player/,
@@ -387,13 +688,12 @@ test("live audit transcript verifier checks committed openings", async () => {
     openings: [opening],
     publicCheckpointHash: "public-checkpoint-after-opening",
   }, webcrypto);
-  const transcript = {
-    kind: "ironsmith-live-browser-audit-v1",
-    initialStateHash: "0".repeat(64),
-    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-open",
+    players: [{ index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey }],
     deckAuditManifests: [publicDeckManifest(manifest)],
     actions: [{ seq: 1, actorIndex: 0, command, audit }],
-  };
+  });
 
   assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
   const tamperedOpening = { ...opening, card: "Black Lotus" };
@@ -407,21 +707,23 @@ test("live audit transcript verifier checks committed openings", async () => {
     openings: [tamperedOpening],
     publicCheckpointHash: "public-checkpoint-after-opening",
   }, webcrypto);
+  const tamperedTranscript = await buildCurrentProtocolTranscript({
+    matchId: "m-open",
+    players: [{ index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey }],
+    deckAuditManifests: [publicDeckManifest(manifest)],
+    actions: [{ seq: 1, actorIndex: 0, command, audit: tamperedAudit }],
+  });
   await assert.rejects(
-    () => verifyLiveAuditTranscript({
-      ...transcript,
-      actions: [{
-        ...transcript.actions[0],
-        audit: tamperedAudit,
-      }],
-    }, webcrypto),
+    () => verifyLiveAuditTranscript(tamperedTranscript, webcrypto),
     /Opening does not match committed deck slot/,
   );
 });
 
 test("live audit transcript verifier rejects incomplete fair-random reveals", async () => {
   const actorKey = await createAuditSessionKey(webcrypto);
+  const otherKey = await createAuditSessionKey(webcrypto);
   const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const otherPublicKey = await exportAuditPublicKey(otherKey, webcrypto);
   const command = { type: "priority_action", action_index: 0 };
   const audit = await buildSignedActionEnvelope({
     keyPair: actorKey,
@@ -441,21 +743,21 @@ test("live audit transcript verifier rejects incomplete fair-random reveals", as
   }, webcrypto);
 
   await assert.rejects(
-    () => verifyLiveAuditTranscript({
-      kind: "ironsmith-live-browser-audit-v1",
-      initialStateHash: "0".repeat(64),
+    async () => verifyLiveAuditTranscript(await buildCurrentProtocolTranscript({
+      matchId: "m-rng",
       players: [
-        { seat: 0, auditPublicKey: actorPublicKey },
-        { seat: 1, auditPublicKey: actorPublicKey },
+        { index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey },
+        { index: 1, keyPair: otherKey, auditPublicKey: otherPublicKey },
       ],
       actions: [{ seq: 1, actorIndex: 0, command, audit }],
-    }, webcrypto),
+    }), webcrypto),
     /must include every player exactly once/,
   );
 });
 
 test("live audit transcript verifier accepts signed fair-random reveals", async () => {
   const playerKeys = [
+    await createAuditSessionKey(webcrypto),
     await createAuditSessionKey(webcrypto),
     await createAuditSessionKey(webcrypto),
   ];
@@ -538,12 +840,15 @@ test("live audit transcript verifier accepts signed fair-random reveals", async 
     publicCheckpointHash: "public-checkpoint-after-rng",
   }, webcrypto);
 
-  assert.equal((await verifyLiveAuditTranscript({
-    kind: "ironsmith-live-browser-audit-v1",
-    initialStateHash: "0".repeat(64),
-    players: playerPublicKeys.map((auditPublicKey, seat) => ({ seat, auditPublicKey })),
+  assert.equal((await verifyLiveAuditTranscript(await buildCurrentProtocolTranscript({
+    matchId,
+    players: playerPublicKeys.map((auditPublicKey, index) => ({
+      index,
+      keyPair: playerKeys[index],
+      auditPublicKey,
+    })),
     actions: [{ seq, actorIndex: 0, command, audit }],
-  }, webcrypto)).valid, true);
+  }), webcrypto)).valid, true);
 });
 
 test("live audit transcript verifier requires a shuffle-proof verifier", async () => {
@@ -571,12 +876,11 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     shuffleProofs: [shuffleProof],
     publicCheckpointHash: "public-checkpoint-after-shuffle",
   }, webcrypto);
-  const transcript = {
-    kind: "ironsmith-live-browser-audit-v1",
-    initialStateHash: "0".repeat(64),
-    players: [{ seat: 0, auditPublicKey: actorPublicKey }],
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-shuffle",
+    players: [{ index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey }],
     actions: [{ seq: 1, actorIndex: 0, command, audit }],
-  };
+  });
 
   await assert.rejects(
     () => verifyLiveAuditTranscript(transcript, webcrypto),
@@ -592,36 +896,60 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
 
 test("match genesis and resync envelopes bind roster and checkpoints", async () => {
   const hostKey = await createAuditSessionKey(webcrypto);
-  const hostEncryptionKey = await createAuditEncryptionKey(webcrypto);
-  const hostPublicKey = await exportAuditPublicKey(hostKey, webcrypto);
-  const hostEncryptionPublicKey = await exportAuditEncryptionPublicKey(hostEncryptionKey, webcrypto);
-  const manifest = await buildPrivateDeckManifest({
-    matchId: "m",
-    owner: 0,
-    deck: ["Island", "Mountain"],
-    saltForSlot: (slot) => `genesis-salt-${slot}`,
-  }, webcrypto);
-  const player = {
-    peerId: "peer-host",
-    name: "Host",
-    index: 0,
-    auditPublicKey: hostPublicKey,
-    auditEncryptionPublicKey: hostEncryptionPublicKey,
-    deckAuditManifest: publicDeckManifest(manifest),
-    ziffleKey: { player: 0, publicKeyHex: "abc" },
-    deckCount: 2,
-    sideboardCount: 0,
-    commanderCount: 0,
-  };
-  player.playerGenesisSignature = await buildSignedPlayerGenesis({
-    keyPair: hostKey,
-    matchId: "m",
-    protocolVersion: 7,
-    timeoutMs: 300000,
-    player,
-  }, webcrypto);
+  const playerKeys = [
+    hostKey,
+    await createAuditSessionKey(webcrypto),
+    await createAuditSessionKey(webcrypto),
+  ];
+  const encryptionKeys = [
+    await createAuditEncryptionKey(webcrypto),
+    await createAuditEncryptionKey(webcrypto),
+    await createAuditEncryptionKey(webcrypto),
+  ];
+  const publicKeys = await Promise.all(
+    playerKeys.map((keyPair) => exportAuditPublicKey(keyPair, webcrypto))
+  );
+  const encryptionPublicKeys = await Promise.all(
+    encryptionKeys.map((keyPair) => exportAuditEncryptionPublicKey(keyPair, webcrypto))
+  );
+  const hostPublicKey = publicKeys[0];
+  const manifests = await Promise.all(playerKeys.map((_, index) =>
+    buildPrivateDeckManifest({
+      matchId: "m",
+      owner: index,
+      deck: index === 0 ? ["Island", "Mountain"] : [],
+      saltForSlot: (slot) => `genesis-salt-${index}-${slot}`,
+    }, webcrypto)
+  ));
+  const players = await Promise.all(playerKeys.map(async (keyPair, index) => {
+    const player = {
+      peerId: index === 0 ? "peer-host" : `peer-${index}`,
+      name: index === 0 ? "Host" : `Player ${index + 1}`,
+      index,
+      auditPublicKey: publicKeys[index],
+      auditEncryptionPublicKey: encryptionPublicKeys[index],
+      deckAuditManifest: publicDeckManifest(manifests[index]),
+      ziffleKey: {
+        player: index,
+        publicKeyHex: `abc-${index}`,
+        ownershipProofHex: `proof-${index}`,
+      },
+      deckCount: manifests[index].deckCount,
+      sideboardCount: 0,
+      commanderCount: 0,
+    };
+    player.playerGenesisSignature = await buildSignedPlayerGenesis({
+      keyPair,
+      matchId: "m",
+      protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+      timeoutMs: 300000,
+      player,
+    }, webcrypto);
+    return player;
+  }));
+  const ziffleKeys = players.map((player) => player.ziffleKey);
   const match = {
-    protocolVersion: 7,
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
     auditMatchId: "m",
     lobbyId: "m",
     hostPeerId: "peer-host",
@@ -630,10 +958,28 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     openingHandSize: 7,
     seed: 123,
     timeoutMs: 300000,
-    players: [player],
-    deckAuditManifests: [publicDeckManifest(manifest)],
-    ziffleKeys: [player.ziffleKey],
-    ziffleCeremonies: [],
+    matchClockPolicy: {
+      type: "per_player_match_clock_v1",
+      initialMs: 300000,
+      graceMs: 2000,
+    },
+    initialPublicCheckpointHash: "initial-public-checkpoint",
+    players,
+    deckAuditManifests: manifests.map(publicDeckManifest),
+    ziffleKeys,
+    ziffleCeremonies: players.map((player) => ({
+      owner: player.index,
+      deckCount: player.deckCount,
+      context: "m",
+      keyContext: "m",
+      keys: ziffleKeys,
+      steps: players.map((shuffler) => ({
+        shuffler: shuffler.index,
+        deckHex: `deck-${player.index}-${shuffler.index}`,
+        proofHex: `proof-${player.index}-${shuffler.index}`,
+      })),
+      deckHash: `deck-hash-${player.index}`,
+    })),
   };
   match.genesis = await buildSignedMatchGenesis({
     keyPair: hostKey,
@@ -645,7 +991,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
   await assert.rejects(
     () => verifySignedMatchGenesis({
       ...match,
-      players: [{ ...player, name: "Impostor" }],
+      players: [{ ...players[0], name: "Impostor" }, ...players.slice(1)],
     }, webcrypto),
     /genesis payload hash mismatch|genesis signature/,
   );

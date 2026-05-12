@@ -2,6 +2,31 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
 const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
+const ACTION_QUORUM_CERTIFICATE_TYPE = "ironsmith-action-quorum-v1";
+const ACTION_QUORUM_VOTE_DOMAIN = "ironsmith-action-quorum-vote-v1";
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 10;
+export const CURRENT_AUDIT_MIN_PLAYERS = 2;
+export const CURRENT_AUDIT_MAX_PLAYERS = 4;
+
+export function normalizeAuditPlayerCount(playerCount) {
+  const count = Number(playerCount);
+  return Number.isInteger(count) ? count : 0;
+}
+
+export function isCurrentAuditPlayerCount(playerCount) {
+  const count = normalizeAuditPlayerCount(playerCount);
+  return count >= CURRENT_AUDIT_MIN_PLAYERS && count <= CURRENT_AUDIT_MAX_PLAYERS;
+}
+
+export function assertCurrentAuditPlayerCount(playerCount, context = "Current audit protocol") {
+  const count = normalizeAuditPlayerCount(playerCount);
+  if (!isCurrentAuditPlayerCount(count)) {
+    throw new Error(
+      `${context} requires 2, 3, or 4 players`
+    );
+  }
+  return count;
+}
 
 export function canonicalJson(value) {
   return JSON.stringify(normalizeForJson(value));
@@ -471,6 +496,176 @@ export async function buildSignedActionEnvelope({
   };
 }
 
+export function actionQuorumThreshold(playerCount) {
+  const count = assertCurrentAuditPlayerCount(playerCount, "Action quorum");
+  return count < 3 ? 0 : 3;
+}
+
+function actionQuorumExpected(action) {
+  const audit = action?.audit || action || {};
+  return {
+    matchId: String(audit.matchId || ""),
+    seq: Number(audit.seq || action?.seq || 0),
+    actor: Number(audit.actor ?? action?.actorIndex ?? 0),
+    prevStateHash: String(audit.prevStateHash || ""),
+    nextStateHash: String(audit.nextStateHash || ""),
+    publicCheckpointHash: String(audit.publicCheckpointHash || ""),
+    actionSignature: String(audit.signature || ""),
+  };
+}
+
+export function actionQuorumVotePayload({
+  matchId,
+  seq,
+  actor,
+  voter,
+  prevStateHash,
+  nextStateHash,
+  publicCheckpointHash,
+  actionSignature,
+}) {
+  return {
+    domain: ACTION_QUORUM_VOTE_DOMAIN,
+    matchId: String(matchId || ""),
+    seq: Number(seq || 0),
+    actor: Number(actor),
+    voter: Number(voter),
+    prevStateHash: String(prevStateHash || ""),
+    nextStateHash: String(nextStateHash || ""),
+    publicCheckpointHash: String(publicCheckpointHash || ""),
+    actionSignature: String(actionSignature || ""),
+  };
+}
+
+export async function buildSignedActionQuorumVote({
+  keyPair,
+  action,
+  voter,
+}, cryptoImpl = globalThis.crypto) {
+  const payload = actionQuorumVotePayload({
+    ...actionQuorumExpected(action),
+    voter,
+  });
+  return {
+    ...payload,
+    signatureAlgorithm: "ecdsa-p256-sha256",
+    signature: await signAuditPayload(keyPair, payload, cryptoImpl),
+  };
+}
+
+export async function verifyActionQuorumVote({
+  vote,
+  action,
+  players = [],
+}, cryptoImpl = globalThis.crypto) {
+  const voter = Number(vote?.voter);
+  if (!Number.isInteger(voter) || voter < 0) {
+    throw new Error("Action quorum vote contains an invalid voter");
+  }
+  const expected = actionQuorumVotePayload({
+    ...actionQuorumExpected(action),
+    voter,
+  });
+  if (
+    String(vote?.domain || "") !== ACTION_QUORUM_VOTE_DOMAIN
+    || String(vote?.matchId || "") !== expected.matchId
+    || Number(vote?.seq) !== expected.seq
+    || Number(vote?.actor) !== expected.actor
+    || String(vote?.prevStateHash || "") !== expected.prevStateHash
+    || String(vote?.nextStateHash || "") !== expected.nextStateHash
+    || String(vote?.publicCheckpointHash || "") !== expected.publicCheckpointHash
+    || String(vote?.actionSignature || "") !== expected.actionSignature
+  ) {
+    throw new Error("Action quorum vote does not match the signed action");
+  }
+  const player = (players || []).find((entry) =>
+    Number(entry?.index ?? entry?.seat) === voter
+  );
+  if (!player?.auditPublicKey) {
+    throw new Error(`Action quorum voter ${voter + 1} is not in the match roster`);
+  }
+  const publicKey = await importAuditPublicKey(player.auditPublicKey, cryptoImpl);
+  const valid = await verifyAuditPayload(
+    publicKey,
+    expected,
+    vote.signature || "",
+    cryptoImpl,
+  );
+  if (!valid) {
+    throw new Error("Action quorum vote signature is invalid");
+  }
+  return voter;
+}
+
+export async function verifyActionQuorumCertificate({
+  certificate,
+  action,
+  players = [],
+  threshold: requiredThreshold = null,
+}, cryptoImpl = globalThis.crypto) {
+  const roster = Array.isArray(players) ? players : [];
+  const hasThresholdOverride =
+    requiredThreshold !== null
+    && requiredThreshold !== undefined
+    && requiredThreshold !== "";
+  const threshold = hasThresholdOverride && Number.isInteger(Number(requiredThreshold))
+    ? Math.max(0, Number(requiredThreshold))
+    : actionQuorumThreshold(roster.length);
+  if (threshold <= 0) {
+    return {
+      valid: true,
+      threshold: 0,
+      voters: [],
+    };
+  }
+  if (!certificate || typeof certificate !== "object") {
+    throw new Error("Sequenced action is missing its quorum certificate");
+  }
+  if (String(certificate.type || "") !== ACTION_QUORUM_CERTIFICATE_TYPE) {
+    throw new Error("Sequenced action has an unsupported quorum certificate");
+  }
+  const expected = actionQuorumExpected(action);
+  if (
+    String(certificate.matchId || "") !== expected.matchId
+    || Number(certificate.seq) !== expected.seq
+    || Number(certificate.actor) !== expected.actor
+    || String(certificate.prevStateHash || "") !== expected.prevStateHash
+    || String(certificate.nextStateHash || "") !== expected.nextStateHash
+    || String(certificate.publicCheckpointHash || "") !== expected.publicCheckpointHash
+    || String(certificate.actionSignature || "") !== expected.actionSignature
+  ) {
+    throw new Error("Action quorum certificate does not match the signed action");
+  }
+  const votes = Array.isArray(certificate.votes) ? certificate.votes : [];
+  if (votes.length < threshold) {
+    throw new Error(
+      `Action quorum certificate has ${votes.length} vote(s), expected at least ${threshold}`
+    );
+  }
+  const seen = new Set();
+  for (const vote of votes) {
+    const voter = await verifyActionQuorumVote({
+      vote,
+      action,
+      players: roster,
+    }, cryptoImpl);
+    if (seen.has(voter)) {
+      throw new Error("Action quorum certificate contains a duplicate voter");
+    }
+    seen.add(voter);
+  }
+  if (seen.size < threshold) {
+    throw new Error(
+      `Action quorum certificate has ${seen.size} unique vote(s), expected at least ${threshold}`
+    );
+  }
+  return {
+    valid: true,
+    threshold,
+    voters: [...seen].sort((left, right) => left - right),
+  };
+}
+
 export function rngCommitmentPayload({
   matchId,
   seq,
@@ -674,6 +869,7 @@ export function matchGenesisPayload(match) {
           owner: Number(ceremony.owner),
           deckCount: Number(ceremony.deckCount || 0),
           context: String(ceremony.context || ""),
+          keyContext: String(ceremony.keyContext || ceremony.context || ""),
           keys: ceremony.keys || [],
           steps: ceremony.steps || [],
           deckHash: String(ceremony.deckHash || ""),
@@ -702,15 +898,114 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
   if (!genesis || genesis.kind !== "ironsmith-match-genesis-v1") {
     throw new Error("Match start payload is missing signed genesis");
   }
-  if (Number(match?.protocolVersion || 0) >= 9 && !String(match?.initialPublicCheckpointHash || "")) {
+  if (Number(match?.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+    throw new Error("Match genesis uses an unsupported protocol version");
+  }
+  const players = Array.isArray(match?.players) ? match.players : [];
+  const playerCount = assertCurrentAuditPlayerCount(players.length, "Match genesis");
+  const seats = players
+    .map((player) => normalizeAuditPlayerCount(player?.index))
+    .sort((left, right) => left - right);
+  for (let offset = 0; offset < playerCount; offset += 1) {
+    if (seats[offset] !== offset) {
+      throw new Error("Match genesis requires contiguous player seats");
+    }
+  }
+  if (!String(match?.initialPublicCheckpointHash || "")) {
     throw new Error("Match genesis is missing its initial public checkpoint hash");
+  }
+  if (!match?.matchClockPolicy || match.matchClockPolicy.type !== "per_player_match_clock_v1") {
+    throw new Error("Match genesis is missing the current match clock policy");
+  }
+  const deckAuditManifests = Array.isArray(match?.deckAuditManifests)
+    ? match.deckAuditManifests
+    : [];
+  if (deckAuditManifests.length !== playerCount) {
+    throw new Error("Match genesis requires one deck audit manifest per player");
+  }
+  const ziffleKeys = Array.isArray(match?.ziffleKeys) ? match.ziffleKeys : [];
+  if (ziffleKeys.length !== playerCount) {
+    throw new Error("Match genesis requires one ziffle key per player");
+  }
+  const ziffleCeremonies = Array.isArray(match?.ziffleCeremonies)
+    ? match.ziffleCeremonies
+    : [];
+  if (ziffleCeremonies.length !== playerCount) {
+    throw new Error("Match genesis requires one ziffle ceremony per player");
+  }
+  const playerSeats = new Set(seats);
+  const ceremonyOwners = new Set();
+  for (const player of players) {
+    const seat = Number(player?.index);
+    if (!player?.auditPublicKey || !player?.auditEncryptionPublicKey) {
+      throw new Error(`Match genesis player ${seat + 1} is missing audit keys`);
+    }
+    const manifest = publicDeckManifest(deckAuditManifests[seat]);
+    if (!manifest || Number(manifest.owner) !== seat) {
+      throw new Error(`Match genesis player ${seat + 1} is missing its deck audit manifest`);
+    }
+    if (canonicalJson(publicDeckManifest(player.deckAuditManifest)) !== canonicalJson(manifest)) {
+      throw new Error(`Match genesis player ${seat + 1} deck manifest does not match the match manifest`);
+    }
+    if (String(manifest.matchId || "") !== String(match.auditMatchId || match.matchId || "")) {
+      throw new Error(`Match genesis player ${seat + 1} deck manifest is bound to a different match`);
+    }
+    const ziffleKey = ziffleKeys[seat];
+    if (
+      !ziffleKey
+      || Number(ziffleKey.player) !== seat
+      || !String(ziffleKey.publicKeyHex || "")
+      || !String(ziffleKey.ownershipProofHex || "")
+    ) {
+      throw new Error(`Match genesis player ${seat + 1} is missing its ziffle key`);
+    }
+    if (canonicalJson(player.ziffleKey || null) !== canonicalJson(ziffleKey)) {
+      throw new Error(`Match genesis player ${seat + 1} ziffle key does not match the match key`);
+    }
+  }
+  for (const ceremony of ziffleCeremonies) {
+    const owner = Number(ceremony?.owner);
+    if (!playerSeats.has(owner) || ceremonyOwners.has(owner)) {
+      throw new Error("Match genesis ziffle ceremonies must map one-to-one to players");
+    }
+    ceremonyOwners.add(owner);
+    const manifest = publicDeckManifest(deckAuditManifests[owner]);
+    if (Number(ceremony.deckCount || 0) !== Number(manifest?.deckCount || 0)) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} has the wrong deck count`);
+    }
+    if (String(ceremony.context || "") !== String(match.auditMatchId || match.matchId || "")) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} is bound to a different match`);
+    }
+    if (String(ceremony.keyContext || ceremony.context || "") !== String(ceremony.context || "")) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} has a mismatched key context`);
+    }
+    if (!String(ceremony.deckHash || "")) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} is missing its deck hash`);
+    }
+    if (!Array.isArray(ceremony.keys) || ceremony.keys.length !== playerCount) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} is missing player keys`);
+    }
+    if (canonicalJson(ceremony.keys) !== canonicalJson(ziffleKeys)) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} uses different player keys`);
+    }
+    if (!Array.isArray(ceremony.steps) || ceremony.steps.length !== playerCount) {
+      throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} is missing shuffle steps`);
+    }
+    for (const step of ceremony.steps) {
+      if (
+        !playerSeats.has(Number(step?.shuffler))
+        || !String(step?.deckHex || "")
+        || !String(step?.proofHex || "")
+      ) {
+        throw new Error(`Match genesis ziffle ceremony for player ${owner + 1} has an invalid shuffle step`);
+      }
+    }
   }
   const payload = matchGenesisPayload(match);
   const payloadHash = await sha256Hex(canonicalJson(payload), cryptoImpl);
   if (payloadHash !== String(genesis.payloadHash || "")) {
     throw new Error("Match genesis payload hash mismatch");
   }
-  const players = Array.isArray(match?.players) ? match.players : [];
   const host = players.find((player) => Number(player?.index) === Number(genesis.hostSeat));
   if (!host?.auditPublicKey) {
     throw new Error("Match genesis host signer is missing");
@@ -1002,9 +1297,7 @@ export function publicDeckManifest(manifest) {
 }
 
 function transcriptDeckManifestMap(transcript) {
-  const manifests = transcript.match?.deckAuditManifests
-    || transcript.deckAuditManifests
-    || [];
+  const manifests = transcript.match?.deckAuditManifests || [];
   return new Map(
     manifests
       .filter(Boolean)
@@ -1193,28 +1486,29 @@ export async function verifyLiveAuditTranscript(
   if (transcript.kind !== "ironsmith-live-browser-audit-v1") {
     throw new Error("Unsupported live audit transcript kind");
   }
-  if (transcript.genesis) {
-    await verifySignedMatchGenesis({
-      ...(transcript.match || {}),
-      protocolVersion: transcript.protocolVersion,
-      auditMatchId: transcript.matchId,
-      lobbyId: transcript.lobbyId,
-      players: transcript.match?.players || transcript.players?.map((player) => ({
-        peerId: player.peerId,
-        name: player.name,
-        index: player.seat,
-        auditPublicKey: player.auditPublicKey,
-        auditEncryptionPublicKey: player.auditEncryptionPublicKey,
-        playerGenesisSignature: player.playerGenesisSignature,
-        deckAuditManifest: (transcript.deckAuditManifests || [])[Number(player.seat)],
-        ziffleKey: player.ziffleKey || null,
-      })) || [],
-      deckAuditManifests: transcript.match?.deckAuditManifests || transcript.deckAuditManifests || [],
-      genesis: transcript.genesis,
-    }, cryptoImpl);
+  if (!transcript.match || typeof transcript.match !== "object" || !transcript.genesis) {
+    throw new Error("Live audit transcript is missing current protocol match genesis");
   }
+  if (Number(transcript.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+    throw new Error("Live audit transcript uses an unsupported protocol version");
+  }
+  if (Number(transcript.match.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+    throw new Error("Live audit transcript match uses an unsupported protocol version");
+  }
+  await verifySignedMatchGenesis({
+    ...transcript.match,
+    auditMatchId: transcript.match.auditMatchId || transcript.matchId,
+    lobbyId: transcript.match.lobbyId || transcript.lobbyId,
+    deckAuditManifests: transcript.match.deckAuditManifests || [],
+    genesis: transcript.genesis,
+  }, cryptoImpl);
+  const transcriptPlayers = (transcript.match.players || []).map((player) => ({
+    seat: Number(player.index),
+    auditPublicKey: String(player.auditPublicKey || ""),
+    auditEncryptionPublicKey: String(player.auditEncryptionPublicKey || ""),
+  }));
   const players = new Map(
-    (transcript.players || []).map((player) => [
+    transcriptPlayers.map((player) => [
       Number(player.seat),
       {
         auditPublicKey: String(player.auditPublicKey || ""),
@@ -1222,6 +1516,11 @@ export async function verifyLiveAuditTranscript(
       },
     ]),
   );
+  const playerList = transcriptPlayers.map((player) => ({
+    index: Number(player.seat),
+    auditPublicKey: String(player.auditPublicKey || ""),
+  }));
+  let activeQuorumPlayers = [...playerList];
   const expectedPlayers = sortedPlayerSeats(players);
   const manifests = transcriptDeckManifestMap(transcript);
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
@@ -1279,6 +1578,32 @@ export async function verifyLiveAuditTranscript(
     );
     if (!sequencedValid) {
       throw new Error(`Sequenced audit signature is invalid at sequence ${expectedSeq}`);
+    }
+    const forfeitTarget = audit.command?.type === "forfeit_player"
+      ? Number(audit.command.player)
+      : null;
+    const actionQuorumPlayers = forfeitTarget == null
+      ? activeQuorumPlayers
+      : activeQuorumPlayers.filter((player) =>
+          Number(player.index) !== forfeitTarget
+        );
+    const actionQuorumThresholdOverride = forfeitTarget == null
+      ? null
+      : (
+        activeQuorumPlayers.length < 3 || Number(audit.actor) === forfeitTarget
+          ? 0
+          : actionQuorumPlayers.length
+      );
+    await verifyActionQuorumCertificate({
+      certificate: audit.quorumCertificate || entry.quorumCertificate,
+      action: entry,
+      players: actionQuorumPlayers,
+      threshold: actionQuorumThresholdOverride,
+    }, cryptoImpl);
+    if (forfeitTarget != null) {
+      activeQuorumPlayers = activeQuorumPlayers.filter((player) =>
+        Number(player.index) !== forfeitTarget
+      );
     }
     await verifyAuditOpenings({
       openings: audit.openings || [],

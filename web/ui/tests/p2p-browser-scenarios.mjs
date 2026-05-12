@@ -11,7 +11,7 @@ const auditModulePath = resolve(repoRoot, "web/ui/src/lib/multiplayer-audit.js")
 
 const MATCH_ID_PREFIX = "browser-p2p-audit";
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
-const PROTOCOL_VERSION = 8;
+const PROTOCOL_VERSION = 10;
 
 function playerDeck(seat) {
   return [
@@ -51,12 +51,14 @@ window.IronsmithAudit = {
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
   buildSignedActionEnvelope,
+  buildSignedActionQuorumVote,
   buildSignedPlayerGenesis,
   buildSignedResyncEnvelope,
   checkpointHash,
   canonicalJson,
   createAuditEncryptionKey,
   createAuditSessionKey,
+  CURRENT_AUDIT_PROTOCOL_VERSION,
   exportAuditEncryptionPublicKey,
   exportAuditPublicKey,
   importAuditPublicKey,
@@ -67,6 +69,7 @@ window.IronsmithAudit = {
   sha256Hex,
   transcriptActionsHash,
   verifyAuditPayload,
+  verifyActionQuorumCertificate,
   verifyCardOpeningAgainstManifest,
   verifyLiveAuditTranscript,
   verifySignedMatchGenesis,
@@ -95,6 +98,31 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     saltForSlot: async (slot, card) => \`\${matchId}:seat:\${seat}:slot:\${slot}:card:\${card}:salt\`,
   });
   const publicManifest = audit.publicDeckManifest(privateManifest);
+  const ziffleKey = {
+    player: seat,
+    publicKeyHex: \`browser-ziffle-key-\${seat}\`,
+    ownershipProofHex: \`browser-ziffle-proof-\${seat}\`,
+  };
+  const publicPlayer = {
+    seat,
+    index: seat,
+    peerId: \`browser-peer-\${seat}\`,
+    name: \`Player \${seat + 1}\`,
+    auditPublicKey,
+    auditEncryptionPublicKey,
+    deckAuditManifest: publicManifest,
+    ziffleKey,
+    deckCount: publicManifest.deckCount,
+    sideboardCount: publicManifest.sideboardCount,
+    commanderCount: publicManifest.commanderCount,
+  };
+  publicPlayer.playerGenesisSignature = await audit.buildSignedPlayerGenesis({
+    keyPair,
+    matchId,
+    protocolVersion: ${PROTOCOL_VERSION},
+    timeoutMs: Number(config.timeoutMs || 300000),
+    player: publicPlayer,
+  });
   const state = {
     seat,
     matchId,
@@ -116,6 +144,7 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     transcript: [],
     rejected: [],
     duplicates: [],
+    matchPayload: null,
   };
 
   async function verifyOpening(opening) {
@@ -324,6 +353,25 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
       if (!valid) {
         throw new Error(\`Sequenced audit signature is invalid at sequence \${seq}\`);
       }
+      const quorumPlayers = timeoutForfeit
+        ? state.players.filter((candidate) => Number(candidate.index ?? candidate.seat) !== Number(entry.command?.player))
+        : state.players;
+      const quorumThreshold = timeoutForfeit
+        ? quorumPlayers.length
+        : 3;
+      await audit.verifyActionQuorumCertificate({
+        certificate: auditEnvelope.quorumCertificate || message.quorumCertificate,
+        action: {
+          ...message,
+          seq,
+          actorIndex: actor,
+        },
+        players: quorumPlayers.map((candidate) => ({
+          index: Number(candidate.index ?? candidate.seat),
+          auditPublicKey: candidate.auditPublicKey,
+        })),
+        threshold: quorumThreshold,
+      });
       const computedHash = await audit.auditStateHash({
         matchId: auditEnvelope.matchId,
         seq,
@@ -394,18 +442,28 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
   }
 
   window.client = {
-    async configureTable({ players, publicDecks }) {
-      state.players = players;
-      state.publicDecks = publicDecks;
+    async configureTable({ matchPayload }) {
+      state.matchPayload = matchPayload;
+      state.players = matchPayload.players || [];
+      state.publicDecks = matchPayload.deckAuditManifests || [];
       return true;
     },
     identity() {
-      return {
-        seat,
-        auditPublicKey,
-        auditEncryptionPublicKey,
-        publicManifest,
-      };
+      return publicPlayer;
+    },
+    async signMatchGenesis(matchPayload) {
+      return audit.buildSignedMatchGenesis({
+        keyPair,
+        match: matchPayload,
+        hostSeat: seat,
+      });
+    },
+    async signActionQuorumVote(message) {
+      return audit.buildSignedActionQuorumVote({
+        keyPair,
+        action: message,
+        voter: seat,
+      });
     },
     setConnected(connected, reason = "") {
       state.connected = Boolean(connected);
@@ -578,11 +636,16 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     },
     async verifyTranscript() {
       return audit.verifyLiveAuditTranscript({
+        version: 1,
         kind: "ironsmith-live-browser-audit-v1",
+        match: state.matchPayload,
         matchId,
+        lobbyId: matchId,
+        protocolVersion: ${PROTOCOL_VERSION},
+        signatureAlgorithm: "ecdsa-p256-sha256",
+        genesis: state.matchPayload?.genesis,
         initialStateHash: "${INITIAL_AUDIT_STATE_HASH}",
-        players: state.players,
-        deckAuditManifests: state.publicDecks,
+        initialPublicCheckpointHash: state.matchPayload?.initialPublicCheckpointHash || "",
         actions: state.transcript,
       });
     },
@@ -643,16 +706,61 @@ async function createTable({ browser, url, auditBundle, scenarioName }) {
 
   const players = identities.map((identity) => ({
     seat: identity.seat,
-    name: `Player ${identity.seat + 1}`,
+    index: identity.index,
+    peerId: identity.peerId,
+    name: identity.name,
     auditPublicKey: identity.auditPublicKey,
     auditEncryptionPublicKey: identity.auditEncryptionPublicKey,
+    deckAuditManifest: identity.deckAuditManifest,
+    ziffleKey: identity.ziffleKey,
+    deckCount: identity.deckCount,
+    sideboardCount: identity.sideboardCount,
+    commanderCount: identity.commanderCount,
+    playerGenesisSignature: identity.playerGenesisSignature,
   }));
-  const publicDecks = identities.map((identity) => identity.publicManifest);
+  const publicDecks = identities.map((identity) => identity.deckAuditManifest);
+  const ziffleKeys = players.map((player) => player.ziffleKey);
+  const matchPayload = {
+    protocolVersion: PROTOCOL_VERSION,
+    auditMatchId: matchId,
+    lobbyId: matchId,
+    hostPeerId: players[0].peerId,
+    format: "normal",
+    startingLife: 20,
+    openingHandSize: 7,
+    seed: 1,
+    timeoutMs: 25,
+    matchClockPolicy: {
+      type: "per_player_match_clock_v1",
+      initialMs: 25,
+      graceMs: 5,
+    },
+    initialPublicCheckpointHash: "browser-initial-public-checkpoint",
+    players,
+    deckAuditManifests: publicDecks,
+    ziffleKeys,
+    ziffleCeremonies: players.map((player) => ({
+      owner: player.index,
+      deckCount: player.deckCount,
+      context: matchId,
+      keyContext: matchId,
+      keys: ziffleKeys,
+      steps: players.map((shuffler) => ({
+        shuffler: shuffler.index,
+        deckHex: `browser-deck-${player.index}-${shuffler.index}`,
+        proofHex: `browser-proof-${player.index}-${shuffler.index}`,
+      })),
+      deckHash: `browser-ziffle-deck-${player.index}`,
+    })),
+  };
+  matchPayload.genesis = await pages[0].evaluate(
+    (payload) => window.client.signMatchGenesis(payload),
+    matchPayload,
+  );
   await Promise.all(
     pages.map((page) => page.evaluate(
-      ({ players: tablePlayers, publicDecks: tableDecks }) =>
-        window.client.configureTable({ players: tablePlayers, publicDecks: tableDecks }),
-      { players, publicDecks },
+      (payload) => window.client.configureTable({ matchPayload: payload }),
+      matchPayload,
     )),
   );
 
@@ -680,10 +788,50 @@ async function snapshots(table) {
 }
 
 async function sign(table, seat, method, ...args) {
-  return table.pages[seat].evaluate(
+  const message = await table.pages[seat].evaluate(
     ([methodName, methodArgs]) => window.client[methodName](...methodArgs),
     [method, args],
   );
+  return certifyAction(table, message);
+}
+
+async function certifyAction(table, message) {
+  if (!message || message.type !== "apply_action" || !message.audit) return message;
+  const timeoutForfeit = message.command?.type === "forfeit_player"
+    && (
+      message.command?.reason === "peer_claimed_match_clock_timeout"
+      || message.command?.reason === "match_clock_timeout"
+      || message.command?.reason === "peer_claimed_action_timeout"
+      || message.command?.reason === "action_timeout"
+    );
+  const allSeats = [0, 1, 2, 3];
+  const voterSeats = timeoutForfeit
+    ? allSeats.filter((voter) => voter !== Number(message.command?.player))
+    : allSeats;
+  const threshold = timeoutForfeit
+    ? voterSeats.length
+    : 3;
+  const voters = voterSeats.slice(0, threshold);
+  const votes = await Promise.all(voters.map((voter) =>
+    table.pages[voter].evaluate(
+      (incoming) => window.client.signActionQuorumVote(incoming),
+      message,
+    )
+  ));
+  message.audit.quorumCertificate = {
+    type: "ironsmith-action-quorum-v1",
+    matchId: String(message.audit.matchId || ""),
+    seq: Number(message.audit.seq || 0),
+    actor: Number(message.audit.actor ?? message.actorIndex ?? 0),
+    prevStateHash: String(message.audit.prevStateHash || ""),
+    nextStateHash: String(message.audit.nextStateHash || ""),
+    publicCheckpointHash: String(message.audit.publicCheckpointHash || ""),
+    actionSignature: String(message.audit.signature || ""),
+    threshold,
+    voters,
+    votes,
+  };
+  return message;
 }
 
 async function deliver(table, targetSeat, message) {

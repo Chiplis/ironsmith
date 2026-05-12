@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Peer from "peerjs";
 import {
   auditStateHash,
+  actionQuorumThreshold,
   buildSignedActionEnvelope,
+  buildSignedActionQuorumVote,
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
   buildSignedMatchGenesis,
   buildSignedPlayerGenesis,
   buildSignedResyncEnvelope,
   canonicalJson,
+  CURRENT_AUDIT_MAX_PLAYERS,
+  CURRENT_AUDIT_MIN_PLAYERS,
+  CURRENT_AUDIT_PROTOCOL_VERSION,
   createAuditEncryptionKey,
   createAuditSessionKey,
   decryptPrivateAuditPayload,
@@ -21,6 +26,7 @@ import {
   importAuditEncryptionKeyPair,
   importAuditKeyPair,
   importAuditPublicKey,
+  isCurrentAuditPlayerCount,
   publicCheckpointHash,
   publicDeckManifest,
   randomAuditHex,
@@ -29,6 +35,8 @@ import {
   sha256Hex,
   signAuditPayload,
   verifyLiveAuditTranscript,
+  verifyActionQuorumCertificate,
+  verifyActionQuorumVote,
   verifyAuditPayload,
   verifyCardOpeningAgainstManifest,
   verifySignedMatchGenesis,
@@ -46,7 +54,7 @@ import {
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDecisionCommandCompatible } from "@/lib/sync-commands";
 
-const PROTOCOL_VERSION = 9;
+const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
 const DEFAULT_OPENING_HAND_SIZE = 7;
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
 const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
@@ -64,6 +72,7 @@ const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
 const TIMEOUT_VOTE_DOMAIN = "ironsmith-match-timeout-vote-v1";
 const AUDIT_DECK_MANIFEST_STORAGE_PREFIX = "ironsmith.auditDeckManifest.v1";
 const AUDIT_REVEALED_OPENING_STORAGE_PREFIX = "ironsmith.auditRevealedOpening.v1";
+const ACTION_QUORUM_VOTE_STORAGE_PREFIX = "ironsmith.actionQuorumVote.v1";
 const AUDIT_IDENTITY_STORAGE_KEY = "ironsmith.auditIdentity.v1";
 const ZIFFLE_IDENTITY_STORAGE_PREFIX = "ironsmith.ziffleIdentity.v1";
 const CURRENT_PLAYER_STORAGE_KEY = "currentPlayer";
@@ -1022,6 +1031,41 @@ function clearStoredAuditIdentity() {
   }
 }
 
+function actionQuorumVoteStorageKey(matchId, seq, voter) {
+  return [
+    ACTION_QUORUM_VOTE_STORAGE_PREFIX,
+    String(matchId || ""),
+    Number(seq || 0),
+    Number(voter),
+  ].join(":");
+}
+
+function readStoredActionQuorumVote(matchId, seq, voter) {
+  const storage = getPeerSessionStorage();
+  if (!storage) return null;
+  try {
+    const raw = String(
+      storage.getItem(actionQuorumVoteStorageKey(matchId, seq, voter)) || ""
+    ).trim();
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredActionQuorumVote(vote) {
+  const storage = getPeerSessionStorage();
+  if (!storage || !vote?.matchId || vote.seq == null || vote.voter == null) return;
+  try {
+    storage.setItem(
+      actionQuorumVoteStorageKey(vote.matchId, vote.seq, vote.voter),
+      JSON.stringify(vote)
+    );
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
 function privateDeckManifestStorageKey(matchId, owner) {
   return `${AUDIT_DECK_MANIFEST_STORAGE_PREFIX}:${String(matchId || "")}:${Number(owner)}`;
 }
@@ -1358,12 +1402,13 @@ function redactedMatchPayloadForPeer(payload, peerId) {
 }
 
 function canHostedMatchStart(session) {
+  const playerCount = session.players.length;
   return (
     session.role === "host" &&
     !session.matchStarted &&
     session.mode !== "starting" &&
-    session.players.length === session.desiredPlayers &&
-    session.players.length > 0 &&
+    playerCount === session.desiredPlayers &&
+    isCurrentAuditPlayerCount(playerCount) &&
     session.players.every((player) => player.connected !== false && player.ready)
   );
 }
@@ -1527,6 +1572,8 @@ export function usePeerLobby({
   const rngRevealWaitersRef = useRef(new Map());
   const rngCommitNoncesRef = useRef(new Map());
   const timeoutVoteWaitersRef = useRef(new Map());
+  const actionQuorumVoteWaitersRef = useRef(new Map());
+  const signedActionQuorumVotesRef = useRef(new Map());
   const cryptoMaterialWaitersRef = useRef(new Map());
   const outboundCryptoMaterialRequestsRef = useRef(new Map());
   const liveZiffleCeremoniesRef = useRef(new Map());
@@ -1610,8 +1657,11 @@ export function usePeerLobby({
   }, [clearConnectionHeartbeat]);
 
   const handleConnectionHeartbeatMessage = useCallback((conn, message) => {
-    if (message?.type === "peer_heartbeat_ack") return true;
+    if (message?.type === "peer_heartbeat_ack") {
+      return message.protocolVersion === PROTOCOL_VERSION;
+    }
     if (message?.type !== "peer_heartbeat") return false;
+    if (message.protocolVersion !== PROTOCOL_VERSION) return false;
     safeSend(conn, {
       type: "peer_heartbeat_ack",
       protocolVersion: PROTOCOL_VERSION,
@@ -1889,6 +1939,25 @@ export function usePeerLobby({
     })
   ), []);
 
+  const waitForActionQuorumVote = useCallback((requestId, timeoutMs = 30000) => (
+    new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        actionQuorumVoteWaitersRef.current.delete(requestId);
+        reject(new Error("Timed out waiting for action quorum vote"));
+      }, timeoutMs);
+      actionQuorumVoteWaitersRef.current.set(requestId, {
+        resolve: (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err) => {
+          window.clearTimeout(timer);
+          reject(err);
+        },
+      });
+    })
+  ), []);
+
   const waitForCryptoMaterial = useCallback((requestId, timeoutMs = 60000) => (
     new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -1971,6 +2040,19 @@ export function usePeerLobby({
     const waiter = timeoutVoteWaitersRef.current.get(requestId);
     if (!waiter) return false;
     timeoutVoteWaitersRef.current.delete(requestId);
+    if (message.error) {
+      waiter.reject(new Error(String(message.error)));
+    } else {
+      waiter.resolve(message.vote);
+    }
+    return true;
+  }, []);
+
+  const resolveActionQuorumVote = useCallback((message) => {
+    const requestId = String(message?.requestId || "");
+    const waiter = actionQuorumVoteWaitersRef.current.get(requestId);
+    if (!waiter) return false;
+    actionQuorumVoteWaitersRef.current.delete(requestId);
     if (message.error) {
       waiter.reject(new Error(String(message.error)));
     } else {
@@ -4431,6 +4513,9 @@ export function usePeerLobby({
     if (!isActionTimeoutForfeitCommand(command)) return null;
     const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
     if (players.length < 3) return null;
+    if (!isCurrentAuditPlayerCount(players.length)) {
+      throw new Error("Current protocol requires 2, 3, or 4 players");
+    }
     const forfeitedPlayer = Number(command.player);
     const basisSequence = Number(command.basis_sequence || multiplayerRef.current.lastAppliedSequence || 0);
     const expected = {
@@ -4478,6 +4563,254 @@ export function usePeerLobby({
       voters: requiredVoters,
       votes,
     };
+  }
+
+  function forfeitedPlayersForQuorum(pendingAction = null) {
+    const forfeited = new Set();
+    for (const entry of actionHistoryRef.current || []) {
+      if (isForfeitCommand(entry?.command)) {
+        forfeited.add(Number(entry.command.player));
+      }
+    }
+    if (pendingAction && isForfeitCommand(pendingAction.command)) {
+      forfeited.add(Number(pendingAction.command.player));
+    }
+    return forfeited;
+  }
+
+  function actionQuorumRoster(action = null) {
+    const forfeited = forfeitedPlayersForQuorum(action);
+    return reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || [])
+      .filter((player) => !forfeited.has(Number(player.index)));
+  }
+
+  function actionQuorumThresholdForMessage(message, players = actionQuorumRoster(message)) {
+    const forfeited = forfeitedPlayersForQuorum();
+    const activePlayerCount = reindexPlayers(
+      matchStartPayloadRef.current?.players || multiplayerRef.current.players || []
+    )
+      .filter((player) => !forfeited.has(Number(player.index)))
+      .length;
+    if (activePlayerCount < 3) return 0;
+    if (isForfeitCommand(message?.command)) {
+      const target = Number(message.command.player);
+      if (Number(message?.actorIndex) === target) return 0;
+      return players.length;
+    }
+    return actionQuorumThreshold(players.length);
+  }
+
+  function actionQuorumVoteCacheKey(vote) {
+    return [
+      String(vote?.matchId || ""),
+      Number(vote?.seq || 0),
+      Number(vote?.voter),
+    ].join(":");
+  }
+
+  function actionQuorumVoteConflict(left, right) {
+    if (!left || !right) return false;
+    return (
+      String(left.prevStateHash || "") !== String(right.prevStateHash || "")
+      || String(left.nextStateHash || "") !== String(right.nextStateHash || "")
+      || String(left.publicCheckpointHash || "") !== String(right.publicCheckpointHash || "")
+      || String(left.actionSignature || "") !== String(right.actionSignature || "")
+      || Number(left.actor) !== Number(right.actor)
+    );
+  }
+
+  function rememberSignedActionQuorumVote(vote) {
+    const key = actionQuorumVoteCacheKey(vote);
+    const existing =
+      signedActionQuorumVotesRef.current.get(key)
+      || readStoredActionQuorumVote(vote?.matchId, vote?.seq, vote?.voter);
+    if (existing && actionQuorumVoteConflict(existing, vote)) {
+      throw new Error("Refusing to sign conflicting action quorum votes for the same sequence");
+    }
+    signedActionQuorumVotesRef.current.set(key, cloneMultiplayerPayload(vote));
+    writeStoredActionQuorumVote(vote);
+    return vote;
+  }
+
+  async function signActionQuorumVoteForMessage(message) {
+    const localVoter = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (localVoter == null) {
+      throw new Error("Local player cannot sign an action quorum vote");
+    }
+    const stored =
+      signedActionQuorumVotesRef.current.get([
+        String(message?.audit?.matchId || currentAuditMatchId()),
+        Number(message?.audit?.seq || message?.seq || 0),
+        Number(localVoter),
+      ].join(":"))
+      || readStoredActionQuorumVote(
+        message?.audit?.matchId || currentAuditMatchId(),
+        message?.audit?.seq || message?.seq,
+        localVoter
+      );
+    const expectedVote = {
+      matchId: String(message?.audit?.matchId || ""),
+      seq: Number(message?.audit?.seq || message?.seq || 0),
+      actor: Number(message?.audit?.actor ?? message?.actorIndex ?? 0),
+      voter: Number(localVoter),
+      prevStateHash: String(message?.audit?.prevStateHash || ""),
+      nextStateHash: String(message?.audit?.nextStateHash || ""),
+      publicCheckpointHash: String(message?.audit?.publicCheckpointHash || ""),
+      actionSignature: String(message?.audit?.signature || ""),
+    };
+    if (stored) {
+      if (actionQuorumVoteConflict(stored, expectedVote)) {
+        throw new Error("Refusing to sign conflicting action quorum votes for the same sequence");
+      }
+      return stored;
+    }
+    const { keyPair } = await ensureAuditIdentity();
+    return rememberSignedActionQuorumVote(await buildSignedActionQuorumVote({
+      keyPair,
+      action: message,
+      voter: localVoter,
+    }));
+  }
+
+  async function verifyActionQuorumForMessage(message) {
+    const players = actionQuorumRoster(message);
+    const threshold = actionQuorumThresholdForMessage(message, players);
+    if (threshold <= 0) return;
+    await verifyActionQuorumCertificate({
+      certificate: message?.audit?.quorumCertificate || message?.quorumCertificate,
+      action: message,
+      players,
+      threshold,
+    });
+  }
+
+  async function verifyActionQuorumVoteForMessage(vote, message) {
+    return verifyActionQuorumVote({
+      vote,
+      action: message,
+      players: actionQuorumRoster(message),
+    });
+  }
+
+  async function collectActionQuorumCertificate(message) {
+    const players = actionQuorumRoster(message);
+    const threshold = actionQuorumThresholdForMessage(message, players);
+    if (threshold <= 0) return null;
+
+    const votes = [];
+    const seen = new Set();
+    const addVote = async (vote) => {
+      const voter = await verifyActionQuorumVoteForMessage(vote, message);
+      if (seen.has(voter)) return;
+      seen.add(voter);
+      votes.push(cloneMultiplayerPayload(vote));
+    };
+
+    await addVote(await signActionQuorumVoteForMessage(message));
+    if (votes.length < threshold) {
+      ensureDirectPeerConnections(players);
+      const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
+      const pending = players
+        .filter((player) => Number(player.index) !== Number(localPlayer))
+        .map(async (player) => {
+          if (!player?.peerId) {
+            throw new Error(`Missing peer route for quorum voter ${Number(player.index) + 1}`);
+          }
+          const conn = await waitForZiffleRoute(player.peerId);
+          const requestId = makeZiffleRequestId("action-quorum");
+          const waiter = waitForActionQuorumVote(requestId);
+          safeSend(conn, {
+            type: "action_quorum_vote_request",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId,
+            requesterIndex: localPlayer,
+            action: cloneMultiplayerPayload(message),
+          });
+          return waiter;
+        });
+      const unsettled = new Set(pending);
+      while (votes.length < threshold && unsettled.size > 0) {
+        const settled = await Promise.race([...unsettled].map((promise) =>
+          promise.then(
+            (vote) => ({ promise, vote }),
+            (err) => ({ promise, err })
+          )
+        ));
+        unsettled.delete(settled.promise);
+        if (settled.err) continue;
+        await addVote(settled.vote);
+      }
+      for (const promise of unsettled) {
+        promise.catch(() => {});
+      }
+    }
+
+    if (votes.length < threshold) {
+      throw new Error(
+        `Action quorum certificate has ${votes.length} vote(s), expected at least ${threshold}`
+      );
+    }
+    votes.sort((left, right) => Number(left.voter) - Number(right.voter));
+    const audit = message.audit || {};
+    return {
+      type: "ironsmith-action-quorum-v1",
+      matchId: String(audit.matchId || ""),
+      seq: Number(audit.seq || message.seq || 0),
+      actor: Number(audit.actor ?? message.actorIndex ?? 0),
+      prevStateHash: String(audit.prevStateHash || ""),
+      nextStateHash: String(audit.nextStateHash || ""),
+      publicCheckpointHash: String(audit.publicCheckpointHash || ""),
+      actionSignature: String(audit.signature || ""),
+      threshold,
+      voters: votes.map((vote) => Number(vote.voter)),
+      votes,
+    };
+  }
+
+  async function answerActionQuorumVoteRequest(conn, message) {
+    try {
+      const requester = playerIndexForPeerId(conn?.peer);
+      if (requester == null) {
+        throw new Error("Action quorum requester is not a match player");
+      }
+      if (normalizePlayerIndex(message?.requesterIndex) !== requester) {
+        throw new Error("Action quorum requester index does not match the peer");
+      }
+      const action = message?.action;
+      if (!action || action.type !== "apply_action") {
+        throw new Error("Action quorum request is missing an action");
+      }
+      await applySequencedActionMessage(action, {
+        relay: false,
+        dryRun: true,
+        skipQuorumCertificate: true,
+        throwOnOrderMismatch: true,
+      });
+      const vote = await signActionQuorumVoteForMessage(action);
+      safeSend(conn, {
+        type: "action_quorum_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        vote,
+      });
+    } catch (err) {
+      const failureReason = toErrorMessage(err);
+      if (message?.action && isRejectedActionCheatReason(failureReason)) {
+        const actorName = playerNameForIndex(
+          multiplayerRef.current.players,
+          message.action.actorIndex
+        );
+        const status = `Cheat detected from ${actorName}: ${failureReason}`;
+        emitSyncFailureNotice("Cheat detected", status);
+        setStatus(status, true);
+      }
+      safeSend(conn, {
+        type: "action_quorum_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        error: failureReason,
+      });
+    }
   }
 
   function actionHistoryEntryForSequence(seq) {
@@ -4617,15 +4950,100 @@ export function usePeerLobby({
     }));
   }
 
+  async function createSequencedActionValidationSnapshot() {
+    const currentGame = gameRef.current;
+    if (
+      !currentGame
+      || typeof currentGame.exportSyncCheckpoint !== "function"
+      || typeof currentGame.importSyncCheckpoint !== "function"
+    ) {
+      throw new Error("Game engine cannot sandbox action quorum validation");
+    }
+    return {
+      checkpoint: await currentGame.exportSyncCheckpoint(),
+      state: cloneMultiplayerPayload(stateRef.current),
+      actionHistory: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
+      liveAuditTranscript: liveAuditTranscriptRef.current
+        ? cloneMultiplayerPayload(liveAuditTranscriptRef.current)
+        : null,
+      auditStateHash: auditStateHashRef.current,
+      lastAppliedSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+      matchClock: cloneMultiplayerPayload(matchClockRef.current),
+      matchClockConfig: cloneMultiplayerPayload(matchClockConfigRef.current),
+      actionCryptoRequirements: new Map(
+        [...actionCryptoRequirementsRef.current.entries()].map(([seq, requirements]) => [
+          seq,
+          cloneMultiplayerPayload(requirements),
+        ])
+      ),
+      ziffleHandRevealKey: ziffleHandRevealKeyRef.current,
+    };
+  }
+
+  async function restoreSequencedActionValidationSnapshot(snapshot) {
+    if (!snapshot) return;
+    const currentGame = gameRef.current;
+    const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (
+      currentGame
+      && snapshot.checkpoint
+      && typeof currentGame.importSyncCheckpoint === "function"
+    ) {
+      await currentGame.importSyncCheckpoint(
+        snapshot.checkpoint,
+        localPlayer ?? multiplayerRef.current.localPlayerIndex ?? 0
+      );
+    }
+    actionHistoryRef.current = snapshot.actionHistory.map((entry) => cloneMultiplayerPayload(entry));
+    liveAuditTranscriptRef.current = snapshot.liveAuditTranscript
+      ? cloneMultiplayerPayload(snapshot.liveAuditTranscript)
+      : null;
+    auditStateHashRef.current = snapshot.auditStateHash;
+    matchClockConfigRef.current = cloneMultiplayerPayload(snapshot.matchClockConfig);
+    matchClockRef.current = cloneMultiplayerPayload(snapshot.matchClock);
+    actionCryptoRequirementsRef.current = new Map(
+      [...snapshot.actionCryptoRequirements.entries()].map(([seq, requirements]) => [
+        seq,
+        cloneMultiplayerPayload(requirements),
+      ])
+    );
+    ziffleHandRevealKeyRef.current = snapshot.ziffleHandRevealKey;
+    const restoredState = currentGame && typeof currentGame.uiState === "function"
+      ? await currentGame.uiState()
+      : cloneMultiplayerPayload(snapshot.state);
+    stateRef.current = restoredState;
+    setState(restoredState);
+    publishMatchClockSnapshot(runtimeMatchClockSnapshot());
+    updateMultiplayer((prev) => ({
+      ...prev,
+      lastAppliedSequence: snapshot.lastAppliedSequence,
+      submittingAction: false,
+    }));
+  }
+
   async function applySequencedActionMessage(message, options = {}) {
     const nextSequence = Number(message?.seq || 0);
     const session = multiplayerRef.current;
-    if (awaitingStateResyncRef.current) return;
+    const dryRun = Boolean(options.dryRun);
+    if (awaitingStateResyncRef.current) {
+      if (dryRun || options.throwOnOrderMismatch) {
+        throw new Error("Cannot validate action while awaiting state resync");
+      }
+      return;
+    }
     if (nextSequence <= session.lastAppliedSequence) {
+      if (dryRun || options.throwOnOrderMismatch) {
+        throw new Error("Action quorum request is not ahead of the local transcript");
+      }
       await handleHistoricalSequencedAction(message);
       return;
     }
     if (nextSequence !== session.lastAppliedSequence + 1) {
+      if (dryRun || options.throwOnOrderMismatch) {
+        throw new Error(
+          `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`
+        );
+      }
       reportSyncFailure(
         `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`,
         options.resyncReason || "Multiplayer action order mismatch. Resyncing with host...",
@@ -4634,7 +5052,19 @@ export function usePeerLobby({
       return;
     }
 
-    updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
+    const validationSnapshot = dryRun
+      ? await createSequencedActionValidationSnapshot()
+      : null;
+    let snapshotRestored = false;
+    const restoreValidationSnapshot = async () => {
+      if (!validationSnapshot || snapshotRestored) return;
+      snapshotRestored = true;
+      await restoreSequencedActionValidationSnapshot(validationSnapshot);
+    };
+
+    if (!dryRun) {
+      updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
+    }
     try {
       await verifySequencedActionAudit({
         audit: message.audit,
@@ -4642,6 +5072,9 @@ export function usePeerLobby({
         actorIndex: message.actorIndex,
         command: message.command,
       });
+      if (!options.skipQuorumCertificate) {
+        await verifyActionQuorumForMessage(message);
+      }
       const liveStateForClock = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
       if (!isUnauthorizedAddCardCommand(message.command)) {
         await verifyMatchClockAuditForAction({
@@ -4727,16 +5160,35 @@ export function usePeerLobby({
         message.audit?.publicCheckpointHash,
         "Sequenced action public checkpoint hash does not match local state"
       );
+      if (dryRun) {
+        await restoreValidationSnapshot();
+        return {
+          verified: true,
+          publicCheckpointHash: String(message.audit?.publicCheckpointHash || ""),
+          nextStateHash: String(message.audit?.nextStateHash || ""),
+        };
+      }
       commitMatchClockAudit(message.audit?.clock, appliedState);
       await appendAppliedSequencedAction(message);
       if (options.relay !== false) {
         relaySequencedAction(message);
       }
     } catch (err) {
-      updateMultiplayer((prev) => ({
-        ...prev,
-        submittingAction: false,
-      }));
+      if (validationSnapshot) {
+        try {
+          await restoreValidationSnapshot();
+        } catch {
+          // Preserve the validation error as the actionable failure.
+        }
+      } else {
+        updateMultiplayer((prev) => ({
+          ...prev,
+          submittingAction: false,
+        }));
+      }
+      if (dryRun) {
+        throw err;
+      }
       if (isUnauthorizedAddCardCommand(message?.command)) {
         const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
         const reason = err instanceof Error ? err.message : String(err);
@@ -6115,12 +6567,19 @@ export function usePeerLobby({
   }
 
   async function verifyZiffleCeremoniesForPayload(payload) {
-    if (!payload?.ziffleCeremonies?.length) return;
+    const ceremonies = Array.isArray(payload?.ziffleCeremonies) ? payload.ziffleCeremonies : [];
+    const playerCount = Array.isArray(payload?.players) ? payload.players.length : 0;
+    if (!isCurrentAuditPlayerCount(playerCount)) {
+      throw new Error("Current protocol requires 2, 3, or 4 players");
+    }
+    if (ceremonies.length !== playerCount) {
+      throw new Error("Current protocol requires one ziffle ceremony per player deck");
+    }
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
       throw new Error("Ziffle mental-poker backend is not available");
     }
-    for (const ceremony of payload.ziffleCeremonies || []) {
+    for (const ceremony of ceremonies) {
       const verified = await currentGame.ziffleVerifyShuffle({
         deckCount: Number(ceremony.deckCount),
         context: String(ceremony.context || ""),
@@ -6177,12 +6636,10 @@ export function usePeerLobby({
         startingLife: payload.startingLife,
         seed: payload.seed,
         format: payload.format,
-        decks: payload.ziffleCeremonies?.length
-          ? payload.players.map(() => [])
-          : payload.decks,
+        decks: payload.players.map(() => []),
         sideboards: payload.sideboards,
         commanders: payload.commanders,
-        hiddenDeckManifests: payload.runtimeHiddenDeckManifests || payload.deckAuditManifests,
+        hiddenDeckManifests: payload.runtimeHiddenDeckManifests,
         openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
       });
       await currentGame.setPerspective(localEntry.index);
@@ -6222,16 +6679,6 @@ export function usePeerLobby({
         lobbyId: payload.lobbyId || payload.hostPeerId || "",
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
-        players: (payload.players || []).map((player) => ({
-          seat: Number(player.index),
-          name: String(player.name || ""),
-	          peerId: String(player.peerId || ""),
-	          auditPublicKey: String(player.auditPublicKey || ""),
-	          auditEncryptionPublicKey: String(player.auditEncryptionPublicKey || ""),
-	          playerGenesisSignature: player.playerGenesisSignature || null,
-          ziffleKey: player.ziffleKey || null,
-        })),
-        deckAuditManifests: (payload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(payload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
         initialPublicCheckpointHash,
@@ -6251,7 +6698,6 @@ export function usePeerLobby({
         format: normalizeMatchFormat(payload.format),
         localDeckCount:
           payload.deckAuditManifests?.[localEntry.index]?.deckCount
-          ?? payload.decks?.[localEntry.index]?.length
           ?? prev.localDeckCount,
         localCommanderCount:
           payload.commanders?.[localEntry.index]?.length ?? prev.localCommanderCount,
@@ -6358,16 +6804,6 @@ export function usePeerLobby({
         lobbyId: matchPayload.lobbyId || matchPayload.hostPeerId || "",
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
-        players: (matchPayload.players || []).map((player) => ({
-          seat: Number(player.index),
-          name: String(player.name || ""),
-	          peerId: String(player.peerId || ""),
-	          auditPublicKey: String(player.auditPublicKey || ""),
-	          auditEncryptionPublicKey: String(player.auditEncryptionPublicKey || ""),
-	          playerGenesisSignature: player.playerGenesisSignature || null,
-          ziffleKey: player.ziffleKey || null,
-        })),
-        deckAuditManifests: (matchPayload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(matchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
         initialPublicCheckpointHash: matchPayload.initialPublicCheckpointHash || "",
@@ -6473,16 +6909,6 @@ export function usePeerLobby({
         lobbyId: matchPayload.lobbyId || matchPayload.hostPeerId || "",
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
-        players: (matchPayload.players || []).map((player) => ({
-          seat: Number(player.index),
-          name: String(player.name || ""),
-	          peerId: String(player.peerId || ""),
-	          auditPublicKey: String(player.auditPublicKey || ""),
-	          auditEncryptionPublicKey: String(player.auditEncryptionPublicKey || ""),
-	          playerGenesisSignature: player.playerGenesisSignature || null,
-          ziffleKey: player.ziffleKey || null,
-        })),
-        deckAuditManifests: (matchPayload.deckAuditManifests || []).map(publicDeckManifest),
         genesis: cloneMultiplayerPayload(matchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
         initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
@@ -6569,8 +6995,11 @@ export function usePeerLobby({
           : player.auditEncryptionPublicKey || "",
     })
     );
+    if (!isCurrentAuditPlayerCount(players.length)) {
+      setStatus("Current P2P anticheat protocol requires 2, 3, or 4 players", true);
+      return;
+    }
 
-    const decks = players.map((player) => sanitizeCardList(player.deck));
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const format = normalizeMatchFormat(session.format);
     const commanders =
@@ -6609,7 +7038,7 @@ export function usePeerLobby({
       hostPeerId: session.localPeerId,
       players: players.map(toPublicPlayer),
       format,
-      decks,
+      decks: players.map(() => []),
       sideboards,
       commanders: commanders || undefined,
       ziffleKeys: players.map((player) => player.ziffleKey),
@@ -6683,7 +7112,7 @@ export function usePeerLobby({
           decks: payload.decks,
           commanders: payload.commanders,
           openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
-          hiddenDeckManifests: payload.runtimeHiddenDeckManifests || payload.deckAuditManifests,
+          hiddenDeckManifests: payload.runtimeHiddenDeckManifests,
         });
         if (validation?.valid === false) {
           const summary = summarizeMatchValidationIssues(validation.issues);
@@ -6784,8 +7213,11 @@ export function usePeerLobby({
           : player.auditEncryptionPublicKey || "",
     })
     );
+    if (!isCurrentAuditPlayerCount(players.length)) {
+      setStatus("Current P2P anticheat protocol requires 2, 3, or 4 players", true);
+      return;
+    }
     const format = normalizeMatchFormat(session.format);
-    const decks = players.map((player) => sanitizeCardList(player.deck));
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const commanders =
       format === MATCH_FORMAT_COMMANDER
@@ -6825,7 +7257,7 @@ export function usePeerLobby({
         ready: false,
       })),
       format,
-      decks,
+      decks: players.map(() => []),
       sideboards,
       commanders: commanders || undefined,
       ziffleKeys: players.map((player) => player.ziffleKey),
@@ -6921,7 +7353,7 @@ export function usePeerLobby({
           decks: payload.decks,
           commanders: payload.commanders,
           openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
-          hiddenDeckManifests: payload.runtimeHiddenDeckManifests || payload.deckAuditManifests,
+          hiddenDeckManifests: payload.runtimeHiddenDeckManifests,
         });
         if (validation?.valid === false) {
           const summary = summarizeMatchValidationIssues(validation.issues);
@@ -7256,7 +7688,7 @@ export function usePeerLobby({
   const handleHostMessage = useCallback(
     async (message) => {
       if (!message || typeof message !== "object") return;
-      if (message.protocolVersion && message.protocolVersion !== PROTOCOL_VERSION) {
+      if (message.protocolVersion !== PROTOCOL_VERSION) {
         setStatus("Lobby protocol version mismatch", true);
         return;
       }
@@ -7362,6 +7794,12 @@ export function usePeerLobby({
         case "timeout_vote_response":
           resolveTimeoutVote(message);
           return;
+        case "action_quorum_vote_request":
+          await answerActionQuorumVoteRequest(hostConnectionRef.current, message);
+          return;
+        case "action_quorum_vote_response":
+          resolveActionQuorumVote(message);
+          return;
         case "crypto_material_request":
           await answerCryptoMaterialRequest(hostConnectionRef.current, message);
           return;
@@ -7438,6 +7876,7 @@ export function usePeerLobby({
     },
     [
       answerCryptoMaterialRequest,
+      answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
       applyMatchStart,
       applyStateResync,
@@ -7449,6 +7888,7 @@ export function usePeerLobby({
       revealAuditOpenings,
       publishLocalDeckUpdateForAssignedSeat,
       resolveCryptoMaterial,
+      resolveActionQuorumVote,
       resolveRngCommit,
       resolveRngReveal,
       resolveTimeoutVote,
@@ -7499,7 +7939,7 @@ export function usePeerLobby({
 
   const handlePeerMessage = useCallback(async (conn, message) => {
     if (!message || typeof message !== "object") return;
-    if (message.protocolVersion && message.protocolVersion !== PROTOCOL_VERSION) {
+    if (message.protocolVersion !== PROTOCOL_VERSION) {
       conn.close();
       return;
     }
@@ -7539,6 +7979,12 @@ export function usePeerLobby({
       case "timeout_vote_response":
         resolveTimeoutVote(message);
         return;
+      case "action_quorum_vote_request":
+        await answerActionQuorumVoteRequest(conn, message);
+        return;
+      case "action_quorum_vote_response":
+        resolveActionQuorumVote(message);
+        return;
       case "crypto_material_request":
         await answerCryptoMaterialRequest(conn, message);
         return;
@@ -7550,7 +7996,9 @@ export function usePeerLobby({
     }
   }, [
     answerCryptoMaterialRequest,
+    answerActionQuorumVoteRequest,
     answerTimeoutVoteRequest,
+    resolveActionQuorumVote,
     resolveCryptoMaterial,
     resolveRngCommit,
     resolveRngReveal,
@@ -7630,10 +8078,12 @@ export function usePeerLobby({
 	          || message?.type === "rng_commit_request"
 	          || message?.type === "rng_commit_response"
 	          || message?.type === "rng_reveal_request"
-	          || message?.type === "rng_reveal_response"
-	          || message?.type === "timeout_vote_request"
-	          || message?.type === "timeout_vote_response"
-	        ) {
+		          || message?.type === "rng_reveal_response"
+		          || message?.type === "timeout_vote_request"
+		          || message?.type === "timeout_vote_response"
+		          || message?.type === "action_quorum_vote_request"
+		          || message?.type === "action_quorum_vote_response"
+		        ) {
           void handlePeerMessage(conn, message).catch((err) => {
             setStatus(`Peer message failed: ${toErrorMessage(err)}`, true);
           });
@@ -7748,7 +8198,7 @@ export function usePeerLobby({
   const handleClientMessage = useCallback(
     async (conn, message) => {
       if (!message || typeof message !== "object") return;
-      if (message.protocolVersion && message.protocolVersion !== PROTOCOL_VERSION) {
+      if (message.protocolVersion !== PROTOCOL_VERSION) {
         safeSend(conn, {
           type: "reject",
           protocolVersion: PROTOCOL_VERSION,
@@ -7774,6 +8224,9 @@ export function usePeerLobby({
       case "timeout_vote_response":
         resolveTimeoutVote(message);
         return;
+      case "action_quorum_vote_response":
+        resolveActionQuorumVote(message);
+        return;
       case "crypto_material_response":
         resolveCryptoMaterial(message);
         return;
@@ -7788,6 +8241,9 @@ export function usePeerLobby({
         return;
       case "timeout_vote_request":
         await answerTimeoutVoteRequest(conn, message);
+        return;
+      case "action_quorum_vote_request":
+        await answerActionQuorumVoteRequest(conn, message);
         return;
       case "crypto_material_request":
         await answerCryptoMaterialRequest(conn, message);
@@ -8170,6 +8626,7 @@ export function usePeerLobby({
     },
     [
       answerCryptoMaterialRequest,
+      answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
       buildHostedResyncPayload,
       broadcastMatchPresence,
@@ -8182,6 +8639,7 @@ export function usePeerLobby({
       startRematchSideboarding,
       updateMultiplayer,
       resolveCryptoMaterial,
+      resolveActionQuorumVote,
       resolveRngCommit,
       resolveRngReveal,
       resolveTimeoutVote,
@@ -8231,10 +8689,12 @@ export function usePeerLobby({
           || message?.type === "rng_commit_request"
           || message?.type === "rng_commit_response"
           || message?.type === "rng_reveal_request"
-          || message?.type === "rng_reveal_response"
-          || message?.type === "timeout_vote_request"
-          || message?.type === "timeout_vote_response"
-        ) {
+	          || message?.type === "rng_reveal_response"
+	          || message?.type === "timeout_vote_request"
+	          || message?.type === "timeout_vote_response"
+	          || message?.type === "action_quorum_vote_request"
+	          || message?.type === "action_quorum_vote_response"
+	        ) {
           void handleClientMessage(conn, message).catch(handleError);
           return;
         }
@@ -8555,7 +9015,13 @@ export function usePeerLobby({
         encryptionPublicKey: auditEncryptionPublicKey,
       } = await ensureAuditIdentity();
       const localName = sanitizePlayerName(name, "Host");
-      const targetPlayers = Math.max(2, Math.min(4, Number(desiredPlayers) || 2));
+      const targetPlayers = Math.max(
+        CURRENT_AUDIT_MIN_PLAYERS,
+        Math.min(
+          CURRENT_AUDIT_MAX_PLAYERS,
+          Number(desiredPlayers) || CURRENT_AUDIT_MIN_PLAYERS
+        )
+      );
       const lifeTotal = Math.max(1, Number(startingLife) || 20);
       const normalizedFormat = normalizeMatchFormat(format);
       const deckSubmission = parseDeckSubmission(
@@ -9018,10 +9484,12 @@ export function usePeerLobby({
             || message?.type === "rng_commit_request"
             || message?.type === "rng_commit_response"
             || message?.type === "rng_reveal_request"
-            || message?.type === "rng_reveal_response"
-            || message?.type === "timeout_vote_request"
-            || message?.type === "timeout_vote_response"
-          ) {
+	            || message?.type === "rng_reveal_response"
+	            || message?.type === "timeout_vote_request"
+	            || message?.type === "timeout_vote_response"
+	            || message?.type === "action_quorum_vote_request"
+	            || message?.type === "action_quorum_vote_response"
+	          ) {
             void handleHostMessage(message).catch((err) => {
               emitZiffleDiagnosticNotice("Ziffle message failed", err, {
                 phase: "host_ziffle_message",
@@ -9469,6 +9937,14 @@ export function usePeerLobby({
         if (String(audit.publicCheckpointHash || "") !== localPublicCheckpointHash) {
           throw new Error("Local public checkpoint hash does not match signed action");
         }
+        const quorumCertificate = await collectActionQuorumCertificate(message);
+        if (quorumCertificate) {
+          message.audit = {
+            ...message.audit,
+            quorumCertificate,
+          };
+          await verifyActionQuorumForMessage(message);
+        }
         commitMatchClockAudit(clock, appliedState);
         await appendAppliedSequencedAction(message);
         relaySequencedAction(message);
@@ -9478,6 +9954,14 @@ export function usePeerLobby({
           restoreMatchClockRuntime(stagedMatchClockRuntime, stateRef.current);
         }
         updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
+        const failureReason = toErrorMessage(err);
+        if (
+          failureReason.includes("Action quorum certificate")
+          || failureReason.includes("action quorum vote")
+        ) {
+          setStatus(`Action rejected by quorum: ${failureReason}`, true);
+          return;
+        }
         throw err;
       }
     },
