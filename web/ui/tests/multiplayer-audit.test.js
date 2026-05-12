@@ -5,6 +5,7 @@ import {
   auditStateHash,
   actionQuorumThreshold,
   assertCurrentAuditPlayerCount,
+  buildActionForkDisputeEvidence,
   buildSignedMatchGenesis,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
@@ -290,9 +291,9 @@ test("signed audit envelopes verify and reject tampering", async () => {
   );
 });
 
-test("action quorum certificates require fork-safe votes for 3/4 player games", async () => {
+test("action quorum certificates require 2-of-3 or 3-of-4 votes", async () => {
   assert.equal(actionQuorumThreshold(2), 0);
-  assert.equal(actionQuorumThreshold(3), 3);
+  assert.equal(actionQuorumThreshold(3), 2);
   assert.equal(actionQuorumThreshold(4), 3);
   assert.throws(() => actionQuorumThreshold(5), /requires 2, 3, or 4 players/);
 
@@ -368,6 +369,236 @@ test("action quorum certificates require fork-safe votes for 3/4 player games", 
       players,
     }, webcrypto),
     /expected at least 3/,
+  );
+});
+
+test("three-player live transcripts verify with a 2-of-3 action quorum", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-three-player-two-of-three",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-after-three-player-action",
+  }, webcrypto);
+  const action = { seq: 1, actorIndex: 0, command, audit };
+  const votes = await Promise.all([0, 2].map((voter) =>
+    buildSignedActionQuorumVote({
+      keyPair: keys[voter],
+      action,
+      voter,
+    }, webcrypto)
+  ));
+  action.audit.quorumCertificate = {
+    type: "ironsmith-action-quorum-v1",
+    matchId: audit.matchId,
+    seq: audit.seq,
+    actor: audit.actor,
+    prevStateHash: audit.prevStateHash,
+    nextStateHash: audit.nextStateHash,
+    publicCheckpointHash: audit.publicCheckpointHash,
+    actionSignature: audit.signature,
+    threshold: 2,
+    voters: [0, 2],
+    votes,
+  };
+
+  assert.equal(
+    (await verifyLiveAuditTranscript(await buildCurrentProtocolTranscript({
+      matchId: "m-three-player-two-of-three",
+      players,
+      playerCount: 3,
+      actions: [action],
+    }), webcrypto)).valid,
+    true,
+  );
+  await assert.rejects(
+    () => verifyActionQuorumCertificate({
+      certificate: {
+        ...action.audit.quorumCertificate,
+        votes: votes.slice(0, 1),
+      },
+      action,
+      players,
+    }, webcrypto),
+    /expected at least 2/,
+  );
+});
+
+test("live transcript verifier validates action-fork dispute evidence", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const firstCommand = { type: "priority_action", action_index: 0 };
+  const secondCommand = { type: "priority_action", action_index: 1 };
+  const firstAudit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-action-fork",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command: firstCommand,
+    publicCheckpointHash: "public-checkpoint-first-branch",
+  }, webcrypto);
+  const secondAudit = await buildSignedActionEnvelope({
+    keyPair: keys[2],
+    matchId: "m-action-fork",
+    seq: 1,
+    actor: 2,
+    prevStateHash: "0".repeat(64),
+    command: secondCommand,
+    publicCheckpointHash: "public-checkpoint-second-branch",
+  }, webcrypto);
+  const firstAction = { seq: 1, actorIndex: 0, command: firstCommand, audit: firstAudit };
+  const secondAction = { seq: 1, actorIndex: 2, command: secondCommand, audit: secondAudit };
+  const firstVotes = await Promise.all([0, 1].map((voter) =>
+    buildSignedActionQuorumVote({
+      keyPair: keys[voter],
+      action: firstAction,
+      voter,
+    }, webcrypto)
+  ));
+  const secondVotes = await Promise.all([1, 2].map((voter) =>
+    buildSignedActionQuorumVote({
+      keyPair: keys[voter],
+      action: secondAction,
+      voter,
+    }, webcrypto)
+  ));
+  firstAction.audit.quorumCertificate = {
+    type: "ironsmith-action-quorum-v1",
+    matchId: firstAudit.matchId,
+    seq: firstAudit.seq,
+    actor: firstAudit.actor,
+    prevStateHash: firstAudit.prevStateHash,
+    nextStateHash: firstAudit.nextStateHash,
+    publicCheckpointHash: firstAudit.publicCheckpointHash,
+    actionSignature: firstAudit.signature,
+    threshold: 2,
+    voters: [0, 1],
+    votes: firstVotes,
+  };
+  secondAction.audit.quorumCertificate = {
+    type: "ironsmith-action-quorum-v1",
+    matchId: secondAudit.matchId,
+    seq: secondAudit.seq,
+    actor: secondAudit.actor,
+    prevStateHash: secondAudit.prevStateHash,
+    nextStateHash: secondAudit.nextStateHash,
+    publicCheckpointHash: secondAudit.publicCheckpointHash,
+    actionSignature: secondAudit.signature,
+    threshold: 2,
+    voters: [1, 2],
+    votes: secondVotes,
+  };
+
+  const dispute = buildActionForkDisputeEvidence({
+    sequence: 1,
+    existingAction: firstAction,
+    conflictingAction: secondAction,
+  });
+  assert.deepEqual(dispute.accusedPlayers, [1]);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-action-fork",
+    players,
+    playerCount: 3,
+    actions: [firstAction],
+  });
+  transcript.disputes = [dispute];
+  transcript.outcome = {
+    status: "disputed",
+    accusedPlayers: [1],
+  };
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto);
+  assert.equal(report.valid, true);
+  assert.equal(report.outcome.status, "disputed");
+  assert.deepEqual(report.outcome.accusedPlayers, [1]);
+
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      ...transcript,
+      outcome: {
+        status: "disputed",
+        accusedPlayers: [2],
+      },
+    }, webcrypto),
+    /accused players/,
+  );
+});
+
+test("live transcript verifier binds exported winner to the final public checkpoint", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const finalPublicCheckpoint = {
+    version: 1,
+    players: [
+      { id: 0, name: "Alice", hasWon: true, hasLost: false, hasLeftGame: false },
+      { id: 1, name: "Bob", hasWon: false, hasLost: true, hasLeftGame: false },
+    ],
+    hiddenZones: [],
+  };
+  const finalPublicCheckpointHash = await publicCheckpointHash(finalPublicCheckpoint, webcrypto);
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-exported-winner",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: finalPublicCheckpointHash,
+  }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-exported-winner",
+    players,
+    playerCount: 2,
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  });
+  transcript.finalPublicCheckpoint = finalPublicCheckpoint;
+  transcript.outcome = {
+    status: "winner",
+    winner: 0,
+  };
+
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto);
+  assert.equal(report.valid, true);
+  assert.equal(report.outcome.status, "winner");
+  assert.equal(report.outcome.winner, 0);
+  await assert.rejects(
+    () => verifyLiveAuditTranscript({
+      ...transcript,
+      outcome: {
+        status: "winner",
+        winner: 1,
+      },
+    }, webcrypto),
+    /outcome winner/,
   );
 });
 
@@ -611,6 +842,86 @@ test("private-view encrypted disclosure binds signed proof to committed deck slo
       manifest: publicDeckManifest(manifest),
     }, webcrypto),
     /hash does not match/,
+  );
+});
+
+test("live audit transcript verifier accepts encrypted private-view summary proofs", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const privateViewProof = {
+    type: "encrypted_private_view",
+    requirementId: "private_view:1:0:library:2",
+    owner: 1,
+    viewer: 0,
+    zone: "library",
+    count: 2,
+    reason: "look_at_top_two",
+    openingHashes: [
+      "a".repeat(64),
+      "b".repeat(64),
+    ],
+    disclosurePolicy: "postgame_or_dispute",
+  };
+  privateViewProof.materialHash = await sha256Hex(canonicalJson(privateViewProof), webcrypto);
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-private-view-summary",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    privateViewProofs: [privateViewProof],
+    publicCheckpointHash: "public-checkpoint-after-private-view",
+  }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-private-view-summary",
+    players,
+    playerCount: 2,
+    actions: [{
+      seq: 1,
+      actorIndex: 0,
+      command,
+      audit,
+    }],
+  });
+
+  assert.equal((await verifyLiveAuditTranscript(transcript, webcrypto)).valid, true);
+  const badProof = {
+    ...privateViewProof,
+    materialHash: "0".repeat(64),
+  };
+  const badAudit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-private-view-summary",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    privateViewProofs: [badProof],
+    publicCheckpointHash: "public-checkpoint-after-private-view",
+  }, webcrypto);
+  const badTranscript = await buildCurrentProtocolTranscript({
+    matchId: "m-private-view-summary",
+    players,
+    playerCount: 2,
+    actions: [{
+      seq: 1,
+      actorIndex: 0,
+      command,
+      audit: badAudit,
+    }],
+  });
+  await assert.rejects(
+    () => verifyLiveAuditTranscript(badTranscript, webcrypto),
+    /material hash mismatch/,
   );
 });
 

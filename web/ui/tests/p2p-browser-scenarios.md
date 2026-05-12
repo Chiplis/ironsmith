@@ -30,4 +30,4 @@ The runner launches four isolated Chromium browser contexts, injects the product
 
 ## Not Modeled Here
 
-This browser runner validates the live audit, action relay, commitment opening, RNG transcript rejection, and disconnect/resync behavior in real browser crypto contexts. It does not try to prove the lower-level mental-poker shuffle itself; that is covered by the Rust/WASM audit and ziffle tests. The separate PeerJS E2E harness covers real PeerJS signaling/reconnect behavior through the React lobby.
+This browser runner validates the live audit, action relay, commitment opening, RNG transcript rejection, and disconnect/resync behavior in real browser crypto contexts. It does not try to prove the lower-level mental-poker shuffle itself; that is covered by the WASM ziffle tests. The separate PeerJS E2E harness covers real PeerJS signaling/reconnect behavior through the React lobby.

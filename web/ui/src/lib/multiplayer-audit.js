@@ -498,7 +498,9 @@ export async function buildSignedActionEnvelope({
 
 export function actionQuorumThreshold(playerCount) {
   const count = assertCurrentAuditPlayerCount(playerCount, "Action quorum");
-  return count < 3 ? 0 : 3;
+  if (count === 2) return 0;
+  if (count === 3) return 2;
+  return 3;
 }
 
 function actionQuorumExpected(action) {
@@ -664,6 +666,222 @@ export async function verifyActionQuorumCertificate({
     threshold,
     voters: [...seen].sort((left, right) => left - right),
   };
+}
+
+async function verifySequencedActionEnvelope({
+  entry,
+  players,
+  expectedSeq = null,
+  expectedPrevStateHash = null,
+}, cryptoImpl = globalThis.crypto) {
+  const action = entry || {};
+  if (!action.audit || typeof action.audit !== "object") {
+    throw new Error("Dispute action is missing its audit envelope");
+  }
+  const audit = action.audit;
+  if (expectedSeq != null && Number(audit.seq) !== Number(expectedSeq)) {
+    throw new Error("Dispute action sequence does not match the fork evidence");
+  }
+  if (
+    expectedPrevStateHash != null
+    && String(audit.prevStateHash || "") !== String(expectedPrevStateHash || "")
+  ) {
+    throw new Error("Dispute action previous hash does not match the fork evidence");
+  }
+  if (canonicalJson(audit.command) !== canonicalJson(action.command)) {
+    throw new Error("Dispute action command does not match its audit envelope");
+  }
+  const signer = Number(audit.signer ?? audit.actor);
+  if (signer !== Number(audit.actor)) {
+    throw new Error("Dispute action was not signed by the acting player");
+  }
+  const signerKey = await importAuditPublicKey(players.get(signer)?.auditPublicKey || "", cryptoImpl);
+  const envelopePayload = {
+    matchId: audit.matchId,
+    seq: Number(audit.seq),
+    actor: Number(audit.actor),
+    signer,
+    prevStateHash: audit.prevStateHash,
+    command: audit.command,
+    clock: audit.clock,
+    openings: audit.openings || [],
+    rngReveals: audit.rngReveals || [],
+    shuffleProofs: audit.shuffleProofs || [],
+    privateViewProofs: audit.privateViewProofs || [],
+    publicCheckpointHash: audit.publicCheckpointHash,
+    nextStateHash: audit.nextStateHash,
+  };
+  const sequencedValid = await verifyAuditPayload(
+    signerKey,
+    envelopePayload,
+    audit.signature || "",
+    cryptoImpl,
+  );
+  if (!sequencedValid) {
+    throw new Error("Dispute action signature is invalid");
+  }
+  const computedHash = await auditStateHash({
+    matchId: audit.matchId,
+    seq: Number(audit.seq),
+    prevStateHash: audit.prevStateHash,
+    command: audit.command,
+    clock: audit.clock,
+    openings: audit.openings || [],
+    rngReveals: audit.rngReveals || [],
+    shuffleProofs: audit.shuffleProofs || [],
+    privateViewProofs: audit.privateViewProofs || [],
+    publicCheckpointHash: audit.publicCheckpointHash,
+  }, cryptoImpl);
+  if (computedHash !== audit.nextStateHash) {
+    throw new Error("Dispute action next state hash is invalid");
+  }
+  return action;
+}
+
+function sequencedActionsConflict(left, right) {
+  if (!left || !right) return false;
+  const leftAudit = left.audit || {};
+  const rightAudit = right.audit || {};
+  return (
+    Number(leftAudit.seq) === Number(rightAudit.seq)
+    && String(leftAudit.prevStateHash || "") === String(rightAudit.prevStateHash || "")
+    && (
+      Number(leftAudit.actor) !== Number(rightAudit.actor)
+      || canonicalJson(left.command) !== canonicalJson(right.command)
+      || String(leftAudit.nextStateHash || "") !== String(rightAudit.nextStateHash || "")
+      || String(leftAudit.publicCheckpointHash || "") !== String(rightAudit.publicCheckpointHash || "")
+      || String(leftAudit.signature || "") !== String(rightAudit.signature || "")
+    )
+  );
+}
+
+function votersFromCertificate(action) {
+  const certificate = action?.audit?.quorumCertificate || action?.quorumCertificate || null;
+  return new Set((certificate?.votes || []).map((vote) => Number(vote?.voter)));
+}
+
+function cloneAuditPayload(value) {
+  return JSON.parse(JSON.stringify(normalizeForJson(value)));
+}
+
+export function buildActionForkDisputeEvidence({
+  sequence,
+  existingAction,
+  conflictingAction,
+  reason = "Conflicting signed actions were observed for the same sequence",
+  detectedAt = Date.now(),
+} = {}) {
+  const existing = cloneAuditPayload(existingAction || {});
+  const conflicting = cloneAuditPayload(conflictingAction || {});
+  const accused = new Set();
+  if (
+    Number(existing?.audit?.actor) === Number(conflicting?.audit?.actor)
+    && String(existing?.audit?.signature || "") !== String(conflicting?.audit?.signature || "")
+  ) {
+    accused.add(Number(existing.audit.actor));
+  }
+  const leftVoters = votersFromCertificate(existing);
+  const rightVoters = votersFromCertificate(conflicting);
+  for (const voter of leftVoters) {
+    if (rightVoters.has(voter)) accused.add(voter);
+  }
+  return {
+    type: "action_fork_v1",
+    sequence: Number(sequence || existing?.seq || existing?.audit?.seq || 0),
+    reason: String(reason || ""),
+    detectedAt: Number(detectedAt || Date.now()),
+    accusedPlayers: [...accused].sort((left, right) => left - right),
+    existingAction: existing,
+    conflictingAction: conflicting,
+  };
+}
+
+async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis.crypto) {
+  if (!dispute || typeof dispute !== "object") {
+    throw new Error("Dispute evidence is malformed");
+  }
+  if (String(dispute.type || "") !== "action_fork_v1") {
+    throw new Error("Unsupported dispute evidence type");
+  }
+  const sequence = Number(dispute.sequence);
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+    throw new Error("Dispute evidence has an invalid sequence");
+  }
+  const existing = await verifySequencedActionEnvelope({
+    entry: dispute.existingAction || dispute.existing,
+    players,
+    expectedSeq: sequence,
+  }, cryptoImpl);
+  const conflicting = await verifySequencedActionEnvelope({
+    entry: dispute.conflictingAction || dispute.conflicting,
+    players,
+    expectedSeq: sequence,
+    expectedPrevStateHash: existing.audit?.prevStateHash || "",
+  }, cryptoImpl);
+  if (!sequencedActionsConflict(existing, conflicting)) {
+    throw new Error("Dispute evidence does not contain conflicting actions");
+  }
+
+  const roster = [...players.entries()].map(([index, player]) => ({
+    index,
+    auditPublicKey: player.auditPublicKey,
+  }));
+  const threshold = actionQuorumThreshold(roster.length);
+  const quorumReports = [];
+  if (threshold > 0) {
+    quorumReports.push(await verifyActionQuorumCertificate({
+      certificate: existing.audit?.quorumCertificate || existing.quorumCertificate,
+      action: existing,
+      players: roster,
+      threshold,
+    }, cryptoImpl));
+    quorumReports.push(await verifyActionQuorumCertificate({
+      certificate: conflicting.audit?.quorumCertificate || conflicting.quorumCertificate,
+      action: conflicting,
+      players: roster,
+      threshold,
+    }, cryptoImpl));
+  }
+
+  const accused = new Set();
+  if (
+    Number(existing.audit?.actor) === Number(conflicting.audit?.actor)
+    && String(existing.audit?.signature || "") !== String(conflicting.audit?.signature || "")
+  ) {
+    accused.add(Number(existing.audit.actor));
+  }
+  if (threshold > 0) {
+    const leftVoters = votersFromCertificate(existing);
+    const rightVoters = votersFromCertificate(conflicting);
+    for (const voter of leftVoters) {
+      if (rightVoters.has(voter)) accused.add(voter);
+    }
+  }
+  const accusedPlayers = [...accused].sort((left, right) => left - right);
+  if (accusedPlayers.length === 0) {
+    throw new Error("Dispute evidence does not identify any equivocating signer");
+  }
+  const claimed = Array.isArray(dispute.accusedPlayers)
+    ? dispute.accusedPlayers.map(Number).sort((left, right) => left - right)
+    : accusedPlayers;
+  if (canonicalJson(claimed) !== canonicalJson(accusedPlayers)) {
+    throw new Error("Dispute evidence accused players do not match the signed actions");
+  }
+  return {
+    type: "action_fork_v1",
+    sequence,
+    accusedPlayers,
+    quorumVoters: quorumReports.map((report) => report.voters),
+  };
+}
+
+async function verifyTranscriptDisputes(disputes, players, cryptoImpl = globalThis.crypto) {
+  const entries = Array.isArray(disputes) ? disputes : [];
+  const reports = [];
+  for (const dispute of entries) {
+    reports.push(await verifyActionForkDispute(dispute, players, cryptoImpl));
+  }
+  return reports;
 }
 
 export function rngCommitmentPayload({
@@ -1045,6 +1263,112 @@ export async function publicCheckpointHash(checkpoint, cryptoImpl = globalThis.c
     domain: "ironsmith-public-audit-checkpoint-v1",
     checkpoint: stripTransientMetadata(checkpoint),
   }), cryptoImpl);
+}
+
+function publicCheckpointPlayerId(player) {
+  const id = Number(player?.id ?? player?.index ?? player?.seat);
+  return Number.isInteger(id) && id >= 0 ? id : null;
+}
+
+function publicCheckpointPlayerFlag(player, camelKey, snakeKey) {
+  return Boolean(player?.[camelKey] ?? player?.[snakeKey]);
+}
+
+function matchOutcomeFromPublicCheckpoint(checkpoint) {
+  if (!checkpoint || typeof checkpoint !== "object") return null;
+  const players = Array.isArray(checkpoint.players) ? checkpoint.players : [];
+  if (players.length === 0) return null;
+  const winners = players.filter((player) =>
+    publicCheckpointPlayerFlag(player, "hasWon", "has_won")
+  );
+  if (winners.length === 1) {
+    const winner = winners[0];
+    return {
+      status: "winner",
+      winner: publicCheckpointPlayerId(winner),
+      winnerName: String(winner?.name || ""),
+    };
+  }
+  if (winners.length > 1) {
+    return {
+      status: "draw",
+      winners: winners.map(publicCheckpointPlayerId).filter((id) => id != null),
+    };
+  }
+  const activePlayers = players.filter((player) =>
+    !publicCheckpointPlayerFlag(player, "hasLost", "has_lost")
+    && !publicCheckpointPlayerFlag(player, "hasLeftGame", "has_left_game")
+  );
+  const eliminatedPlayers = players.length - activePlayers.length;
+  if (activePlayers.length === 1 && eliminatedPlayers > 0) {
+    const winner = activePlayers[0];
+    return {
+      status: "winner",
+      winner: publicCheckpointPlayerId(winner),
+      winnerName: String(winner?.name || ""),
+    };
+  }
+  if (activePlayers.length === 0 && eliminatedPlayers > 0) {
+    return { status: "draw" };
+  }
+  return null;
+}
+
+function normalizeOutcomeStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "stalled") return "stalled_or_incomplete";
+  return normalized;
+}
+
+function verifyTranscriptOutcome({
+  transcript,
+  checkpointOutcome,
+  disputeReports,
+  finalStateHash,
+  finalPublicCheckpointHash,
+}) {
+  const disputeAccusedPlayers = Array.from(new Set(
+    disputeReports.flatMap((report) => report.accusedPlayers || [])
+  )).sort((left, right) => left - right);
+  const derived = disputeReports.length > 0
+    ? {
+        status: "disputed",
+        disputed: true,
+        accusedPlayers: disputeAccusedPlayers,
+      }
+    : (
+      checkpointOutcome || {
+        status: "stalled_or_incomplete",
+        stalled: true,
+      }
+    );
+  const outcome = transcript?.outcome;
+  if (outcome && typeof outcome === "object") {
+    const claimedStatus = normalizeOutcomeStatus(outcome.status);
+    if (claimedStatus && claimedStatus !== derived.status) {
+      throw new Error("Match outcome does not match verifiable transcript evidence");
+    }
+    if (
+      derived.status === "winner"
+      && outcome.winner != null
+      && Number(outcome.winner) !== Number(derived.winner)
+    ) {
+      throw new Error("Match outcome winner does not match the final public checkpoint");
+    }
+    if (derived.status === "disputed" && Array.isArray(outcome.accusedPlayers)) {
+      const claimedAccused = outcome.accusedPlayers
+        .map(Number)
+        .sort((left, right) => left - right);
+      if (canonicalJson(claimedAccused) !== canonicalJson(disputeAccusedPlayers)) {
+        throw new Error("Match outcome accused players do not match dispute evidence");
+      }
+    }
+  }
+  return {
+    ...derived,
+    finalStateHash,
+    finalPublicCheckpointHash,
+  };
 }
 
 export async function transcriptActionsHash(actions = [], cryptoImpl = globalThis.crypto) {
@@ -1443,18 +1767,49 @@ async function verifyAuditOpenings({
   }
 }
 
-function verifyPrivateViewProofStructure(proofs = [], players) {
+async function verifyPrivateViewProofStructure(
+  proofs = [],
+  players,
+  cryptoImpl = globalThis.crypto,
+) {
   for (const proof of proofs || []) {
-    if (String(proof?.type || "") !== "encrypted_private_opening") {
+    const type = String(proof?.type || "");
+    if (type !== "encrypted_private_opening" && type !== "encrypted_private_view") {
       throw new Error("Unsupported private-view proof type");
     }
-    if (!proof?.encryptedOpening?.ciphertextHex || !proof?.encryptedOpening?.plaintextHash) {
-      throw new Error("Private-view proof is missing encrypted opening material");
-    }
     const viewer = Number(proof.viewer);
-    const viewerKey = players.get(viewer)?.auditEncryptionPublicKey || "";
-    if (viewerKey && String(proof.encryptedOpening.recipientPublicKey || "") !== viewerKey) {
-      throw new Error("Private-view proof targets the wrong viewer key");
+    if (!Number.isInteger(viewer) || !players.has(viewer)) {
+      throw new Error("Private-view proof references an unknown viewer");
+    }
+    if (type === "encrypted_private_opening") {
+      if (!proof?.encryptedOpening?.ciphertextHex || !proof?.encryptedOpening?.plaintextHash) {
+        throw new Error("Private-view proof is missing encrypted opening material");
+      }
+      const viewerKey = players.get(viewer)?.auditEncryptionPublicKey || "";
+      if (viewerKey && String(proof.encryptedOpening.recipientPublicKey || "") !== viewerKey) {
+        throw new Error("Private-view proof targets the wrong viewer key");
+      }
+      continue;
+    }
+
+    const owner = Number(proof.owner);
+    if (!Number.isInteger(owner) || !players.has(owner)) {
+      throw new Error("Private-view proof references an unknown owner");
+    }
+    const count = Number(proof.count || 0);
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error("Private-view proof contains an invalid view count");
+    }
+    if (!Array.isArray(proof.openingHashes)) {
+      throw new Error("Private-view proof is missing opening hashes");
+    }
+    if (proof.materialHash) {
+      const material = { ...proof };
+      delete material.materialHash;
+      const expectedHash = await sha256Hex(canonicalJson(material), cryptoImpl);
+      if (expectedHash !== String(proof.materialHash || "")) {
+        throw new Error("Private-view proof material hash mismatch");
+      }
     }
   }
 }
@@ -1525,6 +1880,7 @@ export async function verifyLiveAuditTranscript(
   const manifests = transcriptDeckManifestMap(transcript);
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
   let clockHash = INITIAL_MATCH_CLOCK_HASH;
+  let finalPublicCheckpointHash = String(transcript.initialPublicCheckpointHash || "");
   let expectedSeq = 1;
   for (const entry of transcript.actions || []) {
     const audit = entry?.audit;
@@ -1609,7 +1965,7 @@ export async function verifyLiveAuditTranscript(
       openings: audit.openings || [],
       manifests,
     }, cryptoImpl);
-    verifyPrivateViewProofStructure(audit.privateViewProofs || [], players);
+    await verifyPrivateViewProofStructure(audit.privateViewProofs || [], players, cryptoImpl);
     for (const reveal of audit.rngReveals || []) {
       await verifyFairRandomReveal({
         reveal,
@@ -1640,13 +1996,49 @@ export async function verifyLiveAuditTranscript(
       throw new Error(`Audit next state hash mismatch at sequence ${expectedSeq}`);
     }
     stateHash = audit.nextStateHash;
+    finalPublicCheckpointHash = String(audit.publicCheckpointHash || "");
     expectedSeq += 1;
   }
+  if (
+    transcript.finalStateHash
+    && String(transcript.finalStateHash || "") !== stateHash
+  ) {
+    throw new Error("Live audit transcript final state hash does not match verified actions");
+  }
+  let checkpointOutcome = null;
+  if (transcript.finalPublicCheckpoint) {
+    const checkpointHash = await publicCheckpointHash(transcript.finalPublicCheckpoint, cryptoImpl);
+    if (checkpointHash !== finalPublicCheckpointHash) {
+      throw new Error("Live audit transcript final public checkpoint hash mismatch");
+    }
+    checkpointOutcome = matchOutcomeFromPublicCheckpoint(transcript.finalPublicCheckpoint);
+  }
+  if (
+    transcript.finalPublicCheckpointHash
+    && String(transcript.finalPublicCheckpointHash || "") !== finalPublicCheckpointHash
+  ) {
+    throw new Error("Live audit transcript declared final public checkpoint hash does not match verified actions");
+  }
+  const disputeReports = await verifyTranscriptDisputes(
+    transcript.disputes || transcript.disputeEvidence || [],
+    players,
+    cryptoImpl,
+  );
+  const outcome = verifyTranscriptOutcome({
+    transcript,
+    checkpointOutcome,
+    disputeReports,
+    finalStateHash: stateHash,
+    finalPublicCheckpointHash,
+  });
   return {
     valid: true,
     verifiedActions: expectedSeq - 1,
     initialPublicCheckpointHash: transcript.initialPublicCheckpointHash || "",
+    finalPublicCheckpointHash,
     finalStateHash: stateHash,
+    outcome,
+    disputes: disputeReports,
   };
 }
 

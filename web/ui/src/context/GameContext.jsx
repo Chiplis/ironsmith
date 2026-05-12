@@ -1397,6 +1397,7 @@ export function GameProvider({ children }) {
     readyForRematch,
     submitMultiplayerCommand,
     submitMultiplayerAddCardCheat,
+    exportAuditTranscript,
   } = usePeerLobby({
     game,
     state,
@@ -1839,6 +1840,7 @@ export function GameProvider({ children }) {
       startRematchSideboarding,
       updateRematchDecks,
       readyForRematch,
+      exportAuditTranscript,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     }),
@@ -1861,6 +1863,7 @@ export function GameProvider({ children }) {
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
       startRematchSideboarding, updateRematchDecks, readyForRematch,
+      exportAuditTranscript,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
     ]

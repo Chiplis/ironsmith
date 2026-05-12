@@ -3,6 +3,7 @@ import Peer from "peerjs";
 import {
   auditStateHash,
   actionQuorumThreshold,
+  buildActionForkDisputeEvidence,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
   buildDeckSlotOpening,
@@ -572,6 +573,86 @@ async function matchClockAuditHash(clock) {
 function playerNameForIndex(players, playerIndex) {
   const target = (players || []).find((player) => Number(player?.index) === Number(playerIndex));
   return String(target?.name || `Player ${Number(playerIndex) + 1}`);
+}
+
+function publicCheckpointWinner(checkpoint) {
+  const players = Array.isArray(checkpoint?.players) ? checkpoint.players : [];
+  const winners = players.filter((player) => Boolean(player?.hasWon ?? player?.has_won));
+  if (winners.length === 1) {
+    return {
+      player: Number(winners[0].id ?? winners[0].index ?? winners[0].seat),
+      name: String(winners[0].name || ""),
+    };
+  }
+  const active = players.filter((player) =>
+    !(player?.hasLost ?? player?.has_lost)
+    && !(player?.hasLeftGame ?? player?.has_left_game)
+  );
+  if (active.length === 1 && players.length > 1) {
+    return {
+      player: Number(active[0].id ?? active[0].index ?? active[0].seat),
+      name: String(active[0].name || ""),
+    };
+  }
+  return null;
+}
+
+function buildExportedMatchOutcome({
+  uiState,
+  finalPublicCheckpoint,
+  finalStateHash,
+  finalPublicCheckpointHash,
+  matchDisputed,
+  disputes = [],
+}) {
+  if (matchDisputed || disputes.length > 0) {
+    const accusedPlayers = Array.from(new Set([
+      ...(matchDisputed?.accusedPlayers || []),
+      ...disputes.flatMap((dispute) => dispute?.accusedPlayers || []),
+    ].map(Number))).sort((left, right) => left - right);
+    return {
+      status: "disputed",
+      disputed: true,
+      reason: String(matchDisputed?.reason || "Match transcript fork detected"),
+      accusedPlayers,
+      finalStateHash,
+      finalPublicCheckpointHash,
+    };
+  }
+
+  const gameOver = uiState?.game_over || null;
+  if (gameOver?.kind === "winner") {
+    return {
+      status: "winner",
+      winner: Number(gameOver.player),
+      winnerName: String(gameOver.name || ""),
+      finalStateHash,
+      finalPublicCheckpointHash,
+    };
+  }
+  if (gameOver?.kind === "draw") {
+    return {
+      status: "draw",
+      finalStateHash,
+      finalPublicCheckpointHash,
+    };
+  }
+  const checkpointWinner = publicCheckpointWinner(finalPublicCheckpoint);
+  if (checkpointWinner) {
+    return {
+      status: "winner",
+      winner: checkpointWinner.player,
+      winnerName: checkpointWinner.name,
+      finalStateHash,
+      finalPublicCheckpointHash,
+    };
+  }
+  return {
+    status: "stalled_or_incomplete",
+    stalled: true,
+    finalStateHash,
+    finalPublicCheckpointHash,
+  };
 }
 
 function safeSend(conn, payload) {
@@ -4867,6 +4948,19 @@ export function usePeerLobby({
 
   function markMatchDisputed(reason, evidence = {}) {
     const body = String(reason || "Match transcript fork detected");
+    const dispute = evidence?.dispute || null;
+    if (dispute && liveAuditTranscriptRef.current) {
+      const existingDisputes = Array.isArray(liveAuditTranscriptRef.current.disputes)
+        ? liveAuditTranscriptRef.current.disputes
+        : [];
+      liveAuditTranscriptRef.current = {
+        ...liveAuditTranscriptRef.current,
+        disputes: [
+          ...existingDisputes,
+          cloneMultiplayerPayload(dispute),
+        ],
+      };
+    }
     emitSyncFailureNotice("Match disputed", body);
     timeoutClaimInFlightRef.current = "";
     updateMultiplayer((prev) => ({
@@ -4877,6 +4971,9 @@ export function usePeerLobby({
       matchDisputed: {
         reason: body,
         evidence: cloneMultiplayerPayload(evidence),
+        accusedPlayers: Array.isArray(dispute?.accusedPlayers)
+          ? dispute.accusedPlayers.map(Number)
+          : [],
         at: Date.now(),
       },
     }));
@@ -4903,20 +5000,19 @@ export function usePeerLobby({
       return true;
     }
 
+    const reason = `Match disputed: two different valid actions were signed for sequence ${seq}.`;
+    const dispute = buildActionForkDisputeEvidence({
+      sequence: seq,
+      reason,
+      existingAction: existing,
+      conflictingAction: message,
+    });
     markMatchDisputed(
-      `Match disputed: two different valid actions were signed for sequence ${seq}.`,
+      reason,
       {
         sequence: seq,
-        existing: {
-          actorIndex: existing.actorIndex,
-          nextStateHash: existing.audit?.nextStateHash || "",
-          signature: existing.audit?.signature || "",
-        },
-        conflicting: {
-          actorIndex: message.actorIndex,
-          nextStateHash: message.audit?.nextStateHash || "",
-          signature: message.audit?.signature || "",
-        },
+        accusedPlayers: dispute.accusedPlayers,
+        dispute,
       }
     );
     return true;
@@ -10149,11 +10245,35 @@ export function usePeerLobby({
     updateMultiplayer,
   ]);
 
-  const exportAuditTranscript = useCallback(() => {
+  const exportAuditTranscript = useCallback(async () => {
     if (!liveAuditTranscriptRef.current) return null;
+    const transcript = cloneMultiplayerPayload(liveAuditTranscriptRef.current);
+    const currentGame = gameRef.current;
+    const finalPublicCheckpoint = currentGame
+      && typeof currentGame.exportPublicAuditCheckpoint === "function"
+      ? await currentGame.exportPublicAuditCheckpoint()
+      : null;
+    const actions = Array.isArray(transcript.actions) ? transcript.actions : [];
+    const finalPublicCheckpointHash = finalPublicCheckpoint
+      ? await publicCheckpointHash(finalPublicCheckpoint)
+      : String(actions.at(-1)?.audit?.publicCheckpointHash || transcript.initialPublicCheckpointHash || "");
+    const finalStateHash = auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH;
+    const disputes = Array.isArray(transcript.disputes) ? transcript.disputes : [];
     return {
-      ...cloneMultiplayerPayload(liveAuditTranscriptRef.current),
-      finalStateHash: auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
+      ...transcript,
+      exportedAt: new Date().toISOString(),
+      finalStateHash,
+      finalPublicCheckpoint,
+      finalPublicCheckpointHash,
+      disputes,
+      outcome: buildExportedMatchOutcome({
+        uiState: stateRef.current,
+        finalPublicCheckpoint,
+        finalStateHash,
+        finalPublicCheckpointHash,
+        matchDisputed: multiplayerRef.current.matchDisputed || null,
+        disputes,
+      }),
     };
   }, []);
 
