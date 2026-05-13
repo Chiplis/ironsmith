@@ -3463,6 +3463,8 @@ export function usePeerLobby({
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.revealHiddenSlot !== "function") return;
     const timing = options.timing || null;
+    let changed = false;
+    let latestState = null;
     for (const opening of openings || []) {
       if (!opening || opening.owner == null || opening.slot == null || !opening.card) {
         continue;
@@ -3496,7 +3498,7 @@ export function usePeerLobby({
           const ceremony = ziffleCeremonyForOwner(opening.owner, {
             commitment: revealPositionCommitment,
           });
-          await currentGame.revealHiddenPosition({
+          latestState = await currentGame.revealHiddenPosition({
             owner: Number(opening.owner),
             position: Number(revealPosition),
             originalSlot: Number(opening.slot),
@@ -3508,13 +3510,14 @@ export function usePeerLobby({
             commitment: opening.commitment || undefined,
           });
         } else {
-          await currentGame.revealHiddenSlot({
+          latestState = await currentGame.revealHiddenSlot({
             owner: Number(opening.owner),
             slot: Number(opening.slot),
             cardName: String(opening.card),
             commitment: opening.commitment || undefined,
           });
         }
+        changed = true;
       } catch (err) {
         const message = String(err?.message || err || "");
         if (!message.includes("not present") && !message.includes("not a hidden")) {
@@ -3522,7 +3525,13 @@ export function usePeerLobby({
         }
       }
     }
-  }, [currentHiddenCardMetadataForObject, verifyAuditOpeningsAgainstManifests, ziffleCeremonyForOwner]);
+    if (changed && options.updateState !== false) {
+      const nextState = latestState || await currentGame.uiState();
+      stateRef.current = nextState;
+      setState(nextState);
+    }
+    return latestState;
+  }, [currentHiddenCardMetadataForObject, setState, verifyAuditOpeningsAgainstManifests, ziffleCeremonyForOwner]);
 
   async function previewRequirementsForCommand(command) {
     const currentGame = gameRef.current;
@@ -3636,7 +3645,7 @@ export function usePeerLobby({
     return privateOpeningFromEncryptedProof(proof, requirement);
   }
 
-  async function revealPrivateAuditProofsForLocalViewer(audit = {}) {
+  async function revealPrivateAuditProofsForLocalViewer(audit = {}, options = {}) {
     const localSeat = resolveLocalCryptoPlayerIndex();
     const openings = [];
     const seen = new Set();
@@ -3659,7 +3668,7 @@ export function usePeerLobby({
       openings.push(opening);
     }
     if (openings.length > 0) {
-      await revealAuditOpenings(openings);
+      await revealAuditOpenings(openings, options);
     }
   }
 
@@ -3834,7 +3843,7 @@ export function usePeerLobby({
     }
     const privateOpenings = await privateOpeningsForLocalViewer(requirements, audit, options);
     if (privateOpenings.length > 0) {
-      await revealAuditOpenings(privateOpenings);
+      await revealAuditOpenings(privateOpenings, options);
     }
   }
 
@@ -5721,8 +5730,13 @@ export function usePeerLobby({
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
-      await revealAuditOpenings(message.audit?.openings || [], { timing: "pre" });
-      await revealPrivateAuditProofsForLocalViewer(message.audit || {});
+      await revealAuditOpenings(message.audit?.openings || [], {
+        timing: "pre",
+        updateState: !dryRun,
+      });
+      await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
+        updateState: !dryRun,
+      });
       const localCommand = await remapPriorityCommandForLocalHiddenOpening(
         message.command,
         message.audit?.openings || []
@@ -5749,12 +5763,16 @@ export function usePeerLobby({
         seq: nextSequence,
         actorIndex: message.actorIndex,
         requirements: cryptoRequirements,
+        updateState: !dryRun,
       });
       const appliedState = await applySyncedCommand(localCommand, message.label || "", {
         actorIndex: message.actorIndex,
         sequence: nextSequence,
       });
-      await revealAuditOpenings(message.audit?.openings || [], { timing: "post" });
+      await revealAuditOpenings(message.audit?.openings || [], {
+        timing: "post",
+        updateState: !dryRun,
+      });
       const appliedCryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
         liveStateForClock,

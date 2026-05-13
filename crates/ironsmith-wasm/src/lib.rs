@@ -600,6 +600,23 @@ fn viewed_cards_can_merge(
         }
 }
 
+fn audit_viewed_cards_can_merge(
+    existing: &ActiveViewedCards,
+    viewer: PlayerId,
+    ctx: &ironsmith::decisions::context::ViewCardsContext,
+) -> bool {
+    existing.public == ctx.public
+        && existing.zone == ctx.zone
+        && existing.source == ctx.source
+        && existing.description == ctx.description
+        && existing.subject == ctx.subject
+        && if ctx.public {
+            true
+        } else {
+            existing.viewer == viewer
+        }
+}
+
 fn merge_audit_viewed_cards(
     current: &mut Vec<ActiveViewedCards>,
     viewer: PlayerId,
@@ -608,7 +625,7 @@ fn merge_audit_viewed_cards(
 ) {
     if let Some(existing) = current
         .iter_mut()
-        .find(|existing| viewed_cards_can_merge(existing, viewer, ctx))
+        .find(|existing| audit_viewed_cards_can_merge(existing, viewer, ctx))
     {
         for &card in cards {
             if !existing.cards.contains(&card) {
@@ -3428,6 +3445,105 @@ mod native_tests {
                 && requirement.zone == "hand"
                 && requirement.object_id == Some(hidden_hand.0)
                 && requirement.commitment.as_deref() == Some("bob-hand-commitment")
+        }));
+    }
+
+    #[test]
+    fn public_view_requirements_stay_scoped_to_each_revealing_player() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let alice_top = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            3,
+            "alice-parley-top".to_string(),
+        );
+        let bob_top = wasm.game.create_hidden_card_placeholder(
+            bob,
+            Zone::Library,
+            9,
+            "bob-parley-top".to_string(),
+        );
+        let source = ObjectId::from_raw(77);
+        let description = "Parley reveal".to_string();
+        let alice_view = ironsmith::decisions::context::ViewCardsContext::new(
+            alice,
+            alice,
+            Some(source),
+            Zone::Library,
+            description.clone(),
+        )
+        .with_public(true);
+        let bob_view = ironsmith::decisions::context::ViewCardsContext::new(
+            alice,
+            bob,
+            Some(source),
+            Zone::Library,
+            description,
+        )
+        .with_public(true);
+
+        merge_active_viewed_cards(
+            &mut wasm.active_viewed_cards,
+            alice,
+            &[alice_top],
+            &alice_view,
+        );
+        merge_active_viewed_cards(&mut wasm.active_viewed_cards, alice, &[bob_top], &bob_view);
+        merge_audit_viewed_cards(
+            &mut wasm.active_audit_viewed_cards,
+            alice,
+            &[alice_top],
+            &alice_view,
+        );
+        merge_audit_viewed_cards(
+            &mut wasm.active_audit_viewed_cards,
+            alice,
+            &[bob_top],
+            &bob_view,
+        );
+
+        assert_eq!(
+            wasm.active_viewed_cards
+                .as_ref()
+                .map(|view| view.cards.len()),
+            Some(2),
+            "the UI should still get one combined revealed-card strip"
+        );
+        assert_eq!(
+            wasm.active_audit_viewed_cards.len(),
+            2,
+            "audit view windows must stay owner-scoped"
+        );
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_view_window"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "library"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_view_window"
+                && requirement.owner == bob.index() as u8
+                && requirement.zone == "library"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == alice.index() as u8
+                && requirement.object_id == Some(alice_top.0)
+                && requirement.commitment.as_deref() == Some("alice-parley-top")
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == bob.index() as u8
+                && requirement.object_id == Some(bob_top.0)
+                && requirement.commitment.as_deref() == Some("bob-parley-top")
         }));
     }
 }

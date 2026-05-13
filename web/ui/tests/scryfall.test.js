@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  HIDDEN_CARD_BACK_IMAGE_URL,
   customCardArtUrl,
   scryfallImageUrl,
   setCustomCardArtUrls,
@@ -40,4 +41,10 @@ test("blank custom art removes an existing override", () => {
 
   assert.equal(customCardArtUrl("Forge Test"), "");
   assert.match(scryfallImageUrl("Forge Test", "art_crop"), /^https:\/\/api\.scryfall\.com\/cards\/named\?/);
+});
+
+test("hidden card names use the local SVG cardback instead of Scryfall", () => {
+  assert.equal(scryfallImageUrl("Hidden Card", "art_crop"), HIDDEN_CARD_BACK_IMAGE_URL);
+  assert.equal(scryfallImageUrl("hidden card"), HIDDEN_CARD_BACK_IMAGE_URL);
+  assert.match(HIDDEN_CARD_BACK_IMAGE_URL, /^data:image\/svg\+xml;charset=utf-8,/);
 });

@@ -506,15 +506,12 @@ impl WasmGame {
     fn apply_pregame_priority_action(&mut self, action: LegalAction) -> Result<(), JsValue> {
         match action {
             LegalAction::KeepOpeningHand => {
-                let all_players: Vec<PlayerId> =
-                    self.game.players.iter().map(|player| player.id).collect();
                 let Some(PregameState {
                     stage:
                         PregameStage::MulliganDecision {
                             undecided_players,
-                            round_mulliganers,
+                            ..
                         },
-                    mulligans_taken,
                     ..
                 }) = self.pregame.as_mut()
                 else {
@@ -527,28 +524,15 @@ impl WasmGame {
                         "no player is waiting on a mulligan decision",
                     ));
                 }
-                let player = undecided_players.remove(0);
-                if undecided_players.is_empty()
-                    && round_mulliganers.is_empty()
-                    && mulligans_taken.is_empty()
-                {
-                    undecided_players.extend(
-                        all_players
-                            .into_iter()
-                            .filter(|candidate| *candidate != player),
-                    );
-                }
+                undecided_players.remove(0);
             }
             LegalAction::TakeMulligan => {
-                let all_players: Vec<PlayerId> =
-                    self.game.players.iter().map(|player| player.id).collect();
                 let Some(PregameState {
                     stage:
                         PregameStage::MulliganDecision {
                             undecided_players,
                             round_mulliganers,
                         },
-                    mulligans_taken,
                     ..
                 }) = self.pregame.as_mut()
                 else {
@@ -563,13 +547,6 @@ impl WasmGame {
                 };
                 undecided_players.remove(0);
                 round_mulliganers.push(player);
-                if undecided_players.is_empty() && mulligans_taken.is_empty() {
-                    undecided_players.extend(
-                        all_players
-                            .into_iter()
-                            .filter(|candidate| !round_mulliganers.contains(candidate)),
-                    );
-                }
             }
             LegalAction::ContinuePregame | LegalAction::BeginGame => {
                 let Some(PregameState {
