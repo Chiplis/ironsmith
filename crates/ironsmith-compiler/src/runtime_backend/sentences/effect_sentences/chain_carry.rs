@@ -217,10 +217,7 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some(first_word) = words.first().copied() else {
         return false;
     };
-    let starts_like_count = matches!(
-        first_word,
-        "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six"
-    ) || parse_number_from_lexed(tokens).is_some()
+    let starts_like_count = parse_number_from_lexed(tokens).is_some()
         || contains_char(first_word, '/')
         || first_word == "x";
     starts_like_count && words.iter().any(|word| matches!(*word, "token" | "tokens"))

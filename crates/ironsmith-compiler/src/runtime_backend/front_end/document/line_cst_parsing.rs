@@ -311,17 +311,17 @@ fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
 }
 
 fn is_additional_land_play_static_line(normalized: &str) -> bool {
-    let words = normalized
-        .trim_end_matches('.')
-        .split_whitespace()
-        .collect::<Vec<_>>();
+    let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    if !matches!(words.as_slice(), ["you", "may", "play", ..]) {
+        return false;
+    }
+    let Some((_, used)) = ironsmith_core::parse_cardinal_words(&words[3..]) else {
+        return false;
+    };
     matches!(
-        words.as_slice(),
-        [
-            "You",
-            "may",
-            "play",
-            "a" | "an" | "one" | "two",
+        words.get(3 + used..),
+        Some([
             "additional",
             "land" | "lands",
             "on",
@@ -329,19 +329,7 @@ fn is_additional_land_play_static_line(normalized: &str) -> bool {
             "of",
             "your",
             "turns"
-        ] | [
-            "you",
-            "may",
-            "play",
-            "a" | "an" | "one" | "two",
-            "additional",
-            "land" | "lands",
-            "on",
-            "each",
-            "of",
-            "your",
-            "turns"
-        ]
+        ])
     )
 }
 

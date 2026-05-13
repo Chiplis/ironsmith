@@ -483,6 +483,16 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
         (*self).decide_order(game, ctx)
     }
 
+    fn view_cards(
+        &mut self,
+        game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        (*self).view_cards(game, viewer, cards, ctx)
+    }
+
     fn decide_attackers(
         &mut self,
         game: &GameState,
@@ -617,6 +627,16 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
         ctx: &crate::decisions::context::OrderContext,
     ) -> Vec<ObjectId> {
         (**self).decide_order(game, ctx)
+    }
+
+    fn view_cards(
+        &mut self,
+        game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        (**self).view_cards(game, viewer, cards, ctx)
     }
 
     fn decide_attackers(

@@ -4,6 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -31,6 +32,16 @@ fn source_counter_snapshot(ctx: &ExecutionContext<'_>) -> Option<Vec<(CounterTyp
                 .map(|(ct, &count)| (*ct, count))
                 .collect()
         })
+}
+
+fn source_reference_uses_lki(
+    ctx: &ExecutionContext<'_>,
+    from_id: crate::ids::ObjectId,
+    current_zone: crate::zone::Zone,
+) -> bool {
+    ctx.source_snapshot
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.object_id != from_id || snapshot.zone != current_zone)
 }
 
 fn tagged_counter_snapshot(
@@ -75,16 +86,58 @@ impl EffectExecutor for MoveAllCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
-            .first()
-            .copied()
-        else {
-            return Ok(EffectOutcome::target_invalid());
+        let contextual_target_pair = if ctx.target_assignments.is_empty()
+            && !ctx.targets.is_empty()
+            && matches!(self.from.base(), ChooseSpec::Object(_))
+            && matches!(self.to.base(), ChooseSpec::Object(_))
+            && !self.from.is_target()
+            && !self.to.is_target()
+        {
+            match ctx.resolve_two_object_targets() {
+                Some((from_id, to_id)) => {
+                    let filter_ctx = ctx.filter_context(game);
+                    let from_valid = match self.from.base() {
+                        ChooseSpec::Object(filter) => game
+                            .object(from_id)
+                            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+                        _ => false,
+                    };
+                    let to_valid = match self.to.base() {
+                        ChooseSpec::Object(filter) => game
+                            .object(to_id)
+                            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+                        _ => false,
+                    };
+                    if !from_valid || !to_valid {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+                    Some((from_id, to_id))
+                }
+                None => return Ok(EffectOutcome::target_invalid()),
+            }
+        } else {
+            None
         };
 
-        let from_id = resolve_objects_for_effect(game, ctx, &self.from)?
-            .first()
-            .copied();
+        let to_id = if let Some((_, to_id)) = contextual_target_pair {
+            to_id
+        } else {
+            let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
+                .first()
+                .copied()
+            else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            to_id
+        };
+
+        let from_id = if let Some((from_id, _)) = contextual_target_pair {
+            Some(from_id)
+        } else {
+            resolve_objects_for_effect(game, ctx, &self.from)?
+                .first()
+                .copied()
+        };
         let from_is_source = matches!(self.from.base(), ChooseSpec::Source);
         let from_tag = match self.from.base() {
             ChooseSpec::Tagged(tag) => Some(tag),
@@ -100,7 +153,9 @@ impl EffectExecutor for MoveAllCountersEffect {
                             .or_else(|| snapshots.first())
                     })
                 });
-                if let Some(snapshot) = tagged_snapshot
+                if from_is_source && source_reference_uses_lki(ctx, from_id, obj.zone) {
+                    source_counter_snapshot(ctx).unwrap_or_default()
+                } else if let Some(snapshot) = tagged_snapshot
                     && snapshot.zone != obj.zone
                 {
                     snapshot
@@ -141,6 +196,9 @@ impl EffectExecutor for MoveAllCountersEffect {
             // Remove from source
             let removed = if let Some(from_id) = from_id.filter(|id| {
                 game.object(*id).is_some_and(|obj| {
+                    if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
+                        return false;
+                    }
                     from_tag
                         .and_then(|tag| {
                             ctx.get_tagged_all(tag).and_then(|snapshots| {

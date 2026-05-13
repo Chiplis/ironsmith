@@ -1987,6 +1987,12 @@ impl<
     pub fn partner() -> Self {
         Self::identified(StaticAbilityId::Partner, "partner")
     }
+    pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
+        Self::identified(
+            StaticAbilityId::PartnerWith,
+            format!("partner with {}", partner_name.as_ref().trim()),
+        )
+    }
     pub fn start_your_engines() -> Self {
         Self::identified(StaticAbilityId::StartYourEngines, "start your engines")
     }

@@ -984,16 +984,7 @@ fn move_to_top_of_library(
     // The card should now be at the end of the library array (which represents the top)
     // move_object already handles this correctly for Zone::Library
 
-    // Ensure the card is at the top (end of the Vec for library)
-    if let Some(player) = game.player_mut(owner) {
-        // Remove from current position if not already at top
-        if let Some(pos) = player.library.iter().position(|&id| id == new_id)
-            && pos != player.library.len() - 1
-        {
-            player.library.remove(pos);
-            player.library.push(new_id);
-        }
-    }
+    game.move_library_card_to_top(owner, new_id, "replacement moved card to top of library");
 
     Some(new_id)
 }

@@ -88,7 +88,7 @@ pub(crate) struct SearchLibraryDiscardFollowupBoundary {
     pub(crate) shuffle_idx: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SearchLibraryEffectRouting {
     pub(crate) destination: Zone,
     pub(crate) reveal: bool,
@@ -96,6 +96,7 @@ pub(crate) struct SearchLibraryEffectRouting {
     pub(crate) face_down_exile: bool,
     pub(crate) split_battlefield_and_hand: bool,
     pub(crate) has_tapped_modifier: bool,
+    pub(crate) library_position_from_top: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -658,13 +659,15 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     trailing_discard_before_shuffle: bool,
 ) -> SearchLibraryEffectRouting {
     let words_all = parser_text_word_refs(tokens);
-    let destination = if let Some(put_idx) = clause_markers.put_idx {
-        let put_clause_words = parser_text_word_refs(&search_tokens[put_idx..]);
-        if word_slice_contains(&put_clause_words, "graveyard") {
+    let put_clause_words = clause_markers
+        .put_idx
+        .map(|put_idx| parser_text_word_refs(&search_tokens[put_idx..]));
+    let destination = if let Some(put_clause_words) = put_clause_words.as_ref() {
+        if word_slice_contains(put_clause_words, "graveyard") {
             Zone::Graveyard
-        } else if word_slice_contains(&put_clause_words, "hand") {
+        } else if word_slice_contains(put_clause_words, "hand") {
             Zone::Hand
-        } else if word_slice_contains(&put_clause_words, "top") {
+        } else if word_slice_contains(put_clause_words, "top") {
             Zone::Library
         } else {
             Zone::Battlefield
@@ -691,6 +694,9 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         face_down_exile,
         split_battlefield_and_hand,
         has_tapped_modifier,
+        library_position_from_top: put_clause_words
+            .as_ref()
+            .and_then(|words| search_library_put_position_from_top_words(words)),
     }
 }
 
@@ -1374,6 +1380,29 @@ pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
 pub(crate) fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
     word_slice_mentions_nth_from_top(words)
         && !word_slice_contains_sequence(words, &["on", "top", "of", "library"])
+        && search_library_put_position_from_top_words(words).is_none()
+}
+
+pub(crate) fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Value> {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        let Some((position, used)) = ironsmith_core::parse_ordinal_words(&words[idx..]) else {
+            idx += 1;
+            continue;
+        };
+        if idx + used + 2 < words.len()
+            && words[idx + used] == "from"
+            && words[idx + used + 1] == "the"
+            && words[idx + used + 2] == "top"
+            && words[..idx]
+                .iter()
+                .any(|word| matches!(*word, "put" | "puts"))
+        {
+            return Some(Value::Fixed(position as i32));
+        }
+        idx += 1;
+    }
+    None
 }
 
 pub(crate) fn search_library_subject_wraps_each_target_player_lexed(

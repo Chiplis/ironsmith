@@ -3312,7 +3312,7 @@ export function usePeerLobby({
   const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({ requirements = [], audit = {} }) => {
     for (const requirement of requirements || []) {
       const type = String(requirement?.type || "");
-      if (!type || type === "hidden_move") continue;
+      if (!type || type === "hidden_move" || type === "hidden_order_update") continue;
       if (type === "public_open") {
         const match = (audit.openings || []).find((opening) =>
           openingMatchesRequirement(opening, requirement)

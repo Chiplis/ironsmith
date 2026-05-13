@@ -3,23 +3,6 @@ use crate::{
     StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
 };
 
-fn small_number_word(n: u32) -> Option<&'static str> {
-    match n {
-        0 => Some("zero"),
-        1 => Some("one"),
-        2 => Some("two"),
-        3 => Some("three"),
-        4 => Some("four"),
-        5 => Some("five"),
-        6 => Some("six"),
-        7 => Some("seven"),
-        8 => Some("eight"),
-        9 => Some("nine"),
-        10 => Some("ten"),
-        _ => None,
-    }
-}
-
 /// A reference to an object for use in filters and effects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ObjectRef {
@@ -277,9 +260,7 @@ impl PlayerFilter {
                 card_type.to_string().to_ascii_lowercase()
             ),
             Self::CardsInHandAtLeastMoreThanYou { base, count } => {
-                let count_text = small_number_word(*count)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| count.to_string());
+                let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
                 format!(
                     "{} who has at least {} more cards in hand than you do",
                     base.description(),
@@ -2184,9 +2165,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             card_type.to_string().to_ascii_lowercase()
         ),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
-            let count_text = small_number_word(*count)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} who has at least {count_text} more cards in hand than you do's",
                 describe_player_filter(base)
@@ -2252,9 +2231,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             card_type.to_string().to_ascii_lowercase()
         ),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
-            let count_text = small_number_word(*count)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} who has at least {count_text} more cards in hand than you do",
                 describe_player_filter(base)

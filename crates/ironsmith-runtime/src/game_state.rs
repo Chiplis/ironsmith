@@ -126,6 +126,37 @@ pub struct HiddenCardInfo {
     pub public_commitment: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HiddenInfoOperation {
+    HiddenMove {
+        owner: PlayerId,
+        old_object_id: ObjectId,
+        new_object_id: ObjectId,
+        from: Zone,
+        to: Zone,
+        slot: u16,
+        commitment: String,
+    },
+    LibraryShuffle {
+        player: PlayerId,
+        before_order: Vec<ObjectId>,
+        after_order: Vec<ObjectId>,
+        random_count_before: u64,
+        random_count_after: u64,
+    },
+    LibraryReorder {
+        player: PlayerId,
+        before_order: Vec<ObjectId>,
+        after_order: Vec<ObjectId>,
+        reason: String,
+    },
+    FairRandom {
+        random_count_before: u64,
+        random_count_after: u64,
+        reason: String,
+    },
+}
+
 #[derive(Debug, Clone, Default)]
 struct MetadataStateStore {
     ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
@@ -296,6 +327,7 @@ struct RuntimeCacheState {
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
+    hidden_info_audit_log: RefCell<Vec<HiddenInfoOperation>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
     continuous_state_turn_number: Cell<u32>,
@@ -313,6 +345,7 @@ impl Clone for RuntimeCacheState {
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
             transcript_random_seeds: RefCell::new(self.transcript_random_seeds.borrow().clone()),
+            hidden_info_audit_log: RefCell::new(self.hidden_info_audit_log.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
@@ -334,6 +367,7 @@ impl RuntimeCacheState {
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
+            hidden_info_audit_log: RefCell::new(Vec::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
@@ -2119,6 +2153,25 @@ impl GameState {
         self.runtime_cache.irreversible_random_count.get()
     }
 
+    pub fn crypto_audit_checkpoint(&self) -> usize {
+        self.runtime_cache.hidden_info_audit_log.borrow().len()
+    }
+
+    pub fn crypto_audit_operations_since(&self, checkpoint: usize) -> Vec<HiddenInfoOperation> {
+        let log = self.runtime_cache.hidden_info_audit_log.borrow();
+        if checkpoint >= log.len() {
+            return Vec::new();
+        }
+        log[checkpoint..].to_vec()
+    }
+
+    fn push_hidden_info_operation(&self, operation: HiddenInfoOperation) {
+        self.runtime_cache
+            .hidden_info_audit_log
+            .borrow_mut()
+            .push(operation);
+    }
+
     /// Queue a deterministic die result for test harnesses that mirror external fixtures.
     pub fn force_next_die_roll(&mut self, result: u32) {
         self.runtime_cache
@@ -2144,13 +2197,11 @@ impl GameState {
             .extend(seeds.into_iter().map(Self::normalize_random_seed));
     }
 
-    fn record_irreversible_random(&self) {
-        self.runtime_cache.irreversible_random_count.set(
-            self.runtime_cache
-                .irreversible_random_count
-                .get()
-                .wrapping_add(1),
-        );
+    fn record_irreversible_random(&self) -> (u64, u64) {
+        let before = self.runtime_cache.irreversible_random_count.get();
+        let after = before.wrapping_add(1);
+        self.runtime_cache.irreversible_random_count.set(after);
+        (before, after)
     }
 
     /// Advance the deterministic RNG and return the next 64 random bits.
@@ -2177,24 +2228,214 @@ impl GameState {
 
     /// Shuffle a slice using the deterministic match RNG.
     pub fn shuffle_slice<T>(&self, values: &mut [T]) {
-        self.record_irreversible_random();
+        let (random_count_before, random_count_after) = self.record_irreversible_random();
         let mut rng = StdRng::seed_from_u64(self.next_random_u64());
         values.shuffle(&mut rng);
+        self.push_hidden_info_operation(HiddenInfoOperation::FairRandom {
+            random_count_before,
+            random_count_after,
+            reason: "runtime consumed irreversible random output".to_string(),
+        });
     }
 
     /// Shuffle a player's library using the deterministic match RNG.
     pub fn shuffle_player_library(&mut self, player_id: PlayerId) {
-        self.record_irreversible_random();
+        let (random_count_before, random_count_after) = self.record_irreversible_random();
         let seed = self.next_random_u64();
         let Some(index) = self
             .players
             .iter()
             .position(|player| player.id == player_id)
         else {
+            self.push_hidden_info_operation(HiddenInfoOperation::FairRandom {
+                random_count_before,
+                random_count_after,
+                reason: "shuffle requested for missing player".to_string(),
+            });
             return;
         };
+        let before_order = self.players[index].library.clone();
         let mut rng = StdRng::seed_from_u64(seed);
         self.players[index].library.shuffle(&mut rng);
+        let after_order = self.players[index].library.clone();
+        self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
+            player: player_id,
+            before_order,
+            after_order,
+            random_count_before,
+            random_count_after,
+        });
+    }
+
+    fn same_object_multiset(left: &[ObjectId], right: &[ObjectId]) -> bool {
+        if left.len() != right.len() {
+            return false;
+        }
+        let mut counts: HashMap<ObjectId, usize> = HashMap::new();
+        for &id in left {
+            *counts.entry(id).or_default() += 1;
+        }
+        for &id in right {
+            let Some(count) = counts.get_mut(&id) else {
+                return false;
+            };
+            if *count == 0 {
+                return false;
+            }
+            *count -= 1;
+        }
+        counts.values().all(|count| *count == 0)
+    }
+
+    fn record_library_reorder(
+        &self,
+        player: PlayerId,
+        before_order: Vec<ObjectId>,
+        after_order: Vec<ObjectId>,
+        reason: impl Into<String>,
+    ) {
+        if before_order == after_order || !Self::same_object_multiset(&before_order, &after_order) {
+            return;
+        }
+        self.push_hidden_info_operation(HiddenInfoOperation::LibraryReorder {
+            player,
+            before_order,
+            after_order,
+            reason: reason.into(),
+        });
+    }
+
+    pub fn set_player_library_order_with_audit(
+        &mut self,
+        player: PlayerId,
+        after_order: Vec<ObjectId>,
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+            return false;
+        };
+        if !Self::same_object_multiset(&before_order, &after_order) {
+            return false;
+        }
+        if let Some(player_state) = self.player_mut(player) {
+            player_state.library = after_order.clone();
+        }
+        self.record_library_reorder(player, before_order, after_order, reason);
+        true
+    }
+
+    pub fn move_library_card_to_top(
+        &mut self,
+        player: PlayerId,
+        card: ObjectId,
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+            return false;
+        };
+        if !before_order.contains(&card) {
+            return false;
+        }
+        let mut after_order: Vec<_> = before_order
+            .iter()
+            .copied()
+            .filter(|id| *id != card)
+            .collect();
+        after_order.push(card);
+        self.set_player_library_order_with_audit(player, after_order, reason)
+    }
+
+    pub fn move_library_card_to_bottom(
+        &mut self,
+        player: PlayerId,
+        card: ObjectId,
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+            return false;
+        };
+        if !before_order.contains(&card) {
+            return false;
+        }
+        let mut after_order = Vec::with_capacity(before_order.len());
+        after_order.push(card);
+        after_order.extend(before_order.iter().copied().filter(|id| *id != card));
+        self.set_player_library_order_with_audit(player, after_order, reason)
+    }
+
+    pub fn move_library_card_to_nth_from_top(
+        &mut self,
+        player: PlayerId,
+        card: ObjectId,
+        position_from_top: usize,
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+            return false;
+        };
+        if !before_order.contains(&card) {
+            return false;
+        }
+        let mut after_order: Vec<_> = before_order
+            .iter()
+            .copied()
+            .filter(|id| *id != card)
+            .collect();
+        let position = position_from_top.max(1);
+        let insert_idx = after_order.len().saturating_sub(position - 1);
+        after_order.insert(insert_idx, card);
+        self.set_player_library_order_with_audit(player, after_order, reason)
+    }
+
+    pub fn shuffle_library_except_then_insert_from_top(
+        &mut self,
+        player: PlayerId,
+        cards_in_insert_order: &[ObjectId],
+        position_from_top: usize,
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+            return false;
+        };
+        if cards_in_insert_order.is_empty() {
+            self.shuffle_player_library(player);
+            return true;
+        }
+        let selected: Vec<_> = cards_in_insert_order
+            .iter()
+            .copied()
+            .filter(|id| before_order.contains(id))
+            .collect();
+        if selected.is_empty() {
+            self.shuffle_player_library(player);
+            return true;
+        }
+        let selected_set: HashSet<_> = selected.iter().copied().collect();
+        if let Some(player_state) = self.player_mut(player) {
+            player_state.library.retain(|id| !selected_set.contains(id));
+        }
+        self.shuffle_player_library(player);
+        let after_order = if let Some(player_state) = self.player_mut(player) {
+            let position = position_from_top.max(1);
+            let insert_idx = player_state.library.len().saturating_sub(position - 1);
+            player_state
+                .library
+                .splice(insert_idx..insert_idx, selected.iter().copied());
+            player_state.library.clone()
+        } else {
+            return false;
+        };
+        self.record_library_reorder(player, before_order, after_order, reason);
+        true
+    }
+
+    pub fn shuffle_library_except_then_put_on_top(
+        &mut self,
+        player: PlayerId,
+        top_cards_in_push_order: &[ObjectId],
+        reason: impl Into<String>,
+    ) -> bool {
+        self.shuffle_library_except_then_insert_from_top(player, top_cards_in_push_order, 1, reason)
     }
 
     /// Generates a new unique object ID.
@@ -3489,8 +3730,18 @@ impl GameState {
 
         self.add_object(new_object);
         if let Some(mut info) = hidden_card_info {
+            let audit_info = info.clone();
             info.zone = new_zone;
             self.hidden_cards.insert(new_id, info);
+            self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
+                owner: audit_info.owner,
+                old_object_id: old_id,
+                new_object_id: new_id,
+                from: old_zone,
+                to: new_zone,
+                slot: audit_info.slot,
+                commitment: audit_info.commitment,
+            });
         }
 
         if new_zone == Zone::Battlefield
@@ -8259,6 +8510,166 @@ mod tests {
             game.irreversible_random_count(),
             before + 1,
             "gameplay shuffles should mark the action chain as irreversible"
+        );
+    }
+
+    #[test]
+    fn crypto_audit_journal_records_hidden_library_to_hand_move() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let hidden = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            7,
+            "alice-slot-7".to_string(),
+        );
+        let checkpoint = game.crypto_audit_checkpoint();
+
+        let drawn = game.draw_cards(alice, 1);
+
+        assert_eq!(drawn.len(), 1);
+        let hand_id = drawn[0];
+        let operations = game.crypto_audit_operations_since(checkpoint);
+        assert!(operations.iter().any(|operation| {
+            matches!(
+                operation,
+                HiddenInfoOperation::HiddenMove {
+                    owner,
+                    old_object_id,
+                    new_object_id,
+                    from,
+                    to,
+                    slot,
+                    commitment,
+                } if *owner == alice
+                    && *old_object_id == hidden
+                    && *new_object_id == hand_id
+                    && *from == Zone::Library
+                    && *to == Zone::Hand
+                    && *slot == 7
+                    && commitment == "alice-slot-7"
+            )
+        }));
+    }
+
+    #[test]
+    fn crypto_audit_journal_records_library_shuffle() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        game.create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        game.create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        game.create_hidden_card_placeholder(alice, Zone::Library, 2, "slot-2".to_string());
+        let before_order = game.player(alice).expect("alice").library.clone();
+        let before_random = game.irreversible_random_count();
+        let checkpoint = game.crypto_audit_checkpoint();
+
+        game.shuffle_player_library(alice);
+
+        let after_order = game.player(alice).expect("alice").library.clone();
+        let operations = game.crypto_audit_operations_since(checkpoint);
+        assert!(operations.iter().any(|operation| {
+            matches!(
+                operation,
+                HiddenInfoOperation::LibraryShuffle {
+                    player,
+                    before_order: recorded_before,
+                    after_order: recorded_after,
+                    random_count_before,
+                    random_count_after,
+                } if *player == alice
+                    && *recorded_before == before_order
+                    && *recorded_after == after_order
+                    && *random_count_before == before_random
+                    && *random_count_after == before_random + 1
+            )
+        }));
+    }
+
+    #[test]
+    fn crypto_audit_journal_records_hidden_library_reorder() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bottom =
+            game.create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        let top =
+            game.create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        let checkpoint = game.crypto_audit_checkpoint();
+
+        assert!(
+            game.set_player_library_order_with_audit(alice, vec![top, bottom], "test reorder",)
+        );
+
+        let operations = game.crypto_audit_operations_since(checkpoint);
+        assert!(operations.iter().any(|operation| {
+            matches!(
+                operation,
+                HiddenInfoOperation::LibraryReorder {
+                    player,
+                    before_order,
+                    after_order,
+                    reason,
+                } if *player == alice
+                    && *before_order == vec![bottom, top]
+                    && *after_order == vec![top, bottom]
+                    && reason == "test reorder"
+            )
+        }));
+    }
+
+    #[test]
+    fn production_effects_do_not_mutate_player_library_directly() {
+        fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs_files(&path, out);
+                } else if path.extension().is_some_and(|extension| extension == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mut files = Vec::new();
+        collect_rs_files(&manifest_dir.join("src/effects"), &mut files);
+        collect_rs_files(&manifest_dir.join("src/events"), &mut files);
+
+        let forbidden = [
+            ".library.push(",
+            ".library.insert(",
+            ".library.remove(",
+            ".library.retain(",
+            ".library.splice(",
+            "player.library =",
+        ];
+        let mut violations = Vec::new();
+        for path in files {
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let production_source = source
+                .split("#[cfg(test)]")
+                .next()
+                .unwrap_or(source.as_str());
+            for (index, line) in production_source.lines().enumerate() {
+                if forbidden.iter().any(|pattern| line.contains(pattern)) {
+                    violations.push(format!(
+                        "{}:{}: {}",
+                        path.strip_prefix(&manifest_dir).unwrap_or(&path).display(),
+                        index + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "production hidden-library code must use GameState audited order helpers:\n{}",
+            violations.join("\n")
         );
     }
 

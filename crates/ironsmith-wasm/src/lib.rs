@@ -21,14 +21,16 @@ use ironsmith::combat_state::AttackTarget;
 use ironsmith::decision::{
     AttackerDeclaration, BlockerDeclaration, DecisionMaker, GameProgress, GameResult, LegalAction,
 };
-use ironsmith::decisions::context::DecisionContext;
+use ironsmith::decisions::context::{
+    DecisionContext, DecisionHiddenCardVisibility, ViewCardsContext,
+};
 use ironsmith::game_loop::{
     ActivationStage, CastStage, PendingPriorityContinuation, PriorityActionPerfMetrics,
     PriorityAdvancePerfMetrics, PriorityLoopState, PriorityResponse, advance_priority_with_dm,
     apply_decision_context_with_dm, apply_priority_response_with_dm, last_priority_action_perf,
     last_priority_advance_perf,
 };
-use ironsmith::game_state::{GameState, StackEntry, Target};
+use ironsmith::game_state::{GameState, HiddenInfoOperation, StackEntry, Target};
 use ironsmith::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::static_abilities::StaticAbilityId;
@@ -377,6 +379,7 @@ struct CryptoAuditState {
     libraries: HashMap<PlayerId, Vec<ObjectId>>,
     hands: HashMap<PlayerId, Vec<ObjectId>>,
     random_count: u64,
+    operation_checkpoint: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -646,6 +649,69 @@ fn merge_audit_viewed_cards(
     });
 }
 
+fn merge_hidden_decision_views(
+    game: &GameState,
+    current: &mut Option<ActiveViewedCards>,
+    audit: &mut Vec<ActiveViewedCards>,
+    ctx: &DecisionContext,
+) {
+    for view in ctx.hidden_card_views() {
+        if view.visibility == DecisionHiddenCardVisibility::None || view.object_ids.is_empty() {
+            continue;
+        }
+
+        let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+        for &id in &view.object_ids {
+            let Some(object) = game.object(id) else {
+                continue;
+            };
+            if !object.zone.is_hidden() && game.hidden_card_info(id).is_none() {
+                continue;
+            }
+            grouped
+                .entry((object.owner, object.zone))
+                .or_default()
+                .push(id);
+        }
+
+        for ((subject, zone), cards) in grouped {
+            if cards.is_empty() {
+                continue;
+            }
+            match view.visibility {
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer => {
+                    let viewer = game.controlling_player_for(ctx.player());
+                    let view_ctx = ViewCardsContext::new(
+                        viewer,
+                        subject,
+                        ctx.source(),
+                        zone,
+                        view.description.clone(),
+                    );
+                    merge_active_viewed_cards(current, viewer, &cards, &view_ctx);
+                    merge_audit_viewed_cards(audit, viewer, &cards, &view_ctx);
+                }
+                DecisionHiddenCardVisibility::Public => {
+                    for viewer_idx in 0..game.players.len() {
+                        let viewer = PlayerId::from_index(viewer_idx as u8);
+                        let view_ctx = ViewCardsContext::new(
+                            viewer,
+                            subject,
+                            ctx.source(),
+                            zone,
+                            view.description.clone(),
+                        )
+                        .with_public(true);
+                        merge_active_viewed_cards(current, viewer, &cards, &view_ctx);
+                        merge_audit_viewed_cards(audit, viewer, &cards, &view_ctx);
+                    }
+                }
+                DecisionHiddenCardVisibility::None => {}
+            }
+        }
+    }
+}
+
 fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
     for entry in game.stack.iter().rev() {
         if let Some(source_snapshot) = entry
@@ -813,6 +879,126 @@ fn push_requirement_unique(
     }
 }
 
+fn push_hidden_move_requirements(
+    requirements: &mut Vec<CryptoRequirementView>,
+    seen: &mut HashSet<String>,
+    before_card: &HiddenAuditCard,
+    after_card: &HiddenAuditCard,
+    reason: &str,
+) {
+    let moved = CryptoRequirementView {
+        id: format!(
+            "hidden_move:{}:{}:{}:{}:{}",
+            before_card.owner.index(),
+            zone_crypto_kind(before_card.zone),
+            zone_crypto_kind(after_card.zone),
+            before_card.slot,
+            after_card.object_id.0
+        ),
+        requirement_type: "hidden_move".to_string(),
+        owner: before_card.owner.index() as u8,
+        viewer: None,
+        zone: zone_crypto_kind(after_card.zone).to_string(),
+        slot: Some(before_card.slot),
+        object_id: Some(after_card.object_id.0),
+        commitment: (!after_card.commitment.is_empty()).then(|| after_card.commitment.clone()),
+        card: after_card.card.clone(),
+        visibility: None,
+        reason: Some(reason.to_string()),
+        count: None,
+        from: Some(zone_crypto_kind(before_card.zone).to_string()),
+        to: Some(zone_crypto_kind(after_card.zone).to_string()),
+        before_order: None,
+        after_order: None,
+        random_count_before: None,
+        random_count_after: None,
+    };
+    push_requirement_unique(requirements, seen, moved);
+
+    if before_card.zone == Zone::Library && after_card.zone == Zone::Hand {
+        push_requirement_unique(
+            requirements,
+            seen,
+            CryptoRequirementView::hidden_open(
+                "private_open",
+                after_card,
+                Some(after_card.owner),
+                "owner_only",
+                "hidden library card moved to hand",
+            ),
+        );
+    }
+
+    if after_card.card.is_some()
+        && !matches!(after_card.zone, Zone::Library | Zone::Hand | Zone::Exile)
+    {
+        push_requirement_unique(
+            requirements,
+            seen,
+            CryptoRequirementView::hidden_open(
+                "public_open",
+                after_card,
+                None,
+                "public",
+                "hidden card moved to a public zone",
+            ),
+        );
+    }
+}
+
+fn push_hidden_order_update_requirement(
+    requirements: &mut Vec<CryptoRequirementView>,
+    seen: &mut HashSet<String>,
+    player: PlayerId,
+    before_order: &[ObjectId],
+    after_order: &[ObjectId],
+    reason: &str,
+) {
+    if before_order == after_order || before_order.len() != after_order.len() {
+        return;
+    }
+    let before_ids: Vec<u64> = before_order.iter().map(|id| id.0).collect();
+    let after_ids: Vec<u64> = after_order.iter().map(|id| id.0).collect();
+    let id = format!(
+        "hidden_order_update:{}:library:{}:{}",
+        player.index(),
+        before_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("-"),
+        after_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("-")
+    );
+    push_requirement_unique(
+        requirements,
+        seen,
+        CryptoRequirementView {
+            id,
+            requirement_type: "hidden_order_update".to_string(),
+            owner: player.index() as u8,
+            viewer: None,
+            zone: "library".to_string(),
+            slot: None,
+            object_id: None,
+            commitment: None,
+            card: None,
+            visibility: None,
+            reason: Some(reason.to_string()),
+            count: Some(after_order.len().min(u16::MAX as usize) as u16),
+            from: None,
+            to: None,
+            before_order: Some(before_ids),
+            after_order: Some(after_ids),
+            random_count_before: None,
+            random_count_after: None,
+        },
+    );
+}
+
 fn library_relative_order_changed(before: &[ObjectId], after: &[ObjectId]) -> bool {
     let after_set: HashSet<_> = after.iter().copied().collect();
     let before_common: Vec<_> = before
@@ -887,6 +1073,26 @@ fn effective_after_shuffle_order(
     order
 }
 
+fn remap_journaled_after_shuffle_order(
+    before: &CryptoAuditState,
+    after: &CryptoAuditState,
+    after_order: &[ObjectId],
+) -> Vec<ObjectId> {
+    after_order
+        .iter()
+        .copied()
+        .map(|id| {
+            let key = after
+                .hidden_by_id
+                .get(&id)
+                .or_else(|| before.hidden_by_id.get(&id))
+                .map(hidden_audit_key);
+            key.and_then(|key| after.hidden_by_key.get(&key).map(|card| card.object_id))
+                .unwrap_or(id)
+        })
+        .collect()
+}
+
 fn effective_before_shuffle_order(
     player: PlayerId,
     before: &CryptoAuditState,
@@ -930,6 +1136,7 @@ impl WasmGame {
     fn capture_crypto_audit_state(&self) -> CryptoAuditState {
         let mut state = CryptoAuditState {
             random_count: self.game.irreversible_random_count(),
+            operation_checkpoint: self.game.crypto_audit_checkpoint(),
             ..CryptoAuditState::default()
         };
         for (&object_id, info) in &self.game.hidden_cards {
@@ -960,6 +1167,170 @@ impl WasmGame {
         let after = self.capture_crypto_audit_state();
         let mut requirements = Vec::new();
         let mut seen = HashSet::new();
+        let operations = self
+            .game
+            .crypto_audit_operations_since(before.operation_checkpoint);
+        let mut journaled_shuffle_players = HashSet::new();
+        let mut journaled_random_delta = 0u64;
+
+        for operation in operations {
+            match operation {
+                HiddenInfoOperation::HiddenMove {
+                    owner,
+                    old_object_id,
+                    new_object_id,
+                    slot,
+                    commitment,
+                    ..
+                } => {
+                    let key = (owner.index() as u8, slot, commitment.clone());
+                    let before_card = before
+                        .hidden_by_id
+                        .get(&old_object_id)
+                        .or_else(|| before.hidden_by_key.get(&key));
+                    let after_card = after
+                        .hidden_by_id
+                        .get(&new_object_id)
+                        .or_else(|| after.hidden_by_key.get(&key));
+                    if let (Some(before_card), Some(after_card)) = (before_card, after_card) {
+                        push_hidden_move_requirements(
+                            &mut requirements,
+                            &mut seen,
+                            before_card,
+                            after_card,
+                            "hidden object moved between zones",
+                        );
+                    }
+                }
+                HiddenInfoOperation::LibraryShuffle {
+                    player,
+                    before_order,
+                    after_order,
+                    random_count_before,
+                    random_count_after,
+                } => {
+                    journaled_shuffle_players.insert(player);
+                    journaled_random_delta = journaled_random_delta
+                        .saturating_add(random_count_after.saturating_sub(random_count_before));
+                    let mut after_shuffle_order =
+                        remap_journaled_after_shuffle_order(&before, &after, &after_order);
+                    if after_shuffle_order.is_empty() {
+                        after_shuffle_order = after_order;
+                    }
+                    let mut before_shuffle_order = effective_before_shuffle_order(
+                        player,
+                        &before,
+                        &after,
+                        &after_shuffle_order,
+                    );
+                    if before_shuffle_order.len() != after_shuffle_order.len() {
+                        before_shuffle_order = before_order;
+                    }
+                    if before_shuffle_order.len() <= 1
+                        || before_shuffle_order.len() != after_shuffle_order.len()
+                    {
+                        continue;
+                    }
+                    let library_prefix_count = after
+                        .libraries
+                        .get(&player)
+                        .map(|order| order.len())
+                        .unwrap_or(after_shuffle_order.len())
+                        .min(after_shuffle_order.len());
+                    push_requirement_unique(
+                        &mut requirements,
+                        &mut seen,
+                        CryptoRequirementView {
+                            id: format!(
+                                "verifiable_shuffle:{}:library:{}:{}",
+                                player.index(),
+                                random_count_before,
+                                random_count_after
+                            ),
+                            requirement_type: "verifiable_shuffle".to_string(),
+                            owner: player.index() as u8,
+                            viewer: None,
+                            zone: "library".to_string(),
+                            slot: None,
+                            object_id: None,
+                            commitment: None,
+                            card: None,
+                            visibility: None,
+                            reason: Some("library shuffled".to_string()),
+                            count: Some(library_prefix_count.min(u16::MAX as usize) as u16),
+                            from: None,
+                            to: None,
+                            before_order: Some(
+                                before_shuffle_order.iter().map(|id| id.0).collect(),
+                            ),
+                            after_order: Some(after_shuffle_order.iter().map(|id| id.0).collect()),
+                            random_count_before: Some(random_count_before),
+                            random_count_after: Some(random_count_after),
+                        },
+                    );
+                }
+                HiddenInfoOperation::LibraryReorder {
+                    player,
+                    before_order,
+                    after_order,
+                    reason,
+                } => {
+                    push_hidden_order_update_requirement(
+                        &mut requirements,
+                        &mut seen,
+                        player,
+                        &before_order,
+                        &after_order,
+                        &reason,
+                    );
+                }
+                HiddenInfoOperation::FairRandom {
+                    random_count_before,
+                    random_count_after,
+                    reason,
+                } => {
+                    let delta = random_count_after.saturating_sub(random_count_before);
+                    journaled_random_delta = journaled_random_delta.saturating_add(delta);
+                    if delta == 0 {
+                        continue;
+                    }
+                    let owner = self
+                        .game
+                        .turn
+                        .priority_player
+                        .unwrap_or(self.game.turn.active_player);
+                    push_requirement_unique(
+                        &mut requirements,
+                        &mut seen,
+                        CryptoRequirementView {
+                            id: format!(
+                                "fair_random:{}:{}:{}",
+                                owner.index(),
+                                random_count_before,
+                                random_count_after
+                            ),
+                            requirement_type: "fair_random".to_string(),
+                            owner: owner.index() as u8,
+                            viewer: None,
+                            zone: "game".to_string(),
+                            slot: None,
+                            object_id: None,
+                            commitment: None,
+                            card: None,
+                            visibility: None,
+                            reason: Some(reason),
+                            count: Some(delta.min(u16::MAX as u64) as u16),
+                            from: None,
+                            to: None,
+                            before_order: None,
+                            after_order: None,
+                            random_count_before: Some(random_count_before),
+                            random_count_after: Some(random_count_after),
+                        },
+                    );
+                }
+            }
+        }
 
         for before_card in before.hidden_by_id.values() {
             let after_card = after
@@ -969,65 +1340,13 @@ impl WasmGame {
 
             if let Some(after_card) = after_card {
                 if before_card.zone != after_card.zone {
-                    let moved = CryptoRequirementView {
-                        id: format!(
-                            "hidden_move:{}:{}:{}:{}:{}",
-                            before_card.owner.index(),
-                            zone_crypto_kind(before_card.zone),
-                            zone_crypto_kind(after_card.zone),
-                            before_card.slot,
-                            after_card.object_id.0
-                        ),
-                        requirement_type: "hidden_move".to_string(),
-                        owner: before_card.owner.index() as u8,
-                        viewer: None,
-                        zone: zone_crypto_kind(after_card.zone).to_string(),
-                        slot: Some(before_card.slot),
-                        object_id: Some(after_card.object_id.0),
-                        commitment: (!after_card.commitment.is_empty())
-                            .then(|| after_card.commitment.clone()),
-                        card: after_card.card.clone(),
-                        visibility: None,
-                        reason: Some("hidden object moved between zones".to_string()),
-                        count: None,
-                        from: Some(zone_crypto_kind(before_card.zone).to_string()),
-                        to: Some(zone_crypto_kind(after_card.zone).to_string()),
-                        before_order: None,
-                        after_order: None,
-                        random_count_before: None,
-                        random_count_after: None,
-                    };
-                    push_requirement_unique(&mut requirements, &mut seen, moved);
-
-                    if before_card.zone == Zone::Library && after_card.zone == Zone::Hand {
-                        push_requirement_unique(
-                            &mut requirements,
-                            &mut seen,
-                            CryptoRequirementView::hidden_open(
-                                "private_open",
-                                after_card,
-                                Some(after_card.owner),
-                                "owner_only",
-                                "hidden library card moved to hand",
-                            ),
-                        );
-                    }
-
-                    if after_card.card.is_some()
-                        && !matches!(after_card.zone, Zone::Library | Zone::Hand | Zone::Exile)
-                    {
-                        push_requirement_unique(
-                            &mut requirements,
-                            &mut seen,
-                            CryptoRequirementView::hidden_open(
-                                "public_open",
-                                after_card,
-                                None,
-                                "public",
-                                "hidden card moved to a public zone",
-                            ),
-                        );
-                    }
+                    push_hidden_move_requirements(
+                        &mut requirements,
+                        &mut seen,
+                        before_card,
+                        after_card,
+                        "hidden object moved between zones (snapshot fallback)",
+                    );
                 }
                 continue;
             }
@@ -1127,6 +1446,9 @@ impl WasmGame {
 
         let mut shuffle_requirements = 0u64;
         for (player, before_order) in &before.libraries {
+            if journaled_shuffle_players.contains(player) {
+                continue;
+            }
             let Some(after_library_order) = after.libraries.get(player) else {
                 continue;
             };
@@ -1154,7 +1476,7 @@ impl WasmGame {
                     commitment: None,
                     card: None,
                     visibility: None,
-                    reason: Some("library order changed".to_string()),
+                    reason: Some("library order changed (snapshot fallback)".to_string()),
                     count: Some(after_library_order.len().min(u16::MAX as usize) as u16),
                     from: None,
                     to: None,
@@ -1166,7 +1488,10 @@ impl WasmGame {
             );
         }
 
-        let random_delta = after.random_count.saturating_sub(before.random_count);
+        let random_delta = after
+            .random_count
+            .saturating_sub(before.random_count)
+            .saturating_sub(journaled_random_delta);
         if random_delta > shuffle_requirements {
             let owner = self
                 .game
@@ -2340,9 +2665,14 @@ impl WasmReplayDecisionMaker {
     }
 
     fn capture_once_for_game(&mut self, game: &GameState, ctx: DecisionContext) {
-        self.capture_once(ironsmith::decisions::context::enrich_display_hints(
-            game, ctx,
-        ));
+        let enriched = ironsmith::decisions::context::enrich_display_hints(game, ctx);
+        merge_hidden_decision_views(
+            game,
+            &mut self.viewed_cards,
+            &mut self.audit_viewed_cards,
+            &enriched,
+        );
+        self.capture_once(enriched);
     }
 
     fn finish(
@@ -3446,6 +3776,219 @@ mod native_tests {
                 && requirement.object_id == Some(hidden_hand.0)
                 && requirement.commitment.as_deref() == Some("bob-hand-commitment")
         }));
+    }
+
+    #[test]
+    fn crypto_requirements_include_decision_hidden_card_public_openings() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let hidden_exiled = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Exile,
+            0,
+            "alice-exile-decision-commitment".to_string(),
+        );
+        let source = ObjectId::from_raw(77);
+        let ctx = DecisionContext::Boolean(
+            ironsmith::decisions::context::BooleanContext::new(
+                alice,
+                Some(source),
+                "Put Hidden Card into your hand?",
+            )
+            .with_hidden_card_view(
+                vec![hidden_exiled],
+                DecisionHiddenCardVisibility::Public,
+                "Inspect hidden card for decision",
+            ),
+        );
+        let before = wasm.capture_crypto_audit_state();
+        let mut replay = WasmReplayDecisionMaker::new(&[]);
+        replay.capture_once_for_game(&wasm.game, ctx);
+        let (_pending, viewed_cards, audit_views) = replay.finish();
+        wasm.active_viewed_cards = viewed_cards;
+        wasm.active_audit_viewed_cards = audit_views;
+
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_view_window"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "face_down_exile"
+                && requirement.count == Some(1)
+        }));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "face_down_exile"
+                && requirement.object_id == Some(hidden_exiled.0)
+                && requirement.commitment.as_deref() == Some("alice-exile-decision-commitment")
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_include_journaled_library_shuffle() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 2, "slot-2".to_string());
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.game.shuffle_player_library(alice);
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "verifiable_shuffle"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "library"
+                && requirement
+                    .before_order
+                    .as_ref()
+                    .is_some_and(|order| order.len() == 3)
+                && requirement
+                    .after_order
+                    .as_ref()
+                    .is_some_and(|order| order.len() == 3)
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_include_hidden_order_update_for_nonrandom_library_reorder() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bottom =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        let top =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+
+        let before = wasm.capture_crypto_audit_state();
+        wasm.game.set_player_library_order_with_audit(
+            alice,
+            vec![top, bottom],
+            "test nonrandom reorder",
+        );
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "hidden_order_update"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "library"
+                && requirement.before_order == Some(vec![bottom.0, top.0])
+                && requirement.after_order == Some(vec![top.0, bottom.0])
+        }));
+        assert!(!wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "verifiable_shuffle"
+                && requirement.owner == alice.index() as u8
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_for_search_shuffle_exclude_card_put_on_top() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let card_a =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        let card_b =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        let card_c =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 2, "slot-2".to_string());
+        let tutored =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 3, "slot-3".to_string());
+
+        let before = wasm.capture_crypto_audit_state();
+        assert!(wasm.game.shuffle_library_except_then_put_on_top(
+            alice,
+            &[tutored],
+            "searched card put on top after library shuffle",
+        ));
+        wasm.update_crypto_requirements_from(before);
+
+        let shuffle = wasm
+            .last_crypto_requirements
+            .iter()
+            .find(|requirement| requirement.requirement_type == "verifiable_shuffle")
+            .expect("search shuffle should require ziffle proof");
+        assert_eq!(shuffle.count, Some(3));
+        assert_eq!(
+            shuffle.before_order.as_ref().map(Vec::len),
+            Some(3),
+            "the searched card is not part of the randomized library subset"
+        );
+        assert_eq!(shuffle.after_order.as_ref().map(Vec::len), Some(3));
+        let before_ids = shuffle.before_order.as_ref().expect("before order");
+        assert!(before_ids.contains(&card_a.0));
+        assert!(before_ids.contains(&card_b.0));
+        assert!(before_ids.contains(&card_c.0));
+        assert!(!before_ids.contains(&tutored.0));
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "hidden_order_update"
+                && requirement
+                    .before_order
+                    .as_ref()
+                    .is_some_and(|order| order.len() == 4)
+                && requirement
+                    .after_order
+                    .as_ref()
+                    .is_some_and(|order| order.len() == 4)
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_for_search_shuffle_support_card_third_from_top() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let _card_a =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        let _card_b =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        let _card_c =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 2, "slot-2".to_string());
+        let tutored =
+            wasm.game
+                .create_hidden_card_placeholder(alice, Zone::Library, 3, "slot-3".to_string());
+
+        let before = wasm.capture_crypto_audit_state();
+        assert!(wasm.game.shuffle_library_except_then_insert_from_top(
+            alice,
+            &[tutored],
+            3,
+            "searched card put third from top after library shuffle",
+        ));
+        wasm.update_crypto_requirements_from(before);
+
+        let shuffle = wasm
+            .last_crypto_requirements
+            .iter()
+            .find(|requirement| requirement.requirement_type == "verifiable_shuffle")
+            .expect("search shuffle should require ziffle proof");
+        assert_eq!(shuffle.count, Some(3));
+        assert!(
+            !shuffle
+                .before_order
+                .as_ref()
+                .expect("before order")
+                .contains(&tutored.0)
+        );
+
+        let order_update = wasm
+            .last_crypto_requirements
+            .iter()
+            .find(|requirement| requirement.requirement_type == "hidden_order_update")
+            .expect("searched-card placement should require commitment remapping");
+        let after_order = order_update.after_order.as_ref().expect("after order");
+        assert_eq!(after_order[after_order.len() - 3], tutored.0);
     }
 
     #[test]

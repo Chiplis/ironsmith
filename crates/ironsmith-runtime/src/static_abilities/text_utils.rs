@@ -24,19 +24,6 @@ pub(crate) fn capitalize_first(text: &str) -> String {
     }
 }
 
-pub(crate) fn number_word_u32(n: u32) -> Option<&'static str> {
-    match n {
-        0 => Some("zero"),
-        1 => Some("one"),
-        2 => Some("two"),
-        3 => Some("three"),
-        4 => Some("four"),
-        5 => Some("five"),
-        6 => Some("six"),
-        7 => Some("seven"),
-        8 => Some("eight"),
-        9 => Some("nine"),
-        10 => Some("ten"),
-        _ => None,
-    }
+pub(crate) fn number_word_u32(n: u32) -> Option<String> {
+    ironsmith_core::cardinal_word(n)
 }

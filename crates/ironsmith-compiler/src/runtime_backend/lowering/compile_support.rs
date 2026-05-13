@@ -82,7 +82,10 @@ use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
     ReferenceImports,
 };
-use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
+use super::reference_resolution::{
+    EffectReferenceResolutionConfig, annotate_effect_sequence,
+    preserves_existing_it_for_power_self_damage_followup,
+};
 use super::static_ability_helpers::{
     decayed_triggered_ability, exalted_triggered_ability, lower_granted_abilities_ast,
     lower_granted_abilities_ast_to_object_abilities, persist_triggered_ability,
@@ -653,8 +656,14 @@ pub(crate) fn compile_annotated_effects_with_context(
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
         apply_local_reference_env(ctx, &current.in_env);
-        ctx.auto_tag_object_targets =
-            effective_force_auto_tag_object_targets || current.auto_tag_object_targets;
+        let suppress_force_for_power_self_damage =
+            preserves_existing_it_for_power_self_damage_followup(
+                &current.effect,
+                annotated.effects.get(idx + 1).map(|next| &next.effect),
+            );
+        ctx.auto_tag_object_targets = (effective_force_auto_tag_object_targets
+            && !suppress_force_for_power_self_damage)
+            || current.auto_tag_object_targets;
 
         if let Some((effect_sequence, effect_choices, consumed)) =
             compile_vote_sequence(&annotated.effects[idx..], ctx)?

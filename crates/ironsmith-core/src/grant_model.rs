@@ -309,23 +309,6 @@ where
 {
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
-        fn small_number_word(n: u32) -> Option<&'static str> {
-            match n {
-                0 => Some("zero"),
-                1 => Some("one"),
-                2 => Some("two"),
-                3 => Some("three"),
-                4 => Some("four"),
-                5 => Some("five"),
-                6 => Some("six"),
-                7 => Some("seven"),
-                8 => Some("eight"),
-                9 => Some("nine"),
-                10 => Some("ten"),
-                _ => None,
-            }
-        }
-
         fn zone_name(zone: Zone) -> &'static str {
             match zone {
                 Zone::Battlefield => "battlefield",
@@ -519,9 +502,8 @@ where
         }) = &self.grantable
             && self.zone == Zone::Graveyard
         {
-            let count_text = small_number_word(*exile_count)
-                .map(str::to_string)
-                .unwrap_or_else(|| exile_count.to_string());
+            let count_text =
+                crate::cardinal_word(*exile_count).unwrap_or_else(|| exile_count.to_string());
             let graveyard = if matches!(filter.owner, Some(PlayerFilter::You)) {
                 "your graveyard"
             } else {

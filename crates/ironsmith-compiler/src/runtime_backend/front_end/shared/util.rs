@@ -1254,10 +1254,7 @@ pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option
             }
         }
 
-        if matches!(
-            prev,
-            "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six" | "another"
-        ) {
+        if prev == "another" || ironsmith_core::parse_cardinal_word(prev).is_some() {
             return None;
         }
 
@@ -1388,7 +1385,9 @@ pub(crate) fn parse_filter_counter_constraint_words(
     let descriptor_words = words[..counter_idx]
         .iter()
         .copied()
-        .filter(|word| !matches!(*word, "a" | "an" | "one" | "or" | "more"))
+        .filter(|word| {
+            !matches!(*word, "or" | "more") && ironsmith_core::parse_cardinal_word(word).is_none()
+        })
         .collect::<Vec<_>>();
     let consumed = counter_idx + 3;
     if descriptor_words.is_empty() {
@@ -1489,25 +1488,15 @@ pub(crate) fn parse_number_or_x_value(tokens: &[OwnedLexToken]) -> Option<(Value
         return Some((Value::X, 1));
     }
 
-    if let Ok(value) = word.parse::<u32>() {
-        return Some((Value::Fixed(value as i32), 1));
+    let mut words = Vec::new();
+    for token in tokens {
+        let Some(word) = token.as_word() else {
+            break;
+        };
+        words.push(word);
     }
-
-    let value = match word.as_str() {
-        "a" | "an" | "one" => 1,
-        "two" => 2,
-        "three" => 3,
-        "four" => 4,
-        "five" => 5,
-        "six" => 6,
-        "seven" => 7,
-        "eight" => 8,
-        "nine" => 9,
-        "ten" => 10,
-        _ => return None,
-    };
-
-    Some((Value::Fixed(value), 1))
+    let (value, used) = ironsmith_core::parse_cardinal_words(&words)?;
+    Some((Value::Fixed(value as i32), used))
 }
 
 pub(crate) fn parse_number_or_x_value_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
@@ -1519,30 +1508,7 @@ pub(crate) fn parse_number_word_i32(word: &str) -> Option<i32> {
         return Some(value);
     }
 
-    match word {
-        "zero" => Some(0),
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        "eleven" => Some(11),
-        "twelve" => Some(12),
-        "thirteen" => Some(13),
-        "fourteen" => Some(14),
-        "fifteen" => Some(15),
-        "sixteen" => Some(16),
-        "seventeen" => Some(17),
-        "eighteen" => Some(18),
-        "nineteen" => Some(19),
-        "twenty" => Some(20),
-        _ => None,
-    }
+    ironsmith_core::parse_cardinal_word(word).and_then(|value| value.try_into().ok())
 }
 
 pub(crate) fn parse_number_word_u32(word: &str) -> Option<u32> {
@@ -2341,21 +2307,15 @@ pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
         return Some((value, 1));
     }
 
-    let value = match word.as_str() {
-        "a" | "an" | "one" => 1,
-        "two" => 2,
-        "three" => 3,
-        "four" => 4,
-        "five" => 5,
-        "six" => 6,
-        "seven" => 7,
-        "eight" => 8,
-        "nine" => 9,
-        "ten" => 10,
-        _ => return None,
-    };
-
-    Some((value, 1))
+    let mut words = Vec::new();
+    for token in tokens {
+        let Some(word) = token.as_word() else {
+            break;
+        };
+        words.push(word);
+    }
+    let (value, used) = ironsmith_core::parse_cardinal_words(&words)?;
+    Some((value, used))
 }
 
 pub(crate) fn parse_target_count_range_prefix(
@@ -4271,18 +4231,12 @@ pub(crate) fn parse_evoke_line_lexed(
     let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "evoke") else {
         return Ok(None);
     };
-    let (mana_cost, consumed) = leading_mana_cost_from_tokens(&cost_tokens)
-        .ok_or_else(|| CardTextError::ParseError("evoke keyword missing mana cost".to_string()))?;
-    if consumed == 0 {
-        return Err(CardTextError::ParseError(
-            "evoke keyword missing mana cost".to_string(),
-        ));
-    }
-    Ok(Some(AlternativeCastingMethod::alternative_cost(
-        "Evoke",
-        Some(mana_cost),
-        Vec::new(),
-    )))
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Evoke",
+        total_cost,
+        condition: None,
+    }))
 }
 
 pub(crate) fn parse_eternalize_line_lexed(

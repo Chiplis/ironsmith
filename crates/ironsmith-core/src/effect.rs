@@ -905,6 +905,7 @@ pub struct SearchLibraryEffect {
     pub player: PlayerFilter,
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
+    pub library_position_from_top: Option<Value>,
 }
 
 impl SearchLibraryEffect {
@@ -922,11 +923,17 @@ impl SearchLibraryEffect {
             player,
             reveal,
             search_mode: SearchSelectionMode::Exact,
+            library_position_from_top: None,
         }
     }
 
     pub fn with_search_mode(mut self, search_mode: SearchSelectionMode) -> Self {
         self.search_mode = search_mode;
+        self
+    }
+
+    pub fn with_library_position_from_top(mut self, position: Value) -> Self {
+        self.library_position_from_top = Some(position);
         self
     }
 

@@ -91,15 +91,12 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
                             ctx.refresh_source_snapshot(pre_snapshot.clone());
                         }
                         for &new_id in &result.new_object_ids {
-                            if let Some(moved) = game.object(new_id) {
-                                if let Some(player) = game.player_mut(moved.owner) {
-                                    if let Some(pos) =
-                                        player.library.iter().position(|id| *id == new_id)
-                                    {
-                                        player.library.remove(pos);
-                                        player.library.insert(0, new_id);
-                                    }
-                                }
+                            if let Some(owner) = game.object(new_id).map(|moved| moved.owner) {
+                                game.move_library_card_to_bottom(
+                                    owner,
+                                    new_id,
+                                    "card moved into library before shuffle",
+                                );
                             }
                         }
                         if from_zone == Zone::Battlefield {

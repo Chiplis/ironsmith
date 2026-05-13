@@ -512,20 +512,8 @@ pub(crate) fn number_token<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode
         return Ok(value);
     }
 
-    let value = match word.as_str() {
-        "a" | "an" | "one" => 1,
-        "two" => 2,
-        "three" => 3,
-        "four" => 4,
-        "five" => 5,
-        "six" => 6,
-        "seven" => 7,
-        "eight" => 8,
-        "nine" => 9,
-        "ten" => 10,
-        _ => return Err(backtrack_err("number", "numeric word")),
-    };
-    Ok(value)
+    ironsmith_core::parse_cardinal_word(&word)
+        .ok_or_else(|| backtrack_err("number", "numeric word"))
 }
 
 /// Parse a single mana symbol from the next token (word, number, or

@@ -1646,8 +1646,17 @@ impl ObjectFilterExt for ObjectFilter {
         let mut stack_entry = None;
         if wants_stack {
             stack_entry = game.stack.iter().find(|e| e.object_id == object.id);
+            let can_treat_stack_object_as_spell_without_entry = object.zone == Zone::Stack
+                && self.stack_kind == Some(StackObjectKind::Spell)
+                && ctx.caster.is_some()
+                && self.target_count.is_none()
+                && self.targets_only_player.is_none()
+                && self.targets_only_object.is_none()
+                && self.targets_player.is_none()
+                && self.targets_object.is_none();
             if (self.zone == Some(Zone::Stack) || self.stack_kind.is_some())
                 && stack_entry.is_none()
+                && !can_treat_stack_object_as_spell_without_entry
             {
                 return false;
             }
@@ -1693,10 +1702,14 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(kind) = self.stack_kind {
-            let Some(entry) = stack_entry else {
-                return false;
-            };
-            if !Self::stack_entry_matches_kind(entry, kind) {
+            if let Some(entry) = stack_entry {
+                if !Self::stack_entry_matches_kind(entry, kind) {
+                    return false;
+                }
+            } else if !(object.zone == Zone::Stack
+                && kind == StackObjectKind::Spell
+                && ctx.caster.is_some())
+            {
                 return false;
             }
         }

@@ -6029,7 +6029,15 @@ pub(crate) fn parse_filter_has_granted_ability_line(
     }
 
     let mut deferred_error: Option<CardTextError> = None;
+    let mut inside_quotes = false;
     for (has_idx, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes {
+            continue;
+        }
         if !token.is_word("has") && !token.is_word("have") {
             continue;
         }
@@ -6174,52 +6182,56 @@ pub(crate) fn parse_filter_has_granted_ability_line(
 
         let ability_tokens_raw = &tokens[has_idx + 1..];
         let mut ability_tokens = trim_commas(ability_tokens_raw);
-        let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
-        if let Some(as_long_as_idx) =
-            anthem_find_word_sequence_index(&ability_words, &["as", "long", "as"])
-            && as_long_as_idx > 0
-            && let Some(condition_start) =
-                token_index_for_word_index(&ability_tokens, as_long_as_idx)
-        {
-            let condition_tokens = trim_commas(&ability_tokens[condition_start + 3..]);
-            if !condition_tokens.is_empty() {
-                let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
-                    Ok(condition) => condition,
-                    Err(err) => {
-                        deferred_error.get_or_insert(err);
-                        continue;
-                    }
-                };
-                condition = Some(match condition {
-                    Some(existing) => {
-                        crate::ConditionExpr::And(Box::new(existing), Box::new(parsed_condition))
-                    }
-                    None => parsed_condition,
-                });
-                ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+        if !ability_tokens.iter().any(|token| token.is_quote()) {
+            let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+            if let Some(as_long_as_idx) =
+                anthem_find_word_sequence_index(&ability_words, &["as", "long", "as"])
+                && as_long_as_idx > 0
+                && let Some(condition_start) =
+                    token_index_for_word_index(&ability_tokens, as_long_as_idx)
+            {
+                let condition_tokens = trim_commas(&ability_tokens[condition_start + 3..]);
+                if !condition_tokens.is_empty() {
+                    let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
+                        Ok(condition) => condition,
+                        Err(err) => {
+                            deferred_error.get_or_insert(err);
+                            continue;
+                        }
+                    };
+                    condition = Some(match condition {
+                        Some(existing) => crate::ConditionExpr::And(
+                            Box::new(existing),
+                            Box::new(parsed_condition),
+                        ),
+                        None => parsed_condition,
+                    });
+                    ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+                }
             }
-        }
-        let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
-        if let Some(if_idx) = anthem_find_word_index(&ability_words, |word| word == "if")
-            && if_idx > 0
-            && let Some(condition_start) = token_index_for_word_index(&ability_tokens, if_idx)
-        {
-            let condition_tokens = trim_commas(&ability_tokens[condition_start + 1..]);
-            if !condition_tokens.is_empty() {
-                let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
-                    Ok(condition) => condition,
-                    Err(err) => {
-                        deferred_error.get_or_insert(err);
-                        continue;
-                    }
-                };
-                condition = Some(match condition {
-                    Some(existing) => {
-                        crate::ConditionExpr::And(Box::new(existing), Box::new(parsed_condition))
-                    }
-                    None => parsed_condition,
-                });
-                ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+            let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+            if let Some(if_idx) = anthem_find_word_index(&ability_words, |word| word == "if")
+                && if_idx > 0
+                && let Some(condition_start) = token_index_for_word_index(&ability_tokens, if_idx)
+            {
+                let condition_tokens = trim_commas(&ability_tokens[condition_start + 1..]);
+                if !condition_tokens.is_empty() {
+                    let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
+                        Ok(condition) => condition,
+                        Err(err) => {
+                            deferred_error.get_or_insert(err);
+                            continue;
+                        }
+                    };
+                    condition = Some(match condition {
+                        Some(existing) => crate::ConditionExpr::And(
+                            Box::new(existing),
+                            Box::new(parsed_condition),
+                        ),
+                        None => parsed_condition,
+                    });
+                    ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+                }
             }
         }
         let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);

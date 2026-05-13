@@ -541,7 +541,9 @@ fn add_hand_alternative_cast_actions(
                 casting_method: CastingMethod::Fuse,
             });
         }
-        if summary.has_hand_native_alternatives {
+        let normal_cast_available = summary.has_normal_mana_cost
+            && can_cast_spell_with_context(summary.card, &CastingMethod::Normal, cast_ctx);
+        if summary.has_hand_native_alternatives && !normal_cast_available {
             for (idx, alt_cast) in summary.card.alternative_casts.iter().enumerate() {
                 if alt_cast.cast_from_zone() == Zone::Hand
                     && can_cast_with_alternative_from_hand_with_context(
@@ -1041,6 +1043,9 @@ fn activation_cost_component_precheck_with_view(
     if cost.mana_cost_ref().is_some() {
         return true;
     }
+    if cost.is_remove_counters() {
+        return true;
+    }
 
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
@@ -1355,6 +1360,9 @@ fn activation_cost_is_payable_with_view(
         // Ability actions should remain visible before mana is floated, even when
         // cost modifiers reprice the mana portion. The payment flow will enforce
         // the actual mana payment later.
+        return true;
+    }
+    if cost.is_remove_counters() {
         return true;
     }
 

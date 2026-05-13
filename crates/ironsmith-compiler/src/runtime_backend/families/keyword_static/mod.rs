@@ -80,10 +80,10 @@ use super::token_primitives::{
 use super::util::{
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_flashback_keyword_line, parse_number_word_i32,
-    parse_subtype_flexible, parse_value, parse_value_expr_words, parse_zone_word,
-    preserve_keyword_prefix_for_parse, source_reference_surface_for_possessive_words, trim_commas,
-    words,
+    parse_counter_type_word, parse_flashback_keyword_line, parse_for_each_count_value_words,
+    parse_number_word_i32, parse_subtype_flexible, parse_value, parse_value_expr_words,
+    parse_zone_word, preserve_keyword_prefix_for_parse,
+    source_reference_surface_for_possessive_words, trim_commas, words,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
 use super::value_helpers::parse_commander_cast_count_player;
@@ -970,7 +970,9 @@ fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> boo
 
     tail.iter()
         .find_map(OwnedLexToken::as_word)
-        .is_some_and(|word| matches!(word, "a" | "an" | "one" | "another"))
+        .is_some_and(|word| {
+            word == "another" || ironsmith_core::parse_cardinal_word(word).is_some()
+        })
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line(
@@ -5320,6 +5322,13 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             metric: EffectMetric::Count,
         }));
     }
+    if slice_contains(&filter_words, &"revealed")
+        && contains_keyword_static_phrase(&filter_words, &["this", "way"])
+        && let Some((value, used_words)) = parse_for_each_count_value_words(&words_all)
+        && used_words == words_all.len()
+    {
+        return Ok(Some(value));
+    }
 
     let mut source_counter_words = filter_words.as_slice();
     if source_counter_words
@@ -6685,14 +6694,8 @@ pub(crate) fn parse_additional_land_play_line(
     let Some(count_token_idx) = count_token_idx else {
         return Ok(None);
     };
-    let (count, used) = match tokens[count_token_idx].as_word() {
-        Some("a" | "an" | "one") => (1, 1),
-        _ => {
-            let Some((count, used)) = parse_number(&tokens[count_token_idx..]) else {
-                return Ok(None);
-            };
-            (count, used)
-        }
+    let Some((count, used)) = parse_number(&tokens[count_token_idx..]) else {
+        return Ok(None);
     };
     let rest_word_idx = count_word_idx + used;
     if rest_word_idx >= words.len() {

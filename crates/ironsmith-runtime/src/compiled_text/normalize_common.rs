@@ -48,9 +48,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             card_type.to_string().to_ascii_lowercase()
         ),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
-            let count_text = small_number_word(*count)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} who has at least {count_text} more cards in hand than you do",
                 strip_leading_article(&describe_player_filter(base))
@@ -829,76 +827,18 @@ pub(super) fn normalize_cost_amount_token(text: &str) -> String {
     cleaned.to_string()
 }
 
-pub(super) fn small_number_word(n: u32) -> Option<&'static str> {
-    match n {
-        0 => Some("zero"),
-        1 => Some("one"),
-        2 => Some("two"),
-        3 => Some("three"),
-        4 => Some("four"),
-        5 => Some("five"),
-        6 => Some("six"),
-        7 => Some("seven"),
-        8 => Some("eight"),
-        9 => Some("nine"),
-        10 => Some("ten"),
-        11 => Some("eleven"),
-        12 => Some("twelve"),
-        13 => Some("thirteen"),
-        14 => Some("fourteen"),
-        15 => Some("fifteen"),
-        16 => Some("sixteen"),
-        17 => Some("seventeen"),
-        18 => Some("eighteen"),
-        19 => Some("nineteen"),
-        20 => Some("twenty"),
-        _ => None,
-    }
+pub(super) fn small_number_word(n: u32) -> Option<String> {
+    ironsmith_core::cardinal_word(n)
 }
 
 fn ordinal_number_word(n: u32) -> String {
-    match n {
-        1 => "first".to_string(),
-        2 => "second".to_string(),
-        3 => "third".to_string(),
-        4 => "fourth".to_string(),
-        5 => "fifth".to_string(),
-        6 => "sixth".to_string(),
-        7 => "seventh".to_string(),
-        8 => "eighth".to_string(),
-        9 => "ninth".to_string(),
-        10 => "tenth".to_string(),
-        11 => "eleventh".to_string(),
-        12 => "twelfth".to_string(),
-        _ => format!("{n}th"),
-    }
+    ironsmith_core::ordinal_word(n).unwrap_or_else(|| format!("{n}th"))
 }
 
-pub(super) fn number_word(n: i32) -> Option<&'static str> {
-    match n {
-        0 => Some("zero"),
-        1 => Some("one"),
-        2 => Some("two"),
-        3 => Some("three"),
-        4 => Some("four"),
-        5 => Some("five"),
-        6 => Some("six"),
-        7 => Some("seven"),
-        8 => Some("eight"),
-        9 => Some("nine"),
-        10 => Some("ten"),
-        11 => Some("eleven"),
-        12 => Some("twelve"),
-        13 => Some("thirteen"),
-        14 => Some("fourteen"),
-        15 => Some("fifteen"),
-        16 => Some("sixteen"),
-        17 => Some("seventeen"),
-        18 => Some("eighteen"),
-        19 => Some("nineteen"),
-        20 => Some("twenty"),
-        _ => None,
-    }
+pub(super) fn number_word(n: i32) -> Option<String> {
+    u32::try_from(n)
+        .ok()
+        .and_then(ironsmith_core::cardinal_word)
 }
 
 pub(super) fn render_small_number_or_raw(text: &str) -> String {
@@ -906,7 +846,6 @@ pub(super) fn render_small_number_or_raw(text: &str) -> String {
         .parse::<u32>()
         .ok()
         .and_then(small_number_word)
-        .map(str::to_string)
         .unwrap_or_else(|| text.trim().to_string())
 }
 
@@ -1755,6 +1694,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "the allagan eye — whenever one or more other creature artifacts you control die, draw a card. this ability triggers only once each turn."
         || lower_compact
             == "the allagan eye — whenever one or more other creatures and/or artifacts you control die, draw a card. this ability triggers only once each turn."
+        || lower_compact
+            == "the allagan eye — whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. this ability triggers only once each turn."
     {
         return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }
@@ -1963,6 +1904,13 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Destroy all target opponent's creatures. You lose 2 life for each creature destroyed this way.".to_string();
     }
+    if matches!(
+        lower_compact_trimmed.as_str(),
+        "destroy all creatures target opponent controls. you lose twice that many life"
+            | "destroy all target creature an opponent controlss. you lose twice that many life"
+    ) {
+        return "Destroy all creatures target opponent controls. You lose 2 life for each creature destroyed this way.".to_string();
+    }
     if lower_compact
         == "whenever this permanent deals combat damage to a creature, you gain 2 life unless that object's controller pays {2}."
     {
@@ -2012,6 +1960,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized.eq_ignore_ascii_case(
         "The allagan eye — Whenever one or more another creature artifacts you control die, you draw a card. This ability triggers only once each turn.",
+    ) || normalized.eq_ignore_ascii_case(
+        "The allagan eye — Whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn.",
     ) {
         return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }
@@ -5687,9 +5637,9 @@ pub(super) fn is_generic_owned_card_search_filter(filter: &ObjectFilter) -> bool
 pub(super) fn describe_object_count(value: &Value) -> String {
     match value {
         Value::Fixed(1) => "a".to_string(),
-        Value::Fixed(n) if *n > 1 && *n <= 20 => small_number_word(*n as u32)
-            .map(str::to_string)
-            .unwrap_or_else(|| n.to_string()),
+        Value::Fixed(n) if *n > 1 && *n <= 20 => {
+            small_number_word(*n as u32).unwrap_or_else(|| n.to_string())
+        }
         _ => describe_value(value),
     }
 }
@@ -6295,7 +6245,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc);
-            format!("all {}", pluralize_noun_phrase(stripped))
+            format!("all {}", pluralize_relative_object_phrase(stripped))
         }
         ChooseSpec::EachPlayer(filter) => format!("each {}", describe_player_filter(filter)),
         ChooseSpec::SpecificObject(_) => "that object".to_string(),
@@ -6319,11 +6269,8 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     let target_desc = describe_choose_spec(target_inner);
                     let base = strip_leading_article(&target_desc);
                     let plural = pluralize_relative_object_phrase(base);
-                    let count_text = |n: usize| {
-                        number_word(n as i32)
-                            .map(str::to_string)
-                            .unwrap_or_else(|| n.to_string())
-                    };
+                    let count_text =
+                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
                         return format!("up to X target {plural}{random_suffix}");
                     }
@@ -6362,11 +6309,8 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 } else {
                     let base = strip_leading_article(&inner_text);
                     let plural = pluralize_relative_object_phrase(base);
-                    let count_text = |n: usize| {
-                        number_word(n as i32)
-                            .map(str::to_string)
-                            .unwrap_or_else(|| n.to_string())
-                    };
+                    let count_text =
+                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
                         return format!("up to X {plural}{random_suffix}");
                     }
@@ -6628,14 +6572,14 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 };
                 if let Some(stripped) = text.strip_suffix(&suffix) {
                     let stripped = strip_leading_article(stripped);
-                    return format!("all {}", pluralize_noun_phrase(stripped));
+                    return format!("all {}", pluralize_relative_object_phrase(stripped));
                 }
                 let text = strip_leading_article(&text);
-                return format!("all {}", pluralize_noun_phrase(text));
+                return format!("all {}", pluralize_relative_object_phrase(text));
             }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc);
-            format!("all {}", pluralize_noun_phrase(stripped))
+            format!("all {}", pluralize_relative_object_phrase(stripped))
         }
         ChooseSpec::WithCount(inner, count) => {
             let inner_text = describe_choose_spec_without_graveyard_zone(inner);
@@ -6646,11 +6590,8 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                     let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
                     let base = strip_leading_article(&target_desc);
                     let plural = pluralize_noun_phrase(base);
-                    let count_text = |n: usize| {
-                        number_word(n as i32)
-                            .map(str::to_string)
-                            .unwrap_or_else(|| n.to_string())
-                    };
+                    let count_text =
+                        |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
                         return format!("up to X target {plural}");
                     }
@@ -6685,8 +6626,7 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                     let plural = pluralize_noun_phrase(base);
                     let count_text = |n: usize| {
                         small_number_word(n as u32)
-                            .map(str::to_string)
-                            .or_else(|| number_word(n as i32).map(str::to_string))
+                            .or_else(|| number_word(n as i32))
                             .unwrap_or_else(|| n.to_string())
                     };
                     if count.is_up_to_dynamic_x() {
@@ -7961,9 +7901,7 @@ pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
         Value::Fixed(1) => with_indefinite_article(&format!("{counter_name} counter")),
         Value::Fixed(n) if *n > 1 => {
             let n = *n as usize;
-            let amount = number_word(n as i32)
-                .map(str::to_string)
-                .unwrap_or_else(|| n.to_string());
+            let amount = number_word(n as i32).unwrap_or_else(|| n.to_string());
             format!("{amount} {counter_name} counters")
         }
         _ => format!("{} {counter_name} counters", describe_value(count)),
@@ -9484,9 +9422,7 @@ pub(super) fn describe_player_relative_condition(condition: &Condition) -> Optio
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(count),
         } => {
-            let count_text = small_number_word(*count as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
             Some(format!("drew {count_text} or more cards this turn"))
         }
         Condition::ValueComparison {
@@ -9494,9 +9430,7 @@ pub(super) fn describe_player_relative_condition(condition: &Condition) -> Optio
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(count),
         } => {
-            let count_text = small_number_word(*count as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
             Some(format!(
                 "had {count_text} or more lands enter the battlefield under their control this turn"
             ))
@@ -9619,9 +9553,7 @@ fn describe_happily_value_comparison(
             Value::Fixed(count),
         ) => {
             let scope = describe_happily_scope(filter)?;
-            let count_text = small_number_word(*count as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
             Some(format!(
                 "there are {count_text} or more card types among {scope}"
             ))
@@ -9700,6 +9632,18 @@ fn pluralize_relative_object_phrase(phrase: &str) -> String {
         if plural == format!("{singular} you controls") {
             plural = format!("{plural_noun} you control");
         }
+        if plural == format!("{singular} an opponent controlss") {
+            plural = format!("{plural_noun} an opponent controls");
+        }
+        if plural == format!("target {singular} an opponent controlss") {
+            plural = format!("{plural_noun} target opponent controls");
+        }
+        if plural == format!("{singular} target opponent controlss") {
+            plural = format!("{plural_noun} target opponent controls");
+        }
+        if plural == format!("{singular} that player controlss") {
+            plural = format!("{plural_noun} that player controls");
+        }
         plural = plural.replace(
             &format!(" {singular} you don't controls"),
             &format!(" {plural_noun} you don't control"),
@@ -9707,6 +9651,22 @@ fn pluralize_relative_object_phrase(phrase: &str) -> String {
         plural = plural.replace(
             &format!(" {singular} you controls"),
             &format!(" {plural_noun} you control"),
+        );
+        plural = plural.replace(
+            &format!(" {singular} an opponent controlss"),
+            &format!(" {plural_noun} an opponent controls"),
+        );
+        plural = plural.replace(
+            &format!(" target {singular} an opponent controlss"),
+            &format!(" {plural_noun} target opponent controls"),
+        );
+        plural = plural.replace(
+            &format!(" {singular} target opponent controlss"),
+            &format!(" {plural_noun} target opponent controls"),
+        );
+        plural = plural.replace(
+            &format!(" {singular} that player controlss"),
+            &format!(" {plural_noun} that player controls"),
         );
     }
     plural
@@ -9800,7 +9760,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                         .to_string();
                 let noun = pluralize_noun_phrase(&described);
                 let count_text = small_number_word(*count)
-                    .map(str::to_string)
                     .unwrap_or_else(|| count.to_string());
                 return format!(
                     "{} {} {} or more {}",
@@ -9821,7 +9780,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             let described = strip_indefinite_article(&described_filter.description()).to_string();
             let noun = pluralize_noun_phrase(&described);
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or more {}",
@@ -9873,7 +9831,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     pluralize_noun_phrase(&described)
                 };
                 let count_text = small_number_word(*count)
-                    .map(str::to_string)
                     .unwrap_or_else(|| count.to_string());
                 return format!(
                     "{} {} exactly {} {}",
@@ -9898,7 +9855,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 pluralize_noun_phrase(&described)
             };
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} exactly {} {}",
@@ -9925,7 +9881,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             let described = strip_indefinite_article(&described_filter.description()).to_string();
             let noun = pluralize_noun_phrase(&described);
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or more {} with different powers",
@@ -9939,7 +9894,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             let subject = describe_player_filter(player);
             let verb = player_verb(&subject, "control", "controls");
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "there are {} or more basic land types among lands {} {}",
@@ -9949,7 +9903,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
             let subject = describe_player_filter(player);
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "there are {} or more card types among cards in {} graveyard",
@@ -10120,7 +10073,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_player_filter(player);
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} cast {} or more spells this turn",
@@ -10208,7 +10160,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
-                .map(str::to_string)
                 .unwrap_or_else(|| count.to_string());
             format!("{count_text} or more spells were cast last turn")
         }
@@ -10314,13 +10265,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
             let amount_text = small_number_word(*amount)
-                .map(str::to_string)
                 .unwrap_or_else(|| amount.to_string());
             format!("at least {amount_text} mana of the same color was spent to cast it")
         }
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
             let amount_text = small_number_word(*amount)
-                .map(str::to_string)
                 .unwrap_or_else(|| amount.to_string());
             format!("{} or more colors of mana were spent to cast this spell", amount_text)
         }
@@ -10759,7 +10708,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 && filter.zone == Some(Zone::Graveyard)
             {
                 let count_text = small_number_word(*count as u32)
-                    .map(str::to_string)
                     .unwrap_or_else(|| count.to_string());
                 let subject = describe_count_filter_value_subject(filter);
                 return format!("there are {} or more {}", count_text, subject);
@@ -10772,7 +10720,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 && filter.zone == Some(Zone::Battlefield)
             {
                 let count_text = small_number_word(*count as u32)
-                    .map(str::to_string)
                     .unwrap_or_else(|| count.to_string());
                 if let Some(counter) = filter.with_counter {
                     let mut subject_filter = filter.clone();
@@ -11302,7 +11249,7 @@ mod tests {
 
         assert_eq!(
             describe_token_blueprint(&token),
-            "1/1 colorless Snake artifact creature token. It has \"Toxic 1\" and \"Whenever this token deals damage to a player: you get a poison counter\""
+            "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player: that player gets a poison counter\" and \"Whenever this token deals damage to a player: you get a poison counter\""
         );
     }
 }

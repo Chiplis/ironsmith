@@ -164,16 +164,12 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                 chosen.iter().map(|snapshot| snapshot.object_id).collect();
 
             if self.destination == Zone::Library && search_override.is_none() {
-                if let Some(player) = game.player_mut(player_id) {
-                    player.library.retain(|id| !chosen_ids.contains(id));
-                }
-                game.shuffle_player_library(player_id);
-                if let Some(player) = game.player_mut(player_id) {
-                    for card_id in chosen_ids {
-                        player.library.push(card_id);
-                        moved_ids.push(card_id);
-                    }
-                }
+                game.shuffle_library_except_then_put_on_top(
+                    player_id,
+                    &chosen_ids,
+                    "searched cards put on top after library shuffle",
+                );
+                moved_ids.extend(chosen_ids);
             } else {
                 for card_id in chosen_ids {
                     let new_id = if let Some(search) = search_override {

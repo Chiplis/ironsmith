@@ -293,20 +293,34 @@ impl TurnHistory {
 
     pub fn creatures_entered_under_controller(&self, player: PlayerId) -> u32 {
         self.projected_records()
-            .filter(|record| {
-                record.event.downcast::<EnterBattlefieldEvent>().is_some()
+            .map(|record| {
+                if let Some(zone_change) = record.event.downcast::<ZoneChangeEvent>()
+                    && zone_change.is_etb()
+                    && zone_change.objects.len() > 1
+                    && !zone_change.snapshots().is_empty()
+                {
+                    return zone_change
+                        .snapshots()
+                        .iter()
+                        .filter(|snapshot| {
+                            snapshot.controller == player
+                                && snapshot.card_types.contains(&CardType::Creature)
+                        })
+                        .count() as u32;
+                }
+
+                let is_entry = record.event.downcast::<EnterBattlefieldEvent>().is_some()
                     || record
                         .event
                         .downcast::<ZoneChangeEvent>()
-                        .is_some_and(|event| event.is_etb())
+                        .is_some_and(|event| event.is_etb());
+                (is_entry
+                    && record.object_snapshot.as_ref().is_some_and(|snapshot| {
+                        snapshot.controller == player
+                            && snapshot.card_types.contains(&CardType::Creature)
+                    })) as u32
             })
-            .filter(|record| {
-                record.object_snapshot.as_ref().is_some_and(|snapshot| {
-                    snapshot.controller == player
-                        && snapshot.card_types.contains(&CardType::Creature)
-                })
-            })
-            .count() as u32
+            .sum()
     }
 
     pub fn player_had_creature_enter_battlefield_this_turn(&self, player: PlayerId) -> bool {

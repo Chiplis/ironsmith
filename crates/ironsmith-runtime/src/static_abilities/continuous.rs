@@ -866,9 +866,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 crate::target::PlayerFilter::DamagedPlayer => "the damaged player",
                 _ => "that player",
             };
-            let count_text = number_word_u32(*count)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = number_word_u32(*count).unwrap_or_else(|| count.to_string());
             let mut described_filter = filter.clone();
             if described_filter.controller.as_ref() == Some(player) {
                 described_filter.controller = None;
@@ -915,9 +913,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             operator,
             right: Value::Fixed(count),
         } if *count >= 0 => {
-            let count_text = number_word_u32(*count as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| count.to_string());
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
             let comparison = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => {
                     format!("more than {count_text}")
@@ -1149,8 +1145,6 @@ fn entered_battlefield_this_turn_count(
                             Modification::AddCardTypes(_)
                                 | Modification::RemoveCardTypes(_)
                                 | Modification::SetCardTypes(_)
-                        ) || !crate::continuous::continuous_effect_duration_and_condition_are_active(
-                            effect, game,
                         ) {
                             continue;
                         }
@@ -1158,22 +1152,30 @@ fn entered_battlefield_this_turn_count(
                             EffectTarget::Specific(target) => *target == current.id,
                             EffectTarget::Source => effect.source == current.id,
                             EffectTarget::AllPermanents => current.zone == Zone::Battlefield,
-                            EffectTarget::Filter(effect_filter) => effect_filter.matches_non_recursive(
-                                current,
-                                &game.filter_context_for(effect.controller, Some(effect.source)),
-                                game,
-                            ),
+                            EffectTarget::Filter(effect_filter) => effect_filter
+                                .matches_non_recursive(
+                                    current,
+                                    &game
+                                        .filter_context_for(effect.controller, Some(effect.source)),
+                                    game,
+                                ),
                             EffectTarget::AllCreatures => {
                                 current.zone == Zone::Battlefield
                                     && current.card_types.contains(&CardType::Creature)
                             }
-                            EffectTarget::AttachedTo(attached_source) => game
-                                .object(*attached_source)
-                                .and_then(|source_obj| source_obj.attached_to)
-                                .and_then(|target| target.object_id())
-                                == Some(current.id),
+                            EffectTarget::AttachedTo(attached_source) => {
+                                game.object(*attached_source)
+                                    .and_then(|source_obj| source_obj.attached_to)
+                                    .and_then(|target| target.object_id())
+                                    == Some(current.id)
+                            }
                         };
                         if !applies {
+                            continue;
+                        }
+                        if !crate::continuous::continuous_effect_duration_and_condition_are_active(
+                            effect, game,
+                        ) {
                             continue;
                         }
                         match &effect.modification {

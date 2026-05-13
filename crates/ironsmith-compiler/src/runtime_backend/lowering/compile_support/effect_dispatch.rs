@@ -2753,6 +2753,7 @@ fn compile_subject_verb_effect(
             shuffle,
             count,
             count_value,
+            library_position_from_top,
             tapped,
         } => {
             let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit)
@@ -2784,21 +2785,22 @@ fn compile_subject_verb_effect(
                     .unwrap_or_else(|| player_filter.clone()),
             );
             let use_search_effect = *shuffle
-                && count.min == 0
                 && count.max == Some(1)
                 && count_value.is_none()
                 && *destination != Zone::Battlefield;
             if use_search_effect {
-                let mut effect = Effect::new(
-                    crate::effects::SearchLibraryEffect::new(
-                        filter,
-                        *destination,
-                        chooser_filter.clone(),
-                        player_filter.clone(),
-                        *reveal,
-                    )
-                    .with_search_mode(*search_mode),
-                );
+                let mut search_effect = crate::effects::SearchLibraryEffect::new(
+                    filter,
+                    *destination,
+                    chooser_filter.clone(),
+                    player_filter.clone(),
+                    *reveal,
+                )
+                .with_search_mode(*search_mode);
+                if let Some(position) = library_position_from_top.clone() {
+                    search_effect = search_effect.with_library_position_from_top(position);
+                }
+                let mut effect = Effect::new(search_effect);
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("searched");
                     ctx.last_object_tag = Some(tag.clone());

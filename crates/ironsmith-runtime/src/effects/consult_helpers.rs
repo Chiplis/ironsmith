@@ -254,9 +254,19 @@ pub fn move_tagged_remainder_to_library_bottom(
         }
 
         let bottom_ids = ordered_current_ids.iter().copied().collect::<HashSet<_>>();
-        if let Some(player) = game.player_mut(owner) {
-            player.library.retain(|id| !bottom_ids.contains(id));
-            player.library.splice(0..0, ordered_current_ids.clone());
+        if let Some(player) = game.player(owner) {
+            let mut after_order: Vec<ObjectId> = player
+                .library
+                .iter()
+                .copied()
+                .filter(|id| !bottom_ids.contains(id))
+                .collect();
+            after_order.splice(0..0, ordered_current_ids.clone());
+            game.set_player_library_order_with_audit(
+                owner,
+                after_order,
+                "consult effect put cards on bottom",
+            );
         }
         moved_ids.extend(ordered_current_ids);
     }

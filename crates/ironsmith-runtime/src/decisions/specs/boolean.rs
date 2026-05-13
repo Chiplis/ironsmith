@@ -4,7 +4,9 @@
 //! such as "may" effects, paying ward costs, casting with miracle, etc.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::context::{BooleanContext, DecisionContext};
+use crate::decisions::context::{
+    BooleanContext, DecisionContext, DecisionHiddenCardView, DecisionHiddenCardVisibility,
+};
 use crate::decisions::spec::{DecisionPrimitive, DecisionSpec};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -22,6 +24,8 @@ pub struct MaySpec {
     pub description: String,
     /// The source of the effect (for display).
     pub source: ObjectId,
+    /// Hidden cards that should be visible while the decision is active.
+    pub hidden_card_views: Vec<DecisionHiddenCardView>,
 }
 
 impl MaySpec {
@@ -30,7 +34,24 @@ impl MaySpec {
         Self {
             description: description.into(),
             source,
+            hidden_card_views: Vec::new(),
         }
+    }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        if visibility != DecisionHiddenCardVisibility::None && !object_ids.is_empty() {
+            self.hidden_card_views.push(DecisionHiddenCardView {
+                object_ids,
+                visibility,
+                description: description.into(),
+            });
+        }
+        self
     }
 }
 
@@ -55,11 +76,15 @@ impl DecisionSpec for MaySpec {
         _source: Option<ObjectId>,
         _game: &GameState,
     ) -> DecisionContext {
-        DecisionContext::Boolean(BooleanContext::new(
-            player,
-            Some(self.source),
-            self.description.clone(),
-        ))
+        let mut ctx = BooleanContext::new(player, Some(self.source), self.description.clone());
+        for view in &self.hidden_card_views {
+            ctx = ctx.with_hidden_card_view(
+                view.object_ids.clone(),
+                view.visibility,
+                view.description.clone(),
+            );
+        }
+        DecisionContext::Boolean(ctx)
     }
 }
 

@@ -37,9 +37,10 @@ pub use spec::{
 // Re-export context types
 pub use context::{
     AttackerOptionContext, AttackersContext, BlockerOptionContext, BlockersContext, BooleanContext,
-    ColorsContext, CountersContext, DecisionContext, DistributeContext, DistributeTarget,
-    NumberContext, OrderContext, PartitionContext, ProliferateContext, SelectObjectsContext,
-    SelectOptionsContext, SelectableObject, SelectableOption, TextInputContext, ViewCardsContext,
+    ColorsContext, CountersContext, DecisionContext, DecisionHiddenCardView,
+    DecisionHiddenCardVisibility, DistributeContext, DistributeTarget, NumberContext, OrderContext,
+    PartitionContext, ProliferateContext, SelectObjectsContext, SelectOptionsContext,
+    SelectableObject, SelectableOption, TextInputContext, ViewCardsContext,
 };
 
 // Re-export the make_decision function

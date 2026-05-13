@@ -138,19 +138,7 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
 }
 
 fn ordinal_number_word(word: &str) -> Option<u32> {
-    match word {
-        "first" => Some(1),
-        "second" => Some(2),
-        "third" => Some(3),
-        "fourth" => Some(4),
-        "fifth" => Some(5),
-        "sixth" => Some(6),
-        "seventh" => Some(7),
-        "eighth" => Some(8),
-        "ninth" => Some(9),
-        "tenth" => Some(10),
-        _ => parse_named_number(word),
-    }
+    ironsmith_core::parse_ordinal_word(word).or_else(|| parse_named_number(word))
 }
 
 fn parse_this_ability_resolution_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {

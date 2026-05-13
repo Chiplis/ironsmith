@@ -5,7 +5,8 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::context::{
-    DecisionContext, ProliferateContext, SelectObjectsContext, SelectableObject,
+    DecisionContext, DecisionHiddenCardVisibility, ProliferateContext, SelectObjectsContext,
+    SelectableObject,
 };
 use crate::decisions::spec::{DecisionPrimitive, DecisionSpec};
 use crate::game_state::GameState;
@@ -115,6 +116,8 @@ pub struct ChooseObjectsSpec {
     pub allow_partial_completion: bool,
     /// Whether the decision must be offered even when one required candidate exists.
     pub require_explicit_choice: bool,
+    /// Whether hidden candidate identities should be opened while the decision is active.
+    pub hidden_card_visibility: DecisionHiddenCardVisibility,
 }
 
 impl ChooseObjectsSpec {
@@ -134,6 +137,7 @@ impl ChooseObjectsSpec {
             max,
             allow_partial_completion: false,
             require_explicit_choice: false,
+            hidden_card_visibility: DecisionHiddenCardVisibility::None,
         }
     }
 
@@ -144,6 +148,11 @@ impl ChooseObjectsSpec {
 
     pub fn require_explicit_choice(mut self) -> Self {
         self.require_explicit_choice = true;
+        self
+    }
+
+    pub fn with_hidden_card_visibility(mut self, visibility: DecisionHiddenCardVisibility) -> Self {
+        self.hidden_card_visibility = visibility;
         self
     }
 }
@@ -205,6 +214,11 @@ impl DecisionSpec for ChooseObjectsSpec {
         } else {
             ctx
         };
+        let ctx = ctx.with_hidden_card_view(
+            self.candidates.clone(),
+            self.hidden_card_visibility,
+            self.description.clone(),
+        );
 
         DecisionContext::SelectObjects(ctx)
     }
@@ -417,6 +431,8 @@ pub struct SearchSpec {
     pub reveal: bool,
     /// Whether the player can "fail to find" (choose nothing).
     pub may_fail_to_find: bool,
+    /// Whether hidden candidate identities should be opened while the search is active.
+    pub hidden_card_visibility: DecisionHiddenCardVisibility,
 }
 
 impl SearchSpec {
@@ -427,6 +443,7 @@ impl SearchSpec {
             matching_cards,
             reveal,
             may_fail_to_find: true, // Most searches can fail to find
+            hidden_card_visibility: DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
         }
     }
 
@@ -437,7 +454,13 @@ impl SearchSpec {
             matching_cards,
             reveal,
             may_fail_to_find: false,
+            hidden_card_visibility: DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
         }
+    }
+
+    pub fn with_hidden_card_visibility(mut self, visibility: DecisionHiddenCardVisibility) -> Self {
+        self.hidden_card_visibility = visibility;
+        self
     }
 }
 
@@ -503,6 +526,11 @@ impl DecisionSpec for SearchSpec {
         } else {
             ctx
         };
+        let ctx = ctx.with_hidden_card_view(
+            self.matching_cards.clone(),
+            self.hidden_card_visibility,
+            "Search library",
+        );
 
         DecisionContext::SelectObjects(ctx)
     }

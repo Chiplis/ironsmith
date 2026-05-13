@@ -1682,6 +1682,23 @@ mod live_action_rollback_tests {
         dispatch_priority_action_matching(wasm, |action| matches!(action, LegalAction::PassPriority));
     }
 
+    fn dispatch_select_option(wasm: &mut WasmGame, option_index: usize) {
+        let pending_ctx = wasm
+            .pending_decision
+            .take()
+            .expect("expected pending select-options decision");
+        let DecisionContext::SelectOptions(_) = &pending_ctx else {
+            panic!("expected select-options decision, got {pending_ctx:?}");
+        };
+        wasm.dispatch_live_priority_response(
+            pending_ctx,
+            UiCommand::SelectOptions {
+                option_indices: vec![option_index],
+            },
+        )
+        .expect("select option should dispatch");
+    }
+
     #[test]
     fn live_action_error_restore_returns_to_pre_cast_priority_state() {
         let _id_counter_guard = crate::test_id_counter_guard();
@@ -1888,6 +1905,7 @@ mod live_action_rollback_tests {
                 } if *spell_id == spell
             )
         });
+        dispatch_select_option(&mut wasm, 0);
         dispatch_pass_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
 

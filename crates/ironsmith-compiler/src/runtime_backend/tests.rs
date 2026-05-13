@@ -5219,7 +5219,7 @@ fn where_x_half_life_create_token_keeps_rounded_up_tail() {
 }
 
 #[test]
-fn partner_with_keyword_line_lowers_to_partner_and_search_trigger() {
+fn partner_with_keyword_line_lowers_to_partner_with_marker_and_search_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner With Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -5229,11 +5229,13 @@ fn partner_with_keyword_line_lowers_to_partner_and_search_trigger() {
 
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        debug.contains("partner")
-            && debug.contains("chooseobjectseffect")
-            && debug.contains("frodo adventurous hobbit")
-            && debug.contains("shufflelibraryeffect"),
-        "expected partner-with to lower to partner plus named-card search trigger, got {debug}"
+        debug.contains("partnerwith")
+            && debug.contains("searchlibraryeffect")
+            && debug.contains("frodo, adventurous hobbit")
+            && debug.contains("destination: hand")
+            && debug.contains("reveal: true")
+            && debug.contains("search_mode: exact"),
+        "expected partner-with to lower to a PartnerWith marker plus named-card search trigger, got {debug}"
     );
 }
 
@@ -5982,6 +5984,19 @@ fn rewrite_search_library_leading_prelude_and_top_probe_helpers_cover_remaining_
     assert!(
         !super::grammar::effects::search_library_has_unsupported_top_position_probe(&allowed_words),
         "explicit on-top-of-library destination text should not trip the rejection probe"
+    );
+
+    let allowed_nth_put = lex_line(
+        "Search your library for a card, then shuffle and put that card third from the top.",
+        0,
+    )
+    .expect("rewrite lexer should classify searched-card nth-from-top placement text");
+    let allowed_nth_words = crate::runtime_backend::token_word_refs(&allowed_nth_put);
+    assert!(
+        !super::grammar::effects::search_library_has_unsupported_top_position_probe(
+            &allowed_nth_words
+        ),
+        "searched-card nth-from-top placement should be supported"
     );
 }
 
@@ -9978,6 +9993,10 @@ fn rewrite_lexed_effect_entrypoint_splits_untap_and_additional_combat_phase() {
 fn rewrite_count_word_parser_handles_digits_and_words() {
     assert_eq!(parse_count_word_rewrite("2").expect("digit count"), 2);
     assert_eq!(parse_count_word_rewrite("three").expect("word count"), 3);
+    assert_eq!(
+        parse_count_word_rewrite("twenty-one").expect("hyphenated word count"),
+        21
+    );
 
     let digit_tokens = lex_line("2", 0).expect("lexer should classify digit count");
     assert_eq!(
@@ -9991,6 +10010,18 @@ fn rewrite_count_word_parser_handles_digits_and_words() {
         super::grammar::values::parse_count_word_tokens(&word_tokens)
             .expect("token count parser should parse count words"),
         3
+    );
+
+    let split_word_tokens = lex_line("twenty one", 0).expect("lexer should classify split words");
+    assert_eq!(
+        super::grammar::values::parse_number_from_lexed(&split_word_tokens),
+        Some((21, 2))
+    );
+
+    let hundred_tokens = lex_line("one hundred", 0).expect("lexer should classify hundred");
+    assert_eq!(
+        super::grammar::values::parse_number_from_lexed(&hundred_tokens),
+        Some((100, 2))
     );
 }
 

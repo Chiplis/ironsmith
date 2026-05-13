@@ -498,6 +498,7 @@ fn suppress_duplicate_one_or_more_zone_change_triggers(
         crate::events::cause::CauseType,
         Option<crate::ids::ObjectId>,
         Option<crate::ids::PlayerId>,
+        Vec<crate::ids::ObjectId>,
     )>,
 ) {
     let mut added = trigger_queue.entries.split_off(queue_start);
@@ -517,6 +518,9 @@ fn suppress_duplicate_one_or_more_zone_change_triggers(
         {
             return true;
         }
+        let mut event_objects = zone_change.destination_objects().to_vec();
+        event_objects.sort();
+        event_objects.dedup();
         let key = (
             entry.source_stable_id,
             entry.trigger_identity,
@@ -525,6 +529,7 @@ fn suppress_duplicate_one_or_more_zone_change_triggers(
             zone_change.cause.cause_type,
             zone_change.cause.source,
             zone_change.cause.source_controller,
+            event_objects,
         );
         seen.insert(key)
     });

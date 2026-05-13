@@ -1453,6 +1453,12 @@ fn collect_attached_source_lki_triggers(
                 .trigger
                 .event_value_amount(trigger_event, &ctx);
             let trigger_identity = compute_trigger_identity(trigger_ability);
+            if triggered.iter().any(|entry| {
+                entry.source_stable_id == source_snapshot.stable_id
+                    && entry.trigger_identity == trigger_identity
+            }) {
+                continue;
+            }
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
                     game,

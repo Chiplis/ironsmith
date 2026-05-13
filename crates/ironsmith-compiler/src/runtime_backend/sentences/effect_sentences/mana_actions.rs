@@ -577,10 +577,7 @@ pub(crate) fn parse_counter_type_from_descriptor_tokens(
             _ => None,
         };
     }
-    if matches!(
-        last,
-        "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six" | "another"
-    ) {
+    if last == "another" || ironsmith_core::parse_cardinal_word(last).is_some() {
         return None;
     }
     if last.chars().all(|c| c.is_ascii_alphabetic()) {

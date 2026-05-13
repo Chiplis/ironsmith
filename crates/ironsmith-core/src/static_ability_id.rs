@@ -43,6 +43,7 @@ pub enum StaticAbilityId {
     Infect,
     Changeling,
     Partner,
+    PartnerWith,
     StartYourEngines,
     DoctorsCompanion,
     Assist,
@@ -269,6 +270,7 @@ impl StaticAbilityId {
             | Infect
             | Changeling
             | Partner
+            | PartnerWith
             | StartYourEngines
             | DoctorsCompanion
             | Assist
@@ -494,6 +496,7 @@ impl StaticAbilityId {
                 | Infect
                 | Changeling
                 | Partner
+                | PartnerWith
                 | DoctorsCompanion
                 | Assist
                 | SplitSecond

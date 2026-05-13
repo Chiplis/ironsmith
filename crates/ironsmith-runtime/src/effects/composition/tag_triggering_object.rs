@@ -26,16 +26,37 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             ExecutionError::UnresolvableValue("missing triggering event".to_string())
         })?;
 
-        if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
-            && let Some(snapshot) = zone_change.snapshot.as_ref()
-        {
-            if zone_change.from == crate::zone::Zone::Battlefield {
-                let mut tagged = snapshot.clone();
-                if let Some(&destination_id) = zone_change.destination_objects().first() {
-                    tagged.object_id = destination_id;
+        if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() {
+            if !zone_change.result_objects.is_empty() {
+                let tagged = explicit_destination_snapshots(game, zone_change);
+                if !tagged.is_empty() {
+                    let count = tagged.len() as i32;
+                    set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+                    return Ok(EffectOutcome::count(count));
                 }
-                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
-                return Ok(EffectOutcome::count(1));
+                set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
+                return Ok(EffectOutcome::count(0));
+            }
+
+            let Some(snapshot) = zone_change.snapshot.as_ref() else {
+                return Ok(EffectOutcome::count(0));
+            };
+            if zone_change.from == crate::zone::Zone::Battlefield {
+                if let Some(destination_id) = game
+                    .find_object_by_stable_id(snapshot.stable_id)
+                    .and_then(|id| {
+                        game.object(id)
+                            .filter(|obj| obj.zone == zone_change.to)
+                            .map(|_| id)
+                    })
+                {
+                    let mut tagged = snapshot.clone();
+                    tagged.object_id = destination_id;
+                    set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
+                    return Ok(EffectOutcome::count(1));
+                }
+                set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
+                return Ok(EffectOutcome::count(0));
             }
 
             let tagged = game
@@ -56,24 +77,6 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             }
             set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
             return Ok(EffectOutcome::count(0));
-        }
-
-        if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
-            && !zone_change.result_objects.is_empty()
-        {
-            let tagged: Vec<_> = zone_change
-                .destination_objects()
-                .iter()
-                .filter_map(|&id| {
-                    game.object(id).map(|obj| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                    })
-                })
-                .collect();
-            if !tagged.is_empty() {
-                set_triggering_object_tags(ctx, self.tag.as_str(), tagged.clone());
-                return Ok(EffectOutcome::count(tagged.len() as i32));
-            }
         }
 
         if let Some(sacrifice) = event.downcast::<crate::events::permanents::SacrificeEvent>()
@@ -142,6 +145,39 @@ fn latest_zone_lki_snapshot(
         .filter_map(|event| event.snapshot.as_ref())
         .find(|snapshot| snapshot.stable_id == stable_id && snapshot.zone == zone)
         .cloned()
+}
+
+fn explicit_destination_snapshots(
+    game: &GameState,
+    zone_change: &crate::events::zones::ZoneChangeEvent,
+) -> Vec<ObjectSnapshot> {
+    let destination_objects: Vec<_> = zone_change
+        .result_objects
+        .iter()
+        .filter_map(|&id| {
+            game.object(id)
+                .filter(|obj| obj.zone == zone_change.to)
+                .map(|obj| (id, obj))
+        })
+        .collect();
+
+    if destination_objects.is_empty() {
+        return Vec::new();
+    }
+
+    if zone_change.from == crate::zone::Zone::Battlefield
+        && destination_objects.len() == 1
+        && let Some(snapshot) = zone_change.snapshot.as_ref()
+    {
+        let mut tagged = snapshot.clone();
+        tagged.object_id = destination_objects[0].0;
+        return vec![tagged];
+    }
+
+    destination_objects
+        .into_iter()
+        .map(|(_, obj)| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+        .collect()
 }
 
 fn set_triggering_object_tags(

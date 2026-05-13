@@ -194,17 +194,15 @@ impl EffectExecutor for MoveToZoneEffect {
                             if final_zone == Zone::Exile {
                                 game.add_exiled_with_source_link(ctx.source, new_id);
                             }
-                            if final_zone == Zone::Library && !self.to_top {
-                                if let Some(obj) = game.object(new_id) {
-                                    if let Some(player) = game.player_mut(obj.owner) {
-                                        if let Some(pos) =
-                                            player.library.iter().position(|id| *id == new_id)
-                                        {
-                                            player.library.remove(pos);
-                                            player.library.insert(0, new_id);
-                                        }
-                                    }
-                                }
+                            if final_zone == Zone::Library
+                                && !self.to_top
+                                && let Some(owner) = game.object(new_id).map(|obj| obj.owner)
+                            {
+                                game.move_library_card_to_bottom(
+                                    owner,
+                                    new_id,
+                                    "card put on bottom of library",
+                                );
                             }
                         }
                         if final_zone == Zone::Library && from_zone == Zone::Battlefield {

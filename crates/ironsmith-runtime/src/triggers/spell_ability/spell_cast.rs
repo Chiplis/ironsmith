@@ -167,7 +167,8 @@ impl TriggerMatcher for SpellCastTrigger {
         let mut suffix = String::new();
         let suppress_turn_suffix = false;
         if let Some(exact_spells) = self.exact_spells_this_turn {
-            let ordinal = ordinal_word(exact_spells);
+            let ordinal =
+                ironsmith_core::ordinal_word(exact_spells).unwrap_or_else(|| "nth".to_string());
             if spell_text == "a spell" || spell_text == "spell" {
                 spell_text = match &self.caster {
                     PlayerFilter::You => format!("your {ordinal} spell each turn"),
@@ -387,22 +388,6 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         }
     } else {
         format!("{fallback} spell")
-    }
-}
-
-fn ordinal_word(value: u32) -> &'static str {
-    match value {
-        1 => "first",
-        2 => "second",
-        3 => "third",
-        4 => "fourth",
-        5 => "fifth",
-        6 => "sixth",
-        7 => "seventh",
-        8 => "eighth",
-        9 => "ninth",
-        10 => "tenth",
-        _ => "nth",
     }
 }
 

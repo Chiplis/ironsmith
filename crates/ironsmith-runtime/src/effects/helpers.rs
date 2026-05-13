@@ -122,6 +122,7 @@ pub(crate) fn resolve_source_object_id(
     ctx.source_snapshot
         .as_ref()
         .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+        .or(Some(ctx.source))
 }
 
 fn resolve_tagged_players_from_context(

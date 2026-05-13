@@ -310,18 +310,8 @@ impl WasmGame {
             let Some(new_id) = self.game.move_object_by_effect(card_id, Zone::Library) else {
                 continue;
             };
-            let Some(player) = self.game.player_mut(owner) else {
-                continue;
-            };
-            let Some(index) = player
-                .library
-                .iter()
-                .rposition(|candidate| *candidate == new_id)
-            else {
-                continue;
-            };
-            let moved = player.library.remove(index);
-            player.library.insert(0, moved);
+            self.game
+                .move_library_card_to_bottom(owner, new_id, "mulligan card put on bottom");
         }
     }
 

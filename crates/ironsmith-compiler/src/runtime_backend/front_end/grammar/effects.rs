@@ -1227,6 +1227,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     );
     let shuffle = original_shuffle && trailing_create_followup.is_none();
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
+    let library_position_from_top = effect_routing.library_position_from_top.clone();
     let mut handled_direct_may_in_iterated_search = false;
     let mut effects = if let Some(iterated_filter) = iterated_subject_filter.clone()
         && has_explicit_destination
@@ -1429,6 +1430,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 false,
                 ChoiceCount::up_to(1),
                 None,
+                None,
                 battlefield_tapped,
             ),
             EffectAst::subject_verb_search_library(
@@ -1440,6 +1442,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 reveal,
                 shuffle,
                 ChoiceCount::up_to(1),
+                None,
                 None,
                 false,
             ),
@@ -1482,6 +1485,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             shuffle,
             count,
             count_value.clone(),
+            library_position_from_top,
             battlefield_tapped,
         )]
     };

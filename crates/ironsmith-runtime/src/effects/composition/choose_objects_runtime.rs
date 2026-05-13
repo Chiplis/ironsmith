@@ -1,5 +1,6 @@
 //! Runtime orchestration for `ChooseObjectsEffect`.
 
+use crate::decisions::context::DecisionHiddenCardVisibility;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{
@@ -16,7 +17,7 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::{ObjectFilter, PlayerFilter};
+use crate::filter::{ObjectFilter, ObjectRef, PlayerFilter};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -27,6 +28,15 @@ use super::choose_objects::{ChooseObjectsEffect, search_zones, top_only_selectio
 
 fn is_implicit_object_tag(tag: &str) -> bool {
     matches!(tag, "__it__" | "it")
+}
+
+fn should_accumulate_implicit_choice_tag(effect: &ChooseObjectsEffect) -> bool {
+    let (PlayerFilter::AliasedOwnerOf(ObjectRef::Tagged(tag))
+    | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag))) = &effect.chooser
+    else {
+        return false;
+    };
+    tag.as_str() == effect.tag.as_str() && is_implicit_object_tag(effect.tag.as_str())
 }
 
 fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
@@ -1154,6 +1164,11 @@ pub(crate) fn run_choose_objects(
             if has_hidden_search_zones {
                 spec = spec.require_explicit_choice();
             }
+            if has_hidden_search_zones {
+                spec = spec.with_hidden_card_visibility(
+                    DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                );
+            }
             make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
         };
         if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
@@ -1240,7 +1255,10 @@ pub(crate) fn run_choose_objects(
 
         let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
         if !snapshots.is_empty() {
-            if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
+            if effect.replace_tagged_objects
+                || (is_implicit_object_tag(effect.tag.as_str())
+                    && !should_accumulate_implicit_choice_tag(effect))
+            {
                 ctx.set_tagged_objects(effect.tag.clone(), snapshots);
             } else {
                 ctx.tag_objects(effect.tag.clone(), snapshots);

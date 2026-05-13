@@ -625,8 +625,11 @@ impl WasmGame {
         let battlefield_size = snap.battlefield_size;
         let stack_size = snap.stack_size;
         let encode_started_at = PerfTimer::start();
+        #[cfg(target_arch = "wasm32")]
         let encoded = serde_wasm_bindgen::to_value(&snap)
             .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let encoded = JsValue::NULL;
         let snapshot_encode_ms = encode_started_at.elapsed_ms();
         let total_snapshot_ms = snapshot_started_at.elapsed_ms();
         self.last_snapshot_perf = Some(SnapshotPerfMetrics {

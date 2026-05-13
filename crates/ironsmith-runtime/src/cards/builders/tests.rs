@@ -1318,6 +1318,12 @@ fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
             "Partner with Proud Mentor (When this creature enters, target player may put Proud Mentor into their hand from their library, then shuffle.)",
         )
         .expect("partner-with keyword line should parse");
+    match &def.abilities[0].kind {
+        AbilityKind::Static(static_ability) => {
+            assert_eq!(static_ability.id(), StaticAbilityId::PartnerWith);
+        }
+        other => panic!("expected partner-with marker static ability, got {other:?}"),
+    }
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Partner with Proud Mentor")
@@ -1328,8 +1334,8 @@ fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("choices: [\n                        Target(\n                            Player(\n                                Any")
-            && (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
-            && debug.contains("is_search: true"),
+            && ((debug.contains("SearchLibraryEffect") && debug.contains("search_mode: Exact"))
+                || (debug.contains("ChooseObjectsEffect") && debug.contains("is_search: true"))),
         "expected partner-with to keep exactly one target player and a real library-search effect, got {debug}"
     );
 }
@@ -1347,7 +1353,7 @@ fn test_parse_partner_with_attack_value_renders_oracle_surface() {
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
-        rendered.contains("Partner with Proud Mentor.")
+        rendered.contains("Partner with Proud Mentor")
             && rendered.contains(
                 "where X is the greatest power among tapped creatures your opponents control"
             )
@@ -3694,7 +3700,7 @@ fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     assert_eq!(
         copied_spells
             .iter()
-            .filter(|obj| obj.kind == ObjectKind::Token)
+            .filter(|obj| obj.kind == ObjectKind::SpellCopy)
             .count(),
         2,
         "expected copies to be created from optional-cost payment count"
@@ -4995,20 +5001,26 @@ fn test_parse_partner_with_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Probe")
         .card_types(vec![CardType::Creature])
         .parse_text("Partner with Bebop, Skull & Crossbones")
-        .expect("partner-with should lower to partner plus a real ETB search trigger");
+        .expect("partner-with should lower to a PartnerWith marker plus a real ETB search trigger");
+    match &def.abilities[0].kind {
+        AbilityKind::Static(static_ability) => {
+            assert_eq!(static_ability.id(), StaticAbilityId::PartnerWith);
+        }
+        other => panic!("expected partner-with marker static ability, got {other:?}"),
+    }
 
     let rendered = unprocessed_compiled_lines(&def);
     assert!(
         rendered
             .iter()
-            .any(|line| line == "Partner with Bebop Skull and Crossbones."),
+            .any(|line| line == "Partner with Bebop, Skull & Crossbones"),
         "expected partner-with keyword surface, got {rendered:?}"
     );
     let search_lines = rendered
         .iter()
         .filter(|line| {
             line.to_ascii_lowercase()
-                .contains("bebop skull and crossbones")
+                .contains("bebop, skull & crossbones")
         })
         .count();
     assert_eq!(
@@ -5017,8 +5029,8 @@ fn test_parse_partner_with_keyword_line() {
     );
     let debug = format!("{def:#?}");
     assert!(
-        (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
-            && debug.contains("is_search: true")
+        ((debug.contains("SearchLibraryEffect") && debug.contains("search_mode: Exact"))
+            || (debug.contains("ChooseObjectsEffect") && debug.contains("is_search: true")))
             && !debug.contains("KeywordFallbackText"),
         "expected real library-search effect without fallback, got {debug}"
     );
@@ -11778,15 +11790,22 @@ fn parse_lose_life_for_each_with_multiplier_uses_scaled_count_value() {
         .find_map(|effect| effect.downcast_ref::<crate::effects::LoseLifeEffect>())
         .expect("expected lose-life effect");
     match &lose.amount {
-        Value::CountScaled(filter, multiplier) => {
-            assert_eq!(*multiplier, 2, "expected fixed multiplier of two");
-            assert!(
-                filter.card_types.contains(&CardType::Creature),
-                "expected creature count filter, got {:?}",
-                filter.card_types
-            );
-        }
-        other => panic!("expected scaled count value, got {other:?}"),
+        Value::Add(left, right) => match (left.as_ref(), right.as_ref()) {
+            (
+                Value::EffectMetric {
+                    effect_id: left_id,
+                    source: crate::effect::EffectMetricSource::AffectedObjects,
+                    metric: crate::effect::EffectMetric::Count,
+                },
+                Value::EffectMetric {
+                    effect_id: right_id,
+                    source: crate::effect::EffectMetricSource::AffectedObjects,
+                    metric: crate::effect::EffectMetric::Count,
+                },
+            ) if left_id == right_id => {}
+            other => panic!("expected doubled destroyed-this-way metric, got {other:?}"),
+        },
+        other => panic!("expected doubled destroyed-this-way metric, got {other:?}"),
     }
 }
 
@@ -14750,6 +14769,31 @@ fn parse_full_god_eternal_kefnet_oracle() {
     assert!(
         rendered.contains("third from the top"),
         "expected third-from-top library wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_long_term_plans_searches_then_puts_card_third_from_top() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Long-Term Plans")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Search your library for a card, then shuffle and put that card third from the top.",
+        )
+        .expect("Long-Term Plans style search placement should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let normalized_debug = spell_debug.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized_debug.contains("SearchLibraryEffect")
+            && normalized_debug.contains("library_position_from_top: Some( Fixed( 3"),
+        "expected search-library effect with third-from-top placement, got {spell_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("third from the top"),
+        "expected third-from-top search-library wording, got {rendered}"
     );
 }
 
@@ -18224,7 +18268,8 @@ fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
         (joined.contains("each of those players searches their library for a card")
             || joined.contains("for each target player, search that player's library for a card"))
             && (joined.contains("then shuffles and puts that card on top")
-                || joined.contains("then that player shuffles and put it on top")),
+                || joined.contains("then that player shuffles and put it on top")
+                || joined.contains("then shuffle and put that card on top")),
         "expected unambiguous per-target-player search rendering, got {joined}"
     );
     assert!(
@@ -28930,8 +28975,9 @@ fn parse_allows_that_player_library_search_when_combat_damage_trigger_binds_play
         let debug = format!("{:#?}", def.abilities);
         let compact_debug = debug.split_whitespace().collect::<String>();
         assert!(
-            compact_debug.contains("ChooseObjectsEffect")
-                && compact_debug.contains("zone:Some(")
+            ((compact_debug.contains("ChooseObjectsEffect")
+                && compact_debug.contains("zone:Some("))
+                || compact_debug.contains("SearchLibraryEffect"))
                 && compact_debug.contains("Library")
                 && compact_debug.contains("owner:Some(")
                 && compact_debug.contains("IteratedPlayer"),
@@ -31820,6 +31866,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Echoing Deeps",
     "Encroaching Mycosynth",
     "Fatal Push",
+    "Golgari Thug",
     "Gloom Stalker",
     "Grief",
     "Imoen, Mystic Trickster",
@@ -31849,7 +31896,6 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
     "Clown Car",
-    "Golgari Thug",
     "Gravecrawler",
     "Hancock, Ghoulish Mayor",
     "Lake of the Dead",
@@ -31884,7 +31930,7 @@ strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
-strict_parse_card_expected_fail_test!(strict_parse_golgari_thug, "Golgari Thug");
+strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
 strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");
 strict_parse_card_expected_fail_test!(

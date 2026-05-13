@@ -300,6 +300,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::Infect
                 | StaticAbilityId::Changeling
                 | StaticAbilityId::Partner
+                | StaticAbilityId::PartnerWith
                 | StaticAbilityId::StartYourEngines
                 | StaticAbilityId::DoctorsCompanion
                 | StaticAbilityId::Assist

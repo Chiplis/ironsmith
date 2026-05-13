@@ -15,6 +15,43 @@ use crate::zone::Zone;
 pub struct DecisionUiHints {
     pub context_text: Option<String>,
     pub consequence_text: Option<String>,
+    pub hidden_card_views: Vec<DecisionHiddenCardView>,
+}
+
+impl DecisionUiHints {
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        if visibility != DecisionHiddenCardVisibility::None && !object_ids.is_empty() {
+            self.hidden_card_views.push(DecisionHiddenCardView {
+                object_ids,
+                visibility,
+                description: description.into(),
+            });
+        }
+        self
+    }
+}
+
+/// Visibility policy for hidden cards that are shown as part of a decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionHiddenCardVisibility {
+    /// Do not expose hidden identities.
+    None,
+    /// Open the cards only to the player making the decision.
+    PrivateToDecisionPlayer,
+    /// Open the cards to all players.
+    Public,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionHiddenCardView {
+    pub object_ids: Vec<ObjectId>,
+    pub visibility: DecisionHiddenCardVisibility,
+    pub description: String,
 }
 
 // ============================================================================
@@ -64,6 +101,18 @@ impl BooleanContext {
 
     pub fn with_consequence_text(mut self, text: impl Into<String>) -> Self {
         self.ui_hints.consequence_text = Some(text.into());
+        self
+    }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
         self
     }
 }
@@ -135,6 +184,18 @@ impl NumberContext {
         self.ui_hints.consequence_text = Some(text.into());
         self
     }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
+        self
+    }
 }
 
 // ============================================================================
@@ -196,6 +257,18 @@ impl TextInputContext {
 
     pub fn with_consequence_text(mut self, text: impl Into<String>) -> Self {
         self.ui_hints.consequence_text = Some(text.into());
+        self
+    }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
         self
     }
 }
@@ -365,6 +438,18 @@ impl SelectObjectsContext {
         self.ui_hints.consequence_text = Some(text.into());
         self
     }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
+        self
+    }
 }
 
 // ============================================================================
@@ -528,6 +613,18 @@ impl SelectOptionsContext {
 
     pub fn with_consequence_text(mut self, text: impl Into<String>) -> Self {
         self.ui_hints.consequence_text = Some(text.into());
+        self
+    }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
         self
     }
 }
@@ -1103,6 +1200,18 @@ impl TargetsContext {
         self.ui_hints.consequence_text = Some(text.into());
         self
     }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        self.ui_hints = self
+            .ui_hints
+            .with_hidden_card_view(object_ids, visibility, description);
+        self
+    }
 }
 
 // ============================================================================
@@ -1248,6 +1357,28 @@ impl DecisionContext {
         }
     }
 
+    pub fn hidden_card_views(&self) -> &[DecisionHiddenCardView] {
+        match self {
+            DecisionContext::Boolean(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::Number(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::TextInput(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::SelectObjects(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::SelectOptions(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::Targets(ctx) => &ctx.ui_hints.hidden_card_views,
+            DecisionContext::Modes(_)
+            | DecisionContext::HybridChoice(_)
+            | DecisionContext::Order(_)
+            | DecisionContext::Attackers(_)
+            | DecisionContext::Blockers(_)
+            | DecisionContext::Distribute(_)
+            | DecisionContext::Colors(_)
+            | DecisionContext::Counters(_)
+            | DecisionContext::Partition(_)
+            | DecisionContext::Proliferate(_)
+            | DecisionContext::Priority(_) => &[],
+        }
+    }
+
     pub fn with_context_text(mut self, text: impl Into<String>) -> Self {
         let text = text.into();
         match &mut self {
@@ -1281,6 +1412,65 @@ impl DecisionContext {
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::Targets(ctx) => ctx.ui_hints.consequence_text = Some(text),
+            DecisionContext::Modes(_)
+            | DecisionContext::HybridChoice(_)
+            | DecisionContext::Order(_)
+            | DecisionContext::Attackers(_)
+            | DecisionContext::Blockers(_)
+            | DecisionContext::Distribute(_)
+            | DecisionContext::Colors(_)
+            | DecisionContext::Counters(_)
+            | DecisionContext::Partition(_)
+            | DecisionContext::Proliferate(_)
+            | DecisionContext::Priority(_) => {}
+        }
+        self
+    }
+
+    pub fn with_hidden_card_view(
+        mut self,
+        object_ids: Vec<ObjectId>,
+        visibility: DecisionHiddenCardVisibility,
+        description: impl Into<String>,
+    ) -> Self {
+        let description = description.into();
+        match &mut self {
+            DecisionContext::Boolean(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::Number(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::TextInput(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::SelectObjects(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::SelectOptions(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
+            DecisionContext::Targets(ctx) => {
+                ctx.ui_hints =
+                    ctx.ui_hints
+                        .clone()
+                        .with_hidden_card_view(object_ids, visibility, description)
+            }
             DecisionContext::Modes(_)
             | DecisionContext::HybridChoice(_)
             | DecisionContext::Order(_)

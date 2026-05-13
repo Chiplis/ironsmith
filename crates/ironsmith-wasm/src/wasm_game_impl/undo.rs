@@ -1,3 +1,14 @@
+#[cfg(target_arch = "wasm32")]
+fn loaded_deck_sample_index(len: usize) -> usize {
+    debug_assert!(len > 0);
+    ((js_sys::Math::random() * len as f64).floor() as usize).min(len - 1)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn loaded_deck_sample_index(_len: usize) -> usize {
+    0
+}
+
 impl WasmGame {
     pub(super) fn is_cancelable(&self) -> bool {
         if let Some(replay) = self.pending_replay_action.as_ref() {
@@ -1146,8 +1157,7 @@ impl WasmGame {
             ));
         }
 
-        let sample_index = ((js_sys::Math::random() * eligible.len() as f64).floor() as usize)
-            .min(eligible.len() - 1);
+        let sample_index = loaded_deck_sample_index(eligible.len());
         let definition = eligible[sample_index].clone();
         let layout = match definition.card.linked_face_layout {
             ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,

@@ -3,9 +3,11 @@
 //! This module provides the `make_decision` function, which is the primary
 //! entry point for making player decisions using the new spec-based system.
 
+use std::collections::HashMap;
+
 use crate::color::Color;
 use crate::decision::{DecisionMaker, FallbackStrategy, LegalAction};
-use crate::decisions::context::DecisionContext;
+use crate::decisions::context::{DecisionContext, DecisionHiddenCardVisibility, ViewCardsContext};
 use crate::decisions::spec::{AttackerDeclaration, BlockerDeclaration, DecisionSpec};
 use crate::decisions::specs::{
     CounterRemovalResponse, DistributeResponse, ManaColorsSpec, NumberSpec, OptionalCostsResponse,
@@ -71,14 +73,25 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
     let ctx = super::context::enrich_display_hints(game, ctx);
     match ctx {
         DecisionContext::Boolean(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Boolean(ctx.clone()),
+            );
             let result = dm.decide_boolean(game, &ctx);
             R::from_bool(result, fallback)
         }
         DecisionContext::Number(ctx) => {
+            publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Number(ctx.clone()));
             let result = dm.decide_number(game, &ctx);
             R::from_number(result, fallback)
         }
         DecisionContext::TextInput(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::TextInput(ctx.clone()),
+            );
             let result = dm.decide_text(game, &ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
@@ -99,6 +112,11 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                     return R::from_objects(vec![candidate.id], fallback);
                 }
             }
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::SelectObjects(ctx.clone()),
+            );
             let result = dm.decide_objects(game, &ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
@@ -106,6 +124,11 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
             R::from_objects(result, fallback)
         }
         DecisionContext::SelectOptions(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::SelectOptions(ctx.clone()),
+            );
             let result = dm.decide_options(game, &ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
@@ -115,42 +138,84 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
             R::from_options_with_descriptions(result, &descriptions, fallback)
         }
         DecisionContext::Order(ctx) => {
+            publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Order(ctx.clone()));
             let result = dm.decide_order(game, &ctx);
             R::from_order(result, fallback)
         }
         DecisionContext::Attackers(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Attackers(ctx.clone()),
+            );
             let result = dm.decide_attackers(game, &ctx);
             R::from_attackers(result, fallback)
         }
         DecisionContext::Blockers(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Blockers(ctx.clone()),
+            );
             let result = dm.decide_blockers(game, &ctx);
             R::from_blockers(result, fallback)
         }
         DecisionContext::Distribute(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Distribute(ctx.clone()),
+            );
             let result = dm.decide_distribute(game, &ctx);
             R::from_distribute(result, fallback)
         }
         DecisionContext::Colors(ctx) => {
+            publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Colors(ctx.clone()));
             let result = dm.decide_colors(game, &ctx);
             R::from_colors(result, fallback)
         }
         DecisionContext::Counters(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Counters(ctx.clone()),
+            );
             let result = dm.decide_counters(game, &ctx);
             R::from_counters(result, fallback)
         }
         DecisionContext::Partition(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Partition(ctx.clone()),
+            );
             let result = dm.decide_partition(game, &ctx);
             R::from_partition(result, fallback)
         }
         DecisionContext::Proliferate(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Proliferate(ctx.clone()),
+            );
             let result = dm.decide_proliferate(game, &ctx);
             R::from_proliferate(result, fallback)
         }
         DecisionContext::Priority(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Priority(ctx.clone()),
+            );
             let result = dm.decide_priority(game, &ctx);
             R::from_priority(result, fallback)
         }
         DecisionContext::Targets(ctx) => {
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::Targets(ctx.clone()),
+            );
             let result = dm.decide_targets(game, &ctx);
             R::from_targets(result, fallback)
         }
@@ -190,6 +255,11 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 DecisionContext::SelectOptions(select_ctx),
             )
             .into_options();
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::SelectOptions(select_ctx.clone()),
+            );
             let result = dm.decide_options(game, &select_ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
@@ -219,11 +289,76 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 DecisionContext::SelectOptions(select_ctx),
             )
             .into_options();
+            publish_hidden_card_views_for_decision(
+                game,
+                dm,
+                &DecisionContext::SelectOptions(select_ctx.clone()),
+            );
             let result = dm.decide_options(game, &select_ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
             }
             R::from_options(result, fallback)
+        }
+    }
+}
+
+pub fn publish_hidden_card_views_for_decision(
+    game: &GameState,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    ctx: &DecisionContext,
+) {
+    for view in ctx.hidden_card_views() {
+        if view.visibility == DecisionHiddenCardVisibility::None || view.object_ids.is_empty() {
+            continue;
+        }
+
+        let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
+        for &id in &view.object_ids {
+            let Some(object) = game.object(id) else {
+                continue;
+            };
+            if !object.zone.is_hidden() && game.hidden_card_info(id).is_none() {
+                continue;
+            }
+            grouped
+                .entry((object.owner, object.zone))
+                .or_default()
+                .push(id);
+        }
+
+        for ((subject, zone), cards) in grouped {
+            if cards.is_empty() {
+                continue;
+            }
+            match view.visibility {
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer => {
+                    let viewer = game.controlling_player_for(ctx.player());
+                    let view_ctx = ViewCardsContext::new(
+                        viewer,
+                        subject,
+                        ctx.source(),
+                        zone,
+                        view.description.clone(),
+                    );
+                    dm.view_cards(game, viewer, &cards, &view_ctx);
+                }
+                DecisionHiddenCardVisibility::Public => {
+                    for viewer_idx in 0..game.players.len() {
+                        let viewer = PlayerId::from_index(viewer_idx as u8);
+                        let view_ctx = ViewCardsContext::new(
+                            viewer,
+                            subject,
+                            ctx.source(),
+                            zone,
+                            view.description.clone(),
+                        )
+                        .with_public(true);
+                        dm.view_cards(game, viewer, &cards, &view_ctx);
+                    }
+                }
+                DecisionHiddenCardVisibility::None => {}
+            }
         }
     }
 }

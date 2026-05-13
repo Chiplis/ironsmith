@@ -167,11 +167,21 @@ impl EffectExecutor for SurveilEffect {
         }
 
         // Put the rest back on top
-        if let Some(p) = game.player_mut(player_id) {
-            p.library.retain(|id| !ordered_top_cards.contains(id));
+        if let Some(p) = game.player(player_id) {
+            let mut after_order: Vec<ObjectId> = p
+                .library
+                .iter()
+                .copied()
+                .filter(|id| !ordered_top_cards.contains(id))
+                .collect();
             for id in ordered_top_cards.iter().rev() {
-                p.library.push(*id);
+                after_order.push(*id);
             }
+            game.set_player_library_order_with_audit(
+                player_id,
+                after_order,
+                "surveil arranged cards kept on top",
+            );
         }
 
         Ok(EffectOutcome::count(surveil_count as i32).with_event(

@@ -166,12 +166,7 @@ fn should_put_revealed_card_on_bottom(
 
 fn move_revealed_cards_to_bottom(game: &mut GameState, cards_to_bottom: &[(PlayerId, ObjectId)]) {
     for (player, card) in cards_to_bottom {
-        if let Some(player_state) = game.player_mut(*player)
-            && let Some(pos) = player_state.library.iter().position(|id| *id == *card)
-        {
-            player_state.library.remove(pos);
-            player_state.library.insert(0, *card);
-        }
+        game.move_library_card_to_bottom(*player, *card, "clash card put on bottom");
     }
 }
 

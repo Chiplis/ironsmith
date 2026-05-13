@@ -1,7 +1,7 @@
 use super::*;
 use crate::effect::SearchSelectionMode;
 use crate::filter::StackObjectKind;
-use ironsmith_core::{LibraryBottomOrder, ValueSurfaceHint};
+use ironsmith_core::{LibraryBottomOrder, ValueSurfaceHint, ordinal_word};
 
 fn value_has_surface_hint(value: &Value, hint: ValueSurfaceHint) -> bool {
     value.has_surface_hint(hint)
@@ -13,6 +13,21 @@ fn value_prefers_where_x(value: &Value) -> bool {
 
 fn value_prefers_equal_to(value: &Value) -> bool {
     value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
+}
+
+fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> String {
+    if let Value::Fixed(value) = position
+        && let Ok(value) = u32::try_from(*value)
+        && let Some(ordinal) = ordinal_word(value)
+    {
+        if value == 1 && one_as_on_top {
+            "on top".to_string()
+        } else {
+            format!("{ordinal} from the top")
+        }
+    } else {
+        format!("{} from the top", describe_value(position))
+    }
 }
 
 /// Compile a list of effects to human-readable text (for stack ability display).
@@ -381,9 +396,7 @@ fn describe_reveal_hand_subset_choose_then_discard(effects: &[&Effect]) -> Optio
     } else {
         let reveal_count = reveal.count.max.filter(|max| *max == reveal.count.min)?;
         (
-            small_number_word(reveal_count as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| reveal_count.to_string()),
+            small_number_word(reveal_count as u32).unwrap_or_else(|| reveal_count.to_string()),
             String::new(),
         )
     };
@@ -557,9 +570,7 @@ fn describe_reveal_top_two_optional_picks_rest_bottom(effects: &[&Effect]) -> Op
         return None;
     }
 
-    let count_text = small_number_word(count as u32)
-        .map(str::to_string)
-        .unwrap_or_else(|| count.to_string());
+    let count_text = small_number_word(count as u32).unwrap_or_else(|| count.to_string());
     let subtype_text = second_choose.filter.subtypes[0].to_string();
     Some(format!(
         "Reveal the top {count_text} cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one {subtype_text} card from among them into your hand. Put the rest on the bottom of your library in a random order"
@@ -1205,7 +1216,10 @@ fn describe_for_players_choose_nonland_put_counter(
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !choose.count.is_single()
         || choose.chooser != PlayerFilter::IteratedPlayer
-        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || !matches!(
+            choose.filter.controller,
+            None | Some(PlayerFilter::IteratedPlayer)
+        )
         || !is_nonland_permanent_filter(&choose.filter)
     {
         return None;
@@ -2332,6 +2346,60 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         effect
     }
 
+    fn doubled_affected_count_for_effect(value: &Value, id: crate::effect::EffectId) -> bool {
+        let Value::Add(left, right) = value.unhinted() else {
+            return false;
+        };
+        let is_matching_metric = |value: &Value| {
+            matches!(
+                value.unhinted(),
+                Value::EffectMetric {
+                    effect_id,
+                    source: crate::effect::EffectMetricSource::AffectedObjects,
+                    metric: crate::effect::EffectMetric::Count
+                        | crate::effect::EffectMetric::AffectedCount,
+                } if *effect_id == id
+            )
+        };
+        is_matching_metric(left) && is_matching_metric(right)
+    }
+
+    fn describe_destroy_then_doubled_life_loss(first: &Effect, second: &Effect) -> Option<String> {
+        let with_id = first.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let destroy = unwrap_wrapped_effect(&with_id.effect)
+            .downcast_ref::<crate::effects::DestroyEffect>()?;
+        let lose = second.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+        if !matches!(lose.player, ChooseSpec::Player(PlayerFilter::You))
+            || !doubled_affected_count_for_effect(&lose.amount, with_id.id)
+        {
+            return None;
+        }
+
+        let (destroy_text, counted) = match &destroy.spec {
+            ChooseSpec::All(filter)
+                if filter.card_types.as_slice() == [CardType::Creature]
+                    && matches!(
+                        filter.controller,
+                        Some(PlayerFilter::Target(ref inner))
+                            if matches!(inner.as_ref(), PlayerFilter::Opponent)
+                    ) =>
+            {
+                (
+                    "Destroy all creatures target opponent controls".to_string(),
+                    "creature".to_string(),
+                )
+            }
+            ChooseSpec::All(filter) if filter.card_types.as_slice() == [CardType::Creature] => {
+                (describe_effect(first), "creature".to_string())
+            }
+            _ => (describe_effect(first), "object".to_string()),
+        };
+
+        Some(format!(
+            "{destroy_text}. You lose 2 life for each {counted} destroyed this way"
+        ))
+    }
+
     fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<String> {
         let [exile_effect, incubate_effect] = effects else {
             return None;
@@ -2726,14 +2794,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     fn library_top_position_text(position: &crate::effect::Value) -> String {
-        match position {
-            crate::effect::Value::Fixed(1) => "on top".to_string(),
-            crate::effect::Value::Fixed(2) => "second from the top".to_string(),
-            crate::effect::Value::Fixed(3) => "third from the top".to_string(),
-            crate::effect::Value::Fixed(4) => "fourth from the top".to_string(),
-            crate::effect::Value::Fixed(5) => "fifth from the top".to_string(),
-            _ => format!("{} from the top", describe_value(position)),
-        }
+        library_position_from_top_text(position, true)
     }
 
     fn look_hand_choose_then_move_to_library(effects: &[&Effect]) -> Option<String> {
@@ -4575,9 +4636,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let counter_suffix = match &put_counters.amount {
             Value::Fixed(1) => format!("an additional {counter_type} counter"),
             Value::Fixed(amount) => {
-                let count_text = number_word(*amount)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| amount.to_string());
+                let count_text = number_word(*amount).unwrap_or_else(|| amount.to_string());
                 format!("{count_text} additional {counter_type} counters")
             }
             _ => return None,
@@ -6636,9 +6695,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(max) = search.count.max
             && search.count.min == 0
         {
-            let count = number_word(max as i32)
-                .map(str::to_string)
-                .unwrap_or_else(|| max.to_string());
+            let count = number_word(max as i32).unwrap_or_else(|| max.to_string());
             let mut selection = format!("up to {count} creature cards");
             if search.filter.distinct_names {
                 selection.push_str(" with different names");
@@ -6662,9 +6719,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(excluded_name) = search.filter.excluded_name.as_ref()
             && let Some(exact) = choose_exact_count(search)
         {
-            let count = number_word(exact as i32)
-                .map(str::to_string)
-                .unwrap_or_else(|| exact.to_string());
+            let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
             let noun = if exact == 1 { "card" } else { "cards" };
             let different_names = if search.filter.distinct_names {
                 " that have different names"
@@ -6899,9 +6954,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 "one of them".to_string()
             }
         } else if let Some(exact) = choose_exact_count(choose) {
-            let count_text = number_word(exact as i32)
-                .map(str::to_string)
-                .unwrap_or_else(|| exact.to_string());
+            let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
             format!("{count_text} of those cards")
         } else {
             format!("{} of those cards", describe_choice_count(&choose.count))
@@ -8284,9 +8337,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             let sacrifice_text = if choose.count.is_dynamic_x() {
                 format!("Sacrifice X {sacrificed_subject}")
             } else if let Some(exact) = choose_exact_count(choose) {
-                let count_text = number_word(exact as i32)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| exact.to_string());
+                let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
                 format!("Sacrifice {count_text} {sacrificed_subject}")
             } else {
                 format!(
@@ -8846,9 +8897,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             } else {
                 let count_text = match (choose.count.min, choose.count.max) {
                     (0, Some(max)) => {
-                        let max_text = number_word(max as i32)
-                            .map(str::to_string)
-                            .unwrap_or_else(|| max.to_string());
+                        let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
                         format!("up to {max_text}")
                     }
                     _ => describe_choice_count(&choose.count),
@@ -9012,9 +9061,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 (0, Some(1)) => format!("up to one {selection}"),
                 (1, Some(1)) => with_indefinite_article(&selection),
                 (0, Some(max)) => {
-                    let max_text = number_word(max as i32)
-                        .map(str::to_string)
-                        .unwrap_or_else(|| max.to_string());
+                    let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
                     format!("up to {max_text} {selection}")
                 }
                 _ => format!("{} {selection}", describe_choice_count(move_view.count)),
@@ -9318,9 +9365,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             let owner = describe_possessive_player_filter(&look_at_top.player);
             let (count_text, noun, count_where_clause) =
                 describe_top_count_noun_and_where_clause(&look_at_top.count);
-            let kicked_count_text = small_number_word(kicked_count)
-                .map(str::to_string)
-                .unwrap_or_else(|| kicked_count.to_string());
+            let kicked_count_text =
+                small_number_word(kicked_count).unwrap_or_else(|| kicked_count.to_string());
 
             Some((
                 format!(
@@ -9872,6 +9918,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(compact) =
                 describe_compact_tagged_apply_continuous_pair(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_destroy_then_doubled_life_loss(filtered[idx], filtered[idx + 1])
         {
             parts.push(compact);
             idx += 2;
@@ -11080,6 +11134,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(deal) = filtered[idx].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
+            && let Some(compact) = describe_damage_then_source_skip_next_untap(deal, cant)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(deal) = tagged
+                .effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) = describe_damage_then_source_skip_next_untap(deal, cant)
         {
@@ -12565,6 +12631,10 @@ fn normalize_spellcast_trigger_mana_value_surface(
 
     line.replace(
         "where X is a card in that player's hand's mana value",
+        "where X is that spell's mana value",
+    )
+    .replace(
+        "where X is a card in your hand's mana value",
         "where X is that spell's mana value",
     )
 }
@@ -14735,29 +14805,7 @@ fn loyalty_cost_amount_text(text: &str) -> Option<String> {
 
 fn loyalty_cost_amount_word(text: &str) -> Option<i32> {
     let text = text.trim();
-    match text.trim() {
-        "a" | "one" | "1" => Some(1),
-        "two" | "2" => Some(2),
-        "three" | "3" => Some(3),
-        "four" | "4" => Some(4),
-        "five" | "5" => Some(5),
-        "six" | "6" => Some(6),
-        "seven" | "7" => Some(7),
-        "eight" | "8" => Some(8),
-        "nine" | "9" => Some(9),
-        "ten" | "10" => Some(10),
-        "eleven" | "11" => Some(11),
-        "twelve" | "12" => Some(12),
-        "thirteen" | "13" => Some(13),
-        "fourteen" | "14" => Some(14),
-        "fifteen" | "15" => Some(15),
-        "sixteen" | "16" => Some(16),
-        "seventeen" | "17" => Some(17),
-        "eighteen" | "18" => Some(18),
-        "nineteen" | "19" => Some(19),
-        "twenty" | "20" => Some(20),
-        _ => None,
-    }
+    ironsmith_core::parse_cardinal_word(text).and_then(|value| value.try_into().ok())
 }
 
 fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Option<String> {
@@ -15004,9 +15052,7 @@ fn describe_choose_then_return_to_hand_cost(
             with_indefinite_article(&noun)
         ));
     }
-    let count = number_word(exact as i32)
-        .map(str::to_string)
-        .unwrap_or_else(|| exact.to_string());
+    let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
     Some(format!(
         "Return {count} {} to their owners' hands",
         pluralize_noun_phrase(&noun)
@@ -16347,9 +16393,8 @@ pub(super) fn describe_choose_then_sacrifice(
         let chosen = with_indefinite_article(&chosen);
         Some(format!("{player} {verb} {chosen}"))
     } else {
-        let count_text = number_word(sacrifice_count as i32)
-            .map(str::to_string)
-            .unwrap_or_else(|| sacrifice_count.to_string());
+        let count_text =
+            number_word(sacrifice_count as i32).unwrap_or_else(|| sacrifice_count.to_string());
         let chosen = pluralize_noun_phrase(&chosen);
         Some(format!("{player} {verb} {count_text} {chosen}"))
     }
@@ -16414,9 +16459,7 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
         } else if let Some(rest) = noun.strip_prefix("an ") {
             noun = rest.to_string();
         }
-        let count_text = number_word(*value)
-            .map(str::to_string)
-            .unwrap_or_else(|| value.to_string());
+        let count_text = number_word(*value).unwrap_or_else(|| value.to_string());
         return format!(
             "{player} {verb} {count_text} {}",
             pluralize_noun_phrase(&noun)
@@ -16551,11 +16594,7 @@ pub(super) fn describe_choose_then_cant_pile_restriction(
     let choose_desc = choose.filter.description();
     let base = strip_leading_article(&choose_desc);
     let plural = pluralize_noun_phrase(base);
-    let count_text = |n: usize| {
-        number_word(n as i32)
-            .map(str::to_string)
-            .unwrap_or_else(|| n.to_string())
-    };
+    let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
     let sentence = if choose.count.is_up_to_dynamic_x() {
         format!("Up to X target {plural} {restriction_text}")
     } else if choose.count.is_dynamic_x() {
@@ -16701,9 +16740,7 @@ pub(super) fn describe_choose_then_tap_cost(
     }
 
     let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
-    let count_text = number_word(exact as i32)
-        .map(str::to_string)
-        .unwrap_or_else(|| exact.to_string());
+    let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
     Some(format!(
         "Tap {} {}",
         count_text,
@@ -17598,9 +17635,7 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     if choose.top_only {
         if let Some(exact) = choose_exact_count(choose) {
             if exact > 1 {
-                let count_text = number_word(exact as i32)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| exact.to_string());
+                let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
                 return format!("the top {count_text} cards");
             }
         }
@@ -17680,9 +17715,7 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return selection;
     }
     if let Some(exact) = choose_exact_count(choose) {
-        let count_text = number_word(exact as i32)
-            .map(str::to_string)
-            .unwrap_or_else(|| exact.to_string());
+        let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
         return describe_plural_selection(count_text, &card_desc);
     }
     describe_plural_selection(describe_choice_count(&choose.count), &card_desc)
@@ -18427,9 +18460,7 @@ pub(super) fn describe_exile_top_of_library(
         && *n >= 0
     {
         let count_u32 = *n as u32;
-        let count_text = small_number_word(count_u32)
-            .map(str::to_string)
-            .unwrap_or_else(|| n.to_string());
+        let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
         let noun = if *n == 1 { "card" } else { "cards" };
         return format!("Exile the top {count_text} {noun} of {owner} library{face_down_suffix}");
     }
@@ -19446,9 +19477,7 @@ pub(super) fn describe_look_at_top_then_put_chosen_hand_rest_bottom_from_for_eac
         1 => "one of them".to_string(),
         n => format!(
             "{} of them",
-            small_number_word(n as u32)
-                .map(str::to_string)
-                .unwrap_or_else(|| n.to_string())
+            small_number_word(n as u32).unwrap_or_else(|| n.to_string())
         ),
     };
     Some(format!(
@@ -19518,9 +19547,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
             1 => "one of those cards".to_string(),
             n => format!(
                 "{} of them",
-                small_number_word(n as u32)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| n.to_string())
+                small_number_word(n as u32).unwrap_or_else(|| n.to_string())
             ),
         };
         return Some(format!(
@@ -19532,9 +19559,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
             Some(1) => "one of those cards".to_string(),
             Some(n) => format!(
                 "{} of them",
-                small_number_word(n as u32)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| n.to_string())
+                small_number_word(n as u32).unwrap_or_else(|| n.to_string())
             ),
             None => describe_choose_filter_from_looked_cards(look_at_top, choose)?,
         }
@@ -19814,9 +19839,7 @@ pub(super) fn describe_look_count_and_noun(count: &Value) -> (String, &'static s
         && *n >= 0
     {
         let count_u32 = *n as u32;
-        let text = small_number_word(count_u32)
-            .map(str::to_string)
-            .unwrap_or_else(|| n.to_string());
+        let text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
         let singular = *n == 1;
         return (text, if singular { "card" } else { "cards" }, singular);
     }
@@ -23924,9 +23947,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else if choose.top_only {
             if let Some(exact) = choose_exact_count(choose) {
                 if exact > 1 {
-                    let count_text = number_word(exact as i32)
-                        .map(str::to_string)
-                        .unwrap_or_else(|| exact.to_string());
+                    let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
                     format!(
                         "the top {count_text} {}",
                         pluralize_noun_phrase(&filter_text)
@@ -24260,10 +24281,6 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
     }
     let describe_library_top_position = |position: &crate::effect::Value| match position {
-        crate::effect::Value::Fixed(2) => "second from the top".to_string(),
-        crate::effect::Value::Fixed(3) => "third from the top".to_string(),
-        crate::effect::Value::Fixed(4) => "fourth from the top".to_string(),
-        crate::effect::Value::Fixed(5) => "fifth from the top".to_string(),
         crate::effect::Value::Add(left, right)
             if matches!(
                 (left.as_ref(), right.as_ref()),
@@ -24273,7 +24290,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             "just beneath the top X cards".to_string()
         }
-        _ => format!("{} from the top", describe_value(position)),
+        _ => library_position_from_top_text(position, false),
     };
     if let Some(move_to_nth) =
         effect.downcast_ref::<crate::effects::MoveToLibraryNthFromTopEffect>()
@@ -25831,15 +25848,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return "Put them back in any order".to_string();
     }
     if let Some(search_library) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
+        let library_position = || {
+            search_library
+                .library_position_from_top
+                .as_ref()
+                .map(|position| library_position_from_top_text(position, true))
+                .unwrap_or_else(|| "on top".to_string())
+        };
         let destination = match search_library.destination {
-            Zone::Hand => "into hand",
-            Zone::Battlefield => "onto the battlefield",
-            Zone::Library => "on top of library",
-            Zone::Graveyard => "into their graveyard",
-            Zone::Exile => "into exile",
-            Zone::Stack => "onto the stack",
-            Zone::Command => "into the command zone",
-            Zone::OutsideGame => "outside the game",
+            Zone::Hand => "into hand".to_string(),
+            Zone::Battlefield => "onto the battlefield".to_string(),
+            Zone::Library => format!("{} of library", library_position()),
+            Zone::Graveyard => "into their graveyard".to_string(),
+            Zone::Exile => "into exile".to_string(),
+            Zone::Stack => "onto the stack".to_string(),
+            Zone::Command => "into the command zone".to_string(),
+            Zone::OutsideGame => "outside the game".to_string(),
         };
         let mut display_filter = search_library.filter.clone();
         if display_filter.owner.as_ref() == Some(&search_library.player) {
@@ -25853,6 +25877,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_search_selection_with_cards(&display_filter.description())
         };
+        if search_library.destination == Zone::Library {
+            let reveal_clause = if search_library.reveal {
+                ", reveal it"
+            } else {
+                ""
+            };
+            return format!(
+                "Search {} library for {}{reveal_clause}, then shuffle and put that card {}",
+                describe_possessive_player_filter(&search_library.player),
+                filter_desc,
+                library_position()
+            );
+        }
         if search_library.reveal && search_library.destination != Zone::Battlefield {
             return format!(
                 "Search {} library for {}, reveal it, put it {}, then shuffle",
@@ -26998,9 +27035,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if behold.count == 1 {
             return format!("Behold {}", with_indefinite_article(&subtype_name));
         }
-        let count_text = small_number_word(behold.count)
-            .map(str::to_string)
-            .unwrap_or_else(|| behold.count.to_string());
+        let count_text =
+            small_number_word(behold.count).unwrap_or_else(|| behold.count.to_string());
         return format!("Behold {count_text} {subtype_name}s");
     }
     if effect
@@ -29519,9 +29555,7 @@ fn describe_mana_usage_etb_bonus(counter_type: crate::object::CounterType, count
     if count == 1 {
         return format!("that creature enters with an additional {counter_text} counter on it");
     }
-    let count_text = small_number_word(count)
-        .map(str::to_string)
-        .unwrap_or_else(|| count.to_string());
+    let count_text = small_number_word(count).unwrap_or_else(|| count.to_string());
     format!("that creature enters with {count_text} additional {counter_text} counters on it")
 }
 
@@ -29947,6 +29981,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "partner" {
         return Some("Partner".to_string());
     }
+    if text.starts_with("partner with ") {
+        return Some(raw_text.to_string());
+    }
     if text == "assist" {
         return Some("Assist".to_string());
     }
@@ -30009,7 +30046,10 @@ fn describe_structural_cycling_keyword(
         }
         vec!["Cycling".to_string()]
     } else if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
-        if search.destination != Zone::Hand || search.player != PlayerFilter::You {
+        if search.destination != Zone::Hand
+            || search.player != PlayerFilter::You
+            || search.library_position_from_top.is_some()
+        {
             return None;
         }
         cycling_keywords_for_search_filter(&search.filter)
@@ -30055,7 +30095,11 @@ fn describe_structural_transmute_keyword(
         return None;
     };
     let search = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()?;
-    if search.destination != Zone::Hand || search.player != PlayerFilter::You || search.reveal {
+    if search.destination != Zone::Hand
+        || search.player != PlayerFilter::You
+        || search.reveal
+        || search.library_position_from_top.is_some()
+    {
         return None;
     }
     if !matches!(
@@ -32648,9 +32692,7 @@ pub(super) fn describe_exile_from_hand_as_cost_phrase(
     let amount = if count == 1 {
         "a".to_string()
     } else {
-        small_number_word(count)
-            .map(str::to_string)
-            .unwrap_or_else(|| count.to_string())
+        small_number_word(count).unwrap_or_else(|| count.to_string())
     };
     let color_prefix = color_filter
         .map(|colors| describe_token_color_words(colors, false))

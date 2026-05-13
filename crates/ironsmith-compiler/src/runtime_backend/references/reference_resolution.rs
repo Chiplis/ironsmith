@@ -1120,9 +1120,15 @@ fn annotate_effect_sequence_with_env_internal(
         } else {
             &[]
         };
-        let auto_tag_object_targets = effects_reference_it_tag(remaining)
-            || effects_reference_its_controller(remaining)
-            || effects_reference_tag(remaining, "damaged_0");
+        let suppress_for_power_self_damage =
+            preserves_existing_it_for_power_self_damage_followup(&effect, remaining.first());
+        let auto_tag_object_targets = if suppress_for_power_self_damage {
+            false
+        } else {
+            effects_reference_it_tag(remaining)
+                || effects_reference_its_controller(remaining)
+                || effects_reference_tag(remaining, "damaged_0")
+        };
         let assigned_effect_id =
             maybe_assign_effect_result_id(effects, idx, id_gen, in_env.allow_life_event_value);
 
@@ -1132,6 +1138,7 @@ fn annotate_effect_sequence_with_env_internal(
             config,
             id_gen,
             auto_tag_object_targets,
+            suppress_for_power_self_damage,
         )?;
         if let Some(id) = assigned_effect_id
             && !matches!(
@@ -1159,6 +1166,37 @@ fn annotate_effect_sequence_with_env_internal(
         effects: annotated,
         final_env: current_env,
     })
+}
+
+pub(crate) fn preserves_existing_it_for_power_self_damage_followup(
+    effect: &EffectAst,
+    next_effect: Option<&EffectAst>,
+) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                target: TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_),
+                ..
+            },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source: TargetAst::Tagged(source_tag, _),
+                target: TargetAst::Tagged(target_tag, _),
+            },
+        ..
+    })) = next_effect
+    else {
+        return false;
+    };
+
+    source_tag.as_str() == IT_TAG && target_tag.as_str() == IT_TAG
 }
 
 fn maybe_assign_effect_result_id(
@@ -1376,6 +1414,7 @@ fn advance_reference_env_for_effect(
     config: EffectReferenceResolutionConfig,
     id_gen: &mut IdGenContext,
     auto_tag_object_targets: bool,
+    suppress_force_auto_tag_object_targets: bool,
 ) -> Result<ReferenceEnv, CardTextError> {
     match effect {
         EffectAst::Conditional {
@@ -1451,7 +1490,7 @@ fn advance_reference_env_for_effect(
         _ => {
             let mut frame = env.to_frame(
                 auto_tag_object_targets,
-                config.force_auto_tag_object_targets,
+                config.force_auto_tag_object_targets && !suppress_force_auto_tag_object_targets,
             );
             advance_reference_frame_for_effect(effect, id_gen, &mut frame)?;
             Ok(ReferenceEnv::from_frame(&frame))
@@ -1731,10 +1770,16 @@ fn resolve_effect_result_values_in_fields(
                 }
             }
             SubjectVerbActionAst::SearchLibrary {
-                count_value: Some(count_value),
+                count_value,
+                library_position_from_top,
                 ..
             } => {
-                resolve_effect_result_value(count_value, state)?;
+                if let Some(count_value) = count_value {
+                    resolve_effect_result_value(count_value, state)?;
+                }
+                if let Some(position) = library_position_from_top {
+                    resolve_effect_result_value(position, state)?;
+                }
             }
             SubjectVerbActionAst::ReturnToBattlefield {
                 count_value: Some(count_value),

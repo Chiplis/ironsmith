@@ -971,7 +971,6 @@ impl StaticAbilityKind for EntersWithCounters {
                     let rendered = u32::try_from(*v)
                         .ok()
                         .and_then(number_word_u32)
-                        .map(str::to_string)
                         .unwrap_or_else(|| v.to_string());
                     format!("Enters the battlefield with {rendered} {counter} counters on it")
                 }
@@ -1713,9 +1712,7 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
 
     fn display(&self) -> String {
         let counter = self.counter_type.description().into_owned();
-        let amount_word = number_word_u32(self.amount)
-            .map(str::to_string)
-            .unwrap_or_else(|| self.amount.to_string());
+        let amount_word = number_word_u32(self.amount).unwrap_or_else(|| self.amount.to_string());
         let suffix = if self.amount == 1 { "" } else { "s" };
         format!(
             "If damage would be dealt to this creature, prevent that damage. Remove {amount_word} {counter} counter{suffix} from this creature."
@@ -2135,7 +2132,6 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
                 let rendered = u32::try_from(*v)
                     .ok()
                     .and_then(number_word_u32)
-                    .map(str::to_string)
                     .unwrap_or_else(|| v.to_string());
                 format!("with {rendered} additional {counter} counters on it")
             }
@@ -3320,9 +3316,8 @@ impl StaticAbilityKind for ConditionalSpellKeyword {
             GraveyardCountMetric::CardTypes => "card types",
             GraveyardCountMetric::ManaValues => "mana values",
         };
-        let threshold = number_word_u32(self.spec.threshold)
-            .map(str::to_string)
-            .unwrap_or_else(|| self.spec.threshold.to_string());
+        let threshold =
+            number_word_u32(self.spec.threshold).unwrap_or_else(|| self.spec.threshold.to_string());
         format!(
             "This spell has {keyword} as long as there are {threshold} or more {metric} among cards in your graveyard."
         )

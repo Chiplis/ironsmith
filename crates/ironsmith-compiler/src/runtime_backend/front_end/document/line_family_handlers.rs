@@ -450,30 +450,19 @@ pub(super) fn run_partner_with_keyword_line_family(
         return Ok(None);
     };
 
-    let partner_line = rewrite_line_normalized(ctx.line, "partner")?;
-    let Some(partner_static) = parse_static_line_cst(&partner_line)? else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not lower partner-with keyword head: '{}'",
-            ctx.line.info.raw_line
-        )));
+    let partner_static_text = format!("partner with {partner_name}");
+    let partner_static_line = rewrite_line_normalized(ctx.line, partner_static_text.as_str())?;
+    let partner_static = StaticLineCst {
+        info: partner_static_line.info.clone(),
+        text: partner_static_line.info.normalized.normalized.clone(),
+        parse_tokens: partner_static_line.tokens.clone(),
+        chosen_option_label: None,
     };
 
-    let trigger_text = format!(
-        "when this creature enters, target player may search their library for a card named \"{}\", reveal it, put it into their hand, then shuffle",
-        partner_name.replace('"', "")
-    );
-    let trigger_line = rewrite_line_normalized(ctx.line, trigger_text.as_str())?;
-    let Ok(partner_trigger) = parse_triggered_line_cst(&trigger_line) else {
-        return Ok(None);
-    };
-
-    Ok(Some(LineDispatchResult {
-        lines: vec![
-            RewriteLineCst::Static(partner_static),
-            RewriteLineCst::Triggered(partner_trigger),
-        ],
-        next_idx: ctx.idx + 1,
-    }))
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(partner_static),
+        ctx.idx + 1,
+    )))
 }
 
 pub(super) fn run_keyword_line_family(

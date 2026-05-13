@@ -5112,7 +5112,7 @@ mod effect_parse_tests {
         RemoveCountersEffect, RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect,
         SacrificeEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
         SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
-        TapEffect,
+        TaggedEffect, TapEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -11889,7 +11889,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn parse_fireblast_style_alternative_cost_line_from_text() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Fireblast Variant")
+        let def = CardDefinitionBuilder::new(CardId::new(), "Fireblast")
             .parse_text(
                 "You may sacrifice two Mountains rather than pay this spell's mana cost.\nFireblast deals 4 damage to any target.",
             )
@@ -11922,9 +11922,17 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let spell_effect = def.spell_effect.expect("spell effect");
         assert!(
-            spell_effect.iter().any(|effect| effect
-                .downcast_ref::<crate::effects::DealDamageEffect>()
-                .is_some()),
+            spell_effect.all_effects().iter().any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+                    .is_some()
+                    || effect.downcast_ref::<TaggedEffect>().is_some_and(|tagged| {
+                        tagged
+                            .effect
+                            .downcast_ref::<crate::effects::DealDamageEffect>()
+                            .is_some()
+                    })
+            }),
             "expected damage spell effect"
         );
     }

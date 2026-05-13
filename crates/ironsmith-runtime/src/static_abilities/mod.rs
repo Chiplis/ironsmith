@@ -987,6 +987,7 @@ impl PartialEq for StaticAbility {
             StaticAbilityId::Protection => self.0.protection_from() == other.0.protection_from(),
             StaticAbilityId::Ward => self.0.ward_cost() == other.0.ward_cost(),
             StaticAbilityId::Landwalk => self.0.landwalk_kind() == other.0.landwalk_kind(),
+            StaticAbilityId::PartnerWith => self.0.display() == other.0.display(),
             _ if self.0.is_keyword() && other.0.is_keyword() => true,
             _ => self.0.display() == other.0.display(),
         }
@@ -1576,6 +1577,10 @@ impl StaticAbility {
 
     pub fn partner() -> Self {
         Self::new(Partner)
+    }
+
+    pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
+        Self::new(PartnerWith::new(partner_name))
     }
 
     pub fn start_your_engines() -> Self {

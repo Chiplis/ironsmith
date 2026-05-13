@@ -391,10 +391,7 @@ fn parse_counter_type_descriptor(raw: &str) -> Result<CounterType, CardTextError
             }
         }
 
-        if matches!(
-            prev,
-            "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six" | "another"
-        ) {
+        if prev == "another" || ironsmith_core::parse_cardinal_word(prev).is_some() {
             return None;
         }
 

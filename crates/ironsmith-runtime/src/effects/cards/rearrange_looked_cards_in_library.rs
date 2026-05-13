@@ -159,9 +159,11 @@ impl EffectExecutor for RearrangeLookedCardsInLibraryEffect {
         rebuilt_library.splice(0..0, to_bottom);
         rebuilt_library.extend(chosen_top_to_bottom.iter().rev().copied());
 
-        if let Some(player) = game.player_mut(library_owner) {
-            player.library = rebuilt_library;
-        }
+        game.set_player_library_order_with_audit(
+            library_owner,
+            rebuilt_library,
+            "rearranged looked-at library cards",
+        );
 
         Ok(EffectOutcome::count(current_top_to_bottom.len() as i32))
     }

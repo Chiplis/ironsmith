@@ -694,7 +694,7 @@ fn describe_structural_partner_with_pair(first: &Ability, second: &Ability) -> O
     let AbilityKind::Static(static_ability) = &first.kind else {
         return None;
     };
-    if static_ability.id() != crate::static_abilities::StaticAbilityId::Partner {
+    if static_ability.id() != crate::static_abilities::StaticAbilityId::PartnerWith {
         return None;
     }
 
@@ -718,20 +718,46 @@ fn describe_structural_partner_with_pair(first: &Ability, second: &Ability) -> O
         return None;
     }
 
+    fn partner_name_from_search_library(
+        search: &crate::effects::SearchLibraryEffect,
+    ) -> Option<&str> {
+        let partner_name = search.filter.name.as_deref()?;
+        if search.filter.zone != Some(Zone::Library)
+            || search.filter.owner != Some(target_any_player_filter())
+            || search.destination != Zone::Hand
+            || search.chooser != target_any_player_filter()
+            || search.player != target_any_player_filter()
+            || !search.reveal
+            || search.search_mode != crate::effect::SearchSelectionMode::Exact
+            || search.library_position_from_top.is_some()
+        {
+            return None;
+        }
+        Some(partner_name)
+    }
+
     let [segment] = triggered.effects.segments.as_slice() else {
         return None;
     };
     if !segment.self_replacements.is_empty() {
         return None;
     }
-    let [may_effect] = segment.default_effects.as_slice() else {
-        return None;
+    let (outer_target_effect, may_effect) = match segment.default_effects.as_slice() {
+        [may_effect] => (None, may_effect),
+        [target_effect, may_effect] => (Some(target_effect), may_effect),
+        _ => return None,
     };
+    if let Some(target_effect) = outer_target_effect {
+        let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        if target_only.target != target_any_player_spec() {
+            return None;
+        }
+    }
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
     if may.decider != Some(target_any_player_filter()) {
         return None;
     }
-    let [target_effect, sequence_effect] = may.effects.as_slice() else {
+    let [target_effect, payload_effect] = may.effects.as_slice() else {
         return None;
     };
     let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
@@ -739,7 +765,15 @@ fn describe_structural_partner_with_pair(first: &Ability, second: &Ability) -> O
         return None;
     }
 
-    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if let Some(search) = payload_effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
+        let partner_name = partner_name_from_search_library(search)?;
+        return Some(format!(
+            "Partner with {}",
+            title_case_card_name_surface(partner_name)
+        ));
+    }
+
+    let sequence = payload_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     let [choose_effect, for_each_effect, shuffle_effect] = sequence.effects.as_slice() else {
         return None;
     };
@@ -941,9 +975,7 @@ fn describe_echo_alternative_cost(alternative: &[Effect]) -> Option<String> {
         if exact == 1 {
             return Some(format!("—Sacrifice {}", with_indefinite_article(noun)));
         }
-        let count = number_word(exact as i32)
-            .map(str::to_string)
-            .unwrap_or_else(|| exact.to_string());
+        let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
         return Some(format!(
             "—Sacrifice {count} {}",
             pluralize_noun_phrase(noun)
@@ -1237,19 +1269,7 @@ fn static_enter_counter_amount(ability: &Ability) -> Option<(CounterType, Counte
 
 fn parse_leading_counter_count(text: &str) -> Option<u32> {
     let first = text.split_whitespace().next()?;
-    match first {
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        other => other.parse().ok(),
-    }
+    ironsmith_core::parse_cardinal_word(first)
 }
 
 fn is_upkeep_remove_counter(
@@ -1803,9 +1823,8 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
         AlternativeCastingMethod::JumpStart => "Jump-start".to_string(),
         AlternativeCastingMethod::Escape { cost, exile_count } => {
-            let count_text = small_number_word(*exile_count)
-                .map(str::to_string)
-                .unwrap_or_else(|| exile_count.to_string());
+            let count_text =
+                small_number_word(*exile_count).unwrap_or_else(|| exile_count.to_string());
             if let Some(cost) = cost {
                 format!(
                     "Escape—{}, Exile {count_text} other cards from your graveyard",
@@ -2170,7 +2189,7 @@ fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -
     };
 
     choose.filter.zone == Some(Zone::Battlefield)
-        && choose.filter.controller == Some(PlayerFilter::You)
+        && matches!(choose.filter.controller, None | Some(PlayerFilter::You))
         && choose.filter.card_types.is_empty()
         && choose.filter.subtypes == [Subtype::Background]
         && choose.filter.supertypes.is_empty()

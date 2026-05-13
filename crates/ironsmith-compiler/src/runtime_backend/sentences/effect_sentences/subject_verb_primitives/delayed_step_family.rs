@@ -1017,19 +1017,7 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
 }
 
 fn fixed_count_word(word: &str) -> Option<i32> {
-    match word {
-        "a" | "an" | "one" | "1" => Some(1),
-        "two" | "2" => Some(2),
-        "three" | "3" => Some(3),
-        "four" | "4" => Some(4),
-        "five" | "5" => Some(5),
-        "six" | "6" => Some(6),
-        "seven" | "7" => Some(7),
-        "eight" | "8" => Some(8),
-        "nine" | "9" => Some(9),
-        "ten" | "10" => Some(10),
-        _ => None,
-    }
+    ironsmith_core::parse_cardinal_word(word).and_then(|value| value.try_into().ok())
 }
 
 pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(

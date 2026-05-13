@@ -79,6 +79,7 @@ impl EffectExecutor for CreateTokenEffect {
 
         let mut created_ids = Vec::with_capacity(count);
         let mut events = Vec::with_capacity(count);
+        let pending_start = game.effect_store.pending_trigger_events.len();
 
         for _ in 0..count {
             let id = game.new_object_id();
@@ -127,6 +128,49 @@ impl EffectExecutor for CreateTokenEffect {
                 )?;
 
                 schedule_token_cleanup(game, ctx, entered_id, controller_id, cleanup_options)?;
+            }
+        }
+
+        if created_ids.len() > 1 {
+            let batch_objects = created_ids.clone();
+            let removed_events =
+                game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                    event
+                        .downcast::<crate::events::zones::ZoneChangeEvent>()
+                        .is_some_and(|zone_change| {
+                            zone_change.from == Zone::Command
+                                && zone_change.to == Zone::Battlefield
+                                && zone_change
+                                    .objects
+                                    .iter()
+                                    .all(|object_id| batch_objects.contains(object_id))
+                        })
+                });
+            if !removed_events.is_empty() {
+                let cause = removed_events
+                    .iter()
+                    .find_map(|event| {
+                        event
+                            .downcast::<crate::events::zones::ZoneChangeEvent>()
+                            .map(|zone_change| zone_change.cause.clone())
+                    })
+                    .unwrap_or_else(crate::events::cause::EventCause::effect);
+                let snapshots = removed_events
+                    .iter()
+                    .filter_map(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+                    .flat_map(|zone_change| zone_change.snapshots().iter().cloned())
+                    .collect();
+                let event = crate::events::zones::ZoneChangeEvent::batch_with_snapshots(
+                    created_ids.clone(),
+                    Zone::Command,
+                    Zone::Battlefield,
+                    cause,
+                    snapshots,
+                );
+                game.queue_trigger_event(
+                    ctx.provenance,
+                    crate::triggers::TriggerEvent::new_with_provenance(event, ctx.provenance),
+                );
             }
         }
 

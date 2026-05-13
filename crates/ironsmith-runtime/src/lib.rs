@@ -156,9 +156,10 @@ pub use decision::{
 };
 pub use decisions::context::{
     AttackerOptionContext, AttackersContext, BlockerOptionContext, BlockersContext, BooleanContext,
-    ColorsContext, CountersContext, DecisionContext, DistributeContext, DistributeTarget,
-    NumberContext, OrderContext, PartitionContext, PriorityContext, ProliferateContext,
-    SelectObjectsContext, SelectOptionsContext, SelectableObject, SelectableOption,
+    ColorsContext, CountersContext, DecisionContext, DecisionHiddenCardView,
+    DecisionHiddenCardVisibility, DistributeContext, DistributeTarget, NumberContext, OrderContext,
+    PartitionContext, PriorityContext, ProliferateContext, SelectObjectsContext,
+    SelectOptionsContext, SelectableObject, SelectableOption,
 };
 pub use effects::{
     EffectContext, ExecutionError, ResolvedTarget, TargetError, execute_effect, resolve_value,

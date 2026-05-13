@@ -38,19 +38,7 @@ pub(crate) struct TypeLineCst {
 }
 
 pub(crate) fn count_word_value(word: &str) -> Option<u32> {
-    match word.to_ascii_lowercase().as_str() {
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        _ => None,
-    }
+    ironsmith_core::parse_cardinal_word(word)
 }
 
 fn spaced<'a, O, E, P>(parser: P) -> impl Parser<&'a str, O, E>
@@ -314,26 +302,10 @@ fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
         return Ok(Value::Fixed(value));
     }
 
-    let value = match word.to_ascii_lowercase().as_str() {
-        "a" | "an" | "one" => 1,
-        "two" => 2,
-        "three" => 3,
-        "four" => 4,
-        "five" => 5,
-        "six" => 6,
-        "seven" => 7,
-        "eight" => 8,
-        "nine" => 9,
-        "ten" => 10,
-        _ => {
-            return Err(primitives::backtrack_err(
-                "digit word",
-                "number word (one–ten)",
-            ));
-        }
-    };
+    let value = ironsmith_core::parse_cardinal_word(&word)
+        .ok_or_else(|| primitives::backtrack_err("digit word", "number word (zero-one hundred)"))?;
 
-    Ok(Value::Fixed(value))
+    Ok(Value::Fixed(value as i32))
 }
 
 pub(crate) fn parse_count_range_prefix(
@@ -615,9 +587,10 @@ fn trim_lexed_edge_punctuation(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 pub(crate) fn parse_number_from_lexed(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     let trimmed = trim_lexed_edge_punctuation(tokens);
-    let first_word = trimmed.first()?.as_word()?.to_ascii_lowercase();
-    let value: u32 = parse_number_word_i32(&first_word).and_then(|value| value.try_into().ok())?;
-    Some((value, 1))
+    let word_refs = parser_token_word_refs(trimmed);
+    let (value, used_words) = ironsmith_core::parse_cardinal_words(&word_refs)?;
+    let used_tokens = token_index_for_word_index(trimmed, used_words).unwrap_or(trimmed.len());
+    Some((value, used_tokens))
 }
 
 pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {

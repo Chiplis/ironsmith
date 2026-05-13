@@ -1177,6 +1177,7 @@ pub(crate) enum SubjectVerbActionAst {
         shuffle: bool,
         count: ChoiceCount,
         count_value: Option<Value>,
+        library_position_from_top: Option<Value>,
         tapped: bool,
     },
     Cant {
@@ -2483,6 +2484,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 shuffle,
                 count,
                 count_value,
+                library_position_from_top,
                 tapped,
             } => f
                 .debug_struct("SearchLibrary")
@@ -2495,6 +2497,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("shuffle", shuffle)
                 .field("count", count)
                 .field("count_value", count_value)
+                .field("library_position_from_top", library_position_from_top)
                 .field("tapped", tapped)
                 .finish(),
             Self::Cant {
@@ -4039,6 +4042,7 @@ impl EffectAst {
         shuffle: bool,
         count: ChoiceCount,
         count_value: Option<Value>,
+        library_position_from_top: Option<Value>,
         tapped: bool,
     ) -> Self {
         Self::subject_verb(
@@ -4054,6 +4058,7 @@ impl EffectAst {
                 shuffle,
                 count,
                 count_value,
+                library_position_from_top,
                 tapped,
             },
         )

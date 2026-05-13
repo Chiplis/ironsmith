@@ -80,16 +80,24 @@ impl EffectExecutor for ReorderLibraryTopEffect {
         );
         let ordered = normalize_order_response(ordered, &current_top_to_bottom);
 
-        if let Some(player) = game.player_mut(library_owner) {
+        if let Some(player) = game.player(library_owner) {
             // Remove the affected cards from the library, preserving other cards.
-            player
+            let mut after_order: Vec<_> = player
                 .library
-                .retain(|id| !current_top_to_bottom.contains(id));
+                .iter()
+                .copied()
+                .filter(|id| !current_top_to_bottom.contains(id))
+                .collect();
 
             // Decision order is top-to-bottom; internal library is bottom-to-top.
             for id in ordered.iter().rev() {
-                player.library.push(*id);
+                after_order.push(*id);
             }
+            game.set_player_library_order_with_audit(
+                library_owner,
+                after_order,
+                "reordered top of library",
+            );
         }
 
         Ok(EffectOutcome::resolved())

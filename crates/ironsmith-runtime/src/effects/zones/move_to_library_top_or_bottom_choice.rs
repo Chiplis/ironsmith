@@ -61,17 +61,14 @@ fn position_library_objects(
         let Some(owner) = game.object(new_id).map(|object| object.owner) else {
             continue;
         };
-        let Some(player) = game.player_mut(owner) else {
-            continue;
-        };
-        let Some(current_idx) = player.library.iter().position(|id| *id == new_id) else {
-            continue;
-        };
-        player.library.remove(current_idx);
         match position {
-            LibraryPositionChoice::Top => player.library.push(new_id),
-            LibraryPositionChoice::Bottom => player.library.insert(0, new_id),
-        }
+            LibraryPositionChoice::Top => {
+                game.move_library_card_to_top(owner, new_id, "card put on top of library")
+            }
+            LibraryPositionChoice::Bottom => {
+                game.move_library_card_to_bottom(owner, new_id, "card put on bottom of library")
+            }
+        };
     }
 }
 

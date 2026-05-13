@@ -69,15 +69,13 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                             }
                         } else if result.final_zone == Zone::Library {
                             for &new_id in &result.new_object_ids {
-                                if let Some(owner) = game.object(new_id).map(|o| o.owner)
-                                    && let Some(player) = game.player_mut(owner)
-                                    && let Some(current_idx) =
-                                        player.library.iter().position(|id| *id == new_id)
-                                {
-                                    player.library.remove(current_idx);
-                                    let insert_idx =
-                                        player.library.len().saturating_sub(position - 1);
-                                    player.library.insert(insert_idx, new_id);
+                                if let Some(owner) = game.object(new_id).map(|o| o.owner) {
+                                    game.move_library_card_to_nth_from_top(
+                                        owner,
+                                        new_id,
+                                        position,
+                                        "card put into library at fixed top position",
+                                    );
                                 }
                             }
                             if from_zone == Zone::Battlefield {

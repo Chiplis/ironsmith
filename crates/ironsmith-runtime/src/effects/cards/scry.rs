@@ -210,18 +210,28 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
         .copied()
         .collect();
 
-    let Some(player) = game.player_mut(arrangement.player_id) else {
+    let Some(player) = game.player(arrangement.player_id) else {
         return;
     };
 
-    player.library.retain(|id| !looked_set.contains(id));
+    let mut after_order: Vec<ObjectId> = player
+        .library
+        .iter()
+        .copied()
+        .filter(|id| !looked_set.contains(id))
+        .collect();
 
     for id in &arrangement.bottom_cards_top_to_bottom {
-        player.library.insert(0, *id);
+        after_order.insert(0, *id);
     }
     for id in arrangement.top_cards_top_to_bottom.iter().rev() {
-        player.library.push(*id);
+        after_order.push(*id);
     }
+    game.set_player_library_order_with_audit(
+        arrangement.player_id,
+        after_order,
+        "scry or fateseal arranged library cards",
+    );
 }
 
 /// Effect that lets a player scry N cards.

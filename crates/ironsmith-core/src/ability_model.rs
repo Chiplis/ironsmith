@@ -549,22 +549,10 @@ fn parse_activation_max_times_per_turn(restriction: &str) -> Option<u32> {
 }
 
 fn parse_named_count_word(word: &str) -> Option<u32> {
-    if let Ok(value) = word.parse::<u32>() {
-        return Some(value);
-    }
-
     match word {
         "once" => Some(1),
         "twice" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        _ => None,
+        _ => crate::parse_cardinal_word(word),
     }
 }
 

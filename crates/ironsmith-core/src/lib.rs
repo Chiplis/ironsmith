@@ -11,6 +11,7 @@ pub mod alternative_cast_model;
 pub mod anthem_model;
 pub mod attachment_model;
 pub mod card;
+pub mod cardinal;
 pub mod cause_model;
 pub mod color;
 pub mod continuous_model;
@@ -24,6 +25,7 @@ pub mod filter_model;
 pub mod grant_model;
 pub mod ids;
 pub mod mana;
+pub mod ordinal;
 pub mod resolution_model;
 pub mod spell_cost_condition_model;
 pub mod spell_timing_model;
@@ -49,6 +51,7 @@ pub use alternative_cast_model::{
 pub use anthem_model::{AnthemCountExpression, AnthemValue};
 pub use attachment_model::AuraAttachmentFilter;
 pub use card::{Card, CardBuilder, LinkedFaceLayout, PowerToughness, PtValue};
+pub use cardinal::{cardinal_word, parse_cardinal_word, parse_cardinal_words};
 pub use cause_model::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilter, EventCause};
 pub use color::{Color, ColorSet};
 pub use continuous_model::{
@@ -149,6 +152,7 @@ pub use ids::{
     restore_id_counters, snapshot_id_counters,
 };
 pub use mana::{ManaCost, ManaSymbol};
+pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
 pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;

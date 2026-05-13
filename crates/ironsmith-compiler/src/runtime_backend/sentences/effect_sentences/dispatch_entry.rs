@@ -216,7 +216,9 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     let descriptor_words = token_words[descriptor_start..counter_idx]
         .iter()
         .copied()
-        .filter(|word| !matches!(*word, "a" | "an" | "one" | "or" | "more"))
+        .filter(|word| {
+            !matches!(*word, "or" | "more") && ironsmith_core::parse_cardinal_word(word).is_none()
+        })
         .collect::<Vec<_>>();
     if descriptor_words.first().is_some_and(|word| *word == "no") {
         return;
@@ -2497,11 +2499,15 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::SearchLibrary {
                 filter,
                 count_value,
+                library_position_from_top,
                 ..
             } => {
                 replace_in_filter(filter, replacement, clause)?;
                 if let Some(count_value) = count_value.as_mut() {
                     replace_value(count_value, replacement, clause)?;
+                }
+                if let Some(position) = library_position_from_top.as_mut() {
+                    replace_value(position, replacement, clause)?;
                 }
             }
             SubjectVerbActionAst::CreateTokenCopy { count, .. }

@@ -60,7 +60,8 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
     }
 
     fn display(&self) -> String {
-        let ordinal = ordinal_word(self.card_number);
+        let ordinal =
+            ironsmith_core::ordinal_word(self.card_number).unwrap_or_else(|| "nth".to_string());
         match &self.player {
             PlayerFilter::You => format!("Whenever you draw your {ordinal} card each turn"),
             PlayerFilter::Any => format!("Whenever a player draws their {ordinal} card each turn"),
@@ -75,22 +76,6 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
                 describe_player_filter_subject(&self.player)
             ),
         }
-    }
-}
-
-fn ordinal_word(n: u32) -> &'static str {
-    match n {
-        1 => "first",
-        2 => "second",
-        3 => "third",
-        4 => "fourth",
-        5 => "fifth",
-        6 => "sixth",
-        7 => "seventh",
-        8 => "eighth",
-        9 => "ninth",
-        10 => "tenth",
-        _ => "nth",
     }
 }
 

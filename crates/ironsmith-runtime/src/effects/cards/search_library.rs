@@ -4,7 +4,9 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory, SearchSelectionMode};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, view_hidden_candidate_objects};
+use crate::effects::helpers::{
+    resolve_player_filter, resolve_value, view_hidden_candidate_objects,
+};
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
@@ -41,19 +43,10 @@ impl EffectExecutor for SearchLibraryEffect {
         let search_control =
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let search_viewer = game.controlling_player_for(chooser_id);
             let library_cards = game
                 .player(player_id)
                 .map(|player| player.library.clone())
                 .unwrap_or_default();
-            view_hidden_candidate_objects(
-                game,
-                ctx,
-                search_viewer,
-                &library_cards,
-                "Search library",
-                false,
-            );
 
             offer_library_search_casts(game, ctx, player_id)?;
             if ctx.decision_maker.awaiting_choice() {
@@ -138,6 +131,7 @@ impl EffectExecutor for SearchLibraryEffect {
 
                 if still_in_library {
                     if self.reveal {
+                        let search_viewer = game.controlling_player_for(chooser_id);
                         view_hidden_candidate_objects(
                             game,
                             ctx,
@@ -154,16 +148,18 @@ impl EffectExecutor for SearchLibraryEffect {
                     // 3. Put the card on top
                     // This matches the card text "then shuffle and put that card on top"
                     if self.destination == Zone::Library && search_override.is_none() {
-                        // Remove the card from library first
-                        if let Some(p) = game.player_mut(player_id) {
-                            p.library.retain(|&id| id != card_id);
-                        }
-                        // Shuffle the remaining library
-                        game.shuffle_player_library(player_id);
-                        // Now put the card on top (push adds to end, which is the top)
-                        if let Some(p) = game.player_mut(player_id) {
-                            p.library.push(card_id);
-                        }
+                        let position_from_top =
+                            if let Some(position) = self.library_position_from_top.as_ref() {
+                                resolve_value(game, position, ctx)?.max(1) as usize
+                            } else {
+                                1
+                            };
+                        game.shuffle_library_except_then_insert_from_top(
+                            player_id,
+                            &[card_id],
+                            position_from_top,
+                            "searched card restored after library shuffle",
+                        );
                         let mut outcome = EffectOutcome::with_objects(vec![card_id])
                             .with_events([search_event.clone(), shuffle_event.clone()]);
                         if let Some(memory) = chosen_memory {
@@ -328,6 +324,18 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Library)
     }
 
+    fn add_library_card_of_type(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        card_type: CardType,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
     #[test]
     fn search_library_emits_private_view_for_searchable_library() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -384,6 +392,40 @@ mod tests {
             dm.calls
                 .iter()
                 .any(|call| call.public && call.cards == vec![found])
+        );
+    }
+
+    #[test]
+    fn search_library_can_restore_found_card_third_from_top_after_shuffle() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        add_library_card_of_type(&mut game, alice, "Bottom Land", CardType::Land);
+        let found =
+            add_library_card_of_type(&mut game, alice, "Long-Term Target", CardType::Instant);
+        add_library_card_of_type(&mut game, alice, "Middle Land", CardType::Land);
+        add_library_card_of_type(&mut game, alice, "Top Land", CardType::Land);
+        let source = game.new_object_id();
+        let mut dm = CaptureSearchDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = SearchLibraryEffect::new(
+            ObjectFilter::default().with_type(CardType::Instant),
+            Zone::Library,
+            PlayerFilter::You,
+            PlayerFilter::You,
+            false,
+        )
+        .with_library_position_from_top(crate::effect::Value::Fixed(3));
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("search should resolve");
+
+        let library = &game.player(alice).expect("alice exists").library;
+        assert_eq!(library.len(), 4);
+        assert_eq!(
+            library[library.len() - 3],
+            found,
+            "searched card should be third from the top after the shuffle"
         );
     }
 

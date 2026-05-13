@@ -112,6 +112,41 @@ define_keyword!(Reach, Reach, "Reach",
 
 define_keyword!(Flanking, Flanking, "Flanking");
 define_keyword!(Partner, Partner, "Partner");
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartnerWith {
+    display: String,
+}
+
+impl PartnerWith {
+    pub fn new(partner_name: impl AsRef<str>) -> Self {
+        let partner_name = partner_name.as_ref().trim();
+        let lower = partner_name.to_ascii_lowercase();
+        let partner_name = if lower.starts_with("partner with ") {
+            partner_name["partner with ".len()..].trim()
+        } else {
+            partner_name
+        };
+        Self {
+            display: format!("Partner with {partner_name}"),
+        }
+    }
+}
+
+impl StaticAbilityKind for PartnerWith {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PartnerWith
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
 define_keyword!(StartYourEngines, StartYourEngines, "Start your engines!");
 define_keyword!(DoctorsCompanion, DoctorsCompanion, "Doctor's companion");
 define_keyword!(Assist, Assist, "Assist");

@@ -26,14 +26,6 @@ fn fallback_static_ability_issue(
 ) -> Option<String> {
     if let Some(id) = ability.id {
         if let Some(id_name) = fallback_static_ability_id_name(id) {
-            if id == crate::static_abilities::StaticAbilityId::KeywordFallbackText
-                && ability
-                    .display()
-                    .to_ascii_lowercase()
-                    .starts_with("craft with")
-            {
-                return None;
-            }
             return Some(format!(
                 "{context} compiled to unsupported static ability fallback {id_name}: {}",
                 ability.display()
@@ -117,19 +109,6 @@ fn reject_compiled_parser_fallbacks(
                 .to_string(),
         ));
     }
-    if debug.contains("KeywordFallbackText")
-        && debug.to_ascii_lowercase().contains("craft with")
-        && !debug.contains("RuleFallbackText")
-        && !debug.contains("UnsupportedParserLine")
-        && !debug.contains("KeywordAction::Marker")
-        && !debug.contains("KeywordAction::MarkerText")
-        && !debug.contains("RewriteLineCst::Unsupported")
-        && !debug.contains("RewriteSemanticItem::Unsupported")
-        && !debug.contains("RewriteUnsupportedLine")
-    {
-        return Ok(());
-    }
-
     for marker in [
         "KeywordFallbackText",
         "RuleFallbackText",
@@ -553,13 +532,13 @@ mod tests {
     fn compile_definition_rejects_keyword_fallback_text_even_when_allowed() {
         let facade = CompilerFacade::new();
         let builder =
-            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Banding Variant")
-                .card_types(vec![crate::types::CardType::Creature]);
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Craft Variant")
+                .card_types(vec![crate::types::CardType::Artifact]);
 
         let err = facade
             .compile_definition(
                 builder,
-                "Banding",
+                "Craft with artifact {3}{W}{W}",
                 CompilePolicy {
                     allow_unsupported: true,
                 },
@@ -570,7 +549,7 @@ mod tests {
             matches!(
                 err,
                 CardTextError::UnsupportedLine(ref message)
-                    if message.contains("KeywordFallbackText") && message.contains("banding")
+                    if message.contains("KeywordFallbackText") && message.contains("craft")
             ),
             "expected KeywordFallbackText parse error, got {err:?}"
         );

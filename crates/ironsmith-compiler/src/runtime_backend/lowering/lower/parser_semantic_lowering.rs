@@ -1312,11 +1312,7 @@ fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> 
     {
         return None;
     }
-    match words[3].as_str() {
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        _ => words[3].parse::<u32>().ok(),
-    }
+    ironsmith_core::parse_cardinal_word(words[3].as_str())
 }
 
 #[cfg(test)]
@@ -1853,7 +1849,7 @@ fn try_lower_partner_with_text(
     filter.name = Some(partner_name.clone());
 
     Ok(Some(LineAst::Multiple(vec![
-        LineAst::StaticAbility(StaticAbility::partner().into()),
+        LineAst::StaticAbility(StaticAbility::partner_with(partner_name.clone()).into()),
         LineAst::Triggered {
             trigger: TriggerSpec::ThisEntersBattlefield,
             effects: vec![EffectAst::MayByPlayer {
@@ -1864,9 +1860,10 @@ fn try_lower_partner_with_text(
                     PlayerAst::Target,
                     PlayerAst::Target,
                     crate::effect::SearchSelectionMode::Exact,
-                    false,
+                    true,
                     true,
                     ChoiceCount::up_to(1),
+                    None,
                     None,
                     false,
                 )],

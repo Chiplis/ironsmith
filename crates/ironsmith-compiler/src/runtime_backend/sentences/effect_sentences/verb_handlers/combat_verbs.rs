@@ -514,6 +514,21 @@ fn parse_divided_damage_with_amount(
     {
         target_tokens = &target_tokens[1..];
     }
+    if grammar::contains_word(target_tokens, "evenly")
+        && let Some(among_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
+            token.is_word("among")
+        })
+    {
+        let among_tail = trim_commas(&target_tokens[among_idx + 1..]);
+        if matches!(
+            among_tail.first().and_then(OwnedLexToken::as_word),
+            Some("all" | "each" | "every")
+        ) && among_tail.len() > 1
+        {
+            let filter = parse_object_filter(&among_tail[1..], false)?;
+            return Ok(EffectAst::subject_verb_damage_each(amount, filter));
+        }
+    }
     let target = parse_divided_damage_target(target_tokens)?;
     Ok(EffectAst::subject_verb_distributed_damage(amount, target))
 }

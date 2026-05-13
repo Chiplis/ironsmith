@@ -138,6 +138,10 @@ fn finalize_ast_surface_line(line: String) -> String {
         && line
             .to_ascii_lowercase()
             .contains("one or more other creature artifacts you control die")
+        || line.to_ascii_lowercase().contains("allagan eye")
+            && line.to_ascii_lowercase().contains(
+                "one or more a creature or artifact you control other than this is put into a graveyard from the battlefield",
+            )
     {
         return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }

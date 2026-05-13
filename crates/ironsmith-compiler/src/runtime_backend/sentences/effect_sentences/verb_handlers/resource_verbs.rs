@@ -202,15 +202,10 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let fixed_position = match filtered_tail.as_slice() {
-        ["second", "from", "top"] => Some(2),
-        ["third", "from", "top"] => Some(3),
-        ["fourth", "from", "top"] => Some(4),
-        ["fifth", "from", "top"] => Some(5),
-        _ => None,
-    };
-    if let Some(position) = fixed_position {
-        return Some(Value::Fixed(position));
+    if let Some((position, used)) = ironsmith_core::parse_ordinal_words(&filtered_tail)
+        && filtered_tail.get(used..) == Some(["from", "top"].as_slice())
+    {
+        return Some(Value::Fixed(position as i32));
     }
 
     let amount_start = match filtered_tail.as_slice() {
