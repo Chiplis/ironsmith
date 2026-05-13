@@ -2286,6 +2286,7 @@ pub struct CreateTokenCopyEffect<A> {
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
     pub pt_adjustment: Option<CopyPtAdjustment>,
+    pub clear_mana_cost: bool,
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub removed_supertypes: Vec<Supertype>,
@@ -2310,6 +2311,7 @@ impl<A> CreateTokenCopyEffect<A> {
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
             pt_adjustment: None,
+            clear_mana_cost: false,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             removed_supertypes: Vec::new(),
@@ -2393,6 +2395,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn half_power_toughness_round_up(mut self) -> Self {
         self.pt_adjustment = Some(CopyPtAdjustment::HalfRoundUp);
+        self
+    }
+
+    pub fn without_mana_cost(mut self) -> Self {
+        self.clear_mana_cost = true;
         self
     }
 

@@ -695,6 +695,7 @@ mod tests {
             additional_cost: crate::cost::TotalCost::free(),
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
         }
     }
 

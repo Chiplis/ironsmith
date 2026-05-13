@@ -2923,9 +2923,8 @@ CardDefinition {
             Some("compiled text contains internal marker: tagged-object-reference")
         );
 
-        snapshot.compiled_text = Some(
-            "If that object matches attacking permanent, draw a card.".to_string(),
-        );
+        snapshot.compiled_text =
+            Some("If that object matches attacking permanent, draw a card.".to_string());
         assert_eq!(
             authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
             Some("compiled text contains internal marker: object-predicate-debug")

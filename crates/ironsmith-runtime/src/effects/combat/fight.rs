@@ -3,9 +3,11 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
+use crate::triggers::TriggerEvent;
 
 /// Effect that makes two creatures fight.
 ///
@@ -47,6 +49,27 @@ impl FightEffect {
         Self::new(ChooseSpec::creature(), ChooseSpec::creature())
     }
 
+    fn resolve_fighters(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(crate::ids::ObjectId, crate::ids::ObjectId), ExecutionError> {
+        if ctx.target_assignments.is_empty()
+            && let Some(fighters) = ctx.resolve_two_object_targets()
+        {
+            return Ok(fighters);
+        }
+        if ctx.target_assignments.is_empty() && !ctx.targets.is_empty() {
+            return Err(ExecutionError::InvalidTarget);
+        }
+
+        let creature1 =
+            crate::effects::helpers::resolve_single_object_for_effect(game, ctx, &self.creature1)?;
+        let creature2 =
+            crate::effects::helpers::resolve_single_object_for_effect(game, ctx, &self.creature2)?;
+        Ok((creature1, creature2))
+    }
+
     fn execute_fight_damage(
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -69,6 +92,36 @@ impl FightEffect {
         ctx.source_snapshot = original_source_snapshot;
         result
     }
+
+    fn fight_events(
+        game: &GameState,
+        ctx: &ExecutionContext,
+        fighters: &[(crate::ids::ObjectId, Option<ObjectSnapshot>)],
+    ) -> Vec<TriggerEvent> {
+        let mut seen = Vec::new();
+        let mut events = Vec::new();
+
+        for (fighter, snapshot) in fighters {
+            if seen.contains(fighter) {
+                continue;
+            }
+            seen.push(*fighter);
+
+            let Some(controller) = game
+                .object(*fighter)
+                .map(|object| game.controller_of(object))
+                .or_else(|| snapshot.as_ref().map(|snapshot| snapshot.controller))
+            else {
+                continue;
+            };
+
+            let event = KeywordActionEvent::new(KeywordActionKind::Fight, controller, *fighter, 1)
+                .with_snapshot(snapshot.clone());
+            events.push(TriggerEvent::new_with_provenance(event, ctx.provenance));
+        }
+
+        events
+    }
 }
 
 impl EffectExecutor for FightEffect {
@@ -77,9 +130,10 @@ impl EffectExecutor for FightEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Get both targets from resolved targets
-        let Some((creature1_id, creature2_id)) = ctx.resolve_two_object_targets() else {
-            return Ok(EffectOutcome::target_invalid());
+        let (creature1_id, creature2_id) = match self.resolve_fighters(game, ctx) {
+            Ok(fighters) => fighters,
+            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(err) => return Err(err),
         };
         let both_valid_fighters = [creature1_id, creature2_id].into_iter().all(|id| {
             game.object(id)
@@ -99,6 +153,14 @@ impl EffectExecutor for FightEffect {
         let creature2_snapshot = game
             .object(creature2_id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        let fight_events = Self::fight_events(
+            game,
+            ctx,
+            &[
+                (creature1_id, creature1_snapshot.clone()),
+                (creature2_id, creature2_snapshot.clone()),
+            ],
+        );
 
         // Each creature deals damage equal to its power to the other.
         // Decompose into two DealDamage effects and aggregate outcomes.
@@ -128,7 +190,7 @@ impl EffectExecutor for FightEffect {
             outcomes.push(outcome);
         }
 
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes).with_events(fight_events))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

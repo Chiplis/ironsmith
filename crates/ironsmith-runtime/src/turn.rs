@@ -290,10 +290,14 @@ pub fn execute_untap_step(game: &mut GameState) {
 pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
     use crate::ability::AbilityKind;
     use crate::decisions::context::BooleanContext;
-    use crate::effect::{Restriction, Until};
+    use crate::effect::Until;
     use crate::static_abilities::StaticAbilityId;
 
     let active_player = game.turn.active_player;
+    let had_restriction_effects = !game.effect_store.restriction_effects.is_empty();
+    if had_restriction_effects {
+        game.update_cant_effects();
+    }
 
     let phased_in: Vec<_> = game
         .phased_out
@@ -395,35 +399,19 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         game.remove_summoning_sickness(id);
     }
 
-    let mut consumed_next_untap_objects = std::collections::HashSet::new();
     for effect in &mut game.effect_store.restriction_effects {
         if matches!(effect.duration, Until::ControllersNextUntapStep)
             && effect.controller == active_player
         {
             effect.consumed_next_untap = true;
-            if let Restriction::Untap(filter) = &effect.restriction
-                && let Some(object_id) = filter.specific
-            {
-                consumed_next_untap_objects.insert(object_id);
-            }
         }
     }
     let current_turn = game.turn.turn_number;
     game.effect_store
         .restriction_effects
         .retain(|effect| !effect.is_expired(current_turn));
-    for object_id in consumed_next_untap_objects {
-        let still_blocked_by_restriction =
-            game.effect_store.restriction_effects.iter().any(|effect| {
-                effect.is_active(game, current_turn)
-                    && matches!(
-                        &effect.restriction,
-                        Restriction::Untap(filter) if filter.specific == Some(object_id)
-                    )
-            });
-        if !still_blocked_by_restriction {
-            game.effect_store.cant_effects.cant_untap.remove(&object_id);
-        }
+    if had_restriction_effects {
+        game.update_cant_effects();
     }
 
     // No priority during untap step

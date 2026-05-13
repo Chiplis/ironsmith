@@ -2599,6 +2599,50 @@ fn rewrite_zone_counter_helpers_parse_for_each_spells_youve_cast_this_turn() {
 }
 
 #[test]
+fn rewrite_zone_counter_helpers_parse_difference_counter_amount() {
+    let tokens = lex_line(
+        "Put a number of +1/+1 counters on this equal to the difference.",
+        0,
+    )
+    .expect("rewrite lexer should classify difference counter clause");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("difference counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("Add(PowerOf(Tagged"), "{debug}");
+    assert!(debug.contains("Scaled(PowerOf"), "{debug}");
+    assert!(debug.contains("Source"), "{debug}");
+    assert!(debug.contains("-1"), "{debug}");
+}
+
+#[test]
+fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Warstorm Surge Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature you control enters, it deals damage equal to its power to any target.",
+        )
+        .expect("triggered it-damage source should parse");
+    let rendered = format!("{def:#?}");
+    let compact = rendered.split_whitespace().collect::<String>();
+
+    assert!(
+        compact.contains("TagTriggeringObjectEffect")
+            && compact.contains("ExecuteWithSourceEffect")
+            && compact.contains("source:Tagged")
+            && compact.contains("TagKey(\"triggering\"")
+            && compact.contains("PowerOf(Tagged"),
+        "expected 'it' to bind to the triggering object as damage source, got {rendered}"
+    );
+    assert!(
+        !compact.contains("zone:Some(Hand)"),
+        "triggered 'it' should not fall back to a hand-card antecedent, got {rendered}"
+    );
+}
+
+#[test]
 fn rewrite_zone_counter_helpers_keep_trailing_if_counter_clause_after_structure_cutover() {
     let tokens = lex_line("Put a +1/+1 counter on target creature if it's white.", 0)
         .expect("rewrite lexer should classify conditional counter clause");
@@ -3988,6 +4032,55 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_temporary_graveyard_cast_grants() {
+    let tokens = lex_line(
+        "You may cast a creature spell from your graveyard this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify temporary graveyard-cast permission");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::GrantBySpec {
+            player: crate::cards::builders::PlayerAst::You,
+            spec,
+            lifetime: super::PermissionLifetime::ThisTurn,
+        })) if spec.filter.card_types == vec![CardType::Creature]
+            && spec.zone == crate::zone::Zone::Graveyard
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("temporary graveyard-cast permission should parse as an effect");
+    fn has_temporary_creature_graveyard_grant(
+        effects: &[crate::cards::builders::EffectAst],
+    ) -> bool {
+        effects.iter().any(|effect| match effect {
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb) => matches!(
+                &subject_verb.action,
+                crate::cards::builders::SubjectVerbActionAst::GrantBySpec {
+                    spec,
+                    player:
+                        crate::cards::builders::PlayerAst::You
+                        | crate::cards::builders::PlayerAst::Implicit,
+                    duration: crate::grant::GrantDuration::UntilEndOfTurn,
+                } if spec.filter.card_types == vec![CardType::Creature]
+                    && spec.zone == crate::zone::Zone::Graveyard
+            ),
+            crate::cards::builders::EffectAst::May { effects }
+            | crate::cards::builders::EffectAst::MayByPlayer { effects, .. } => {
+                has_temporary_creature_graveyard_grant(effects)
+            }
+            _ => false,
+        })
+    }
+
+    assert!(
+        has_temporary_creature_graveyard_grant(&effects),
+        "expected temporary graveyard creature cast grant, got {effects:#?}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_route_subject_filters_through_grammar_entrypoint() {
     let tokens = lex_line("You may cast creature spells as though they had flash", 0)
         .expect("rewrite lexer should classify flash permission clause");
@@ -4963,6 +5056,23 @@ fn dynamic_top_library_count_lowers_to_prior_effect_metric() {
             && debug.contains("LookAtTopCardsEffect")
             && debug.contains("reveal: true"),
         "expected reveal count to bind to prior sacrifice metric, got {debug}"
+    );
+}
+
+#[test]
+fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Destroyed Draw Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy all creatures. Draw a card for each creature destroyed this way.")
+        .expect("destroyed-this-way draw count should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("AffectedObjects")
+            && debug.contains("DrawCardsEffect"),
+        "expected draw count to bind to prior destroy metric, got {debug}"
     );
 }
 
@@ -6750,6 +6860,30 @@ fn parse_named_source_exile_instead_of_graveyard_from_anywhere() {
                 "parsed={parsed:?} words={words:?}"
             );
         },
+    );
+}
+
+#[test]
+fn parse_card_or_token_exile_instead_keeps_cards_in_filter() {
+    let tokens = lex_line(
+        "If a card or token would be put into a graveyard from anywhere, exile it instead.",
+        0,
+    )
+    .expect("card-or-token exile-replacement line should lex");
+    let parsed = super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
+        .expect("card-or-token exile-replacement line should parse");
+    let Some(ability) = parsed else {
+        panic!("expected exile-replacement static ability");
+    };
+    let debug = format!("{ability:?}");
+
+    assert_eq!(
+        ability.id(),
+        crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+    );
+    assert!(
+        !debug.contains("token: true"),
+        "card-or-token replacement must not be restricted to tokens only: {debug}"
     );
 }
 
@@ -9823,6 +9957,20 @@ fn rewrite_lexed_effect_entrypoint_keeps_additional_land_play_as_permission() {
     assert!(
         !native_debug.contains("May"),
         "land-play permission clause should not be wrapped as a May effect: {native_debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_entrypoint_splits_untap_and_additional_combat_phase() {
+    let text = "Untap all other creatures you control and after this phase, there is an additional combat phase.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify combat-celebrant effect");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed combat-celebrant effect should parse");
+
+    let native_debug = format!("{native:?}");
+    assert!(
+        native_debug.contains("Untap") && native_debug.contains("AdditionalPhases"),
+        "expected untap and additional combat effects, got {native_debug}"
     );
 }
 

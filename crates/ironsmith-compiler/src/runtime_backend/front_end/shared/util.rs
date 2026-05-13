@@ -1143,6 +1143,7 @@ pub(crate) fn parse_zone_word(word: &str) -> Option<Zone> {
 
 pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
     match words {
+        ["blitz", ..] => Some((AlternativeCastKind::Blitz, 1)),
         ["dash", ..] => Some((AlternativeCastKind::Dash, 1)),
         ["flashback", ..] => Some((AlternativeCastKind::Flashback, 1)),
         ["jump", "start", ..] => Some((AlternativeCastKind::JumpStart, 2)),
@@ -1803,7 +1804,7 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "spells", "mana", "value"],
     ]) {
         return Some((
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("triggering")))),
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
             used,
         ));
     }
@@ -3813,7 +3814,11 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "cycling"
             | "echo"
             | "equip"
+            | "epic"
             | "escape"
+            | "escalate"
+            | "eternalize"
+            | "evoke"
             | "flashback"
             | "kicker"
             | "multikicker"
@@ -4216,6 +4221,89 @@ pub(crate) fn parse_entwine_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_entwine_line(tokens)
+}
+
+fn keyword_cost_tail_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+    keyword: &str,
+) -> Option<Vec<OwnedLexToken>> {
+    if !tokens.first().is_some_and(|token| token.is_word(keyword)) {
+        return None;
+    }
+
+    let mut tail = tokens.get(1..).unwrap_or_default();
+    if matches!(
+        tail.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
+        tail = tail.get(1..).unwrap_or_default();
+    }
+
+    let reminder_start = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| (token.kind == TokenKind::LParen).then_some(idx))
+        .unwrap_or(tail.len());
+    let sentence_end = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| token.is_period().then_some(idx))
+        .unwrap_or(tail.len());
+    let end = reminder_start.min(sentence_end);
+    let cost_tokens = trim_commas(&tail[..end]);
+    (!cost_tokens.is_empty()).then_some(cost_tokens)
+}
+
+pub(crate) fn parse_escalate_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(TotalCost, String)>, CardTextError> {
+    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "escalate") else {
+        return Ok(None);
+    };
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    let display = render_token_slice(&cost_tokens).trim().to_string();
+    Ok(Some((total_cost, display)))
+}
+
+pub(crate) fn parse_evoke_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "evoke") else {
+        return Ok(None);
+    };
+    let (mana_cost, consumed) = leading_mana_cost_from_tokens(&cost_tokens)
+        .ok_or_else(|| CardTextError::ParseError("evoke keyword missing mana cost".to_string()))?;
+    if consumed == 0 {
+        return Err(CardTextError::ParseError(
+            "evoke keyword missing mana cost".to_string(),
+        ));
+    }
+    Ok(Some(AlternativeCastingMethod::alternative_cost(
+        "Evoke",
+        Some(mana_cost),
+        Vec::new(),
+    )))
+}
+
+pub(crate) fn parse_eternalize_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ManaCost>, CardTextError> {
+    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "eternalize") else {
+        return Ok(None);
+    };
+    let (mana_cost, consumed) = leading_mana_cost_from_tokens(&cost_tokens).ok_or_else(|| {
+        CardTextError::ParseError("eternalize keyword missing mana cost".to_string())
+    })?;
+    if consumed == 0 {
+        return Err(CardTextError::ParseError(
+            "eternalize keyword missing mana cost".to_string(),
+        ));
+    }
+    Ok(Some(mana_cost))
+}
+
+pub(crate) fn parse_epic_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    tokens.first().is_some_and(|token| token.is_word("epic"))
 }
 
 pub(crate) fn parse_morph_keyword_line(

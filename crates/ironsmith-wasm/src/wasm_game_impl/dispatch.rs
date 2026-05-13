@@ -1074,6 +1074,9 @@ impl WasmGame {
                 player_id,
                 zone,
             );
+            if zone == Zone::Command {
+                self.game.set_as_commander(object_id, player_id);
+            }
             return Ok(object_id.0);
         }
 
@@ -1138,6 +1141,9 @@ impl WasmGame {
                 .unwrap_or(temp_id)
         };
         align_manual_add_stable_id(&mut self.game, object_id);
+        if zone == Zone::Command {
+            self.game.set_as_commander(object_id, player_id);
+        }
         ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
         Ok(object_id.0)
     }
@@ -1495,10 +1501,17 @@ impl WasmGame {
                 player_id,
                 zone,
             );
+            if zone == Zone::Command {
+                self.game.set_as_commander(object_id, player_id);
+            }
             self.recompute_ui_decision()?;
             object_id
         } else {
-            self.add_definition_to_zone_with_triggers(front, player_id, zone)?
+            let object_id = self.add_definition_to_zone_with_triggers(front, player_id, zone)?;
+            if zone == Zone::Command {
+                self.game.set_as_commander(object_id, player_id);
+            }
+            object_id
         };
 
         Ok(object_id.0)
@@ -1649,6 +1662,10 @@ impl WasmGame {
             .pending_decision
             .take()
             .ok_or_else(|| JsValue::from_str("no pending decision to dispatch"))?;
+        if matches!(pending_ctx, DecisionContext::Priority(_)) {
+            self.active_viewed_cards = None;
+            self.active_audit_viewed_cards.clear();
+        }
         let mut dispatch_perf = DispatchPerfMetrics {
             command_kind: ui_command_kind(&command).to_string(),
             pending_decision_kind: decision_context_kind(&pending_ctx).to_string(),

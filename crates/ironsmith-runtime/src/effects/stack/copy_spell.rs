@@ -90,24 +90,24 @@ pub(crate) fn stack_entry_for_copy_target(
     Ok(None)
 }
 
-pub(crate) fn create_stack_copy(
+pub(crate) fn create_stack_copy_from_object(
     game: &mut GameState,
-    target_id: crate::ids::ObjectId,
+    source: &Object,
+    _target_id: crate::ids::ObjectId,
     original_entry: &StackEntry,
     copier: crate::ids::PlayerId,
     removed_supertypes: &[crate::types::Supertype],
+    mut customize_copy: impl FnMut(&mut Object),
     targets_override: Option<Vec<Target>>,
 ) -> Result<crate::ids::ObjectId, ExecutionError> {
     let copy_id = game.new_object_id();
-    let target = game
-        .object(target_id)
-        .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-    let mut copy_obj = Object::spell_copy_of(target, copy_id, copier);
+    let mut copy_obj = Object::spell_copy_of(source, copy_id, copier);
     if !removed_supertypes.is_empty() {
         copy_obj
             .supertypes
             .retain(|supertype| !removed_supertypes.contains(supertype));
     }
+    customize_copy(&mut copy_obj);
     copy_obj.zone = Zone::Stack;
     game.add_object(copy_obj);
 
@@ -137,6 +137,30 @@ pub(crate) fn create_stack_copy(
 
     game.stack.push(copy_entry);
     Ok(copy_id)
+}
+
+pub(crate) fn create_stack_copy(
+    game: &mut GameState,
+    target_id: crate::ids::ObjectId,
+    original_entry: &StackEntry,
+    copier: crate::ids::PlayerId,
+    removed_supertypes: &[crate::types::Supertype],
+    targets_override: Option<Vec<Target>>,
+) -> Result<crate::ids::ObjectId, ExecutionError> {
+    let target = game
+        .object(target_id)
+        .ok_or(ExecutionError::ObjectNotFound(target_id))?
+        .clone();
+    create_stack_copy_from_object(
+        game,
+        &target,
+        target_id,
+        original_entry,
+        copier,
+        removed_supertypes,
+        |_| {},
+        targets_override,
+    )
 }
 
 impl EffectExecutor for CopySpellEffect {

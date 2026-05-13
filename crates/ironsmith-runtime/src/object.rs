@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::{Card, LinkedFaceLayout, PtValue};
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 use crate::cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
@@ -128,6 +128,16 @@ pub struct FaceDownCastState {
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
 }
 
+/// Stored copiable fields needed to restore a prototype card outside the stack
+/// or battlefield.
+#[derive(Debug, Clone)]
+pub struct PrototypeCastState {
+    pub mana_cost: Option<ManaCost>,
+    pub color_override: Option<ColorSet>,
+    pub base_power: Option<PtValue>,
+    pub base_toughness: Option<PtValue>,
+}
+
 /// Runtime representation of a game object.
 /// Contains both copiable values (layer 1) and non-copiable state.
 #[derive(Debug, Clone)]
@@ -185,6 +195,8 @@ pub struct Object {
     pub bestow_cast_state: Option<BestowCastState>,
     /// Original copiable fields to restore if this card was cast face down.
     pub face_down_cast_state: Option<Box<FaceDownCastState>>,
+    /// Original copiable fields to restore if this card was cast prototyped.
+    pub prototype_cast_state: Option<PrototypeCastState>,
     /// Alternative casting methods (flashback, escape, etc.)
     pub alternative_casts: Vec<AlternativeCastingMethod>,
     /// Alternative method chosen for the current spell cast.
@@ -319,6 +331,7 @@ impl Object {
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: Vec::new(),
             cast_alternative_method: None,
             has_fuse: false,
@@ -391,6 +404,7 @@ impl Object {
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: Vec::new(),
             cast_alternative_method: None,
             has_fuse: false,
@@ -449,6 +463,7 @@ impl Object {
         self.aura_attach_filter = def.aura_attach_filter.clone();
         self.bestow_cast_state = None;
         self.face_down_cast_state = None;
+        self.prototype_cast_state = None;
         self.alternative_casts = def.alternative_casts.clone();
         self.cast_alternative_method = None;
         self.has_fuse = def.has_fuse;
@@ -495,6 +510,7 @@ impl Object {
         self.spell_effect = Some(effects);
         self.aura_attach_filter = None;
         self.bestow_cast_state = None;
+        self.prototype_cast_state = None;
         self.linked_face_layout = LinkedFaceLayout::Split;
     }
 
@@ -577,6 +593,7 @@ impl Object {
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: Vec::new(),
             cast_alternative_method: None,
             has_fuse: false,
@@ -641,6 +658,7 @@ impl Object {
             aura_attach_filter,
             bestow_cast_state: None,
             face_down_cast_state: source.face_down_cast_state.clone(),
+            prototype_cast_state: None,
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: None,
@@ -702,6 +720,7 @@ impl Object {
             aura_attach_filter: source.aura_attach_filter.clone(),
             bestow_cast_state: source.bestow_cast_state.clone(),
             face_down_cast_state: source.face_down_cast_state.clone(),
+            prototype_cast_state: source.prototype_cast_state.clone(),
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: source.cast_alternative_method.clone(),
             has_fuse: source.has_fuse,
@@ -761,6 +780,7 @@ impl Object {
             aura_attach_filter: snapshot.aura_attach_filter.clone(),
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: Vec::new(),
             cast_alternative_method: None,
             has_fuse: false,
@@ -820,6 +840,7 @@ impl Object {
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: Vec::new(),
             cast_alternative_method: None,
             has_fuse: false,
@@ -918,6 +939,87 @@ impl Object {
     /// Returns true if this object is currently in the temporary bestow Aura form.
     pub fn is_bestow_overlay_active(&self) -> bool {
         self.bestow_cast_state.is_some()
+    }
+
+    fn colors_from_mana_cost(cost: &ManaCost) -> ColorSet {
+        use crate::mana::ManaSymbol;
+
+        let mut colors = ColorSet::COLORLESS;
+        for pip in cost.pips() {
+            for symbol in pip {
+                colors = match symbol {
+                    ManaSymbol::White => colors.with(Color::White),
+                    ManaSymbol::Blue => colors.with(Color::Blue),
+                    ManaSymbol::Black => colors.with(Color::Black),
+                    ManaSymbol::Red => colors.with(Color::Red),
+                    ManaSymbol::Green => colors.with(Color::Green),
+                    _ => colors,
+                };
+            }
+        }
+        colors
+    }
+
+    fn prototype_power_toughness_from_marker(&self) -> Option<(PtValue, PtValue)> {
+        self.abilities.iter().find_map(|ability| {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            if static_ability.id() != StaticAbilityId::KeywordMarker {
+                return None;
+            }
+            let text = static_ability.display();
+            if !text
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("prototype ")
+            {
+                return None;
+            }
+            let pt_text = text
+                .split(|ch| matches!(ch, '-' | '—' | '–'))
+                .nth(1)?
+                .trim();
+            let (power, toughness) = pt_text.split_once('/')?;
+            let power = power.trim().parse::<i32>().ok()?;
+            let toughness = toughness.trim().parse::<i32>().ok()?;
+            Some((PtValue::Fixed(power), PtValue::Fixed(toughness)))
+        })
+    }
+
+    pub fn apply_prototype_cast_overlay(&mut self, cost: ManaCost) -> bool {
+        if self.prototype_cast_state.is_some() {
+            return false;
+        }
+        let Some((power, toughness)) = self.prototype_power_toughness_from_marker() else {
+            return false;
+        };
+
+        self.prototype_cast_state = Some(PrototypeCastState {
+            mana_cost: self.mana_cost.clone(),
+            color_override: self.color_override,
+            base_power: self.base_power,
+            base_toughness: self.base_toughness,
+        });
+
+        let colors = Self::colors_from_mana_cost(&cost);
+        self.mana_cost = Some(cost);
+        self.color_override = (!colors.is_empty()).then_some(colors);
+        self.base_power = Some(power);
+        self.base_toughness = Some(toughness);
+        true
+    }
+
+    pub fn end_prototype_cast_overlay(&mut self) -> bool {
+        let Some(restore) = self.prototype_cast_state.take() else {
+            return false;
+        };
+
+        self.mana_cost = restore.mana_cost;
+        self.color_override = restore.color_override;
+        self.base_power = restore.base_power;
+        self.base_toughness = restore.base_toughness;
+        true
     }
 
     /// End bestow Aura form and restore original copiable fields.
@@ -1365,6 +1467,7 @@ impl Object {
             aura_attach_filter: def.aura_attach_filter.clone(),
             bestow_cast_state: None,
             face_down_cast_state: None,
+            prototype_cast_state: None,
             alternative_casts: def.alternative_casts.clone(),
             cast_alternative_method: None,
             has_fuse: def.has_fuse,

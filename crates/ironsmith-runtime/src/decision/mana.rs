@@ -21,6 +21,69 @@ fn count_basic_land_types_among_filter(
     seen.len() as u32
 }
 
+fn alternative_method_is_emerge(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> bool {
+    method.name().eq_ignore_ascii_case("Emerge")
+}
+
+fn emerge_sacrifice_filter(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> Option<crate::target::ObjectFilter> {
+    method
+        .non_mana_costs()
+        .into_iter()
+        .find_map(|cost| cost.sacrifice_filter().cloned())
+}
+
+fn maximum_emerge_reduction(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> u32 {
+    if !alternative_method_is_emerge(method) {
+        return 0;
+    }
+    let Some(filter) = emerge_sacrifice_filter(method) else {
+        return 0;
+    };
+
+    let ctx = game.filter_context_for(player, Some(source));
+    let lands_only = game.player_cant_sacrifice_nonland_to_cast_or_activate(player);
+    game.battlefield
+        .iter()
+        .copied()
+        .filter_map(|id| {
+            let obj = game.object(id)?;
+            if game.controller_of(obj) != player
+                || !filter.matches(obj, &ctx, game)
+                || !game.can_be_sacrificed(id)
+                || (lands_only && !game.object_has_card_type(id, crate::types::CardType::Land))
+            {
+                return None;
+            }
+            Some(obj.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+pub(crate) fn apply_emerge_reduction_to_alternative_mana_cost(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    base_cost: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    let reduction = maximum_emerge_reduction(game, player, source, method);
+    if reduction == 0 {
+        base_cost.clone()
+    } else {
+        base_cost.reduce_generic(reduction)
+    }
+}
+
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
 pub fn calculate_effective_activation_total_cost(
     game: &GameState,
@@ -367,10 +430,14 @@ pub(crate) fn casting_method_matches_alternative_kind(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone())
             .as_ref()
             .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
-        CastingMethod::Normal
-        | CastingMethod::FaceDown
+        CastingMethod::Normal => spell
+            .cast_alternative_method
+            .as_ref()
+            .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
+        CastingMethod::FaceDown
         | CastingMethod::SplitOtherHalf
         | CastingMethod::Fuse
         | CastingMethod::PlayFrom {
@@ -396,6 +463,7 @@ fn casting_method_is_bestow(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone())
             .as_ref()
             .is_some_and(|method| method.is_bestow()),
         _ => false,
@@ -434,6 +502,16 @@ fn spell_view_for_cost_filter_match(
         Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
     ) {
         return spell_view_for_disturb_cast(game, spell);
+    }
+
+    if let Some(method) = method.as_ref()
+        && method.name().eq_ignore_ascii_case("Prototype")
+        && let Some(cost) = method.mana_cost()
+    {
+        let mut view = spell.clone();
+        if view.apply_prototype_cast_overlay(cost.clone()) {
+            return Some(view);
+        }
     }
 
     None
@@ -860,6 +938,7 @@ fn casting_method_grants_flash_timing(
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+                .or_else(|| spell.cast_alternative_method.clone())
         }
         _ => None,
     };
@@ -992,11 +1071,56 @@ pub fn spell_mana_cost_for_cast(
         }
     };
 
+    let base_cost = if let Some(cost) = base_cost {
+        if let Some(method) =
+            alternative_method_for_casting_method(game, player, spell, casting_method)
+        {
+            Some(apply_emerge_reduction_to_alternative_mana_cost(
+                game, player, spell.id, &method, &cost,
+            ))
+        } else {
+            Some(cost)
+        }
+    } else {
+        None
+    };
+
     if from_zone == Zone::Command {
         let tax = game.commander_cast_count(spell.id).saturating_mul(2);
         base_cost.map(|cost| cost.add_generic(tax))
     } else {
         base_cost
+    }
+}
+
+fn alternative_method_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
+    match casting_method {
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .or(spell.cast_alternative_method.as_ref())
+            .cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone()),
+        CastingMethod::Normal => spell.cast_alternative_method.clone(),
+        CastingMethod::FaceDown
+        | CastingMethod::SplitOtherHalf
+        | CastingMethod::Fuse
+        | CastingMethod::GrantedEscape { .. }
+        | CastingMethod::GrantedFlashback
+        | CastingMethod::PlayFrom {
+            use_alternative: None,
+            ..
+        } => None,
     }
 }
 
@@ -1033,6 +1157,7 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone())
             .as_ref()
             .is_some_and(alternative_method_uses_printed_mana_cost),
         _ => false,
@@ -1732,7 +1857,19 @@ pub(crate) fn can_cast_with_alternative_with_context(
         }
         _ => None,
     };
-    let spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
+    let base_spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
+    let provisional_alternative_spell = (!base_spell_for_checks
+        .alternative_casts
+        .iter()
+        .any(|candidate| candidate == method))
+    .then(|| {
+        let mut view = base_spell_for_checks.clone();
+        view.cast_alternative_method = Some(method.clone());
+        view
+    });
+    let spell_for_checks = provisional_alternative_spell
+        .as_ref()
+        .unwrap_or(base_spell_for_checks);
     let effects_override = method
         .overload_effects()
         .or_else(|| method.awaken_effects())
@@ -1780,13 +1917,16 @@ pub(crate) fn can_cast_with_alternative_with_context(
     if mana_cost.is_none() && alternative_method_uses_printed_mana_cost(method) {
         return false;
     }
+    let mana_cost = mana_cost.map(|cost| {
+        apply_emerge_reduction_to_alternative_mana_cost(game, player, spell.id, method, cost)
+    });
 
     let requirements = build_requirements_for_method(method);
     let casting_method = provisional_casting_method_for_alternative(spell, method);
     if !can_cast_with_cost_with_context(
         spell_for_checks,
         spell.id,
-        mana_cost,
+        mana_cost.as_ref(),
         effects_override,
         &requirements,
         &casting_method,
@@ -1904,6 +2044,11 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
         method if method.is_composed_cost() => {
             let zero_cost = crate::mana::ManaCost::new();
             let casting_method = provisional_casting_method_for_alternative(spell, method);
+            let mana_cost = method.mana_cost().or(Some(&zero_cost)).map(|cost| {
+                apply_emerge_reduction_to_alternative_mana_cost(
+                    game, player, spell_id, method, cost,
+                )
+            });
             if let Some(condition) = method.cast_condition()
                 && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
                     game,
@@ -1918,7 +2063,7 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
             if !can_cast_with_cost_with_context(
                 spell,
                 spell_id,
-                method.mana_cost().or(Some(&zero_cost)),
+                mana_cost.as_ref(),
                 None,
                 &AdditionalCastRequirements::default(),
                 &casting_method,

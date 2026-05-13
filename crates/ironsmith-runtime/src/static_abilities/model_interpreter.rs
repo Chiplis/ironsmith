@@ -428,8 +428,11 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, .. } => {
                 Some(super::EnterAsCopyAsEntersSpec {
                     filter: spec.filter.clone(),
+                    affected_filter: spec.affected_filter.clone(),
                     may: spec.may,
                     enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                    copy_source_self: spec.copy_source_self,
+                    copy_source_enchanted: spec.copy_source_enchanted,
                     name_override: spec.name_override.clone(),
                     added_card_types: spec.added_card_types.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
@@ -438,6 +441,8 @@ impl StaticAbilityModelInterpreter {
                         .iter()
                         .map(Self::ability_from_model)
                         .collect(),
+                    set_base_power_toughness: spec.set_base_power_toughness,
+                    set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                 })
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
@@ -1114,8 +1119,11 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::with_enter_as_copy_as_enters(
                     super::EnterAsCopyAsEntersSpec {
                         filter: spec.filter.clone(),
+                        affected_filter: spec.affected_filter.clone(),
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        copy_source_self: spec.copy_source_self,
+                        copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override.clone(),
                         added_card_types: spec.added_card_types.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
@@ -1124,6 +1132,9 @@ impl StaticAbilityModelInterpreter {
                             .iter()
                             .map(Self::ability_from_model)
                             .collect(),
+                        set_base_power_toughness: spec.set_base_power_toughness,
+                        set_base_power_toughness_from_self: spec
+                            .set_base_power_toughness_from_self,
                     },
                     display.clone(),
                 )

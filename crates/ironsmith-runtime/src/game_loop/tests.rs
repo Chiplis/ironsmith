@@ -25,6 +25,147 @@ fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sublime_archangel_grants_real_exalted_triggers_to_other_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sublime = CardDefinitionBuilder::new(CardId::from_raw(72_001), "Sublime Archangel")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text("Flying\nExalted\nOther creatures you control have exalted.")
+        .expect("Sublime Archangel should parse");
+    game.create_object_from_definition(&sublime, alice, Zone::Battlefield);
+
+    let attacker = CardBuilder::new(CardId::from_raw(72_002), "Llanowar Elves")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+
+    for id in [72_003, 72_004] {
+        let creature = CardBuilder::new(CardId::from_raw(id), "Elite Vanguard")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    }
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("single attacker declaration should be legal");
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        4,
+        "Sublime plus the three other creatures should each contribute an exalted trigger"
+    );
+}
+
+#[test]
+fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardBuilder::new(CardId::from_raw(7012), "Emerge Grant Source")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+    let grant_spec = crate::grant::GrantSpec::new(
+        crate::grant::Grantable::emerge_from_cards_mana_cost(),
+        crate::filter::ObjectFilter {
+            card_types: vec![CardType::Creature],
+            ..crate::filter::ObjectFilter::default()
+        },
+        Zone::Hand,
+    );
+    game.object_mut(source_id)
+        .expect("source permanent should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::grants(grant_spec)));
+
+    let sacrifice = CardBuilder::new(CardId::from_raw(7013), "Air Elemental")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(3),
+            ManaSymbol::Blue,
+            ManaSymbol::Blue,
+        ]))
+        .build();
+    game.create_object_from_card(&sacrifice, alice, Zone::Battlefield);
+
+    let spell = CardBuilder::new(CardId::from_raw(7014), "Vastwood Gorger")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(5),
+            ManaSymbol::Green,
+        ]))
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+
+    let grants = game
+        .effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(&game, spell_id, Zone::Hand, alice);
+    assert_eq!(
+        grants.len(),
+        1,
+        "source should grant emerge to the creature card in hand, got {grants:?}"
+    );
+
+    let casting_method = CastingMethod::PlayFrom {
+        source: source_id,
+        zone: Zone::Hand,
+        use_alternative: Some(0),
+    };
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &casting_method,
+    )
+    .expect("granted emerge spell should move to the stack");
+
+    let stack_spell = game
+        .object(stack_id)
+        .expect("stack spell should exist after proposal");
+    let method = stack_spell
+        .cast_alternative_method
+        .as_ref()
+        .expect("granted emerge method should be stored on the stack spell");
+    assert_eq!(method.name(), "Emerge");
+    assert_eq!(method.non_mana_costs().len(), 1);
+
+    let steps = super::priority_cast::collect_spell_cost_steps(
+        &game,
+        stack_id,
+        alice,
+        &casting_method,
+        &crate::cost::OptionalCostsPaid::default(),
+    );
+    assert!(
+        steps.iter().any(|step| matches!(
+            step,
+            super::priority_state::ActivationCostStep::Sacrifice { .. }
+        )),
+        "granted emerge should retain its sacrifice payment step after proposal"
+    );
+}
+
 fn resolve_triggered_ability_from_spell_cast(
     game: &mut GameState,
     triggered: &crate::ability::TriggeredAbility,
@@ -451,6 +592,77 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
         !game.is_tapped(source_id),
         "the exert restriction should wear off after that untap step"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn exerting_trueheart_twins_triggers_its_own_exert_ability() {
+    #[derive(Default)]
+    struct AcceptBooleanDecisionMaker;
+
+    impl DecisionMaker for AcceptBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let twins = CardDefinitionBuilder::new(CardId::new(), "Trueheart Twins")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "You may exert this creature as it attacks.\nWhenever you exert a creature, creatures you control get +1/+0 until end of turn.",
+        )
+        .expect("Trueheart Twins should parse");
+    let twins_id = game.create_object_from_definition(&twins, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(twins_id);
+
+    let hyena = CardBuilder::new(CardId::from_raw(71_002), "Hyena Pack")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .build();
+    let hyena_id = game.create_object_from_card(&hyena, alice, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: twins_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    let mut dm = AcceptBooleanDecisionMaker;
+    apply_attacker_declarations_with_dm(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &declarations,
+        &mut dm,
+    )
+    .expect("declaring Trueheart Twins as an exert attacker should succeed");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Trueheart Twins should trigger from its own exert event"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Trueheart Twins exert trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Trueheart Twins exert trigger should resolve");
+
+    assert_eq!(game.calculated_power(twins_id), Some(5));
+    assert_eq!(game.calculated_power(hyena_id), Some(4));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -5092,6 +5304,132 @@ fn test_extract_target_specs_two_distinct_targets_create_two_requirements() {
 }
 
 #[test]
+fn test_repeated_earthbend_effects_declare_independent_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let swamp = CardBuilder::new(CardId::from_raw(5_010), "Swamp")
+        .card_types(vec![CardType::Land])
+        .build();
+    let forest = CardBuilder::new(CardId::from_raw(5_011), "Forest")
+        .card_types(vec![CardType::Land])
+        .build();
+    let swamp_id = game.create_object_from_card(&swamp, alice, Zone::Battlefield);
+    let forest_id = game.create_object_from_card(&forest, alice, Zone::Battlefield);
+
+    let spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::land().controlled_by(PlayerFilter::You),
+    ));
+    let effects = vec![
+        Effect::new(crate::effects::EarthbendEffect::new(spec.clone(), 1)),
+        Effect::new(crate::effects::EarthbendEffect::new(spec.clone(), 1)),
+    ];
+
+    let requirements = extract_target_requirements(&game, &effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        2,
+        "each earthbend instruction should declare its own target slot"
+    );
+    assert!(
+        requirements
+            .iter()
+            .all(|req| req.legal_targets.contains(&Target::Object(swamp_id))
+                && req.legal_targets.contains(&Target::Object(forest_id))),
+        "both earthbend target prompts should offer the controlled lands, got {requirements:?}"
+    );
+}
+
+#[test]
+fn test_repeated_earthbend_trigger_prompts_for_each_target() {
+    #[derive(Default)]
+    struct RecordingTargetDecisionMaker {
+        targets_ctx: Option<crate::decisions::context::TargetsContext>,
+    }
+
+    impl DecisionMaker for RecordingTargetDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.targets_ctx = Some(ctx.clone());
+            ctx.requirements
+                .iter()
+                .filter_map(|requirement| requirement.legal_targets.first().copied())
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source_id = create_creature(&mut game, "Earthbend Source", alice, 2, 2);
+    let source_stable_id = game.object(source_id).expect("source exists").stable_id;
+
+    for name in ["Swamp", "Forest"] {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Battlefield);
+    }
+
+    let spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::land().controlled_by(PlayerFilter::You),
+    ));
+    let effects = vec![
+        Effect::new(crate::effects::EarthbendEffect::new(spec.clone(), 1)),
+        Effect::new(crate::effects::EarthbendEffect::new(spec.clone(), 1)),
+    ];
+    let ability = crate::ability::TriggeredAbility {
+        trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+        effects: crate::resolution::ResolutionProgram::from_effects(effects),
+        choices: vec![spec.clone()],
+        intervening_if: None,
+        presentation_label: None,
+    };
+
+    let mut trigger_queue = TriggerQueue::new();
+    trigger_queue.add(TriggeredAbilityEntry {
+        source: source_id,
+        controller: alice,
+        x_value: None,
+        event_value_amount: None,
+        ability: ability.clone(),
+        triggering_event: TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        source_stable_id,
+        source_name: "Earthbend Source".to_string(),
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        trigger_identity: crate::triggers::compute_trigger_identity(&ability),
+    });
+
+    let mut dm = RecordingTargetDecisionMaker::default();
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("earthbend trigger should be put on the stack");
+
+    let targets_ctx = dm
+        .targets_ctx
+        .expect("earthbend trigger should ask for targets");
+    assert_eq!(
+        targets_ctx.requirements.len(),
+        2,
+        "repeated earthbend trigger should ask for two independent target slots"
+    );
+    assert_eq!(
+        game.stack
+            .last()
+            .expect("trigger should be on stack")
+            .target_assignments
+            .len(),
+        2,
+        "stack entry should preserve both target assignments"
+    );
+}
+
+#[test]
 fn test_distinct_object_target_clauses_resolve_against_their_own_selected_targets() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -6595,6 +6933,76 @@ fn act_of_aggression_gains_control_untaps_and_grants_haste_until_end_of_turn() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn target_opponent_gains_control_keeps_player_target_visible_to_object_effect() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let wrong_turn = CardDefinitionBuilder::new(CardId::from_raw(82_301), "Wrong Turn")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target opponent gains control of target creature.")
+        .expect("Wrong Turn should parse");
+
+    let creature_id = create_creature(&mut game, "Borrowed Mulldrifter", alice, 2, 2);
+    let spell_effect = wrong_turn
+        .spell_effect
+        .as_ref()
+        .expect("Wrong Turn should have effects");
+    let target_requirements = super::targeting::extract_target_requirements(
+        &game,
+        spell_effect.flattened_default_effects(),
+        alice,
+        None,
+    );
+    let player_spec = target_requirements
+        .iter()
+        .find(|requirement| requirement.legal_targets.contains(&Target::Player(bob)))
+        .expect("Wrong Turn should target an opponent")
+        .spec
+        .clone();
+    let creature_spec = target_requirements
+        .iter()
+        .find(|requirement| {
+            requirement
+                .legal_targets
+                .contains(&Target::Object(creature_id))
+        })
+        .expect("Wrong Turn should target a creature")
+        .spec
+        .clone();
+
+    let wrong_turn_id = game.create_object_from_definition(&wrong_turn, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(wrong_turn_id, alice)
+            .with_targets(vec![Target::Player(bob), Target::Object(creature_id)])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: player_spec,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: creature_spec,
+                    range: 1..2,
+                },
+            ]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Wrong Turn should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(bob),
+        "the target opponent should gain control of the target creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn beamsplitter_mage_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(82_200), "Beamsplitter Mage")
         .mana_cost(ManaCost::from_pips(vec![
@@ -7969,6 +8377,293 @@ fn test_echo_upkeep_trigger_without_payment_sacrifices_source() {
         in_graveyard,
         "Mogg War Marshal should end up in graveyard after unpaid echo"
     );
+}
+
+#[test]
+fn test_echo_trigger_ignores_source_after_zone_change() {
+    use crate::object::CounterType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let echo_card = CardDefinitionBuilder::new(CardId::new(), "Blinked Echo")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .echo(crate::cost::TotalCost::mana(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+        ])))
+        .build();
+    let original_id = game.create_object_from_definition(&echo_card, alice, Zone::Battlefield);
+    game.object_mut(original_id)
+        .expect("echo permanent should exist")
+        .counters
+        .insert(CounterType::Echo, 1);
+
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(original_id)
+            .expect("echo permanent should still exist"),
+        &game,
+    );
+    let echo_effects = game
+        .object(original_id)
+        .expect("echo permanent should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("echo trigger effects should exist");
+    let entry = StackEntry::ability(original_id, alice, echo_effects)
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_snapshot(source_snapshot);
+
+    let exiled_id = game
+        .move_object_by_effect(original_id, Zone::Exile)
+        .expect("echo permanent should move to exile");
+    let returned_id = game
+        .move_object_by_effect(exiled_id, Zone::Battlefield)
+        .expect("echo permanent should return to battlefield");
+    game.object_mut(returned_id)
+        .expect("returned echo permanent should exist")
+        .counters
+        .insert(CounterType::Echo, 1);
+    game.push_to_stack(entry);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("stale echo trigger should resolve");
+
+    let returned = game
+        .object(returned_id)
+        .expect("returned echo permanent should remain");
+    assert_eq!(
+        returned.zone,
+        Zone::Battlefield,
+        "stale echo trigger should not sacrifice the returned object"
+    );
+    assert_eq!(
+        returned
+            .counters
+            .get(&CounterType::Echo)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "stale echo trigger should not remove counters from the returned object"
+    );
+}
+
+#[test]
+fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
+    use crate::object::CounterType;
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let echo_source = CardDefinitionBuilder::new(CardId::new(), "Echo Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .echo(crate::cost::TotalCost::mana(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Green],
+        ])))
+        .build();
+    game.create_object_from_definition(&echo_source, alice, Zone::Battlefield);
+
+    let clone = CardDefinitionBuilder::new(CardId::new(), "Entering Clone")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: Vec::new(),
+                    added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(),
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield."
+                    .to_string(),
+            ),
+        ))
+        .build();
+    let clone_id = game.create_object_from_definition(&clone, alice, Zone::Hand);
+
+    let result = game
+        .move_object_with_etb_processing(clone_id, Zone::Battlefield)
+        .expect("clone should enter the battlefield");
+    let copied = game
+        .object(result.new_id)
+        .expect("copied permanent should exist");
+
+    assert_eq!(copied.name, "Echo Source");
+    assert_eq!(
+        copied
+            .counters
+            .get(&CounterType::Echo)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "a clone entering as an echo permanent should apply the copied enters-with-counter ability"
+    );
+}
+
+#[test]
+fn test_enter_as_copy_can_set_base_power_toughness_from_entering_object() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Copy Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let metamorph = CardDefinitionBuilder::new(CardId::new(), "Metamorph Probe")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: Vec::new(),
+                    added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(),
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: true,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
+                    .to_string(),
+            ),
+        ))
+        .build();
+    let metamorph_id = game.create_object_from_definition(&metamorph, alice, Zone::Hand);
+
+    let result = game
+        .move_object_with_etb_processing(metamorph_id, Zone::Battlefield)
+        .expect("metamorph should enter the battlefield");
+    let copied = game
+        .object(result.new_id)
+        .expect("copied permanent should exist");
+
+    assert_eq!(copied.name, "Copy Source");
+    assert_eq!(copied.base_power, Some(crate::card::PtValue::Fixed(7)));
+    assert_eq!(copied.base_toughness, Some(crate::card::PtValue::Fixed(7)));
+}
+
+#[test]
+fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stack_object() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Copy Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let metamorph = CardDefinitionBuilder::new(CardId::new(), "Metamorph Probe")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: Vec::new(),
+                    added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(),
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: true,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
+                    .to_string(),
+            ),
+        ))
+        .build();
+    let metamorph_id = game.create_object_from_definition(&metamorph, alice, Zone::Stack);
+
+    let result = game
+        .move_object_with_etb_processing(metamorph_id, Zone::Battlefield)
+        .expect("metamorph should enter the battlefield");
+    let copied = game
+        .object(result.new_id)
+        .expect("copied permanent should exist");
+
+    assert_eq!(copied.name, "Copy Source");
+    assert_eq!(copied.base_power, Some(crate::card::PtValue::Fixed(7)));
+    assert_eq!(copied.base_toughness, Some(crate::card::PtValue::Fixed(7)));
+}
+
+#[test]
+fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let essence = CardDefinitionBuilder::new(CardId::new(), "Essence Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::source(),
+                    affected_filter: Some(crate::target::ObjectFilter::creature().you_control()),
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: true,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: Vec::new(),
+                    added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(),
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "Creatures you control enter as a copy of this creature.".to_string(),
+            ),
+        ))
+        .build();
+    game.create_object_from_definition(&essence, alice, Zone::Battlefield);
+
+    let bear = CardDefinitionBuilder::new(CardId::new(), "Entering Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_id = game.create_object_from_definition(&bear, alice, Zone::Hand);
+
+    let result = game
+        .move_object_with_etb_processing(bear_id, Zone::Battlefield)
+        .expect("creature should enter the battlefield");
+    let copied = game
+        .object(result.new_id)
+        .expect("copied permanent should exist");
+
+    assert_eq!(copied.name, "Essence Source");
+    assert_eq!(copied.base_power, Some(crate::card::PtValue::Fixed(6)));
+    assert_eq!(copied.base_toughness, Some(crate::card::PtValue::Fixed(6)));
 }
 
 #[test]
@@ -15375,6 +16070,81 @@ fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers() {
     );
 }
 
+#[test]
+fn test_prototyped_spell_on_stack_snapshots_with_prototype_mana_value() {
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerQueue;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let prototype_def = CardDefinitionBuilder::new(CardId::new(), "Prototype Runtime Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(6, 4))
+        .parse_text("Prototype {2}{R} — 3/2\nHaste")
+        .expect("prototype text should parse");
+    let prototype_id = game.create_object_from_definition(&prototype_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: prototype_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Alternative(0),
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("prototype cast should succeed");
+
+    let stack_id = game
+        .stack
+        .last()
+        .expect("prototype spell should be on the stack")
+        .object_id;
+    let stack_object = game
+        .object(stack_id)
+        .expect("prototype stack object should exist");
+    assert_eq!(
+        stack_object.mana_cost.as_ref().map(ManaCost::mana_value),
+        Some(3),
+        "prototyped spell object should have its prototype mana cost on the stack"
+    );
+    let snapshot = ObjectSnapshot::from_object(stack_object, &game);
+    assert_eq!(
+        snapshot.mana_value(),
+        3,
+        "stack LKI snapshot should use the prototype mana value"
+    );
+
+    let tagged_counter =
+        Effect::counter(crate::target::ChooseSpec::target_spell()).tag("countered_0");
+    let mut ctx = crate::effects::ExecutionContext::new_default(stack_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(stack_id)]);
+    crate::effects::execute_effect(&mut game, &tagged_counter, &mut ctx)
+        .expect("tagged counter should resolve");
+    let tagged_mana_value = crate::effects::helpers::resolve_value(
+        &game,
+        &Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+            crate::TagKey::from("countered_0"),
+        ))),
+        &ctx,
+    )
+    .expect("countered tag mana value should resolve");
+    assert_eq!(
+        tagged_mana_value, 3,
+        "countered prototyped spell LKI should keep the prototype mana value"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_dash_cost_reduction_applies_only_to_dash_casts() {
@@ -16963,6 +17733,26 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     assert!(
         !stack_obj.card_types.contains(&CardType::Creature),
         "disturbed spell should not remain a creature spell on stack"
+    );
+    assert!(
+        matches!(
+            &stack_obj.cast_alternative_method,
+            Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+        ),
+        "disturbed spell should retain the selected alternative method after applying the back face"
+    );
+    let stack_cost = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        stack_obj,
+        &CastingMethod::Alternative(0),
+        Zone::Graveyard,
+    )
+    .expect("disturbed spell should still use its front-face disturb cost");
+    assert_eq!(
+        stack_cost,
+        ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        "disturbed spell should not become free after the back-face overlay"
     );
 
     let requirements = super::targeting::extract_target_requirements(

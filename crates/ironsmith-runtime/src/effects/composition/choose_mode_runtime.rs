@@ -130,8 +130,12 @@ pub(crate) fn run_choose_mode(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;
-    let min_modes = resolve_value(game, &effect.min_choose_count, ctx)?.max(0) as usize;
+    let mut max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;
+    let mut min_modes = resolve_value(game, &effect.min_choose_count, ctx)?.max(0) as usize;
+    if ctx.optional_costs_paid.was_entwined() {
+        max_modes = effect.modes.len();
+        min_modes = effect.modes.len();
+    }
 
     if effect.modes.is_empty() || max_modes == 0 {
         return Ok(EffectOutcome::resolved());

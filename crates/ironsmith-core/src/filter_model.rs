@@ -409,6 +409,7 @@ pub struct ObjectFilter {
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
     pub attached_to_player: Option<PlayerFilter>,
     pub nonattacking: bool,
+    pub enlist_eligible: bool,
     pub blocking: bool,
     pub nonblocking: bool,
     pub blocked: bool,
@@ -437,6 +438,7 @@ pub struct ObjectFilter {
     pub has_tap_activated_ability: bool,
     pub no_abilities: bool,
     pub no_x_in_cost: bool,
+    pub has_x_in_cost: bool,
     pub with_counter: Option<CounterConstraint>,
     pub without_counter: Option<CounterConstraint>,
     pub total_counters_parity: Option<ParityRequirement>,
@@ -498,6 +500,7 @@ impl ObjectFilter {
             || self.historic
             || self.nonhistoric
             || self.modified
+            || self.enlist_eligible
             || self.attached_to_player.is_some()
             || self.drawn_this_turn
             || self.mana_value.is_some()
@@ -507,6 +510,7 @@ impl ObjectFilter {
             || self.has_tap_activated_ability
             || self.no_abilities
             || self.no_x_in_cost
+            || self.has_x_in_cost
             || self.name.is_some()
             || self.excluded_name.is_some()
             || self.alternative_cast.is_some()
@@ -853,6 +857,11 @@ impl ObjectFilter {
 
     pub fn untapped(mut self) -> Self {
         self.untapped = true;
+        self
+    }
+
+    pub fn enlist_eligible(mut self) -> Self {
+        self.enlist_eligible = true;
         self
     }
 
@@ -1555,6 +1564,9 @@ impl ObjectFilter {
         } else {
             if self.nonattacking {
                 parts.push("nonattacking".to_string());
+            }
+            if self.enlist_eligible {
+                parts.push("enlist-eligible".to_string());
             }
             if self.nonblocking {
                 parts.push("nonblocking".to_string());

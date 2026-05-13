@@ -273,6 +273,11 @@ fn parse_put_counter_count_value(
         return Ok((value, used));
     }
     if grammar::words_match_any_prefix(tokens, &[&["a", "number", "of"]]).is_some() {
+        if grammar::words_find_phrase(tokens, &["equal", "to", "the", "difference"]).is_some()
+            || grammar::words_find_phrase(tokens, &["equal", "to", "difference"]).is_some()
+        {
+            return Ok((Value::Fixed(0), 3));
+        }
         if let Some(value) = parse_add_mana_equal_amount_value(tokens)
             .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
             .or_else(|| parse_equal_to_number_of_filter_value(tokens))
@@ -359,7 +364,7 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
 }
 
 pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let (count_value, used) = parse_put_counter_count_value(tokens)?;
+    let (mut count_value, used) = parse_put_counter_count_value(tokens)?;
     let rest = &tokens[used..];
     let clause_text = render_clause_words(tokens);
     let on_idx = find_token_index(rest, |token| token.is_word("on")).ok_or_else(|| {
@@ -370,12 +375,18 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     })?;
 
     let mut target_tokens = rest[on_idx + 1..].to_vec();
+    let mut equal_to_difference = false;
     if let Some(equal_idx) = find_token_index(&target_tokens, |token| token.is_word("equal"))
         && target_tokens
             .get(equal_idx + 1)
             .is_some_and(|token| token.is_word("to"))
         && equal_idx > 0
     {
+        let equal_words = ZoneCounterCompatWords::new(&target_tokens[equal_idx..]).to_word_refs();
+        equal_to_difference = matches!(
+            equal_words.as_slice(),
+            ["equal", "to", "the", "difference"] | ["equal", "to", "difference"]
+        );
         target_tokens = trim_commas(&target_tokens[..equal_idx]);
     }
     let mut trailing_predicate: Option<PredicateAst> = None;
@@ -542,6 +553,19 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         }
     }
     let mut target = parse_counter_target_phrase(&target_tokens)?;
+    if equal_to_difference {
+        let target_spec =
+            crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
+        count_value = Value::Add(
+            Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                IT_TAG,
+            ))))),
+            Box::new(Value::Scaled(
+                Box::new(Value::PowerOf(Box::new(target_spec))),
+                -1,
+            )),
+        );
+    }
     let mut predicate = trailing_predicate.clone();
     if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
         && merge_it_match_filter_into_target(&mut target, filter)

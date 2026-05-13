@@ -360,6 +360,7 @@ pub(super) fn non_mana_costs_for_casting_method(
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+                .or_else(|| spell.cast_alternative_method.clone())
                 .map(|method| method.non_mana_costs())
                 .unwrap_or_default()
         }
@@ -742,6 +743,45 @@ pub(super) fn check_modes_or_continue(
     }
 }
 
+fn optional_mana_cost_is_affordable_with_spell_modifiers(
+    game: &GameState,
+    pending: &PendingCast,
+    optional_cost_index: usize,
+) -> Option<bool> {
+    let spell = game.object(pending.spell_id)?;
+    let base_cost = crate::decision::spell_mana_cost_for_cast(
+        game,
+        pending.caster,
+        spell,
+        &pending.casting_method,
+        pending.from_zone,
+    )?;
+
+    let mut optional_costs_paid = pending.optional_costs_paid.clone();
+    optional_costs_paid.pay_times(optional_cost_index, 1);
+
+    let mut hypothetical_spell = spell.clone();
+    hypothetical_spell.optional_costs_paid = optional_costs_paid.clone();
+    let combined_cost =
+        mana_cost_with_paid_optional_costs(&base_cost, &hypothetical_spell, &optional_costs_paid);
+    let effective_cost =
+        crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+            game,
+            pending.caster,
+            &hypothetical_spell,
+            &combined_cost,
+            &pending.chosen_targets,
+            &pending.casting_method,
+        );
+
+    Some(crate::decision::can_potentially_pay(
+        game,
+        pending.caster,
+        &effective_cost,
+        pending.x_value.unwrap_or(0),
+    ))
+}
+
 /// Check for optional costs and either prompt for them or continue to targeting/finalization.
 ///
 /// This is called after X value is chosen (or when there's no X cost).
@@ -777,13 +817,16 @@ pub(super) fn check_optional_costs_or_continue(
             .map(|(index, opt_cost)| {
                 // Check if player can afford this cost with potential mana
                 let affordable = if let Some(mana_cost) = opt_cost.cost.mana_cost() {
-                    let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                        player,
-                        Some(source),
-                        mana_cost,
-                        crate::costs::PaymentReason::CastSpell,
-                    );
-                    crate::decision::can_potentially_pay(game, player, &adjusted_cost, 0)
+                    optional_mana_cost_is_affordable_with_spell_modifiers(game, &pending, index)
+                        .unwrap_or_else(|| {
+                            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+                                player,
+                                Some(source),
+                                mana_cost,
+                                crate::costs::PaymentReason::CastSpell,
+                            );
+                            crate::decision::can_potentially_pay(game, player, &adjusted_cost, 0)
+                        })
                 } else {
                     // For non-mana costs, use the regular check
                     crate::cost::can_pay_cost_with_reason(
@@ -2132,7 +2175,13 @@ pub(super) fn collect_spell_cost_steps(
 
     if let Some(obj) = game.object(spell_id) {
         let alternative_additional_cost = match casting_method {
-            CastingMethod::Normal | CastingMethod::FaceDown => crate::cost::TotalCost::free(),
+            CastingMethod::Normal => obj
+                .cast_alternative_method
+                .as_ref()
+                .and_then(|method| method.total_cost())
+                .cloned()
+                .unwrap_or_else(crate::cost::TotalCost::free),
+            CastingMethod::FaceDown => crate::cost::TotalCost::free(),
             CastingMethod::SplitOtherHalf | CastingMethod::Fuse => crate::cost::TotalCost::free(),
             CastingMethod::Alternative(idx) => obj
                 .alternative_casts
@@ -2153,6 +2202,7 @@ pub(super) fn collect_spell_cost_steps(
             } => crate::decision::resolve_play_from_alternative_method(
                 game, caster, obj, *zone, *idx,
             )
+            .or_else(|| obj.cast_alternative_method.clone())
             .and_then(|method| method.total_cost().cloned())
             .unwrap_or_else(crate::cost::TotalCost::free),
         };

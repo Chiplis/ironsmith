@@ -289,6 +289,7 @@ export default function RightRail({
   inlineExpandedMaxHeight = null,
   expandInlineToZoneViewer = false,
   inlineFillWidth = false,
+  inlineFillHeight = false,
   allowTopInlinePlacement = false,
   dockRole = "primary",
   inspectorVariant = "normal",
@@ -526,6 +527,7 @@ export default function RightRail({
 
     const measureExpandedLayout = () => {
       const hostRect = (workspaceEl || railEl).getBoundingClientRect();
+      const railRect = railEl.getBoundingClientRect();
       const dockRect = dockEl?.getBoundingClientRect?.() || null;
       const stripRect = stripEl?.getBoundingClientRect?.() || null;
       const stackRect = stackEl?.getBoundingClientRect?.() || null;
@@ -553,7 +555,10 @@ export default function RightRail({
             ? ((dockRect || railEl.getBoundingClientRect()).bottom - INLINE_EXPANDED_BOTTOM_GAP)
             : hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
         );
-      const availableHeight = Math.max(0, Math.floor(safeBottom - safeTop));
+      const fillHeightRect = dockRect || railRect;
+      const availableHeight = inlineFillHeight
+        ? Math.max(0, Math.floor(fillHeightRect.height))
+        : Math.max(0, Math.floor(safeBottom - safeTop));
       const minimumHeight = Math.min(INLINE_EXPANDED_MIN_HEIGHT, availableHeight);
       const defaultExpandedHeight = inlineExpandedMaxHeight == null
         ? INLINE_EXPANDED_DEFAULT_HEIGHT
@@ -566,10 +571,12 @@ export default function RightRail({
       const heightCap = inlineExpandedMaxHeight == null
         ? availableHeight
         : Math.min(inlineExpandedMaxHeight, availableHeight);
-      const nextHeight = Math.max(
-        minimumHeight,
-        Math.min(Math.max(defaultExpandedHeight, preferredHeight), heightCap)
-      );
+      const nextHeight = inlineFillHeight
+        ? availableHeight
+        : Math.max(
+          minimumHeight,
+          Math.min(Math.max(defaultExpandedHeight, preferredHeight), heightCap)
+        );
 
       setExpandedInlineHeight((currentHeight) => (
         Math.abs(currentHeight - nextHeight) >= 1 ? nextHeight : currentHeight
@@ -636,6 +643,7 @@ export default function RightRail({
     inline,
     inlineDockPlacement,
     inlineExpandedMaxHeight,
+    inlineFillHeight,
     preferredExpandedInlineHeight,
     expandInlineToZoneViewer,
     shouldShowRail,
@@ -708,7 +716,7 @@ export default function RightRail({
             ...(inline
               ? {
                 width: "100%",
-                height: `${expandedInlineHeight}px`,
+                height: inlineFillHeight ? "100%" : `${expandedInlineHeight}px`,
                 ...expandedInlineShellOffset,
               }
               : { width: "100%", height: "100%" }),

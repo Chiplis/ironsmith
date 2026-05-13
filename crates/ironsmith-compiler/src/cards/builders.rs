@@ -303,6 +303,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
+            KeywordAction::Embalm(cost) => self.embalm(cost),
+            KeywordAction::Eternalize(cost) => self.eternalize(cost),
+            KeywordAction::Emerge(cost) => self.emerge(cost),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
@@ -865,7 +868,9 @@ impl CardDefinitionBuilder {
         let mut filter = crate::target::ObjectFilter::creature()
             .you_control()
             .other();
+        filter.untapped = true;
         filter.nonattacking = true;
+        filter.enlist_eligible = true;
         let effects = vec![
             crate::effect::Effect::tag_triggering_object("enlist_attacker"),
             crate::effect::Effect::choose_objects(filter, 1, crate::target::PlayerFilter::You, tag),
@@ -882,7 +887,10 @@ impl CardDefinitionBuilder {
         ];
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_attacks(),
-            vec![crate::effect::Effect::may(effects)],
+            vec![crate::effect::Effect::may_player(
+                crate::target::PlayerFilter::You,
+                effects,
+            )],
         ))
     }
 
@@ -1016,6 +1024,89 @@ impl CardDefinitionBuilder {
                 crate::ability::ActivationTiming::SorcerySpeed,
             )
             .in_zones(vec![crate::zone::Zone::Graveyard]),
+        )
+    }
+
+    pub fn embalm(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let create_embalmed_copy = crate::effect::Effect::new(
+            crate::effects::CreateTokenCopyEffect::new(
+                crate::target::ChooseSpec::Source,
+                1,
+                crate::target::PlayerFilter::You,
+            )
+            .set_colors(crate::color::ColorSet::WHITE)
+            .added_subtype(crate::types::Subtype::Zombie)
+            .without_mana_cost(),
+        );
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    create_embalmed_copy,
+                ]),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![crate::zone::Zone::Graveyard],
+        })
+    }
+
+    pub fn eternalize(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let create_eternalized_copy = crate::effect::Effect::new(
+            crate::effects::CreateTokenCopyEffect::new(
+                crate::target::ChooseSpec::Source,
+                1,
+                crate::target::PlayerFilter::You,
+            )
+            .set_colors(crate::color::ColorSet::BLACK)
+            .added_subtype(crate::types::Subtype::Zombie)
+            .set_base_power_toughness(4, 4)
+            .without_mana_cost(),
+        );
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    create_eternalized_copy,
+                ]),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![crate::zone::Zone::Graveyard],
+        })
+    }
+
+    pub fn emerge(self, cost: ManaCost) -> Self {
+        self.alternative_cast(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                "Emerge",
+                Some(cost),
+                vec![crate::costs::Cost::sacrifice(
+                    crate::target::ObjectFilter::creature().you_control(),
+                )],
+            ),
         )
     }
 
@@ -1249,25 +1340,28 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
                     crate::target::PlayerFilter::You,
                 ),
-                effects: vec![
-                    crate::effect::Effect::with_id(
-                        0,
-                        crate::effect::Effect::remove_counters(
-                            crate::object::CounterType::Echo,
-                            1,
-                            crate::target::ChooseSpec::Source,
+                effects: vec![crate::effect::Effect::conditional_only(
+                    crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Battlefield),
+                    vec![
+                        crate::effect::Effect::with_id(
+                            0,
+                            crate::effect::Effect::remove_counters(
+                                crate::object::CounterType::Echo,
+                                1,
+                                crate::target::ChooseSpec::Source,
+                            ),
                         ),
-                    ),
-                    crate::effect::Effect::if_then(
-                        crate::effect::EffectId(0),
-                        crate::effect::EffectPredicate::Happened,
-                        vec![crate::effect::Effect::unless_action(
-                            vec![crate::effect::Effect::sacrifice_source()],
-                            payment_effects,
-                            crate::target::PlayerFilter::You,
-                        )],
-                    ),
-                ]
+                        crate::effect::Effect::if_then(
+                            crate::effect::EffectId(0),
+                            crate::effect::EffectPredicate::Happened,
+                            vec![crate::effect::Effect::unless_action(
+                                vec![crate::effect::Effect::sacrifice_source()],
+                                payment_effects,
+                                crate::target::PlayerFilter::You,
+                            )],
+                        ),
+                    ],
+                )]
                 .into(),
                 choices: vec![],
                 intervening_if: None,

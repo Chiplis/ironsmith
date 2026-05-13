@@ -36,6 +36,20 @@ fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
+fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
+    if game.is_tapped(id) {
+        return false;
+    }
+    if game
+        .combat
+        .as_ref()
+        .is_some_and(|combat| crate::combat_state::is_attacking(combat, id))
+    {
+        return false;
+    }
+    !game.is_summoning_sick(id) || game.current_has_static_ability_id(id, StaticAbilityId::Haste)
+}
+
 fn expand_semantic_subtypes(chars: &mut crate::continuous::CalculatedCharacteristics) {
     let has_changeling = chars
         .static_abilities
@@ -677,6 +691,53 @@ fn resolve_filter_comparison_rhs_value(
             .map(|value| value as i32)
     }
 
+    fn snapshot_pt(snapshot: &ObjectSnapshot, power: bool) -> Option<i32> {
+        if power {
+            snapshot.power
+        } else {
+            snapshot.toughness
+        }
+    }
+
+    fn current_object_pt(
+        game: &crate::game_state::GameState,
+        object_id: ObjectId,
+        power: bool,
+    ) -> Option<i32> {
+        let object = game.object(object_id)?;
+        if power {
+            game.calculated_power(object_id).or_else(|| object.power())
+        } else {
+            game.calculated_toughness(object_id)
+                .or_else(|| object.toughness())
+        }
+    }
+
+    fn resolve_pt_choose_spec(
+        spec: &ChooseSpec,
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+        power: bool,
+    ) -> Option<i32> {
+        match spec.base() {
+            ChooseSpec::Source => current_object_pt(game, ctx.source?, power),
+            ChooseSpec::SpecificObject(object_id) => current_object_pt(game, *object_id, power),
+            ChooseSpec::Tagged(tag) => ctx
+                .tagged_objects
+                .get(tag)
+                .and_then(|snapshots| snapshots.first())
+                .and_then(|snapshot| snapshot_pt(snapshot, power)),
+            ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget
+                if spec.is_target() =>
+            {
+                ctx.target_objects
+                    .first()
+                    .and_then(|snapshot| snapshot_pt(snapshot, power))
+            }
+            _ => None,
+        }
+    }
+
     match rhs {
         Value::Fixed(value) => Some(*value),
         Value::X => resolve_x_value(game, ctx, stack_entry),
@@ -797,6 +858,10 @@ fn resolve_filter_comparison_rhs_value(
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
         }
+        Value::SourcePower => current_object_pt(game, ctx.source?, true),
+        Value::SourceToughness => current_object_pt(game, ctx.source?, false),
+        Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
+        Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
         Value::CountersOn(spec, counter_type) => match spec.as_ref() {
             ChooseSpec::Source => {
                 let source = game.object(ctx.source?)?;
@@ -1978,6 +2043,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.untapped && is_tapped {
             return false;
         }
+        if self.enlist_eligible && !object_is_enlist_eligible(game, object.id) {
+            return false;
+        }
         if self.attacking
             && !game
                 .combat
@@ -2237,6 +2305,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.no_x_in_cost
             && let Some(mc) = &object.mana_cost
             && mc.has_x()
+        {
+            return false;
+        }
+        if self.has_x_in_cost
+            && !object
+                .mana_cost
+                .as_ref()
+                .is_some_and(crate::mana::ManaCost::has_x)
         {
             return false;
         }
@@ -2566,6 +2642,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.untapped && snapshot.tapped {
             return false;
         }
+        if self.enlist_eligible && !object_is_enlist_eligible(game, snapshot.object_id) {
+            return false;
+        }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let Some(defending_player) =
                 attacking_defending_player_for_object(snapshot.object_id, game)
@@ -2746,6 +2825,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.no_x_in_cost
             && let Some(mc) = &snapshot.mana_cost
             && mc.has_x()
+        {
+            return false;
+        }
+        if self.has_x_in_cost
+            && !snapshot
+                .mana_cost
+                .as_ref()
+                .is_some_and(crate::mana::ManaCost::has_x)
         {
             return false;
         }
@@ -3212,6 +3299,9 @@ impl ObjectFilterExt for ObjectFilter {
         } else {
             if self.nonattacking {
                 parts.push("nonattacking".to_string());
+            }
+            if self.enlist_eligible {
+                parts.push("enlist-eligible".to_string());
             }
             if self.nonblocking {
                 parts.push("nonblocking".to_string());

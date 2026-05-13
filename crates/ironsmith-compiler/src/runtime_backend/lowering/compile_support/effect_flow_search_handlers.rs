@@ -86,8 +86,15 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 return Ok(Some(compiled));
             }
+            let saved_last_object_tag = ctx.last_object_tag.clone();
+            if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                && let Some(tag) = single_cast_tagged_reference_tag(effects, ctx)?
+            {
+                ctx.last_object_tag = Some(tag);
+            }
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
+            ctx.last_object_tag = saved_last_object_tag;
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
             if inner_effects.is_empty() {
@@ -362,6 +369,29 @@ pub(super) fn try_compile_flow_and_iteration_effect(
     };
 
     Ok(Some(compiled))
+}
+
+fn single_cast_tagged_reference_tag(
+    effects: &[EffectAst],
+    ctx: &EffectLoweringContext,
+) -> Result<Option<String>, CardTextError> {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CastTagged { tag, .. },
+            ..
+        }),
+    ] = effects
+    else {
+        return Ok(None);
+    };
+
+    if tag.as_str() == "__last_revealed__" {
+        return Ok(ctx.last_revealed_tag.clone());
+    }
+    if tag.as_str() == IT_TAG {
+        return Ok(ctx.last_object_tag.clone());
+    }
+    Ok(Some(tag.as_str().to_string()))
 }
 
 pub(super) fn try_compile_token_generation_effect(

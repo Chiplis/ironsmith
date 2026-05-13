@@ -36,6 +36,90 @@ pub(super) fn active_target_assignments_for_effect(
     selected
 }
 
+fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) -> bool {
+    use crate::target::PlayerFilter;
+
+    match filter {
+        PlayerFilter::Target(_) | PlayerFilter::TargetPlayerOrControllerOfTarget => true,
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_references_target_player(base)
+                || player_filter_references_target_player(excluded)
+        }
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::MaxSpeed { base, .. } => player_filter_references_target_player(base),
+        _ => false,
+    }
+}
+
+fn runtime_modification_references_target_player(
+    modification: &crate::effects::continuous::RuntimeModification,
+) -> bool {
+    matches!(
+        modification,
+        crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)
+            if player_filter_references_target_player(player)
+    )
+}
+
+fn effect_references_prior_target_player(effect: &Effect) -> bool {
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && apply
+            .runtime_modifications
+            .iter()
+            .any(runtime_modification_references_target_player)
+    {
+        return true;
+    }
+
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && effect_references_prior_target_player(child) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn previous_player_target_assignments(
+    targets: &[crate::effects::ResolvedTarget],
+    assignments: &[crate::game_state::TargetAssignment],
+    before: usize,
+) -> Vec<crate::game_state::TargetAssignment> {
+    assignments
+        .iter()
+        .take(before)
+        .filter(|assignment| {
+            targets[assignment.range.clone()]
+                .iter()
+                .any(|target| matches!(target, crate::effects::ResolvedTarget::Player(_)))
+        })
+        .cloned()
+        .collect()
+}
+
+fn previous_object_target_assignments(
+    targets: &[crate::effects::ResolvedTarget],
+    assignments: &[crate::game_state::TargetAssignment],
+    before: usize,
+) -> Vec<crate::game_state::TargetAssignment> {
+    assignments
+        .iter()
+        .take(before)
+        .filter(|assignment| {
+            targets[assignment.range.clone()]
+                .iter()
+                .any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_)))
+        })
+        .cloned()
+        .collect()
+}
+
+fn effect_references_prior_object_targets(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::FightEffect>()
+        .is_some()
+}
+
 fn representative_segment_targets(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -325,6 +409,7 @@ pub(crate) fn execute_resolution_program(
         )> = None;
         for effect in &selected_effects {
             let is_modal_effect = effect.modal_effect_spec().is_some();
+            let assignment_start = assignment_cursor;
             let effect_target_assignments = active_target_assignments_for_effect(
                 effect,
                 chosen_modes,
@@ -335,9 +420,30 @@ pub(crate) fn execute_resolution_program(
             );
             if is_modal_effect {
                 active_scope = None;
-            } else if !effect_target_assignments.is_empty() {
+            } else if !effect_target_assignments.is_empty()
+                || effect_references_prior_object_targets(effect)
+            {
+                let scope_assignments = if effect_references_prior_target_player(effect) {
+                    let mut assignments = previous_player_target_assignments(
+                        &ctx.targets,
+                        valid_target_assignments,
+                        assignment_start,
+                    );
+                    assignments.extend(effect_target_assignments.clone());
+                    assignments
+                } else if effect_references_prior_object_targets(effect) {
+                    let mut assignments = previous_object_target_assignments(
+                        &ctx.targets,
+                        valid_target_assignments,
+                        assignment_start,
+                    );
+                    assignments.extend(effect_target_assignments.clone());
+                    assignments
+                } else {
+                    effect_target_assignments.clone()
+                };
                 let (effect_targets, effect_target_assignments) =
-                    rebase_target_scope(&ctx.targets, &effect_target_assignments);
+                    rebase_target_scope(&ctx.targets, &scope_assignments);
                 active_scope = Some((effect_targets, effect_target_assignments));
             }
             let outcome = if !is_modal_effect
@@ -622,6 +728,12 @@ pub(super) fn resolve_stack_entry_full(
     // Process pending primitive trigger events emitted by effects and zone changes.
     if let Some(ref mut tq) = trigger_queue {
         drain_pending_trigger_events(game, tq);
+    }
+
+    if !entry.is_ability
+        && let Some(obj) = &obj
+    {
+        install_epic_resolution_effects(game, &entry, obj)?;
     }
 
     // Resolving an ability removes only that stack entry. The source object can
@@ -1283,12 +1395,71 @@ fn merge_tagged_objects(
     }
 }
 
+fn install_epic_resolution_effects(
+    game: &mut GameState,
+    entry: &StackEntry,
+    obj: &crate::object::Object,
+) -> Result<(), GameLoopError> {
+    if obj.zone != Zone::Stack || !spell_has_epic_ability(obj) {
+        return Ok(());
+    }
+
+    let cant_cast = Effect::cant_until(
+        crate::effect::Restriction::cast_spells(crate::target::PlayerFilter::You),
+        crate::effect::Until::Forever,
+    );
+    let mut ctx = ExecutionContext::new_default(entry.object_id, entry.controller)
+        .with_provenance(entry.provenance);
+    crate::effects::execute_effect(game, &cant_cast, &mut ctx)
+        .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()))?;
+
+    let copy_effect_id = crate::effect::EffectId(0);
+    let copy_effect = Effect::with_id(
+        copy_effect_id.0,
+        Effect::new(crate::effects::EpicSpellCopyEffect::new(obj, entry)),
+    );
+    let choose_new_targets = Effect::may_choose_new_targets(copy_effect_id);
+    let delayed_program =
+        crate::resolution::ResolutionProgram::from_effects(vec![copy_effect, choose_new_targets]);
+
+    let delayed = crate::effects::delayed::DelayedTriggerConfig::new(
+        Trigger::beginning_of_upkeep(crate::target::PlayerFilter::Specific(entry.controller)),
+        delayed_program,
+        false,
+        Vec::new(),
+        entry.controller,
+    )
+    .with_ability_source(Some(entry.object_id))
+    .with_x_value(entry.x_value)
+    .with_tagged_objects(entry.tagged_objects.clone());
+    crate::effects::delayed::queue_delayed_trigger(game, delayed);
+
+    Ok(())
+}
+
+fn spell_has_epic_ability(obj: &crate::object::Object) -> bool {
+    obj.abilities.iter().any(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+            && static_ability
+                .display()
+                .trim()
+                .trim_end_matches('.')
+                .eq_ignore_ascii_case("epic")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::events::phase::BeginningOfUpkeepEvent;
     use crate::ids::CardId;
+    use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
 
     #[derive(Default)]
@@ -1425,6 +1596,70 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         game.stage_turn_history_event(&event);
+    }
+
+    #[test]
+    fn epic_resolution_schedules_repeating_upkeep_copy_without_epic() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(91_101), "Epic Life")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+        {
+            let spell = game.object_mut(spell_id).expect("spell exists");
+            spell.abilities.push(
+                Ability::static_ability(StaticAbility::keyword_marker("Epic"))
+                    .in_zones(vec![Zone::Stack]),
+            );
+            spell.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::gain_life(1),
+            ]));
+        }
+        game.push_to_stack(StackEntry::new(spell_id, alice));
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("Epic spell should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 21);
+        assert!(!game.can_cast_spells(alice));
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+        let upkeep_event = TriggerEvent::new_with_provenance(
+            BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        for trigger in crate::triggers::check_delayed_triggers(&mut game, &upkeep_event) {
+            trigger_queue.add(trigger);
+        }
+        super::super::sba_triggers::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("Epic delayed trigger should go on the stack");
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("Epic delayed trigger should resolve");
+
+        let copy_id = game
+            .stack
+            .last()
+            .expect("copy should be on stack")
+            .object_id;
+        let copy = game.object(copy_id).expect("copy object");
+        assert!(
+            !spell_has_epic_ability(copy),
+            "Epic upkeep copy must not copy Epic"
+        );
+
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("Epic copy should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 22);
+        assert_eq!(
+            game.effect_store.delayed_triggers.len(),
+            1,
+            "upkeep copy should not install another Epic delayed trigger"
+        );
     }
 
     #[test]

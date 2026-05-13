@@ -1,4 +1,6 @@
-use crate::cards::builders::{CardTextError, EffectAst, LineAst, TriggerSpec};
+use crate::cards::builders::{
+    CardTextError, EffectAst, LineAst, PlayerAst, PredicateAst, TargetAst, TriggerSpec,
+};
 use winnow::Parser;
 
 use super::activation_and_restrictions::{
@@ -29,13 +31,15 @@ use super::token_primitives::{
 use super::util::{
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
     parse_blitz_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed,
-    parse_entwine_line_lexed, parse_escape_line_lexed, parse_flash_with_additional_cost_line_lexed,
-    parse_flashback_line_lexed, parse_harmonize_line_lexed,
-    parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
-    parse_madness_line_lexed, parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
-    parse_offspring_line_lexed, parse_reinforce_line_lexed, parse_replicate_line_lexed,
-    parse_retrace_line_lexed, parse_self_free_cast_alternative_cost_line_lexed,
-    parse_squad_line_lexed, parse_transmute_line_lexed, parse_warp_line_lexed,
+    parse_entwine_line_lexed, parse_epic_line_lexed, parse_escalate_line_lexed,
+    parse_escape_line_lexed, parse_eternalize_line_lexed, parse_evoke_line_lexed,
+    parse_flash_with_additional_cost_line_lexed, parse_flashback_line_lexed,
+    parse_harmonize_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
+    parse_kicker_line_lexed, parse_madness_line_lexed, parse_morph_keyword_line_lexed,
+    parse_multikicker_line_lexed, parse_offspring_line_lexed, parse_reinforce_line_lexed,
+    parse_replicate_line_lexed, parse_retrace_line_lexed,
+    parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
+    parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
 };
 
@@ -459,6 +463,64 @@ pub(super) fn lower_entwine(
     ))
 }
 
+pub(super) fn lower_escalate(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    let (_cost, display) =
+        require_keyword_parse(line, "escalate", parse_escalate_line_lexed(tokens)?)?;
+    Ok(LineAst::StaticAbility(
+        crate::static_abilities::StaticAbility::keyword_marker(format!("Escalate {display}"))
+            .into(),
+    ))
+}
+
+pub(super) fn lower_eternalize(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::Abilities(vec![
+        crate::cards::builders::KeywordAction::Eternalize(require_keyword_parse(
+            line,
+            "eternalize",
+            parse_eternalize_line_lexed(tokens)?,
+        )?),
+    ]))
+}
+
+pub(super) fn lower_evoke(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    let method = require_keyword_parse(line, "evoke", parse_evoke_line_lexed(tokens)?)?;
+    Ok(LineAst::Multiple(vec![
+        LineAst::AlternativeCastingMethod(method.into()),
+        LineAst::Triggered {
+            trigger: TriggerSpec::ThisEntersBattlefield,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::ThisSpellPaidLabel("Evoke".to_string()),
+                if_true: vec![EffectAst::subject_verb_sacrifice(
+                    PlayerAst::ItsController,
+                    crate::target::ObjectFilter::source(),
+                    1,
+                    Some(TargetAst::Source(None)),
+                )],
+                if_false: Vec::new(),
+            }],
+            max_triggers_per_turn: None,
+        },
+    ]))
+}
+
+pub(super) fn lower_epic(
+    _line: &RewriteKeywordLine,
+    _tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::StaticAbility(
+        crate::static_abilities::StaticAbility::keyword_marker("Epic").into(),
+    ))
+}
+
 pub(super) fn lower_cast_this_spell_only(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -544,6 +606,9 @@ pub(super) fn matches_blitz(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
+    if tokens.get(1).is_some_and(|token| token.is_word("costs")) {
+        return Ok(false);
+    }
     Ok(parse_blitz_line_lexed(tokens)?.is_some())
 }
 
@@ -643,6 +708,34 @@ pub(super) fn matches_entwine(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_entwine_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_escalate(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_escalate_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_eternalize(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_eternalize_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_evoke(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_evoke_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_epic(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_epic_line_lexed(tokens))
 }
 
 pub(super) fn matches_offspring(

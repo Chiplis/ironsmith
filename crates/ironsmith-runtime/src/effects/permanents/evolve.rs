@@ -4,11 +4,14 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::EnterBattlefieldEvent;
+use crate::events::ZoneChangeEvent;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
+use crate::zone::Zone;
 pub use ironsmith_core::EvolveEffect;
 
 /// "Put a +1/+1 counter on this creature if a larger creature entered under your control."
@@ -22,6 +25,17 @@ fn effective_toughness(game: &GameState, id: crate::ids::ObjectId) -> Option<i32
         .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
 }
 
+fn entered_object_from_trigger_event(event: &TriggerEvent) -> Option<ObjectId> {
+    if let Some(etb) = event.downcast::<EnterBattlefieldEvent>() {
+        return Some(etb.object);
+    }
+
+    let zone_change = event.downcast::<ZoneChangeEvent>()?;
+    (zone_change.to == Zone::Battlefield)
+        .then(|| zone_change.destination_objects().first().copied())
+        .flatten()
+}
+
 impl EffectExecutor for EvolveEffect {
     fn execute(
         &self,
@@ -31,12 +45,11 @@ impl EffectExecutor for EvolveEffect {
         let Some(triggering_event) = &ctx.triggering_event else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(etb) = triggering_event.downcast::<EnterBattlefieldEvent>() else {
+        let Some(entered_id) = entered_object_from_trigger_event(triggering_event) else {
             return Ok(EffectOutcome::count(0));
         };
 
         let source_id = ctx.source;
-        let entered_id = etb.object;
         if source_id == entered_id {
             return Ok(EffectOutcome::count(0));
         }
@@ -94,6 +107,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ExecutionContext;
+    use crate::events::cause::EventCause;
     use crate::ids::{CardId, PlayerId};
     use crate::triggers::TriggerEvent;
     use crate::types::CardType;
@@ -176,6 +190,43 @@ mod tests {
                 .copied()
                 .unwrap_or(0),
             0
+        );
+    }
+
+    #[test]
+    fn evolves_from_zone_change_etb_trigger_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 1, 0, 1);
+        let entered = create_creature(&mut game, alice, 2, 2, 5);
+
+        let event_provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::ZoneChange);
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                entered,
+                Zone::Stack,
+                Zone::Battlefield,
+                EventCause::from_game_rule(),
+                None,
+            ),
+            event_provenance,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+        let outcome = EvolveEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("execute evolve from zone change");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        let source_obj = game.object(source).expect("source exists");
+        assert_eq!(
+            source_obj
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied()
+                .unwrap_or(0),
+            1
         );
     }
 }

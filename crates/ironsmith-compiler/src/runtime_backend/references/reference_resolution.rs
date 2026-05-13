@@ -468,7 +468,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
-                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    maybe_tag_target(target, frame, id_gen, "countered")?;
                 }
                 SubjectVerbActionAst::PutCounters { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
@@ -3114,6 +3114,44 @@ mod tests {
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
             ModelRefState::Known(TagKey::from("destroyed_0"))
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_sets_followup_in_env_from_countered_tag() {
+        let effects = vec![
+            EffectAst::subject_verb_counter(TargetAst::Spell(Some(TextSpan::synthetic()))),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    name: "Thopter".to_string(),
+                    count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                    dynamic_power_toughness: None,
+                    player: PlayerAst::Implicit,
+                    attached_to: None,
+                    tapped: false,
+                    attacking: false,
+                    exile_at_end_of_combat: false,
+                    sacrifice_at_end_of_combat: false,
+                    sacrifice_at_next_end_step: false,
+                    exile_at_next_end_step: false,
+                    granted_abilities: Vec::new(),
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate counter follow-up");
+
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("countered_0"))
         );
     }
 

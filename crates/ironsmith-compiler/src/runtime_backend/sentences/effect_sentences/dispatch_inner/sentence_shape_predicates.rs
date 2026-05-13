@@ -1006,7 +1006,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             Some(["that", "spell", "mana", "value"])
             | Some(["that", "spell's", "mana", "value"])
             | Some(["that", "spells", "mana", "value"]) => Value::ManaValueOf(Box::new(
-                crate::target::ChooseSpec::Tagged(TagKey::from("triggering")),
+                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
             )),
             Some(["that", "creatures", "power"]) => {
                 Value::PowerOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {

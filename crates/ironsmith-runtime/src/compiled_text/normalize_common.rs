@@ -5668,6 +5668,7 @@ pub(super) fn is_generic_owned_card_search_filter(filter: &ObjectFilter) -> bool
         && !filter.has_mana_cost
         && !filter.has_tap_activated_ability
         && !filter.no_x_in_cost
+        && !filter.has_x_in_cost
         && filter.name.is_none()
         && filter.excluded_name.is_none()
         && filter.alternative_cast.is_none()
@@ -10416,6 +10417,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
 	                    && !filter.has_tap_activated_ability
 	                    && !filter.no_abilities
 	                    && !filter.no_x_in_cost
+	                    && !filter.has_x_in_cost
 	                    && filter.with_counter.is_none()
 	                    && filter.without_counter.is_none()
 	                    && filter.name.is_none()

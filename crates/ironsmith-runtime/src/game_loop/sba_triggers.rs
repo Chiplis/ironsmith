@@ -838,6 +838,72 @@ fn target_requirements_from_explicit_choices(
         .collect()
 }
 
+fn target_requirements_overlap(left: &TargetRequirement, right: &TargetRequirement) -> bool {
+    target_requirement_reuses_existing(left, std::slice::from_ref(right))
+        || target_requirement_reuses_existing(right, std::slice::from_ref(left))
+}
+
+fn target_requirements_cover_existing(
+    candidates: &[TargetRequirement],
+    required: &[TargetRequirement],
+) -> bool {
+    let mut used = vec![false; candidates.len()];
+    for requirement in required {
+        let Some(index) = candidates
+            .iter()
+            .enumerate()
+            .find_map(|(index, candidate)| {
+                (!used[index] && target_requirements_overlap(candidate, requirement))
+                    .then_some(index)
+            })
+        else {
+            return false;
+        };
+        used[index] = true;
+    }
+    true
+}
+
+fn refresh_trigger_program_target_requirements(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
+    requirements: &mut [TargetRequirement],
+) {
+    if requirements.is_empty() {
+        return;
+    }
+
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    let tagged_objects = (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects);
+    let attacking_player = entry
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.object_id())
+        .and_then(|attacker| game.object(attacker))
+        .map(|attacker| game.controller_of(attacker));
+
+    for requirement in requirements {
+        let spec = super::targeting::choose_spec_with_damaged_player_from_event(
+            &requirement.spec,
+            entry.triggering_event.as_ref(),
+        );
+        requirement.legal_targets =
+            compute_legal_targets_with_tagged_objects_combat_context_and_view(
+                game,
+                &spec,
+                trigger.controller,
+                Some(trigger.source),
+                entry.source_snapshot.as_ref(),
+                tagged_objects,
+                entry.defending_player,
+                attacking_player,
+                &view,
+            );
+        requirement.spec = spec;
+    }
+}
+
 fn add_triggering_object_tag(
     game: &GameState,
     triggering_event: &TriggerEvent,
@@ -940,19 +1006,33 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         return None;
     }
 
-    let mut requirements = target_requirements_from_explicit_choices(game, trigger, &entry);
-    let program_requirements = extract_target_requirements_from_program_with_modes(
+    let explicit_requirements = target_requirements_from_explicit_choices(game, trigger, &entry);
+    let mut program_requirements = extract_target_requirements_from_program_with_modes(
         game,
         &trigger.ability.effects,
         trigger.controller,
         Some(trigger.source),
         entry.chosen_modes.as_deref(),
     );
-    for requirement in program_requirements {
-        if !target_requirement_reuses_existing(&requirement, &requirements) {
-            requirements.push(requirement);
+    refresh_trigger_program_target_requirements(game, trigger, &entry, &mut program_requirements);
+
+    let requirements = if !program_requirements.is_empty()
+        && target_requirements_cover_existing(&program_requirements, &explicit_requirements)
+    {
+        program_requirements
+    } else {
+        let explicit_requirement_count = explicit_requirements.len();
+        let mut requirements = explicit_requirements;
+        for requirement in program_requirements {
+            if !target_requirement_reuses_existing(
+                &requirement,
+                &requirements[..explicit_requirement_count],
+            ) {
+                requirements.push(requirement);
+            }
         }
-    }
+        requirements
+    };
 
     let (chosen_targets, target_assignments) =
         choose_trigger_targets(game, trigger, &requirements, decision_maker)?;
@@ -1192,6 +1272,118 @@ mod tests {
             );
             vec![Target::Object(self.target)]
         }
+    }
+
+    struct ChooseRequiredObjectTarget {
+        target: ObjectId,
+        target_prompts: usize,
+    }
+
+    impl DecisionMaker for ChooseRequiredObjectTarget {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.target_prompts += 1;
+            assert!(
+                ctx.requirements.iter().any(|requirement| requirement
+                    .legal_targets
+                    .contains(&Target::Object(self.target))),
+                "triggering-object-tagged target should be legal; got {:?}",
+                ctx.requirements
+            );
+            vec![Target::Object(self.target)]
+        }
+    }
+
+    #[test]
+    fn trigger_program_targets_keep_triggering_object_tag_context() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let lesser_creature = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_102),
+            "Lesser Creature",
+        )
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Green,
+        ]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+        let lesser_id =
+            game.create_object_from_definition(&lesser_creature, alice, Zone::Battlefield);
+
+        let target_filter = crate::target::ObjectFilter::creature()
+            .controlled_by(crate::target::PlayerFilter::You)
+            .match_tagged(
+                crate::tag::TagKey::from("triggering"),
+                crate::target::TaggedOpbjectRelation::ManaValueLtTagged,
+            );
+        let target_spec = ChooseSpec::target(ChooseSpec::Object(target_filter))
+            .with_count(crate::effect::ChoiceCount::up_to(1));
+        let mut ability = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::enters_battlefield(
+                crate::target::ObjectFilter::creature()
+                    .controlled_by(crate::target::PlayerFilter::You),
+                None,
+            ),
+            vec![
+                Effect::tag_triggering_object("triggering"),
+                Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                    target_spec.clone(),
+                )),
+            ],
+        );
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.choices = vec![target_spec];
+        }
+
+        let source = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_103),
+            "Contextual Trigger Source",
+        )
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![crate::mana::ManaSymbol::Green],
+            vec![crate::mana::ManaSymbol::Green],
+            vec![crate::mana::ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .with_ability(ability)
+        .build();
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source_id)
+                .expect("trigger source should exist on battlefield"),
+            &game,
+        );
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                source_id,
+                Zone::Hand,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::effect(),
+                Some(source_snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &event) {
+            trigger_queue.add(trigger);
+        }
+        assert_eq!(trigger_queue.entries.len(), 1);
+
+        let mut dm = ChooseRequiredObjectTarget {
+            target: lesser_id,
+            target_prompts: 0,
+        };
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+            .expect("trigger with contextual target should stack");
+
+        assert_eq!(dm.target_prompts, 1);
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].targets, vec![Target::Object(lesser_id)]);
     }
 
     #[test]

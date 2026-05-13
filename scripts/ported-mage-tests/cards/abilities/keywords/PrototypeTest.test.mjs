@@ -221,6 +221,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a colorless spell, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a colorless permanent enters, you gain 1 life."
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -267,6 +291,30 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a red spell, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a red permanent enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -317,6 +365,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a creature spell with power 6 and toughness 4, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a creature with power 6 and toughness 4 enters, you gain 1 life."
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -363,6 +435,30 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a creature spell with power 3 and toughness 2, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a creature with power 3 and toughness 2 enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -413,6 +509,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell with mana value 7, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a permanent with mana value 7 enters, you gain 1 life."
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -459,6 +579,30 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell with mana value 3, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "count": 1,
+          "custom": true,
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever a permanent with mana value 3 enters, you gain 1 life."
         },
         {
           "op": "castSpell",

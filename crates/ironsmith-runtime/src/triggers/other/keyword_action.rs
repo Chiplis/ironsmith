@@ -227,6 +227,15 @@ impl TriggerMatcher for KeywordActionTrigger {
                 self.action.third_person()
             );
         }
+        if self.action == KeywordActionKind::Fight
+            && let Some(source_filter) = &self.source_filter
+        {
+            return format!(
+                "Whenever {} {}",
+                source_filter.description(),
+                self.action.third_person()
+            );
+        }
         if self.action == KeywordActionKind::Exploit
             && let Some(source_filter) = &self.source_filter
         {

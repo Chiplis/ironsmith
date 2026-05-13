@@ -56,6 +56,16 @@ const WORKER_METHODS = [
   "ziffleVerifyShuffle",
 ];
 
+const ZIFFLE_WORKER_METHODS = new Set([
+  "ziffleBuildRevealToken",
+  "ziffleBuildRevealTokens",
+  "ziffleBuildShuffleStep",
+  "ziffleKeygen",
+  "ziffleRevealCard",
+  "ziffleRevealCards",
+  "ziffleVerifyShuffle",
+]);
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function toError(raw) {
@@ -70,10 +80,27 @@ function toError(raw) {
   return new Error("Unknown worker error");
 }
 
-function createGameProxy(callWorker) {
+function preferredZiffleWorkerCount() {
+  const configured = Number(import.meta.env?.VITE_ZIFFLE_WORKER_POOL_SIZE);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.max(1, Math.min(8, Math.floor(configured)));
+  }
+  const cores = Number(globalThis.navigator?.hardwareConcurrency || 2);
+  if (!Number.isFinite(cores) || cores <= 2) return 1;
+  if (cores <= 4) return 2;
+  if (cores <= 6) return 3;
+  return 4;
+}
+
+function createGameProxy(callWorker, callZiffleWorker) {
   const proxy = {};
   for (const method of WORKER_METHODS) {
-    proxy[method] = (...args) => callWorker(method, args);
+    proxy[method] = (...args) => {
+      if (ZIFFLE_WORKER_METHODS.has(method) && typeof callZiffleWorker === "function") {
+        return callZiffleWorker(method, args);
+      }
+      return callWorker(method, args);
+    };
   }
   return proxy;
 }
@@ -96,6 +123,11 @@ export function useWasmGame() {
     let nextRequestId = 1;
     let initStartedAt = 0;
     const pending = new Map();
+    let nextZiffleRequestId = 1;
+    let zifflePool = [];
+    let zifflePoolReady = null;
+    let ziffleRoundRobin = 0;
+    const zifflePending = new Map();
 
     const worker = new Worker(
       new URL("../workers/wasmGameWorker.js", import.meta.url),
@@ -105,6 +137,20 @@ export function useWasmGame() {
     const rejectPending = (err) => {
       for (const { reject } of pending.values()) reject(err);
       pending.clear();
+    };
+
+    const rejectZifflePending = (err) => {
+      for (const { reject } of zifflePending.values()) reject(err);
+      zifflePending.clear();
+    };
+
+    const rejectZiffleWorkerPending = (workerEntry, err) => {
+      for (const [id, pendingRequest] of zifflePending.entries()) {
+        if (pendingRequest.workerEntry !== workerEntry) continue;
+        zifflePending.delete(id);
+        pendingRequest.reject(err);
+      }
+      if (workerEntry) workerEntry.pending = 0;
     };
 
     const callWorker = (method, args = []) =>
@@ -118,7 +164,99 @@ export function useWasmGame() {
         worker.postMessage({ type: "call", id, method, args });
       });
 
-    const gameProxy = createGameProxy(callWorker);
+    const selectZiffleWorker = () => {
+      let best = null;
+      for (const entry of zifflePool) {
+        if (!best || entry.pending < best.pending) best = entry;
+      }
+      if (best) return best;
+      const fallback = zifflePool[ziffleRoundRobin % Math.max(1, zifflePool.length)] || null;
+      ziffleRoundRobin += 1;
+      return fallback;
+    };
+
+    const ensureZifflePool = () => {
+      if (zifflePoolReady) return zifflePoolReady;
+      const size = preferredZiffleWorkerCount();
+      zifflePoolReady = new Promise((resolve, reject) => {
+        let settled = false;
+        let readyCount = 0;
+        const fail = (err) => {
+          rejectZifflePending(err);
+          if (settled) return;
+          settled = true;
+          reject(err);
+        };
+        zifflePool = Array.from({ length: size }, (_, workerIndex) => {
+          const ziffleWorker = new Worker(
+            new URL("../workers/ziffleWorker.js", import.meta.url),
+            { type: "module" }
+          );
+          const entry = {
+            index: workerIndex,
+            worker: ziffleWorker,
+            pending: 0,
+            ready: false,
+          };
+          ziffleWorker.addEventListener("message", (event) => {
+            if (disposed) return;
+            const msg = event.data || {};
+            if (msg.type === "ready") {
+              if (!entry.ready) {
+                entry.ready = true;
+                readyCount += 1;
+              }
+              if (!settled && readyCount === size) {
+                settled = true;
+                resolve(zifflePool);
+              }
+              return;
+            }
+            if (msg.type === "result") {
+              const req = zifflePending.get(msg.id);
+              if (!req) return;
+              zifflePending.delete(msg.id);
+              req.workerEntry.pending = Math.max(0, req.workerEntry.pending - 1);
+              if (msg.ok) req.resolve(msg.result);
+              else req.reject(toError(msg.error));
+              return;
+            }
+            if (msg.type === "error") {
+              const err = toError(msg.error);
+              rejectZiffleWorkerPending(entry, err);
+              fail(err);
+            }
+          });
+          ziffleWorker.addEventListener("error", (event) => {
+            const err = new Error(event.message || "Ziffle worker crashed");
+            rejectZiffleWorkerPending(entry, err);
+            fail(err);
+          });
+          ziffleWorker.postMessage({ type: "init", workerIndex });
+          return entry;
+        });
+      });
+      return zifflePoolReady;
+    };
+
+    const callZiffleWorker = async (method, args = []) => {
+      if (disposed) throw new Error("WASM worker is not available");
+      await ensureZifflePool();
+      if (disposed) throw new Error("WASM worker is not available");
+      return new Promise((resolve, reject) => {
+        const workerEntry = selectZiffleWorker();
+        if (!workerEntry?.worker) {
+          reject(new Error("Ziffle worker pool is not available"));
+          return;
+        }
+        const id = nextZiffleRequestId++;
+        workerEntry.pending += 1;
+        zifflePending.set(id, { resolve, reject, workerEntry });
+        workerEntry.worker.postMessage({ type: "call", id, method, args });
+      });
+    };
+
+    const gameProxy = createGameProxy(callWorker, callZiffleWorker);
 
     const finishReady = async () => {
       const elapsed = initStartedAt > 0 ? performance.now() - initStartedAt : MIN_INIT_PHASE_MS;
@@ -218,6 +356,11 @@ export function useWasmGame() {
       worker.removeEventListener("error", onWorkerError);
       worker.terminate();
       rejectPending(new Error("WASM worker terminated"));
+      for (const entry of zifflePool) {
+        entry.worker?.terminate();
+      }
+      zifflePool = [];
+      rejectZifflePending(new Error("Ziffle worker pool terminated"));
     };
   }, []);
 

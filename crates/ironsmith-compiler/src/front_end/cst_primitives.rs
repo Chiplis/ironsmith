@@ -31,8 +31,12 @@ pub enum KeywordLineKindCst {
     Squad,
     Transmute,
     Entwine,
+    Escalate,
+    Eternalize,
+    Evoke,
     CastThisSpellOnly,
     Gift,
+    Epic,
     Warp,
     ExertAttack,
 }

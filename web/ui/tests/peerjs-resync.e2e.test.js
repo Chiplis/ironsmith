@@ -265,7 +265,7 @@ async function openFullUiPage(context, url, label) {
 }
 
 async function clickLocalButton(page, label, textPattern = null) {
-  let button = page.locator('button[data-local-action="true"]:enabled');
+  let button = page.locator('button[data-local-action="true"]:enabled:not([aria-disabled="true"])');
   if (textPattern) {
     button = button.filter({ hasText: textPattern });
   }
@@ -285,7 +285,7 @@ async function clickLocalButton(page, label, textPattern = null) {
 }
 
 async function activateLocalButton(page, label, textPattern) {
-  const button = page.locator('button[data-local-action="true"]:enabled').filter({ hasText: textPattern }).first();
+  const button = page.locator('button[data-local-action="true"]:enabled:not([aria-disabled="true"])').filter({ hasText: textPattern }).first();
   if ((await button.count()) === 0) return null;
   const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
   await activateButtonNode(button);
@@ -364,6 +364,7 @@ async function buttonDebugText(page) {
     buttons.map((button) => ({
       text: (button.innerText || button.textContent || "").replace(/\s+/g, " ").trim(),
       disabled: button.disabled,
+      ariaDisabled: button.getAttribute("aria-disabled"),
       localAction: button.getAttribute("data-local-action"),
     }))
   );
@@ -377,6 +378,7 @@ async function waitForLocalButton(page, pattern, label, timeoutMs = 60000) {
     if (buttons.some((button) =>
       button.localAction === "true"
       && !button.disabled
+      && button.ariaDisabled !== "true"
       && pattern.test(button.text)
     )) {
       return buttons;
@@ -2186,6 +2188,192 @@ test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library ch
       true,
       `expected Player 0 to draw the card Mystical Tutor put on top\n${lastAdvanceText}`
     );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Gitaxian Probe shows the targeted player's hand to the caster", { timeout: 240000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const hostDeck = deckUrlParam("60 Gitaxian Probe");
+    const guestDeck = deckUrlParam("60 Lightning Bolt");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${hostDeck}`, "host-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${guestDeck}`,
+      "guest-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    let castProbe = false;
+    let targetedGuest = false;
+    let paidProbe = false;
+    let guestResolved = false;
+    let lastCombinedText = "";
+
+    for (let step = 0; step < 70 && !guestResolved; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      assertNoSyncFailureText(combinedText);
+
+      if (
+        castProbe
+        && targetedGuest
+        && !paidProbe
+        && /PRIORITY\s+ALICE/i.test(hostText)
+        && /STACK[\s\S]*Gitaxian Probe/i.test(hostText)
+      ) {
+        paidProbe = true;
+      }
+
+      if (!castProbe && await clickLocalButton(hostPage, "host-cast-probe", /GITAXIAN PROBE/i)) {
+        castProbe = true;
+        await sleep(2500);
+        continue;
+      }
+
+      if (castProbe && !targetedGuest) {
+        await hostPage.evaluate(() => {
+          window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+            detail: { target: { kind: "player", player: 1 } },
+          }));
+        });
+        await sleep(250);
+        const submittedTargets = await clickLocalButton(
+          hostPage,
+          "host-submit-probe-target",
+          /SUBMIT TARGETS|SUBMIT/i,
+        );
+        if (submittedTargets) {
+          targetedGuest = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (castProbe && !paidProbe) {
+        const selectedPayment = await clickEnabledButton(
+          hostPage,
+          "host-select-probe-payment",
+          /2 life|PHYREXIAN|\{U\/P\}/i,
+        );
+        if (selectedPayment) {
+          await sleep(250);
+        }
+        const submittedPayment = await clickLocalButton(
+          hostPage,
+          "host-submit-probe-payment",
+          /SUBMIT|PAY/i,
+        );
+        if (submittedPayment) {
+          paidProbe = true;
+          await sleep(3000);
+          continue;
+        }
+      }
+
+      const resolveClick = paidProbe && !guestResolved
+        ? await activateLocalButton(guestPage, "guest-resolve-probe", /RESOLVE/i)
+        : null;
+      if (resolveClick) {
+        try {
+          await waitForVisibleBodyText(
+            hostPage,
+            /GY\s*1[\s\S]*DECK\s*52/i,
+            "expected Gitaxian Probe to resolve before checking the looked-at hand",
+            45000,
+          );
+        } catch (err) {
+          throw new Error(`${err.message}
+resolve click: ${JSON.stringify(resolveClick, null, 2)}
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+host body:
+${await visibleBodyText(hostPage)}
+guest body:
+${await visibleBodyText(guestPage)}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-120), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-120), null, 2)}`);
+        }
+        guestResolved = true;
+        let revealText = "";
+        try {
+          revealText = await waitForVisibleBodyText(
+            hostPage,
+            /LOOK[\s\S]*Look at target player's hand[\s\S]*Lightning Bolt/i,
+            "expected Gitaxian Probe to show the targeted player's hand to its caster",
+            30000,
+          );
+        } catch (err) {
+          err.message = `${err.message}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-120), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-120), null, 2)}`;
+          throw err;
+        }
+        assertNoSyncFailureText(revealText, "Gitaxian Probe hand view should stay synced");
+        break;
+      }
+
+      if (!castProbe) {
+        const hostAdvanced = await clickLocalButton(hostPage, "host-setup-probe", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (hostAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+        const guestAdvanced = await clickLocalButton(guestPage, "guest-setup-probe", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (guestAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+      }
+
+      await sleep(1000);
+    }
+
+    assert.equal(castProbe, true, `expected host to cast Gitaxian Probe\n${lastCombinedText}`);
+    assert.equal(targetedGuest, true, `expected host to target the other player with Gitaxian Probe\n${lastCombinedText}`);
+    assert.equal(paidProbe, true, `expected host to pay for Gitaxian Probe\n${lastCombinedText}`);
+    assert.equal(guestResolved, true, `expected guest to resolve Gitaxian Probe\n${lastCombinedText}`);
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([

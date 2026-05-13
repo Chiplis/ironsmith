@@ -170,12 +170,9 @@ mod tests {
         let mut dm = CapturingDecisionMaker::default();
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
 
-        SequenceEffect::new(vec![
-            Effect::new(PendingChoiceEffect),
-            Effect::gain_life(3),
-        ])
-        .execute(&mut game, &mut ctx)
-        .expect("sequence should surface the pending choice");
+        SequenceEffect::new(vec![Effect::new(PendingChoiceEffect), Effect::gain_life(3)])
+            .execute(&mut game, &mut ctx)
+            .expect("sequence should surface the pending choice");
 
         assert!(ctx.decision_maker.awaiting_choice());
         assert_eq!(

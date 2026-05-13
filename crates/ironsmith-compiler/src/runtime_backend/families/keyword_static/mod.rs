@@ -118,6 +118,7 @@ use crate::triggers::Trigger;
 use crate::types::{CardType, Subtype, Supertype};
 #[allow(unused_imports)]
 use crate::zone::Zone;
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 use std::sync::LazyLock;
 
 const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
@@ -2784,6 +2785,57 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !slice_starts_with(&clause_words, &["you", "may", "have"])
+        && let Some(enter_idx) =
+            find_index(&clause_words, |word| *word == "enter" || *word == "enters")
+        && enter_idx > 0
+    {
+        let mut after_enter = enter_idx + 1;
+        if clause_words.get(after_enter).copied() == Some("the")
+            && clause_words.get(after_enter + 1).copied() == Some("battlefield")
+        {
+            after_enter += 2;
+        }
+        if clause_words.get(after_enter..after_enter + 4) == Some(&["as", "a", "copy", "of"]) {
+            let filter_end_token_idx =
+                token_index_for_word_index(tokens, enter_idx).unwrap_or(tokens.len());
+            let affected_tokens = trim_commas(&tokens[..filter_end_token_idx]);
+            let affected_filter = parse_object_filter(&affected_tokens, false)?;
+            let copy_source_words = &clause_words[after_enter + 4..];
+            let (filter, copy_source_self, copy_source_enchanted) =
+                if slice_starts_with(copy_source_words, &["this"]) {
+                    (ObjectFilter::source(), true, false)
+                } else if slice_starts_with(copy_source_words, &["enchanted"]) {
+                    (ObjectFilter::source(), false, true)
+                } else {
+                    let copy_start_word_idx = after_enter + 4;
+                    let copy_start_token_idx =
+                        token_index_for_word_index(tokens, copy_start_word_idx)
+                            .unwrap_or(tokens.len());
+                    let copy_tokens = trim_commas(&tokens[copy_start_token_idx..]);
+                    (parse_object_filter(&copy_tokens, false)?, false, false)
+                };
+
+            return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
+                crate::static_abilities::EnterAsCopyAsEntersSpec {
+                    filter,
+                    affected_filter: Some(affected_filter),
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self,
+                    copy_source_enchanted,
+                    name_override: None,
+                    added_card_types: Vec::new(),
+                    added_subtypes: Vec::new(),
+                    added_abilities: Vec::new(),
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                clause_words.join(" "),
+            )));
+        }
+    }
+
     if clause_words.len() < 11 || !slice_starts_with(&clause_words, &["you", "may", "have"]) {
         return Ok(None);
     }
@@ -2862,6 +2914,8 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     let mut added_card_types = Vec::new();
     let mut added_subtypes = Vec::new();
     let mut added_abilities = Vec::new();
+    let mut set_base_power_toughness = None;
+    let mut set_base_power_toughness_from_self = false;
     if let Some(except_idx) = except_idx {
         let tail = &clause_words[except_idx + 1..];
         if tail.is_empty() {
@@ -2909,13 +2963,36 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                 )));
             };
 
-            if let Some(card_type) = parse_card_type(tail[type_idx]) {
-                added_card_types.push(card_type);
-            } else if let Some(subtype) = parse_subtype_word(tail[type_idx])
-                .or_else(|| parse_subtype_flexible(tail[type_idx]))
-            {
-                added_subtypes.push(subtype);
-            } else {
+            let mut cursor = type_idx;
+            if let Ok((power, toughness)) = parse_pt_modifier(tail[cursor]) {
+                set_base_power_toughness = Some((power, toughness));
+                cursor += 1;
+            }
+
+            let mut parsed_type_or_subtype = false;
+            while cursor < tail.len() {
+                if let Some(card_type) = parse_card_type(tail[cursor]) {
+                    if !added_card_types.contains(&card_type) {
+                        added_card_types.push(card_type);
+                    }
+                    parsed_type_or_subtype = true;
+                    cursor += 1;
+                    continue;
+                }
+                if let Some(subtype) = parse_subtype_word(tail[cursor])
+                    .or_else(|| parse_subtype_flexible(tail[cursor]))
+                {
+                    if !added_subtypes.contains(&subtype) {
+                        added_subtypes.push(subtype);
+                    }
+                    parsed_type_or_subtype = true;
+                    cursor += 1;
+                    continue;
+                }
+                break;
+            }
+
+            if !parsed_type_or_subtype && set_base_power_toughness.is_none() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported enters-as-copy type '{}' (clause: '{}')",
                     tail[type_idx],
@@ -2923,7 +3000,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                 )));
             }
 
-            let mut remainder_start = type_idx + 1;
+            let mut remainder_start = cursor;
             if slice_starts_with(
                 &tail[remainder_start..],
                 &["in", "addition", "to", "its", "other", "types"],
@@ -2932,17 +3009,45 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             }
 
             if !tail[remainder_start..].is_empty() {
-                if !slice_starts_with(&tail[remainder_start..], &["and", "it", "has"]) {
+                if slice_starts_with(
+                    &tail[remainder_start..],
+                    &[
+                        "and",
+                        "its",
+                        "power",
+                        "and",
+                        "toughness",
+                        "are",
+                        "equal",
+                        "to",
+                        "this",
+                    ],
+                ) || slice_starts_with(
+                    &tail[remainder_start..],
+                    &[
+                        "its",
+                        "power",
+                        "and",
+                        "toughness",
+                        "are",
+                        "equal",
+                        "to",
+                        "this",
+                    ],
+                ) {
+                    set_base_power_toughness_from_self = true;
+                } else if !slice_starts_with(&tail[remainder_start..], &["and", "it", "has"]) {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported enters-as-copy exception clause (clause: '{}')",
                         clause_words.join(" ")
                     )));
+                } else {
+                    added_abilities = parse_added_copy_abilities(
+                        tokens,
+                        &clause_words,
+                        except_idx + 1 + remainder_start + 2,
+                    )?;
                 }
-                added_abilities = parse_added_copy_abilities(
-                    tokens,
-                    &clause_words,
-                    except_idx + 1 + remainder_start + 2,
-                )?;
             }
         }
     }
@@ -2950,12 +3055,17 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
         crate::static_abilities::EnterAsCopyAsEntersSpec {
             filter,
+            affected_filter: None,
             may: true,
             enters_tapped_if_chosen,
+            copy_source_self: false,
+            copy_source_enchanted: false,
             name_override,
             added_card_types,
             added_subtypes,
             added_abilities,
+            set_base_power_toughness,
+            set_base_power_toughness_from_self,
         },
         clause_words.join(" "),
     )))
@@ -5202,6 +5312,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     {
         return Ok(Some(Value::X));
     }
+    if slice_contains(&filter_words, &"destroyed")
+        && contains_keyword_static_phrase(&filter_words, &["this", "way"])
+    {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: EffectMetricSource::AffectedObjects,
+            metric: EffectMetric::Count,
+        }));
+    }
 
     let mut source_counter_words = filter_words.as_slice();
     if source_counter_words
@@ -7048,10 +7166,14 @@ pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
     let filter_words = &words[1..would_idx];
     let filter = if is_source_reference_words(filter_words) {
         ObjectFilter::source()
+    } else if matches!(
+        filter_words,
+        ["a", "card", "or", "token"] | ["card", "or", "token"]
+    ) {
+        ObjectFilter::default()
     } else {
         parse_object_filter(filter_tokens, false).or_else(|_| match filter_words {
             ["a", "card"] | ["card"] => Ok(ObjectFilter::default()),
-            ["a", "card", "or", "token"] | ["card", "or", "token"] => Ok(ObjectFilter::default()),
             ["a", "creature", "card"] | ["creature", "card"] => Ok(ObjectFilter::creature()),
             ["a", "card", "that", "has", "a", "cycling", "ability"]
             | ["card", "that", "has", "a", "cycling", "ability"] => {

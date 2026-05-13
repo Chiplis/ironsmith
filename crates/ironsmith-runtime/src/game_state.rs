@@ -639,14 +639,9 @@ impl RestrictionEffectInstance {
                 }
             }
             crate::effect::Until::ControllersNextUntapStep => {
-                if current_turn <= self.expires_end_of_turn
-                    || game.turn.active_player != self.controller
-                {
-                    true
-                } else {
-                    matches!(game.turn.phase, Phase::Beginning)
-                        && matches!(game.turn.step, Some(Step::Untap))
-                }
+                game.turn.active_player == self.controller
+                    && matches!(game.turn.phase, Phase::Beginning)
+                    && matches!(game.turn.step, Some(Step::Untap))
             }
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
@@ -3067,22 +3062,26 @@ impl GameState {
         drawn
     }
 
-    fn try_replace_draw_with_dredge(
-        &mut self,
+    pub(crate) fn dredge_replacement_candidate(
+        &self,
         player: PlayerId,
-        decision_maker: &mut dyn crate::decision::DecisionMaker,
-    ) -> Option<Vec<ObjectId>> {
-        let candidate = self
-            .player(player)?
+    ) -> Option<(ObjectId, usize)> {
+        self.player(player)?
             .graveyard
             .iter()
             .copied()
             .find_map(|object_id| {
                 let amount = self.dredge_amount_for_object(object_id)?;
                 (self.player(player)?.library.len() >= amount).then_some((object_id, amount))
-            })?;
+            })
+    }
 
-        let (dredge_card, amount) = candidate;
+    pub(crate) fn dredge_replacement_context(
+        &self,
+        player: PlayerId,
+        dredge_card: ObjectId,
+        amount: usize,
+    ) -> crate::decisions::context::BooleanContext {
         let description = self
             .current_name(dredge_card)
             .map(|name| {
@@ -3095,15 +3094,27 @@ impl GameState {
                     "mill {amount} cards instead of drawing a card to return this card to your hand"
                 )
             });
-        let spec = crate::decisions::MaySpec::new(dredge_card, description);
-        if !crate::decisions::make_decision_with_fallback(
-            self,
-            decision_maker,
-            player,
-            Some(dredge_card),
-            spec,
-            crate::decision::FallbackStrategy::Decline,
-        ) {
+        let mut ctx =
+            crate::decisions::context::BooleanContext::new(player, Some(dredge_card), description);
+        if let Some(name) = self.current_name(dredge_card) {
+            ctx = ctx.with_source_name(name);
+        }
+        ctx
+    }
+
+    pub(crate) fn replace_draw_with_dredge(
+        &mut self,
+        player: PlayerId,
+        dredge_card: ObjectId,
+        amount: usize,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<Vec<ObjectId>> {
+        let card_is_still_in_graveyard = self
+            .player(player)?
+            .graveyard
+            .iter()
+            .any(|&candidate| candidate == dredge_card);
+        if !card_is_still_in_graveyard || self.player(player)?.library.len() < amount {
             return None;
         }
 
@@ -3137,6 +3148,28 @@ impl GameState {
 
         self.move_object(dredge_card, Zone::Hand, cause)
             .map(|new_id| vec![new_id])
+    }
+
+    fn try_replace_draw_with_dredge(
+        &mut self,
+        player: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<Vec<ObjectId>> {
+        let (dredge_card, amount) = self.dredge_replacement_candidate(player)?;
+        let ctx = self.dredge_replacement_context(player, dredge_card, amount);
+        let spec = crate::decisions::MaySpec::new(dredge_card, ctx.description);
+        if !crate::decisions::make_decision_with_fallback(
+            self,
+            decision_maker,
+            player,
+            Some(dredge_card),
+            spec,
+            crate::decision::FallbackStrategy::Decline,
+        ) {
+            return None;
+        }
+
+        self.replace_draw_with_dredge(player, dredge_card, amount, decision_maker)
     }
 
     fn dredge_amount_for_object(&self, object_id: ObjectId) -> Option<usize> {
@@ -3410,10 +3443,15 @@ impl GameState {
             new_zone == Zone::Battlefield && new_object.face_down_cast_state.is_some();
         let preserve_bestow_overlay =
             new_zone == Zone::Battlefield && new_object.bestow_cast_state.is_some();
+        let preserve_prototype_overlay = matches!(new_zone, Zone::Stack | Zone::Battlefield)
+            && new_object.prototype_cast_state.is_some();
         let preserve_temporary_static_ability_grants =
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_cast_tags = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        if !preserve_prototype_overlay {
+            new_object.end_prototype_cast_overlay();
+        }
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
@@ -5291,13 +5329,21 @@ impl GameState {
 
         // Apply active restriction effects from spells/abilities.
         let current_turn = self.turn.turn_number;
+        let mut retained_restrictions = Vec::new();
         let mut active_restrictions = Vec::new();
         for effect in &self.effect_store.restriction_effects {
             if effect.is_active(self, current_turn) {
+                retained_restrictions.push(effect.clone());
                 active_restrictions.push(effect.clone());
+            } else if matches!(
+                effect.duration,
+                crate::effect::Until::ControllersNextUntapStep
+            ) && !effect.is_expired(current_turn)
+            {
+                retained_restrictions.push(effect.clone());
             }
         }
-        self.effect_store.restriction_effects = active_restrictions.clone();
+        self.effect_store.restriction_effects = retained_restrictions;
 
         let mut active_goad = Vec::new();
         for effect in &self.effect_store.goad_effects {

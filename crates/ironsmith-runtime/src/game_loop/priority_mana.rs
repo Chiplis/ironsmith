@@ -1594,6 +1594,13 @@ pub(super) fn apply_optional_costs_response(
         spell.optional_costs_paid = pending.optional_costs_paid.clone();
     }
 
+    if pending.optional_costs_paid.was_entwined()
+        && let Some(modal_spec) =
+            extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
+    {
+        pending.chosen_modes = Some((0..modal_spec.mode_descriptions.len()).collect());
+    }
+
     let has_legal_targets = game
         .object(pending.spell_id)
         .and_then(|obj| obj.spell_effect.as_ref())
@@ -3234,13 +3241,7 @@ pub(super) fn propose_spell_cast(
     caster: PlayerId,
     casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
-    let new_id = game
-        .move_object_by_effect(spell_id, Zone::Stack)
-        .ok_or_else(|| {
-            GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
-        })?;
-
-    let selected_method = game.object(new_id).and_then(|obj| match casting_method {
+    let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3249,6 +3250,12 @@ pub(super) fn propose_spell_cast(
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
         _ => None,
     });
+
+    let new_id = game
+        .move_object_by_effect(spell_id, Zone::Stack)
+        .ok_or_else(|| {
+            GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
+        })?;
     let disturb_other_def = if matches!(
         selected_method,
         Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
@@ -3311,6 +3318,14 @@ pub(super) fn propose_spell_cast(
             if method.is_bestow() {
                 obj.apply_bestow_cast_overlay();
             }
+            if matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Composed { name, .. }
+                    if name.eq_ignore_ascii_case("Prototype")
+            ) && let Some(cost) = method.mana_cost().cloned()
+            {
+                obj.apply_prototype_cast_overlay(cost);
+            }
 
             if let crate::alternative_cast::AlternativeCastingMethod::Disturb { .. } = method {
                 let other_def = disturb_other_def
@@ -3318,6 +3333,7 @@ pub(super) fn propose_spell_cast(
                     .expect("disturb linked face should be resolved before mutating the spell");
                 let front_colors = obj.colors();
                 obj.apply_definition_face(&other_def);
+                obj.cast_alternative_method = Some(method.clone());
                 if obj.mana_cost.is_none()
                     && obj.color_override.is_none()
                     && !front_colors.is_empty()
@@ -3387,6 +3403,85 @@ pub(super) struct SpellCastResult {
     pub(super) caster: PlayerId,
     /// Which zone the spell was cast from.
     pub(super) from_zone: Zone,
+}
+
+fn parse_simple_mana_marker_cost(text: &str) -> Option<crate::mana::ManaCost> {
+    let mut pips = Vec::new();
+    let mut rest = text;
+    while let Some(open_idx) = rest.find('{') {
+        let after_open = &rest[open_idx + 1..];
+        let Some(close_idx) = after_open.find('}') else {
+            return None;
+        };
+        let symbol_text = &after_open[..close_idx];
+        let mut alternatives = Vec::new();
+        for part in symbol_text.split('/') {
+            let symbol = match part.to_ascii_uppercase().as_str() {
+                "W" => crate::mana::ManaSymbol::White,
+                "U" => crate::mana::ManaSymbol::Blue,
+                "B" => crate::mana::ManaSymbol::Black,
+                "R" => crate::mana::ManaSymbol::Red,
+                "G" => crate::mana::ManaSymbol::Green,
+                "C" => crate::mana::ManaSymbol::Colorless,
+                "X" => crate::mana::ManaSymbol::X,
+                digits => crate::mana::ManaSymbol::Generic(digits.parse::<u8>().ok()?),
+            };
+            alternatives.push(symbol);
+        }
+        if alternatives.is_empty() {
+            return None;
+        }
+        pips.push(alternatives);
+        rest = &after_open[close_idx + 1..];
+    }
+    (!pips.is_empty()).then(|| crate::mana::ManaCost::from_pips(pips))
+}
+
+fn spell_escalate_cost(obj: &crate::object::Object) -> Option<crate::mana::ManaCost> {
+    obj.abilities.iter().find_map(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let display = static_ability.display();
+        let tail = display
+            .strip_prefix("Escalate ")
+            .or_else(|| display.strip_prefix("escalate "))?;
+        parse_simple_mana_marker_cost(tail)
+    })
+}
+
+fn add_repeated_mana_cost(
+    base: &crate::mana::ManaCost,
+    add: &crate::mana::ManaCost,
+    times: usize,
+) -> crate::mana::ManaCost {
+    if times == 0 {
+        return base.clone();
+    }
+    let mut pips = base.pips().to_vec();
+    for _ in 0..times {
+        pips.extend(add.pips().iter().cloned());
+    }
+    crate::mana::ManaCost::from_pips(pips)
+}
+
+fn casting_method_matches_alternative_name(
+    game: &GameState,
+    caster: PlayerId,
+    obj: &crate::object::Object,
+    casting_method: &CastingMethod,
+    expected_name: &str,
+) -> bool {
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
+        _ => None,
+    };
+    method.is_some_and(|method| method.name().eq_ignore_ascii_case(expected_name))
 }
 
 /// Finalize a spell cast by paying remaining costs and creating the stack entry.
@@ -3484,7 +3579,7 @@ pub(super) fn finalize_spell_cast(
         };
 
     // Calculate effective cost and Delve exile count
-    let (effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
+    let (mut effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
             let eff_cost = calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
                 game,
@@ -3508,6 +3603,18 @@ pub(super) fn finalize_spell_cast(
     } else {
         (None, 0)
     };
+
+    if let (Some(cost), Some(modes)) = (effective_cost.as_ref(), chosen_modes.as_ref())
+        && modes.len() > 1
+        && let Some(obj) = game.object(spell_id)
+        && let Some(escalate_cost) = spell_escalate_cost(obj)
+    {
+        effective_cost = Some(add_repeated_mana_cost(
+            cost,
+            &escalate_cost,
+            modes.len().saturating_sub(1),
+        ));
+    }
 
     // Pay Delve cost (exile cards from graveyard)
     if delve_exile_count > 0 {
@@ -3616,6 +3723,15 @@ pub(super) fn finalize_spell_cast(
         optional_costs_paid.mark_label_paid("Blitz");
         if let Some(spell_obj) = game.object_mut(new_id) {
             spell_obj.optional_costs_paid.mark_label_paid("Blitz");
+        }
+    }
+    let evoked = game.object(new_id).is_some_and(|spell_obj| {
+        casting_method_matches_alternative_name(game, caster, spell_obj, &casting_method, "Evoke")
+    });
+    if evoked {
+        optional_costs_paid.mark_label_paid("Evoke");
+        if let Some(spell_obj) = game.object_mut(new_id) {
+            spell_obj.optional_costs_paid.mark_label_paid("Evoke");
         }
     }
 

@@ -391,6 +391,7 @@ where
             sacrifice_at_next_end_step: payload.sacrifice_at_next_end_step,
             exile_at_next_end_step: payload.exile_at_next_end_step,
             pt_adjustment: payload.pt_adjustment.clone(),
+            clear_mana_cost: payload.clear_mana_cost,
             added_card_types: payload.added_card_types.clone(),
             added_subtypes: payload.added_subtypes.clone(),
             removed_supertypes: payload.removed_supertypes.clone(),

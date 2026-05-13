@@ -439,8 +439,6 @@ impl WasmGame {
                 self.snapshot()
             }
             progress => {
-                self.active_viewed_cards = None;
-                self.active_audit_viewed_cards.clear();
                 self.clear_active_resolving_stack_object();
                 self.priority_state.pending_continuation = None;
                 if let Some(root_response) = self.pending_live_action_root.take() {

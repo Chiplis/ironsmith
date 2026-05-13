@@ -515,6 +515,9 @@ pub(crate) enum KeywordAction {
     Outlast(ManaCost),
     Scavenge(ManaCost),
     Unearth(ManaCost),
+    Embalm(ManaCost),
+    Eternalize(ManaCost),
+    Emerge(ManaCost),
     Ninjutsu(ManaCost),
     Backup(u32),
     Cipher,
@@ -663,6 +666,7 @@ impl KeywordAction {
                 | Self::Soulshift(_)
                 | Self::Outlast(_)
                 | Self::Unearth(_)
+                | Self::Eternalize(_)
                 | Self::Ninjutsu(_)
                 | Self::Extort
                 | Self::Partner
@@ -777,6 +781,9 @@ impl KeywordAction {
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),
             Self::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
+            Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
+            Self::Eternalize(cost) => format!("Eternalize {}", cost.to_oracle()),
+            Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
@@ -1635,6 +1642,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
+            KeywordAction::Embalm(cost) => self.embalm(cost),
+            KeywordAction::Eternalize(cost) => self.eternalize(cost),
+            KeywordAction::Emerge(cost) => self.emerge(cost),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
             KeywordAction::Backup(amount) => self.backup(amount),
             KeywordAction::Cipher => self.cipher(),
@@ -2596,11 +2606,92 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add embalm with a mana cost.
+    ///
+    /// Embalm creates a white Zombie token copy of this card from the graveyard,
+    /// without a mana cost, and can be activated only as a sorcery.
+    pub fn embalm(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let create_embalmed_copy = Effect::new(
+            crate::effects::CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+                .set_colors(ColorSet::WHITE)
+                .added_subtype(Subtype::Zombie)
+                .without_mana_cost(),
+        );
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: ResolutionProgram::from_effects(vec![create_embalmed_copy]),
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Graveyard],
+        })
+    }
+
+    /// Add eternalize with a mana cost.
+    ///
+    /// Eternalize creates a 4/4 black Zombie token copy of this card from the
+    /// graveyard without a mana cost, and can be activated only as a sorcery.
+    pub fn eternalize(self, cost: ManaCost) -> Self {
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let create_eternalized_copy = Effect::new(
+            crate::effects::CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+                .set_colors(ColorSet::BLACK)
+                .added_subtype(Subtype::Zombie)
+                .set_base_power_toughness(4, 4)
+                .without_mana_cost(),
+        );
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: ResolutionProgram::from_effects(vec![create_eternalized_copy]),
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Graveyard],
+        })
+    }
+
     /// Add aura swap with a mana cost.
     pub fn aura_swap(self, cost: ManaCost) -> Self {
         let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
 
         self.with_ability(Ability::activated(total_cost, vec![Effect::aura_swap()]))
+    }
+
+    /// Add emerge with a mana cost.
+    ///
+    /// Emerge lets this spell be cast by paying its emerge cost and sacrificing
+    /// a creature, with the generic portion reduced by that creature's mana value.
+    pub fn emerge(self, cost: ManaCost) -> Self {
+        self.alternative_cast(AlternativeCastingMethod::alternative_cost(
+            "Emerge",
+            Some(cost),
+            vec![crate::costs::Cost::sacrifice(
+                ObjectFilter::creature().you_control(),
+            )],
+        ))
     }
 
     /// Add scavenge with a mana cost.
@@ -2686,18 +2777,23 @@ impl CardDefinitionBuilder {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::with_id(
-                        0,
-                        Effect::remove_counters(CounterType::Echo, 1, ChooseSpec::Source),
-                    ),
-                    Effect::if_then(
-                        EffectId(0),
-                        EffectPredicate::Happened,
-                        vec![Effect::unless_action(
-                            vec![Effect::sacrifice_source()],
-                            payment_effects,
-                            PlayerFilter::You,
-                        )],
+                    Effect::conditional_only(
+                        Condition::SourceIsInZone(Zone::Battlefield),
+                        vec![
+                            Effect::with_id(
+                                0,
+                                Effect::remove_counters(CounterType::Echo, 1, ChooseSpec::Source),
+                            ),
+                            Effect::if_then(
+                                EffectId(0),
+                                EffectPredicate::Happened,
+                                vec![Effect::unless_action(
+                                    vec![Effect::sacrifice_source()],
+                                    payment_effects,
+                                    PlayerFilter::You,
+                                )],
+                            ),
+                        ],
                     ),
                 ]),
                 choices: vec![],
@@ -3072,7 +3168,9 @@ impl CardDefinitionBuilder {
     pub fn enlist(self) -> Self {
         let tag = "enlisted_creature";
         let mut filter = ObjectFilter::creature().you_control().other();
+        filter.untapped = true;
         filter.nonattacking = true;
+        filter.enlist_eligible = true;
         let effects = vec![
             Effect::tag_triggering_object("enlist_attacker"),
             Effect::choose_objects(filter, 1, PlayerFilter::You, tag),
@@ -3087,7 +3185,7 @@ impl CardDefinitionBuilder {
         ];
         self.with_ability(Ability::triggered(
             Trigger::this_attacks(),
-            vec![Effect::may(effects)],
+            vec![Effect::may_player(PlayerFilter::You, effects)],
         ))
     }
 

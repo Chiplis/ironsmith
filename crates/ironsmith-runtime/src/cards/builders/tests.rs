@@ -1757,6 +1757,27 @@ fn test_parse_each_player_cant_cast_more_than_one_spell_each_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_noncreature_spells_cant_be_cast_restrictions() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gaddock Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Noncreature spells with mana value 4 or greater can't be cast.\n\
+             Noncreature spells with {X} in their mana costs can't be cast.",
+        )
+        .expect("parse noncreature spell cast restrictions");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CastSpellsMatching")
+            && debug.contains("GreaterThanOrEqual(4)")
+            && debug.contains("excluded_card_types")
+            && debug.contains("has_x_in_cost: true"),
+        "expected Gaddock-style cast restrictions, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_players_cant_cast_more_than_one_spell_each_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rule Of Law Variant")
         .parse_text("Players can't cast more than one spell each turn.")
@@ -6199,6 +6220,136 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
             && debug.contains("PlusOnePlusOne")
             && debug.contains("ExileEffect"),
         "expected scavenge cost/effect lowering, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_embalm_keyword_line_compiles_to_graveyard_token_copy_activation() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Embalm Test")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text(
+            "Embalm {5}{W} ({5}{W}, Exile this card from your graveyard: Create a token that's a copy of it, except it's a white Zombie Angel with no mana cost. Embalm only as a sorcery.)",
+        )
+        .expect("embalm keyword line should parse");
+
+    let (ability, activated) = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some((ability, activated)),
+            _ => None,
+        })
+        .expect("embalm should compile to an activated ability");
+
+    assert_eq!(ability.functional_zones, vec![Zone::Graveyard]);
+    assert_eq!(activated.choices.len(), 0);
+
+    let flattened = activated.effects.flattened_default_effects();
+    let [effect] = flattened else {
+        panic!("embalm should have exactly one default effect");
+    };
+    let create = effect
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        .expect("embalm should create a token copy");
+    assert!(matches!(&create.target, ChooseSpec::Source));
+    assert_eq!(create.count, Value::Fixed(1));
+    assert_eq!(create.controller, PlayerFilter::You);
+    assert_eq!(create.set_colors, Some(crate::color::ColorSet::WHITE));
+    assert!(create.added_subtypes.contains(&Subtype::Zombie));
+    assert!(create.clear_mana_cost);
+
+    let lines = unprocessed_compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("Embalm {5}{W}"),
+        "expected embalm keyword label in compiled text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_eternalize_keyword_line_renders_keyword_activation() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Eternalize Test")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Jackal])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("Eternalize {4}{W}{W} ({4}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of it, except it's a 4/4 black Zombie Jackal with no mana cost. Eternalize only as a sorcery.)")
+        .expect("eternalize keyword line should parse");
+
+    let (ability, activated) = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some((ability, activated)),
+            _ => None,
+        })
+        .expect("eternalize should compile to an activated ability");
+
+    assert_eq!(ability.functional_zones, vec![Zone::Graveyard]);
+    assert_eq!(activated.choices.len(), 0);
+
+    let flattened = activated.effects.flattened_default_effects();
+    let [effect] = flattened else {
+        panic!("eternalize should have exactly one default effect");
+    };
+    let create = effect
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        .expect("eternalize should create a token copy");
+    assert!(matches!(&create.target, ChooseSpec::Source));
+    assert_eq!(create.count, Value::Fixed(1));
+    assert_eq!(create.controller, PlayerFilter::You);
+    assert_eq!(create.set_colors, Some(crate::color::ColorSet::BLACK));
+    assert!(create.added_subtypes.contains(&Subtype::Zombie));
+    assert_eq!(create.set_base_power_toughness, Some((4, 4)));
+    assert!(create.clear_mana_cost);
+
+    let rendered = crate::compiled_text::ability_surface_text(ability);
+    assert_eq!(rendered, "Eternalize {4}{W}{W}");
+
+    let joined = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        joined.contains("Eternalize {4}{W}{W}"),
+        "expected eternalize keyword label in compiled text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_emerge_keyword_line_compiles_to_hand_alternative_cast() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Emerge Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Emerge {5}{U} (You may cast this spell by sacrificing a creature and paying the emerge cost reduced by that creature's mana value.)")
+        .expect("emerge keyword line should parse");
+
+    assert_eq!(def.alternative_casts.len(), 1);
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::Composed {
+            name, total_cost, ..
+        } => {
+            assert_eq!(*name, "Emerge");
+            let cost = total_cost
+                .mana_cost()
+                .expect("emerge should include mana cost");
+            assert_eq!(cost.to_oracle(), "{5}{U}");
+            let costs = def.alternative_casts[0].non_mana_costs();
+            assert_eq!(costs.len(), 1);
+            let filter = costs[0]
+                .sacrifice_filter()
+                .expect("emerge should include a sacrifice cost");
+            assert!(filter.card_types.contains(&CardType::Creature));
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+        }
+        other => panic!("expected emerge composed alternative cast, got {other:?}"),
+    }
+
+    let lines = unprocessed_compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("Emerge {5}{U}"),
+        "expected emerge keyword label in compiled text, got {joined}"
     );
 }
 
@@ -15014,6 +15165,50 @@ fn parse_rooftop_storm_static_free_zombie_permission() {
     assert!(
         has_zombie_grant,
         "expected a Zombie creature hand grant that uses a fixed alternative mana cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_creature_spell_emerge_grant_uses_hand_derived_alternative_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Herigast Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Each creature spell you cast has emerge. The emerge cost is equal to its mana cost.",
+        )
+        .expect("emerge grant should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("each creature spells has emerge. the emerge cost is equal to its mana cost")
+            || rendered.contains(
+                "each creature spell you cast has emerge. the emerge cost is equal to its mana cost"
+            ),
+        "expected emerge grant wording in compiled output, got {rendered}"
+    );
+
+    let has_emerge_grant = def.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            return false;
+        };
+        matches!(
+            spec.grantable,
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::EmergeFromCardManaCost
+            )
+        ) && spec.zone == Zone::Hand
+            && spec.filter.card_types.contains(&CardType::Creature)
+    });
+
+    assert!(
+        has_emerge_grant,
+        "expected a creature hand grant that derives emerge from mana cost"
     );
 }
 
@@ -28937,6 +29132,27 @@ fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
     assert!(
         spell_debug.contains("casttaggedeffect"),
         "expected cast-tagged effect in spell text, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_exiled_cards_owner_may_cast_tagged_card_without_paying_mana_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spell Queller Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, exile target spell with mana value 4 or less.\n\
+             When this creature leaves the battlefield, the exiled card's owner may cast that card without paying its mana cost.",
+        )
+        .expect("exiled-card-owner may-cast-tagged clause should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("mayeffect")
+            && abilities_debug.contains("casttaggedeffect")
+            && abilities_debug.contains("ownerof")
+            && abilities_debug.contains("__source_exiled"),
+        "expected exiled-card owner free-cast effect, got {abilities_debug}"
     );
 }
 

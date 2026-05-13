@@ -593,6 +593,12 @@ where
                 DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
                     DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
                 }
+                DerivedAlternativeCast::BlitzFromCardManaCost => {
+                    DerivedAlternativeCast::BlitzFromCardManaCost
+                }
+                DerivedAlternativeCast::EmergeFromCardManaCost => {
+                    DerivedAlternativeCast::EmergeFromCardManaCost
+                }
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
                 }
@@ -1050,12 +1056,18 @@ where
                 StaticAbilityPayload::EnterAsCopyAsEnters {
                     spec: EnterAsCopyAsEntersSpec {
                         filter: spec.filter,
+                        affected_filter: spec.affected_filter,
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        copy_source_self: spec.copy_source_self,
+                        copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override,
                         added_card_types: spec.added_card_types,
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
+                        set_base_power_toughness: spec.set_base_power_toughness,
+                        set_base_power_toughness_from_self: spec
+                            .set_base_power_toughness_from_self,
                     },
                     display,
                 }
@@ -3684,12 +3696,17 @@ pub enum CantAttackUnlessConditionSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub filter: ObjectFilter,
+    pub affected_filter: Option<ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub copy_source_self: bool,
+    pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    pub set_base_power_toughness: Option<(i32, i32)>,
+    pub set_base_power_toughness_from_self: bool,
 }
 
 impl<T, E, C, Cond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond>

@@ -869,8 +869,17 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     }
 
     if !allow_land {
-        if let Some(from_idx) = find_token_index(rest_tokens, |token| token.is_word("from")) {
-            let zone_words = token_word_refs(&rest_tokens[from_idx..]);
+        let (zone_grant_tokens, zone_grant_lifetime) =
+            if let Some((without_duration, duration)) = parse_turn_duration_suffix(rest_tokens) {
+                (
+                    trim_lexed_commas(without_duration),
+                    Some(permission_lifetime_from_turn_duration(duration)),
+                )
+            } else {
+                (rest_tokens, prefixed_lifetime)
+            };
+        if let Some(from_idx) = find_token_index(zone_grant_tokens, |token| token.is_word("from")) {
+            let zone_words = token_word_refs(&zone_grant_tokens[from_idx..]);
             let zone = if zone_words == ["from", "the", "top", "of", "your", "library"] {
                 Some(Zone::Library)
             } else if zone_words == ["from", "your", "graveyard"] {
@@ -879,7 +888,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 None
             };
             if let Some(zone) = zone {
-                let subject_tokens = trim_lexed_commas(&rest_tokens[..from_idx]);
+                let subject_tokens = trim_lexed_commas(&zone_grant_tokens[..from_idx]);
                 let subject_words = token_word_refs(subject_tokens);
                 let filter = if subject_words == ["spells"] {
                     ObjectFilter::default()
@@ -897,7 +906,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                         filter,
                         zone,
                     ),
-                    lifetime: PermissionLifetime::Static,
+                    lifetime: zone_grant_lifetime.unwrap_or(PermissionLifetime::Static),
                 }));
             }
         }
@@ -1249,6 +1258,17 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 allow_any_color_for_cast,
             ),
         )),
+        Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+            Ok(Some(EffectAst::subject_verb_grant_by_spec(
+                spec,
+                player,
+                crate::grant::GrantDuration::UntilEndOfTurn,
+            )))
+        }
         Some(PermissionClauseSpec::Tagged {
             tag,
             player,

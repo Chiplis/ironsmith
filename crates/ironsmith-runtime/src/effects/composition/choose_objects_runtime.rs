@@ -1014,9 +1014,9 @@ pub(crate) fn run_choose_objects(
             for player in &game.players {
                 for &id in &player.library {
                     let is_hidden_library_card = game.is_hidden_card_placeholder(id)
-                        || game
-                            .object(id)
-                            .is_some_and(|obj| obj.zone == Zone::Library && obj.name == "Hidden Card");
+                        || game.object(id).is_some_and(|obj| {
+                            obj.zone == Zone::Library && obj.name == "Hidden Card"
+                        });
                     if is_hidden_library_card && !candidates.contains(&id) {
                         candidates.push(id);
                     }
@@ -1079,8 +1079,7 @@ pub(crate) fn run_choose_objects(
         }
 
         let has_hidden_search_zones = effect.is_search
-            && (search_zones.iter().any(Zone::is_hidden)
-                || !hidden_library_candidates.is_empty());
+            && (search_zones.iter().any(Zone::is_hidden) || !hidden_library_candidates.is_empty());
         if has_hidden_search_zones && library_owner.is_none() {
             view_hidden_candidate_objects(
                 game,
@@ -1374,13 +1373,15 @@ mod tests {
         assert!(dm.captured, "search should surface a decision prompt");
         assert_eq!(dm.candidates, vec![first, second]);
         assert!(
-            dm.viewed_cards.iter().any(|(viewer, subject, zone, public, cards)| {
-                *viewer == alice
-                    && *subject == alice
-                    && *zone == Zone::Library
-                    && !*public
-                    && cards == &vec![first, second]
-            }),
+            dm.viewed_cards
+                .iter()
+                .any(|(viewer, subject, zone, public, cards)| {
+                    *viewer == alice
+                        && *subject == alice
+                        && *zone == Zone::Library
+                        && !*public
+                        && cards == &vec![first, second]
+                }),
             "hidden library placeholders should be privately viewed before choosing"
         );
     }
@@ -1424,9 +1425,7 @@ mod tests {
         assert!(dm.captured, "sequence should preserve the search prompt");
         assert_eq!(dm.candidates, vec![first, second]);
         assert_eq!(
-            game.player(alice)
-                .expect("Alice should exist")
-                .library,
+            game.player(alice).expect("Alice should exist").library,
             vec![first, second],
             "sequence should not run later effects while the search prompt is pending"
         );
@@ -1489,13 +1488,8 @@ mod tests {
             cards: &[ObjectId],
             ctx: &crate::decisions::context::ViewCardsContext,
         ) {
-            self.viewed_cards.push((
-                viewer,
-                ctx.subject,
-                ctx.zone,
-                ctx.public,
-                cards.to_vec(),
-            ));
+            self.viewed_cards
+                .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
         }
 
         fn decide_objects(

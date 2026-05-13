@@ -242,6 +242,8 @@ fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
                 "choose" | "chooses",
                 ..
             ]
+            | ["after", "this", "phase", ..]
+            | ["after", "this", "main", "phase", ..]
     ) || words.first().is_some_and(|word| {
         matches!(
             *word,

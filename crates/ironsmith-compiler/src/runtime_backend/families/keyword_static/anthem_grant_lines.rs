@@ -549,6 +549,18 @@ pub(crate) fn parse_granted_keyword_static_line(
                     crate::grant::Grantable::flashback_from_cards_mana_cost(),
                 )?
             }
+            ["blitz"] => {
+                if !is_granted_blitz_cost_tail(trailing_tokens) {
+                    return Ok(None);
+                }
+                return granted_blitz_abilities_from_subject(subject_tokens, condition);
+            }
+            ["emerge"] => {
+                if !is_granted_emerge_cost_tail(trailing_tokens) {
+                    return Ok(None);
+                }
+                return granted_emerge_abilities_from_subject(subject_tokens, condition);
+            }
             ["escape"] => {
                 let Some(exile_count) = parse_granted_escape_cost_tail(trailing_tokens)? else {
                     return Ok(None);
@@ -720,6 +732,20 @@ pub(crate) fn parse_granted_keyword_static_line(
         (Some(cond), None) | (None, Some(cond)) => Some(cond),
         (None, None) => None,
     };
+
+    let keyword_words = crate::runtime_backend::token_word_refs(&keyword_tokens);
+    if keyword_words.as_slice() == ["blitz"]
+        && (trailing_clause_tokens.is_empty()
+            || is_granted_blitz_cost_tail(&trailing_clause_tokens))
+    {
+        return granted_blitz_abilities_from_subject(&subject_tokens, condition);
+    }
+    if keyword_words.as_slice() == ["emerge"]
+        && (trailing_clause_tokens.is_empty()
+            || is_granted_emerge_cost_tail(&trailing_clause_tokens))
+    {
+        return granted_emerge_abilities_from_subject(&subject_tokens, condition);
+    }
 
     if !trailing_clause_tokens.is_empty() {
         if let Some(compiled) = parse_granted_alternative_cast_static(
@@ -1314,6 +1340,117 @@ pub(crate) struct StaticAnimationBundleAst {
 
 pub(crate) fn words_start_with(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     anthem_word_slice_starts_with(&crate::runtime_backend::token_word_refs(tokens), expected)
+}
+
+fn is_granted_blitz_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
+    let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
+    let trailing_word_refs = trailing_words.word_refs();
+    trailing_word_refs
+        == [
+            "the", "blitz", "cost", "is", "equal", "to", "its", "mana", "cost",
+        ]
+        || trailing_word_refs
+            == [
+                "its", "blitz", "cost", "is", "equal", "to", "its", "mana", "cost",
+            ]
+}
+
+fn is_granted_emerge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
+    let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
+    let trailing_word_refs = trailing_words.word_refs();
+    trailing_word_refs
+        == [
+            "the", "emerge", "cost", "is", "equal", "to", "its", "mana", "cost",
+        ]
+        || trailing_word_refs
+            == [
+                "its", "emerge", "cost", "is", "equal", "to", "its", "mana", "cost",
+            ]
+}
+
+fn normalize_granted_alternative_spell_filter(
+    mut filter: ObjectFilter,
+) -> (ObjectFilter, Vec<Zone>) {
+    let parsed_zone = filter.zone.unwrap_or(Zone::Battlefield);
+    if parsed_zone == Zone::Stack || filter.stack_kind.is_some() {
+        filter.zone = None;
+        filter.stack_kind = None;
+        filter.cast_by = None;
+        return (filter, vec![Zone::Hand, Zone::Exile, Zone::Graveyard]);
+    }
+
+    filter.zone = None;
+    (filter, vec![parsed_zone])
+}
+
+fn granted_blitz_abilities_from_subject(
+    subject_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return Ok(None);
+    };
+    let (filter, zones) = normalize_granted_alternative_spell_filter(filter);
+    let mut abilities = Vec::new();
+    for zone in zones {
+        let spec = crate::grant::GrantSpec::new(
+            crate::grant::Grantable::blitz_from_cards_mana_cost(),
+            filter.clone(),
+            zone,
+        );
+        let mut ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+        if let Some(condition) = condition.clone() {
+            ability = StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition,
+            };
+        }
+        abilities.push(ability);
+    }
+    Ok(Some(abilities))
+}
+
+fn granted_emerge_abilities_from_subject(
+    subject_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return Ok(None);
+    };
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    let (filter, zones) = if anthem_contains_word(&subject_words, "spell")
+        && subject_words.iter().any(|word| *word == "cast")
+    {
+        let mut filter = filter;
+        filter.zone = None;
+        filter.stack_kind = None;
+        filter.cast_by = None;
+        (filter, vec![Zone::Hand])
+    } else {
+        normalize_granted_alternative_spell_filter(filter)
+    };
+    let mut abilities = Vec::new();
+    for zone in zones {
+        if zone != Zone::Hand {
+            continue;
+        }
+        let spec = crate::grant::GrantSpec::new(
+            crate::grant::Grantable::emerge_from_cards_mana_cost(),
+            filter.clone(),
+            zone,
+        );
+        let mut ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+        if let Some(condition) = condition.clone() {
+            ability = StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition,
+            };
+        }
+        abilities.push(ability);
+    }
+    Ok((!abilities.is_empty()).then_some(abilities))
 }
 
 pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -6085,9 +6222,55 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 ability_tokens = trim_commas(&ability_tokens[..condition_start]);
             }
         }
+        let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
         let attached_subject = subject_words
             .first()
             .is_some_and(|word| *word == "enchanted" || *word == "equipped");
+        let ability_sentences =
+            crate::runtime_backend::grammar::primitives::split_lexed_slices_on_period(
+                &ability_tokens,
+            );
+        if ability_sentences.len() > 1 {
+            let leading = trim_edge_punctuation(ability_sentences[0]);
+            let trailing = ability_sentences[1..]
+                .iter()
+                .flat_map(|sentence| trim_edge_punctuation(sentence))
+                .collect::<Vec<_>>();
+            if crate::runtime_backend::token_word_refs(&leading).as_slice() == ["blitz"]
+                && is_granted_blitz_cost_tail(&trailing)
+            {
+                match granted_blitz_abilities_from_subject(&subject_tokens, condition.clone()) {
+                    Ok(Some(grants)) => return Ok(Some(grants)),
+                    Ok(None) => continue,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                }
+            }
+            if crate::runtime_backend::token_word_refs(&leading).as_slice() == ["emerge"]
+                && is_granted_emerge_cost_tail(&trailing)
+            {
+                match granted_emerge_abilities_from_subject(&subject_tokens, condition.clone()) {
+                    Ok(Some(grants)) => return Ok(Some(grants)),
+                    Ok(None) => continue,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                }
+            }
+        }
+        if ability_words.as_slice() == ["emerge"] {
+            match granted_emerge_abilities_from_subject(&subject_tokens, condition.clone()) {
+                Ok(Some(grants)) => return Ok(Some(grants)),
+                Ok(None) => continue,
+                Err(err) => {
+                    deferred_error.get_or_insert(err);
+                    continue;
+                }
+            }
+        }
         let granted_tail = match parse_heterogeneous_granted_tail(
             &ability_tokens,
             &clause_words,

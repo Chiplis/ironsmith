@@ -441,6 +441,8 @@ pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "adapt" => Some("adapt"),
         "bolster" => Some("bolster"),
         "disturb" => Some("disturb"),
+        "embalm" => Some("embalm"),
+        "emerge" => Some("emerge"),
         "echo" => Some("echo"),
         "modular" => Some("modular"),
         "ninjutsu" => Some("ninjutsu"),
@@ -479,9 +481,9 @@ pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
             let amount = words.get(1)?.parse::<u32>().ok()?;
             Some(format!("{title} {amount}"))
         }
-        "bestow" | "dash" | "disturb" | "ninjutsu" | "outlast" | "scavenge" | "unearth"
-        | "specialize" | "spectacle" | "plot" | "disguise" | "flashback" | "foretell"
-        | "overload" => {
+        "bestow" | "dash" | "disturb" | "embalm" | "emerge" | "ninjutsu" | "outlast"
+        | "scavenge" | "unearth" | "specialize" | "spectacle" | "plot" | "disguise"
+        | "flashback" | "foretell" | "overload" => {
             let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
             Some(format!("{title} {cost}"))
         }
@@ -952,6 +954,35 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     if let Some(action) = parse_cost_keyword_action(
         &words,
+        "embalm",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Embalm,
+    ) {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        &words,
+        "eternalize",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Eternalize,
+    ) {
+        return Some(action);
+    }
+
+    if !(head == "emerge" && second == Some("from"))
+        && let Some(action) = parse_cost_keyword_action(
+            &words,
+            "emerge",
+            KeywordCostFallback::MarkerOrText,
+            KeywordAction::Emerge,
+        )
+    {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        &words,
         "ninjutsu",
         KeywordCostFallback::MarkerOrText,
         KeywordAction::Ninjutsu,
@@ -1266,6 +1297,8 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
                 | "adapt"
                 | "bolster"
                 | "disturb"
+                | "embalm"
+                | "emerge"
                 | "echo"
                 | "modular"
                 | "ninjutsu"

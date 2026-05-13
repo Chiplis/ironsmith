@@ -746,7 +746,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             || slice_starts_with(&segment, &["that", "spells", "mana", "value"])
         {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                TagKey::from("triggering"),
+                TagKey::from(IT_TAG),
             ))));
         }
         if slice_starts_with(&segment, &["that", "card", "mana", "value"])
@@ -912,7 +912,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         || slice_starts_with(&tail, &["that", "spells", "mana", "value"])
     {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from("triggering"),
+            TagKey::from(IT_TAG),
         ))));
     }
     if slice_starts_with(&tail, &["that", "card", "mana", "value"])

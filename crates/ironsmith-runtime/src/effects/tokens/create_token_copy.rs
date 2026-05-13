@@ -136,18 +136,22 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let target_object = game.object(resolved_target_id).cloned();
         let mut stored_snapshot = None;
         if target_object.is_none() {
-            match &self.target {
-                ChooseSpec::Tagged(tag) => {
-                    if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
-                        stored_snapshot = Some(snapshot.clone());
+            if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+                stored_snapshot = Some(snapshot.clone());
+            } else {
+                match &self.target {
+                    ChooseSpec::Tagged(tag) => {
+                        if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
+                            stored_snapshot = Some(snapshot.clone());
+                        }
                     }
-                }
-                ChooseSpec::Source => {
-                    if let Some(snapshot) = &ctx.source_snapshot {
-                        stored_snapshot = Some(snapshot.clone());
+                    ChooseSpec::Source => {
+                        if let Some(snapshot) = &ctx.source_snapshot {
+                            stored_snapshot = Some(snapshot.clone());
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
         let copy_snapshot = stored_snapshot.as_ref();
@@ -217,6 +221,9 @@ impl EffectExecutor for CreateTokenCopyEffect {
             }
             if let Some(colors) = self.set_colors {
                 token.color_override = Some(colors);
+            }
+            if self.clear_mana_cost {
+                token.mana_cost = None;
             }
             if let Some(card_types) = &self.set_card_types {
                 token.card_types = card_types.clone();
@@ -410,6 +417,42 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn test_create_token_copy_can_clear_mana_cost_and_add_embalm_modifiers() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(100), "Angel of Sanctions")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![crate::types::Subtype::Angel])
+            .power_toughness(PowerToughness::fixed(3, 4))
+            .build();
+        let source_id = game.new_object_id();
+        let source = Object::from_card(source_id, &source_card, alice, Zone::Graveyard);
+        game.add_object(source);
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        let effect = CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+            .set_colors(crate::color::ColorSet::WHITE)
+            .added_subtype(crate::types::Subtype::Zombie)
+            .without_mana_cost();
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        let token = game.object(ids[0]).expect("token should exist");
+        assert_eq!(token.name, "Angel of Sanctions");
+        assert_eq!(token.mana_cost, None);
+        assert_eq!(token.colors(), crate::color::ColorSet::WHITE);
+        assert!(token.subtypes.contains(&crate::types::Subtype::Angel));
+        assert!(token.subtypes.contains(&crate::types::Subtype::Zombie));
     }
 
     #[test]
@@ -808,6 +851,39 @@ mod tests {
         if let crate::effect::OutcomeValue::Objects(ids) = result.value {
             let token = game.object(ids[0]).expect("token should exist");
             assert_eq!(token.name, "Offspring Source");
+            assert_eq!(token.kind, ObjectKind::Token);
+            assert_eq!(token.power(), Some(3));
+            assert_eq!(token.toughness(), Some(3));
+        } else {
+            panic!("Expected Objects result");
+        }
+    }
+
+    #[test]
+    fn test_create_token_copy_uses_target_snapshot_after_zone_change() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Returned Copy Target", alice);
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+        ctx.snapshot_targets(&game);
+
+        let moved_id = game
+            .move_object_by_effect(creature_id, Zone::Hand)
+            .expect("target should move to hand");
+        assert_ne!(
+            moved_id, creature_id,
+            "zone change should create a new object id"
+        );
+
+        let effect = CreateTokenCopyEffect::one(ChooseSpec::creature());
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        if let crate::effect::OutcomeValue::Objects(ids) = result.value {
+            let token = game.object(ids[0]).expect("token should exist");
+            assert_eq!(token.name, "Returned Copy Target");
             assert_eq!(token.kind, ObjectKind::Token);
             assert_eq!(token.power(), Some(3));
             assert_eq!(token.toughness(), Some(3));

@@ -29626,6 +29626,16 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(scavenge);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(embalm) = describe_structural_embalm_keyword(ability, activated)
+    {
+        return Some(embalm);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(eternalize) = describe_structural_eternalize_keyword(ability, activated)
+    {
+        return Some(eternalize);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(reconfigure) = describe_structural_reconfigure_keyword(activated)
     {
         return Some(reconfigure);
@@ -31429,6 +31439,81 @@ fn describe_structural_scavenge_keyword(
     }
     let cost = keyword_base_cost_text(costs, is_exile_source_cost)?;
     Some(format!("Scavenge {cost}"))
+}
+
+fn describe_structural_embalm_keyword(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !ability.functional_zones.contains(&Zone::Graveyard)
+        || !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.additional_restrictions.is_empty()
+        || !activated.activation_restrictions.is_empty()
+        || activated.activation_condition.is_some()
+        || !activated.mana_usage_restrictions.is_empty()
+        || !activated.choices.is_empty()
+    {
+        return None;
+    }
+
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(create.target, ChooseSpec::Source)
+        || create.count != Value::Fixed(1)
+        || create.controller != PlayerFilter::You
+        || create.set_colors != Some(crate::color::ColorSet::WHITE)
+        || !create.added_subtypes.contains(&Subtype::Zombie)
+        || !create.clear_mana_cost
+    {
+        return None;
+    }
+
+    let costs = activated.mana_cost.costs();
+    if !costs.iter().any(is_exile_source_cost) {
+        return None;
+    }
+    let cost = keyword_base_cost_text(costs, is_exile_source_cost)?;
+    Some(format!("Embalm {cost}"))
+}
+
+fn describe_structural_eternalize_keyword(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !ability.functional_zones.contains(&Zone::Graveyard)
+        || !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.additional_restrictions.is_empty()
+        || !activated.activation_restrictions.is_empty()
+        || activated.activation_condition.is_some()
+        || !activated.mana_usage_restrictions.is_empty()
+        || !activated.choices.is_empty()
+    {
+        return None;
+    }
+
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(create.target, ChooseSpec::Source)
+        || create.count != Value::Fixed(1)
+        || create.controller != PlayerFilter::You
+        || create.set_colors != Some(crate::color::ColorSet::BLACK)
+        || !create.added_subtypes.contains(&Subtype::Zombie)
+        || create.set_base_power_toughness != Some((4, 4))
+        || !create.clear_mana_cost
+    {
+        return None;
+    }
+
+    let costs = activated.mana_cost.costs();
+    if !costs.iter().any(is_exile_source_cost) {
+        return None;
+    }
+    let cost = keyword_base_cost_text(costs, is_exile_source_cost)?;
+    Some(format!("Eternalize {cost}"))
 }
 
 fn is_target_creature_you_control(spec: &ChooseSpec) -> bool {

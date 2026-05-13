@@ -119,6 +119,7 @@ pub enum ReplacementAction {
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,
+        set_base_power_toughness: Option<(i32, i32)>,
     },
 
     /// Enter with permanent characteristic changes.

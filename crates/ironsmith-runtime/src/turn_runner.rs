@@ -96,6 +96,13 @@ enum PendingCommanderChoice {
 }
 
 #[derive(Debug, Clone)]
+struct PendingDredgeChoice {
+    player: PlayerId,
+    object_id: ObjectId,
+    amount: usize,
+}
+
+#[derive(Debug, Clone)]
 struct PendingDrawRevealChoice {
     active_player: PlayerId,
     drawn: Vec<ObjectId>,
@@ -160,6 +167,8 @@ pub struct TurnRunner {
     pending_discard: Option<Vec<ObjectId>>,
     /// Pending yes/no response for runner-driven boolean decisions.
     pending_boolean: Option<bool>,
+    /// Pending draw-step dredge replacement choice.
+    pending_dredge: Option<PendingDredgeChoice>,
     /// Pending first-draw reveal decisions that pause the draw step.
     pending_draw_reveal: Option<PendingDrawRevealChoice>,
     /// Commander-specific choice that paused the runner.
@@ -180,6 +189,7 @@ impl TurnRunner {
             pending_blockers: None,
             pending_discard: None,
             pending_boolean: None,
+            pending_dredge: None,
             pending_draw_reveal: None,
             pending_commander_choice: None,
             defending_player: None,
@@ -248,6 +258,7 @@ impl TurnRunner {
                     RunnerProgress::Complete(draw_events) => draw_events,
                     RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
                 };
+                crate::game_loop::drain_pending_trigger_events(game, tq);
                 generate_and_queue_step_triggers(game, tq);
 
                 // Queue triggers for each drawn card (Miracle, etc.)
@@ -312,6 +323,7 @@ impl TurnRunner {
                 game.turn.priority_player = Some(game.turn.active_player);
                 self.pending_attacker_optional_costs = None;
                 self.pending_boolean = None;
+                self.pending_dredge = None;
 
                 let ctx = get_declare_attackers_decision(game, &self.combat);
                 self.state = TurnState::DeclareAttackersApply;
@@ -355,6 +367,7 @@ impl TurnRunner {
                     }
                     apply_attacker_declarations(game, &mut self.combat, tq, &declarations)?;
                 }
+                crate::game_loop::drain_pending_trigger_events(game, tq);
                 put_triggers_on_stack(game, tq)?;
 
                 // Also sync game.combat for anything that reads it
@@ -595,6 +608,7 @@ impl TurnRunner {
         self.pending_attackers = Some(declarations);
         self.pending_attacker_optional_costs = None;
         self.pending_boolean = None;
+        self.pending_dredge = None;
     }
 
     /// Provide blocker declarations in response to a `Decision(Blockers(...))`.
@@ -709,6 +723,42 @@ impl TurnRunner {
 
         let mut drawn = Vec::new();
         if can_draw {
+            let mut dredge_declined = false;
+            match self.pending_dredge.take() {
+                Some(pending) if pending.player == active_player => {
+                    let use_dredge = self.pending_boolean.take().unwrap_or(false);
+                    if use_dredge {
+                        let mut dm = AutoPassDecisionMaker;
+                        let _ = game.replace_draw_with_dredge(
+                            active_player,
+                            pending.object_id,
+                            pending.amount,
+                            &mut dm,
+                        );
+                        game.turn.priority_player = Some(active_player);
+                        return RunnerProgress::Complete(Vec::new());
+                    }
+                    dredge_declined = true;
+                }
+                Some(pending) => {
+                    self.pending_dredge = Some(pending);
+                }
+                None => {}
+            }
+
+            if !dredge_declined
+                && let Some((object_id, amount)) = game.dredge_replacement_candidate(active_player)
+            {
+                self.pending_dredge = Some(PendingDredgeChoice {
+                    player: active_player,
+                    object_id,
+                    amount,
+                });
+                return RunnerProgress::NeedsDecision(DecisionContext::Boolean(
+                    game.dredge_replacement_context(active_player, object_id, amount),
+                ));
+            }
+
             match self.pending_commander_choice.take() {
                 Some(PendingCommanderChoice::DrawToHand { object_id }) => {
                     let send_to_command = self.pending_boolean.take().unwrap_or(false);
@@ -876,6 +926,7 @@ impl TurnRunner {
             if actions.is_empty() {
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
+                self.pending_dredge = None;
                 return Ok(RunnerProgress::Complete(()));
             }
 
@@ -913,6 +964,7 @@ impl TurnRunner {
                 if !applied {
                     self.pending_boolean = None;
                     self.pending_commander_choice = None;
+                    self.pending_dredge = None;
                     return Ok(RunnerProgress::Complete(()));
                 }
                 continue;
@@ -921,6 +973,7 @@ impl TurnRunner {
             let Some(obj_id) = commander_returns.first().copied() else {
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
+                self.pending_dredge = None;
                 return Ok(RunnerProgress::Complete(()));
             };
 
@@ -1003,6 +1056,61 @@ mod tests {
         let object = Object::from_card(object_id, &card, owner, Zone::Battlefield);
         game.add_object(object);
         object_id
+    }
+
+    #[test]
+    fn draw_step_can_replace_draw_with_dredge() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+
+        let dredger = CardDefinitionBuilder::new(CardId::new(), "Dredge Probe")
+            .card_types(vec![CardType::Creature])
+            .with_ability(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_marker("Dredge 2"),
+                )
+                .in_zones(vec![Zone::Graveyard]),
+            )
+            .build();
+        let dredger_id = game.create_object_from_definition(&dredger, alice, Zone::Graveyard);
+        for idx in 0..2 {
+            let card = CardBuilder::new(CardId::new(), &format!("Library Creature {idx}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Library);
+        }
+
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+        let mut tq = TriggerQueue::new();
+
+        let action = runner
+            .advance(&mut game, &mut tq)
+            .expect("draw step should request dredge choice");
+        let TurnAction::Decision(DecisionContext::Boolean(ctx)) = action else {
+            panic!("expected dredge boolean decision, got {action:?}");
+        };
+        assert_eq!(ctx.player, alice);
+        assert_eq!(ctx.source, Some(dredger_id));
+        assert!(ctx.description.contains("mill 2 cards instead of drawing"));
+
+        runner.respond_boolean(true);
+        let action = runner
+            .advance(&mut game, &mut tq)
+            .expect("accepted dredge should finish the draw step");
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
+        assert_eq!(game.player(alice).expect("alice").graveyard.len(), 2);
+        assert!(game.player(alice).expect("alice").library.is_empty());
+        assert_eq!(
+            game.current_name(game.player(alice).expect("alice").hand[0])
+                .as_deref(),
+            Some("Dredge Probe")
+        );
     }
 
     #[test]

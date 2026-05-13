@@ -47,6 +47,13 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                 set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
                 return Ok(EffectOutcome::count(1));
             }
+            if zone_change.to == crate::zone::Zone::Battlefield
+                && let Some(tagged) =
+                    latest_zone_lki_snapshot(game, snapshot.stable_id, zone_change.to)
+            {
+                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
+                return Ok(EffectOutcome::count(1));
+            }
             set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
             return Ok(EffectOutcome::count(0));
         }
@@ -114,6 +121,27 @@ impl EffectExecutor for TagTriggeringObjectEffect {
 
         Ok(EffectOutcome::count(0))
     }
+}
+
+fn latest_zone_lki_snapshot(
+    game: &GameState,
+    stable_id: crate::ids::StableId,
+    zone: crate::zone::Zone,
+) -> Option<ObjectSnapshot> {
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .rev()
+        .filter_map(|record| {
+            record
+                .event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+        })
+        .filter_map(|event| event.snapshot.as_ref())
+        .find(|snapshot| snapshot.stable_id == stable_id && snapshot.zone == zone)
+        .cloned()
 }
 
 fn set_triggering_object_tags(
@@ -198,6 +226,78 @@ mod tests {
             .expect("triggering tag should be present");
         assert_eq!(tagged.object_id, graveyard_id);
         assert_eq!(tagged.stable_id, snapshot.stable_id);
+    }
+
+    #[test]
+    fn test_tag_triggering_object_uses_battlefield_lki_for_etb_object_that_died() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature_id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(creature_id.0 as u32), "Blitz Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 0))
+            .build();
+        game.add_object(Object::from_card(
+            creature_id,
+            &card,
+            alice,
+            Zone::Battlefield,
+        ));
+
+        let battlefield_snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("creature should exist"),
+            &game,
+        );
+        let mut etb_snapshot = battlefield_snapshot.clone();
+        etb_snapshot.zone = Zone::Stack;
+        etb_snapshot.power = Some(3);
+
+        game.move_object_by_effect(creature_id, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+        let death_record = crate::events::RawEvent::new(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                Some(battlefield_snapshot.clone()),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.turn_store.turn_history.record_event(
+            &death_record,
+            Some(battlefield_snapshot.clone()),
+            None,
+        );
+
+        let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Stack,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::effect(),
+                Some(etb_snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.triggering_event = Some(trigger_event);
+
+        let effect = TagTriggeringObjectEffect::new("triggering");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+
+        let tagged = ctx
+            .get_tagged("triggering")
+            .expect("triggering tag should use battlefield LKI");
+        assert_eq!(tagged.stable_id, battlefield_snapshot.stable_id);
+        assert_eq!(tagged.zone, Zone::Battlefield);
+        assert_eq!(tagged.power, Some(5));
     }
 
     #[test]

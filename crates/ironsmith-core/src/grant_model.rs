@@ -13,6 +13,10 @@ pub trait GrantStaticAbility: Clone + PartialEq {
 pub enum DerivedAlternativeCast<C> {
     /// Flashback using the card's mana cost plus optional extra cost components.
     FlashbackFromCardManaCost { additional_costs: Vec<C> },
+    /// Blitz using the card's mana cost.
+    BlitzFromCardManaCost,
+    /// Emerge using the card's mana cost and sacrificing a creature.
+    EmergeFromCardManaCost,
     /// Escape using the card's mana cost and exiling N other graveyard cards.
     EscapeFromCardManaCost { exile_count: u32 },
     /// Cast from hand by paying generic mana equal to the card's mana value.
@@ -28,6 +32,8 @@ impl<C> DerivedAlternativeCast<C> {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::FlashbackFromCardManaCost { .. } => "flashback",
+            Self::BlitzFromCardManaCost => "Blitz",
+            Self::EmergeFromCardManaCost => "Emerge",
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
@@ -52,6 +58,14 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
         Self::FlashbackFromCardManaCost {
             additional_costs: Vec::new(),
         }
+    }
+
+    pub fn blitz_from_cards_mana_cost() -> Self {
+        Self::BlitzFromCardManaCost
+    }
+
+    pub fn emerge_from_cards_mana_cost() -> Self {
+        Self::EmergeFromCardManaCost
     }
 
     pub fn escape_from_cards_mana_cost(exile_count: u32) -> Self {
@@ -109,6 +123,16 @@ where
     /// Create a grantable for flashback that uses the granted card's mana cost.
     pub fn flashback_from_cards_mana_cost() -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::flashback_from_cards_mana_cost())
+    }
+
+    /// Create a grantable for blitz that uses the granted card's mana cost.
+    pub fn blitz_from_cards_mana_cost() -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::blitz_from_cards_mana_cost())
+    }
+
+    /// Create a grantable for emerge that uses the granted card's mana cost.
+    pub fn emerge_from_cards_mana_cost() -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::emerge_from_cards_mana_cost())
     }
 
     /// Create a grantable for escape with the given exile count and the granted card's mana cost.
@@ -526,6 +550,27 @@ where
             };
             return format!(
                 "Each {filter_desc} has flashback. Its flashback cost is equal to {cost_text}"
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::BlitzFromCardManaCost) =
+            &self.grantable
+        {
+            let filter_desc = castable_filter_description(&filter);
+            return format!(
+                "Each {filter_desc} has blitz. The blitz cost is equal to its mana cost"
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EmergeFromCardManaCost) =
+            &self.grantable
+            && self.zone == Zone::Hand
+        {
+            let cast_desc = castable_filter_description(&self.filter);
+            let filter_desc = cast_desc
+                .strip_suffix(" spells")
+                .map(|base| format!("{base} spell you cast"))
+                .unwrap_or(cast_desc);
+            return format!(
+                "Each {filter_desc} has emerge. The emerge cost is equal to its mana cost"
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =

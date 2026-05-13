@@ -156,6 +156,7 @@ pub(super) fn apply_trait_replacement(
             added_card_types,
             added_subtypes,
             added_abilities,
+            set_base_power_toughness,
         } => {
             let modified = apply_trait_enter_as_copy(
                 &event,
@@ -165,6 +166,7 @@ pub(super) fn apply_trait_replacement(
                 added_card_types,
                 added_subtypes,
                 added_abilities,
+                *set_base_power_toughness,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -694,38 +696,40 @@ fn apply_trait_enter_as_copy(
     added_card_types: &[crate::types::CardType],
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
+    set_base_power_toughness: Option<(i32, i32)>,
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+
+    let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
+        etb = etb
+            .with_copy_of(source_id)
+            .with_copy_name_override(name_override.clone())
+            .with_added_card_types(added_card_types)
+            .with_added_subtypes(added_subtypes)
+            .with_added_abilities(added_abilities);
+        if let Some((power, toughness)) = set_base_power_toughness {
+            etb = etb.with_base_power_toughness(power, toughness);
+        }
+        if enters_tapped {
+            etb = etb.with_tapped();
+        }
+        etb
+    };
 
     match event.kind() {
         EventKind::EnterBattlefield => {
             let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
-            let mut copied = etb
-                .with_copy_of(source_id)
-                .with_copy_name_override(name_override.clone())
-                .with_added_card_types(added_card_types)
-                .with_added_subtypes(added_subtypes)
-                .with_added_abilities(added_abilities);
-            if enters_tapped {
-                copied = copied.with_tapped();
-            }
-            Some(event.rewrap(copied))
+            Some(event.rewrap(apply_copy_modifiers(etb.clone())))
         }
         EventKind::ZoneChange => {
             let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
             if zone_change.to == Zone::Battlefield {
-                let mut etb =
-                    EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from);
-                etb = etb
-                    .with_copy_of(source_id)
-                    .with_copy_name_override(name_override.clone())
-                    .with_added_card_types(added_card_types)
-                    .with_added_subtypes(added_subtypes)
-                    .with_added_abilities(added_abilities);
-                if enters_tapped {
-                    etb = etb.with_tapped();
-                }
-                Some(event.rewrap(etb))
+                Some(
+                    event.rewrap(apply_copy_modifiers(EnterBattlefieldEvent::new(
+                        *zone_change.objects.first()?,
+                        zone_change.from,
+                    ))),
+                )
             } else {
                 None
             }

@@ -1825,6 +1825,8 @@ export function usePeerLobby({
   const liveZiffleCeremoniesRef = useRef(new Map());
   const ziffleOpeningPositionsRef = useRef(new Map());
   const ziffleHandRevealKeyRef = useRef("");
+  const verifiedShuffleProofsRef = useRef(new WeakSet());
+  const ziffleShufflePerfRef = useRef([]);
   const relayedActionIdsRef = useRef(new Set());
   const actionCryptoRequirementsRef = useRef(new Map());
   const ensureDirectPeerConnectionsRef = useRef(() => {});
@@ -3349,7 +3351,9 @@ export function usePeerLobby({
         if (
           requirement.commitment
           && (proof.positionCommitment || proof.commitment)
-          && String(proof.positionCommitment || proof.commitment) !== String(requirement.commitment)
+          && ![proof.positionCommitment, proof.commitment]
+            .filter(Boolean)
+            .some((commitment) => String(commitment) === String(requirement.commitment))
         ) {
           throw new Error("Encrypted private opening commitment mismatch");
         }
@@ -5897,6 +5901,167 @@ export function usePeerLobby({
     }
   }
 
+  function recordZiffleShufflePerf(entry) {
+    const normalized = {
+      at: Date.now(),
+      ...entry,
+    };
+    ziffleShufflePerfRef.current = [
+      ...ziffleShufflePerfRef.current,
+      normalized,
+    ].slice(-32);
+    console.debug?.("Ironsmith ziffle shuffle perf", normalized);
+  }
+
+  function normalizedZiffleShuffleCeremony(input, index, keys) {
+    const deckCount = Number(input?.deckCount);
+    if (!Number.isSafeInteger(deckCount) || deckCount <= 1) return null;
+    if (!isSupportedZiffleDeckCount(deckCount)) {
+      throw new Error(`Unsupported in-game ziffle library size ${deckCount}`);
+    }
+    const owner = Number(input?.owner);
+    const zone = String(input?.zone || "library");
+    const context = String(input?.context || "");
+    const keyContext = String(input?.keyContext || context);
+    return {
+      id: String(input?.id || input?.requirementId || `ziffle:${owner}:${zone}:${index}`),
+      requirement: input?.requirement || null,
+      requirementId: String(input?.requirementId || input?.id || ""),
+      owner,
+      zone,
+      deckCount,
+      context,
+      keyContext,
+      manifest: input?.manifest || null,
+      keys: cloneMultiplayerPayload(input?.keys || keys || []),
+      beforeOrder: normalizeShuffleOrder(input?.beforeOrder ?? input?.before_order),
+      afterOrder: normalizeShuffleOrder(input?.afterOrder ?? input?.after_order),
+      steps: [],
+      timings: {
+        stepMs: [],
+      },
+    };
+  }
+
+  function ziffleShuffleRequestForCeremony(ceremony, shuffler) {
+    return {
+      deckCount: Number(ceremony.deckCount),
+      context: String(ceremony.context || ""),
+      keyContext: String(ceremony.keyContext || ceremony.context || ""),
+      keys: cloneMultiplayerPayload(ceremony.keys || []),
+      steps: cloneMultiplayerPayload(ceremony.steps || []),
+      shuffler: Number(shuffler.index || 0),
+    };
+  }
+
+  function appendZiffleShuffleStep(ceremony, step) {
+    ceremony.steps.push({
+      shuffler: Number(step.shuffler),
+      deckHex: String(step.deckHex || ""),
+      proofHex: String(step.proofHex || ""),
+    });
+  }
+
+  async function runBatchedZiffleShuffleCeremonies(rawCeremonies, players, options = {}) {
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
+      throw new Error("Ziffle mental-poker backend is not available");
+    }
+    const orderedPlayers = reindexPlayers(players);
+    const keys = cloneMultiplayerPayload(options.keys || zifflePublicKeysForPlayers(orderedPlayers));
+    const ceremonies = (rawCeremonies || [])
+      .map((ceremony, index) => normalizedZiffleShuffleCeremony(ceremony, index, keys))
+      .filter(Boolean);
+    if (ceremonies.length === 0) return [];
+
+    const session = multiplayerRef.current;
+    const localIndex = resolveLocalPlayerIndex(session);
+    const localPeerId = String(session.localPeerId || "");
+    const startedAt = nowMonotonicMs();
+    const rounds = [];
+
+    for (const shuffler of orderedPlayers) {
+      const shufflerIndex = Number(shuffler.index || 0);
+      const isLocalShuffler =
+        shufflerIndex === Number(localIndex)
+        || (localPeerId && String(shuffler.peerId || "") === localPeerId);
+      const roundStartedAt = nowMonotonicMs();
+      let results;
+      if (isLocalShuffler) {
+        results = await Promise.all(ceremonies.map(async (ceremony) => {
+          const stepStartedAt = nowMonotonicMs();
+          const step = await buildLocalZiffleShuffleStep(
+            ziffleShuffleRequestForCeremony(ceremony, shuffler)
+          );
+          ceremony.timings.stepMs.push(nowMonotonicMs() - stepStartedAt);
+          return { ceremony, step };
+        }));
+      } else {
+        if (!shuffler.peerId) {
+          throw new Error(`Missing peer for ziffle shuffle player ${shufflerIndex + 1}`);
+        }
+        const label = shuffler.name || `Player ${shufflerIndex + 1}`;
+        setStatus(
+          `Waiting for cryptographic shuffle material from ${label} `
+          + `(${ceremonies.length} shuffle${ceremonies.length === 1 ? "" : "s"})`
+        );
+        const conn = await waitForZiffleRoute(shuffler.peerId);
+        results = await Promise.all(ceremonies.map(async (ceremony) => {
+          const requestId = makeZiffleRequestId("ziffle-live-shuffle");
+          const waiter = waitForZiffleShuffleStep(requestId);
+          const stepStartedAt = nowMonotonicMs();
+          safeSend(conn, {
+            type: "ziffle_shuffle_step_request",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId,
+            request: ziffleShuffleRequestForCeremony(ceremony, shuffler),
+          });
+          const step = await waiter;
+          ceremony.timings.stepMs.push(nowMonotonicMs() - stepStartedAt);
+          return { ceremony, step };
+        }));
+      }
+      for (const { ceremony, step } of results) {
+        appendZiffleShuffleStep(ceremony, step);
+      }
+      rounds.push({
+        shuffler: shufflerIndex,
+        local: Boolean(isLocalShuffler),
+        ceremonyCount: ceremonies.length,
+        ms: Math.round(nowMonotonicMs() - roundStartedAt),
+      });
+    }
+
+    const verifyStartedAt = nowMonotonicMs();
+    const verifiedCeremonies = await Promise.all(ceremonies.map(async (ceremony) => {
+      const verified = await currentGame.ziffleVerifyShuffle({
+        deckCount: Number(ceremony.deckCount),
+        context: String(ceremony.context || ""),
+        keyContext: String(ceremony.keyContext || ceremony.context || ""),
+        keys: cloneMultiplayerPayload(ceremony.keys || []),
+        steps: cloneMultiplayerPayload(ceremony.steps || []),
+      });
+      return { ceremony, verified };
+    }));
+    const verifyMs = nowMonotonicMs() - verifyStartedAt;
+    for (const { ceremony, verified } of verifiedCeremonies) {
+      ceremony.deckHash = String(verified.deckHash || "");
+      ceremony.deckHex = String(verified.deckHex || "");
+    }
+
+    recordZiffleShufflePerf({
+      kind: String(options.kind || "shuffle"),
+      ceremonyCount: ceremonies.length,
+      playerCount: orderedPlayers.length,
+      deckCounts: ceremonies.map((ceremony) => ceremony.deckCount),
+      totalMs: Math.round(nowMonotonicMs() - startedAt),
+      verifyMs: Math.round(verifyMs),
+      rounds,
+    });
+
+    return ceremonies;
+  }
+
   async function buildLocalZiffleRevealToken(ceremony, cardPosition) {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.ziffleBuildRevealToken !== "function") {
@@ -6579,136 +6744,139 @@ export function usePeerLobby({
     return tokenGroups.flatMap((group) => Array.isArray(group) ? group : [group]);
   }
 
-  async function buildLiveZiffleShuffleProof(requirement, seq) {
-    const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
-      throw new Error("Ziffle mental-poker backend is not available");
-    }
-    const beforeOrder = normalizeShuffleOrder(requirement?.beforeOrder);
-    const afterOrder = normalizeShuffleOrder(requirement?.afterOrder);
-    if (beforeOrder.length > 0 && afterOrder.length > 0 && beforeOrder.length !== afterOrder.length) {
-      throw new Error("Verifiable shuffle order length mismatch");
-    }
-    const deckCount = Number(afterOrder.length || beforeOrder.length || 0);
-    if (deckCount <= 1) return null;
-    if (!isSupportedZiffleDeckCount(deckCount)) {
-      throw new Error(`Unsupported in-game ziffle library size ${deckCount}`);
-    }
+  async function buildLiveZiffleShuffleProofs(requirements, seq) {
     const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
     const keys = zifflePublicKeysForPlayers(players);
     const keyContext = currentAuditMatchId();
-    const context = [
-      keyContext,
-      "action",
-      Number(seq),
-      "shuffle",
-      String(requirement.id || ""),
-      Number(requirement.owner),
-      String(requirement.zone || "library"),
-    ].join(":");
-    const steps = [];
-    for (const shuffler of players) {
-      const request = {
-        deckCount,
-        context,
-        keyContext,
-        keys,
-        steps: cloneMultiplayerPayload(steps),
-        shuffler: Number(shuffler.index || 0),
-      };
-      let step;
-      if (Number(shuffler.index) === Number(resolveLocalPlayerIndex(multiplayerRef.current))) {
-        step = await buildLocalZiffleShuffleStep(request);
-      } else {
-        setStatus(`Waiting for cryptographic shuffle material from ${shuffler.name || `Player ${Number(shuffler.index) + 1}`}`);
-        const conn = await waitForZiffleRoute(shuffler.peerId);
-        const requestId = makeZiffleRequestId("ziffle-live-shuffle");
-        const waiter = waitForZiffleShuffleStep(requestId);
-        safeSend(conn, {
-          type: "ziffle_shuffle_step_request",
-          protocolVersion: PROTOCOL_VERSION,
-          requestId,
-          request,
-        });
-        step = await waiter;
+    const ceremonies = (requirements || []).map((requirement) => {
+      const beforeOrder = normalizeShuffleOrder(requirement?.beforeOrder ?? requirement?.before_order);
+      const afterOrder = normalizeShuffleOrder(requirement?.afterOrder ?? requirement?.after_order);
+      if (beforeOrder.length > 0 && afterOrder.length > 0 && beforeOrder.length !== afterOrder.length) {
+        throw new Error("Verifiable shuffle order length mismatch");
       }
-      steps.push({
-        shuffler: Number(step.shuffler ?? shuffler.index ?? 0),
-        deckHex: String(step.deckHex || ""),
-        proofHex: String(step.proofHex || ""),
-      });
-    }
-    const verified = await currentGame.ziffleVerifyShuffle({
-      deckCount,
-      context,
-      keyContext,
+      const deckCount = Number(afterOrder.length || beforeOrder.length || 0);
+      if (deckCount <= 1) return null;
+      return {
+        id: String(requirement.id || ""),
+        requirement,
+        requirementId: String(requirement.id || ""),
+        owner: Number(requirement.owner),
+        zone: String(requirement.zone || "library"),
+        deckCount,
+        keyContext,
+        context: [
+          keyContext,
+          "action",
+          Number(seq),
+          "shuffle",
+          String(requirement.id || ""),
+          Number(requirement.owner),
+          String(requirement.zone || "library"),
+        ].join(":"),
+        keys,
+        beforeOrder,
+        afterOrder,
+      };
+    }).filter(Boolean);
+    const completed = await runBatchedZiffleShuffleCeremonies(ceremonies, players, {
       keys,
-      steps,
+      kind: "action",
     });
-    return {
-      type: "ziffle_shuffle",
-      requirementId: String(requirement.id || ""),
-      owner: Number(requirement.owner),
-      zone: String(requirement.zone || "library"),
-      epoch: Number(seq),
-      deckCount,
-      context,
-      keyContext,
-      keys,
-      steps,
-      deckHash: String(verified.deckHash || ""),
-      beforeOrder,
-      afterOrder,
-    };
+    return completed.map((ceremony) => {
+      const proof = {
+        type: "ziffle_shuffle",
+        requirementId: String(ceremony.requirementId || ""),
+        owner: Number(ceremony.owner),
+        zone: String(ceremony.zone || "library"),
+        epoch: Number(seq),
+        deckCount: Number(ceremony.deckCount),
+        context: String(ceremony.context || ""),
+        keyContext: String(ceremony.keyContext || ceremony.context || ""),
+        keys: cloneMultiplayerPayload(ceremony.keys || []),
+        steps: cloneMultiplayerPayload(ceremony.steps || []),
+        deckHash: String(ceremony.deckHash || ""),
+        beforeOrder: normalizeShuffleOrder(ceremony.beforeOrder),
+        afterOrder: normalizeShuffleOrder(ceremony.afterOrder),
+      };
+      verifiedShuffleProofsRef.current.add(proof);
+      return proof;
+    });
   }
 
   async function buildLocalShuffleProofsForRequirements(cryptoRequirements = [], seq) {
     const requirements = (cryptoRequirements || []).filter(
-      (requirement) => String(requirement?.type || "") === "verifiable_shuffle"
+      (requirement) => ziffleRequirementType(requirement) === "verifiable_shuffle"
     );
-    const proofs = [];
-    for (const requirement of requirements) {
-      const proof = await buildLiveZiffleShuffleProof(requirement, seq);
-      if (proof) proofs.push(proof);
-    }
-    return proofs;
+    return buildLiveZiffleShuffleProofs(requirements, seq);
   }
 
   async function verifyShuffleProofsForRequirements(requirements = [], shuffleProofs = []) {
     const currentGame = gameRef.current;
+    let verifiedCount = 0;
+    let skippedCount = 0;
+    let verifyMs = 0;
+    const pendingVerifications = [];
     for (const requirement of requirements || []) {
-      if (String(requirement?.type || "") !== "verifiable_shuffle") continue;
+      if (ziffleRequirementType(requirement) !== "verifiable_shuffle") continue;
       const proof = (shuffleProofs || []).find((entry) =>
         shuffleProofMatchesRequirement(entry, requirement)
       );
       if (!proof) {
         throw new Error(`Missing verifiable shuffle proof for player ${Number(requirement.owner) + 1}`);
       }
+      const requirementBefore = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
+      const requirementAfter = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
+      const proofBefore = normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order);
+      const proofAfter = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
       if (
-        Array.isArray(requirement.beforeOrder)
-        && !sameShuffleOrder(proof.beforeOrder, requirement.beforeOrder)
+        requirementBefore.length > 0
+        && !sameShuffleOrder(proofBefore, requirementBefore)
       ) {
         throw new Error(`Verifiable shuffle before-order mismatch for player ${Number(requirement.owner) + 1}`);
       }
       if (
-        Array.isArray(requirement.afterOrder)
-        && !sameShuffleOrder(proof.afterOrder, requirement.afterOrder)
+        requirementAfter.length > 0
+        && !sameShuffleOrder(proofAfter, requirementAfter)
       ) {
         throw new Error(`Verifiable shuffle after-order mismatch for player ${Number(requirement.owner) + 1}`);
+      }
+      if (verifiedShuffleProofsRef.current.has(proof)) {
+        skippedCount += 1;
+        continue;
       }
       if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
         throw new Error("Ziffle mental-poker backend is not available");
       }
-      const verified = await currentGame.ziffleVerifyShuffle({
-        deckCount: Number(proof.deckCount),
-        context: String(proof.context || ""),
-        keyContext: String(proof.keyContext || proof.context || ""),
-        keys: cloneMultiplayerPayload(proof.keys || []),
-        steps: cloneMultiplayerPayload(proof.steps || []),
-      });
-      if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
-        throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
+      pendingVerifications.push({ proof });
+    }
+    if (pendingVerifications.length > 0) {
+      const verifyStartedAt = nowMonotonicMs();
+      const verifiedProofs = await Promise.all(pendingVerifications.map(async ({ proof }) => {
+        const verified = await currentGame.ziffleVerifyShuffle({
+          deckCount: Number(proof.deckCount),
+          context: String(proof.context || ""),
+          keyContext: String(proof.keyContext || proof.context || ""),
+          keys: cloneMultiplayerPayload(proof.keys || []),
+          steps: cloneMultiplayerPayload(proof.steps || []),
+        });
+        if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
+          throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
+        }
+        return proof;
+      }));
+      verifyMs = nowMonotonicMs() - verifyStartedAt;
+      for (const proof of verifiedProofs) {
+        verifiedShuffleProofsRef.current.add(proof);
       }
+      verifiedCount = verifiedProofs.length;
+    }
+    if (verifiedCount > 0 || skippedCount > 0) {
+      recordZiffleShufflePerf({
+        kind: "verify",
+        verifiedCount,
+        skippedCount,
+        verifyMs: Math.round(verifyMs),
+      });
     }
   }
 
@@ -7155,6 +7323,16 @@ export function usePeerLobby({
     ].join("|");
   }
 
+  function preserveViewedCardsFromHint(nextState, stateHint = null) {
+    if (!nextState || nextState.viewed_cards || !stateHint?.viewed_cards) {
+      return nextState;
+    }
+    return {
+      ...nextState,
+      viewed_cards: stateHint.viewed_cards,
+    };
+  }
+
   async function revealLocalZiffleHand(payload = matchStartPayloadRef.current, options = {}) {
     if (!payload?.ziffleCeremonies?.length && liveZiffleCeremoniesRef.current.size === 0) return;
     const currentGame = gameRef.current;
@@ -7365,7 +7543,12 @@ export function usePeerLobby({
     }
     if (changed) {
       await currentGame.setPerspective(localIndex);
-      setState(await currentGame.uiState());
+      const nextState = preserveViewedCardsFromHint(
+        await currentGame.uiState(),
+        options.stateHint,
+      );
+      stateRef.current = nextState;
+      setState(nextState);
     }
     if (checkpointKey) {
       ziffleHandRevealKeyRef.current = checkpointKey;

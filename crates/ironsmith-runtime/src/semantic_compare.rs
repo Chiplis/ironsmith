@@ -2680,17 +2680,24 @@ fn split_common_clause_conjunctions(text: &str) -> String {
 
     let normalized_trimmed = normalized.trim().trim_end_matches('.').trim();
     let normalized_lower = normalized_trimmed.to_ascii_lowercase();
+    let echo_guard_prefix =
+        "at the beginning of your upkeep, if this object is on the battlefield, ";
+    let echo_normalized_trimmed = normalized_lower
+        .starts_with(echo_guard_prefix)
+        .then(|| normalized_trimmed[echo_guard_prefix.len()..].trim())
+        .unwrap_or(normalized_trimmed);
+    let echo_normalized_lower = echo_normalized_trimmed.to_ascii_lowercase();
     if normalized_lower == "this creature enters with an echo counter on it"
         || normalized_lower == "this artifact enters with an echo counter on it"
         || normalized_lower == "this permanent enters with an echo counter on it"
     {
         normalized.clear();
-    } else if normalized_lower
+    } else if echo_normalized_lower
         .starts_with("at the beginning of your upkeep, remove an echo counter from this ")
-        && normalized_lower.contains(" unless you ")
+        && echo_normalized_lower.contains(" unless you ")
     {
-        if let Some(idx) = normalized_lower.find(" unless you ") {
-            let cost = normalized_trimmed[idx + " unless you ".len()..]
+        if let Some(idx) = echo_normalized_lower.find(" unless you ") {
+            let cost = echo_normalized_trimmed[idx + " unless you ".len()..]
                 .trim()
                 .trim_end_matches('.');
             if let Some(mana_cost) = cost

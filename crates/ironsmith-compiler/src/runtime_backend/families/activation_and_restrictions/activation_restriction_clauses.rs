@@ -338,6 +338,13 @@ pub(crate) fn parse_cant_cast_restriction_words(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
+    if let Some(spell_filter) = parse_spell_subject_cant_be_cast_filter(words) {
+        return Some(Restriction::cast_spells_matching(
+            PlayerFilter::Any,
+            spell_filter,
+        ));
+    }
+
     if let Some((player, used)) = parse_cant_cast_subject(words) {
         let mut tail = &words[used..];
         match tail {
@@ -414,6 +421,83 @@ pub(crate) fn parse_cant_cast_restriction_words(
     }
 
     None
+}
+
+fn parse_spell_subject_cant_be_cast_filter(words: &[&str]) -> Option<ObjectFilter> {
+    if !slice_ends_with(words, &["cant", "be", "cast"]) || words.len() <= 3 {
+        return None;
+    }
+    parse_spell_restriction_subject_filter(&words[..words.len() - 3])
+}
+
+fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let mut filter = ObjectFilter::spell();
+    let mut idx = 0usize;
+
+    if words.get(idx) == Some(&"noncreature") {
+        filter = filter.without_type(CardType::Creature);
+        idx += 1;
+    } else if words.get(idx) == Some(&"non") && words.get(idx + 1) == Some(&"creature") {
+        filter = filter.without_type(CardType::Creature);
+        idx += 2;
+    } else if words.get(idx) != Some(&"spell") && words.get(idx) != Some(&"spells") {
+        let term = words.get(idx).copied()?;
+        if let Some(card_type) = parse_card_type(term.trim_end_matches('s')) {
+            filter = filter.with_type(card_type);
+            idx += 1;
+        } else if let Some(subtype) = parse_subtype_word(term.trim_end_matches('s')) {
+            filter = filter.with_subtype(subtype);
+            idx += 1;
+        }
+    }
+
+    if words.get(idx) != Some(&"spell") && words.get(idx) != Some(&"spells") {
+        return None;
+    }
+    idx += 1;
+
+    while idx < words.len() {
+        if words.get(idx) != Some(&"with") {
+            return None;
+        }
+        idx += 1;
+
+        if words.get(idx) == Some(&"mana") && words.get(idx + 1) == Some(&"value") {
+            let value = words.get(idx + 2)?.parse::<i32>().ok()?;
+            let comparison = match (words.get(idx + 3).copied(), words.get(idx + 4).copied()) {
+                (Some("or"), Some("greater")) => {
+                    idx += 5;
+                    crate::filter::Comparison::GreaterThanOrEqual(value)
+                }
+                (Some("or"), Some("less")) => {
+                    idx += 5;
+                    crate::filter::Comparison::LessThanOrEqual(value)
+                }
+                (None, None) => {
+                    idx += 3;
+                    crate::filter::Comparison::Equal(value)
+                }
+                _ => return None,
+            };
+            filter = filter.with_mana_value(comparison);
+            continue;
+        }
+
+        if words.get(idx) == Some(&"x")
+            && matches!(words.get(idx + 1), Some(&"in"))
+            && matches!(words.get(idx + 2), Some(&"their") | Some(&"its"))
+            && words.get(idx + 3) == Some(&"mana")
+            && matches!(words.get(idx + 4), Some(&"cost") | Some(&"costs"))
+        {
+            filter.has_x_in_cost = true;
+            idx += 5;
+            continue;
+        }
+
+        return None;
+    }
+
+    Some(filter)
 }
 
 pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {

@@ -1181,6 +1181,7 @@ pub(crate) enum MayCastItVerb {
 
 pub(crate) struct MayCastTaggedSpec {
     pub(crate) tag: TagKey,
+    pub(crate) player: PlayerAst,
     pub(crate) verb: MayCastItVerb,
     pub(crate) as_copy: bool,
     pub(crate) without_paying_mana_cost: bool,
@@ -1189,7 +1190,7 @@ pub(crate) struct MayCastTaggedSpec {
 }
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
-    let mut clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let mut clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     while clause_words
         .first()
         .is_some_and(|word| *word == "then" || *word == "and")
@@ -1207,19 +1208,40 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
         }
     }
 
-    if clause_words.len() < 4 || clause_words[0] != "you" || clause_words[1] != "may" {
+    let (player, subject_tag, verb_idx) =
+        if clause_words.len() >= 4 && clause_words[0] == "you" && clause_words[1] == "may" {
+            (PlayerAst::Implicit, None, 2usize)
+        } else if clause_words.len() >= 7
+            && clause_words[..5] == ["the", "exiled", "cards", "owner", "may"]
+        {
+            (
+                PlayerAst::ItsOwner,
+                Some(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+                5usize,
+            )
+        } else {
+            return None;
+        };
+
+    if clause_words.len() <= verb_idx + 1 {
         return None;
     }
 
-    let verb = match clause_words[2] {
+    let verb = match clause_words[verb_idx] {
         "cast" => MayCastItVerb::Cast,
         "play" => MayCastItVerb::Play,
         _ => return None,
     };
 
-    let rest = &clause_words[3..];
+    let rest = &clause_words[verb_idx + 1..];
     let (tag, as_copy, consumed) = if slice_starts_with(&rest, &["it"]) {
         (TagKey::from(IT_TAG), false, 1usize)
+    } else if slice_starts_with(&rest, &["that", "card"]) {
+        (
+            subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)),
+            false,
+            2usize,
+        )
     } else if slice_starts_with(&rest, &["the", "exiled", "card"]) {
         (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false, 3usize)
     } else if slice_starts_with(&rest, &["the", "revealed", "card"])
@@ -1239,6 +1261,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     if tail.is_empty() {
         return Some(MayCastTaggedSpec {
             tag,
+            player,
             verb,
             as_copy,
             without_paying_mana_cost: false,
@@ -1249,6 +1272,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     if tail == ["without", "paying", "its", "mana", "cost"] {
         return Some(MayCastTaggedSpec {
             tag,
+            player,
             verb,
             as_copy,
             without_paying_mana_cost: true,
@@ -1272,6 +1296,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     {
         return Some(MayCastTaggedSpec {
             tag,
+            player,
             verb,
             as_copy,
             without_paying_mana_cost: true,
@@ -1304,6 +1329,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
         };
         return Some(MayCastTaggedSpec {
             tag,
+            player,
             verb,
             as_copy,
             without_paying_mana_cost: true,
@@ -1353,14 +1379,21 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
 pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     let cast = EffectAst::subject_verb_cast_tagged(
         spec.tag.clone(),
-        PlayerAst::Implicit,
+        spec.player,
         matches!(spec.verb, MayCastItVerb::Play),
         spec.as_copy,
         spec.without_paying_mana_cost,
         spec.cost_reduction.clone(),
     );
-    let may = EffectAst::May {
-        effects: vec![cast],
+    let may = if matches!(spec.player, PlayerAst::Implicit | PlayerAst::You) {
+        EffectAst::May {
+            effects: vec![cast],
+        }
+    } else {
+        EffectAst::MayByPlayer {
+            player: spec.player,
+            effects: vec![cast],
+        }
     };
     if let Some(predicate) = &spec.predicate {
         EffectAst::Conditional {

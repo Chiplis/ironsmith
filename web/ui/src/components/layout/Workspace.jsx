@@ -1436,8 +1436,8 @@ export default function Workspace({
                 inline
                 inlineDockPlacement="top"
                 inlineExpandedAnchor="top"
-                inlineExpandedMaxHeight={248}
                 expandInlineToZoneViewer
+                inlineFillHeight
                 allowTopInlinePlacement
               />
             ) : null}
@@ -1494,6 +1494,7 @@ export default function Workspace({
               inlineDockPlacement="top"
               inlineHostSide="left"
               inlineExpandedSide="left"
+              inlineFillHeight
               allowTopInlinePlacement
             />
             {inspectorDebug && (
@@ -1510,6 +1511,7 @@ export default function Workspace({
                 inlineDockPlacement="top"
                 inlineHostSide="left"
                 inlineExpandedSide="left"
+                inlineFillHeight
                 allowTopInlinePlacement
                 dockRole="opposite"
                 inspectorVariant="debug"
@@ -1614,6 +1616,7 @@ export default function Workspace({
               inline
               inlineHostSide="left"
               inlineExpandedSide="left"
+              inlineFillHeight
               allowTopInlinePlacement={showTopLeftInspectorDock}
             />
             {inspectorDebug && (
@@ -1629,6 +1632,7 @@ export default function Workspace({
                 inline
                 inlineHostSide="left"
                 inlineExpandedSide="left"
+                inlineFillHeight
                 allowTopInlinePlacement={showTopLeftInspectorDock}
                 dockRole="opposite"
                 inspectorVariant="debug"

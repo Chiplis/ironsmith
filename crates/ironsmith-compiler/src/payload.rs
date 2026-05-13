@@ -62,6 +62,9 @@ pub enum KeywordAction {
     Outlast(ManaCost),
     Scavenge(ManaCost),
     Unearth(ManaCost),
+    Embalm(ManaCost),
+    Eternalize(ManaCost),
+    Emerge(ManaCost),
     Ninjutsu(ManaCost),
     Backup(u32),
     Cipher,
@@ -210,6 +213,7 @@ impl KeywordAction {
                 | Self::Soulshift(_)
                 | Self::Outlast(_)
                 | Self::Unearth(_)
+                | Self::Eternalize(_)
                 | Self::Ninjutsu(_)
                 | Self::Extort
                 | Self::Partner
@@ -325,6 +329,9 @@ impl KeywordAction {
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),
             Self::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
+            Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
+            Self::Eternalize(cost) => format!("Eternalize {}", cost.to_oracle()),
+            Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),

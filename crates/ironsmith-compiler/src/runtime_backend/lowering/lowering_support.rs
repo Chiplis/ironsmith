@@ -33,6 +33,7 @@ use super::effect_pipeline::{
 };
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
+use super::static_ability_helpers::exalted_triggered_ability;
 use super::util::classify_instead_followup_text;
 
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
@@ -826,6 +827,10 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
             "unearth {}",
             cost.to_oracle()
         ))),
+        KeywordAction::Eternalize(cost) => Some(StaticAbility::keyword_marker(format!(
+            "eternalize {}",
+            cost.to_oracle()
+        ))),
         KeywordAction::Ninjutsu(cost) => Some(StaticAbility::keyword_marker(format!(
             "ninjutsu {}",
             cost.to_oracle()
@@ -945,6 +950,17 @@ fn rewrite_lower_attached_keyword_action_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    if matches!(action, KeywordAction::Exalted) {
+        let mut grant = crate::static_abilities::AttachedAbilityGrant::new(
+            exalted_triggered_ability(),
+            display,
+        );
+        if let Some(condition) = condition {
+            grant = grant.with_condition(condition);
+        }
+        return Ok(StaticAbility::new(grant));
+    }
+
     let granted = Ability::static_ability(rewrite_lower_keyword_action_or_err(action)?);
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
     if let Some(condition) = condition {
@@ -973,6 +989,21 @@ fn rewrite_lower_grant_static_ability(
     ability: StaticAbilityAst,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    if matches!(
+        ability,
+        StaticAbilityAst::KeywordAction(KeywordAction::Exalted)
+    ) {
+        let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::new(
+            filter,
+            exalted_triggered_ability(),
+            KeywordAction::Exalted.display_text(),
+        );
+        if let Some(condition) = condition {
+            grant = grant.with_condition(condition);
+        }
+        return Ok(StaticAbility::new(grant));
+    }
+
     let mut grant = crate::static_abilities::GrantAbility::new(
         filter,
         rewrite_lower_static_ability_ast(ability)?.into(),
@@ -988,6 +1019,20 @@ fn rewrite_lower_attached_static_ability_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    if matches!(
+        ability,
+        StaticAbilityAst::KeywordAction(KeywordAction::Exalted)
+    ) {
+        let mut grant = crate::static_abilities::AttachedAbilityGrant::new(
+            exalted_triggered_ability(),
+            display,
+        );
+        if let Some(condition) = condition {
+            grant = grant.with_condition(condition);
+        }
+        return Ok(StaticAbility::new(grant));
+    }
+
     let granted = Ability::static_ability(rewrite_lower_static_ability_ast(ability)?);
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
     if let Some(condition) = condition {

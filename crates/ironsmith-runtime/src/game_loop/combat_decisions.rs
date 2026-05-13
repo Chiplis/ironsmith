@@ -431,7 +431,7 @@ fn apply_prepared_attacker_declarations_with_dm(
             target: decl.target.clone(),
         });
 
-        if !crate::rules::combat::has_vigilance(creature) {
+        if !crate::rules::combat::has_vigilance_with_game(creature, game) {
             tap_permanent_with_trigger(game, trigger_queue, decl.creature);
         }
 

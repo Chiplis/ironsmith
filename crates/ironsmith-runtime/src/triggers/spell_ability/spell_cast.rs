@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::filter::ObjectFilterExt as _;
+use crate::filter::PlayerFilterExt as _;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -66,16 +67,10 @@ impl TriggerMatcher for SpellCastTrigger {
             return false;
         };
 
-        // Check caster filter
-        let caster_matches = match &self.caster {
-            PlayerFilter::You => e.caster == ctx.controller,
-            PlayerFilter::Opponent => e.caster != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Active => e.caster == ctx.game.turn.active_player,
-            PlayerFilter::Specific(id) => e.caster == *id,
-            PlayerFilter::ChosenPlayer => ctx.game.chosen_player(ctx.source_id) == Some(e.caster),
-            _ => true,
-        };
+        // Check caster filter. This goes through the shared player-filter
+        // evaluator so attached-player tags and exclusions work the same way
+        // they do in object filters.
+        let caster_matches = self.caster.matches_player(e.caster, &ctx.filter_ctx);
 
         if !caster_matches {
             return false;
@@ -159,6 +154,9 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::Any => "a player casts",
             PlayerFilter::Opponent => "an opponent casts",
             PlayerFilter::Active => "the active player casts",
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                "enchanted player casts"
+            }
             _ => "someone casts",
         };
         let mut spell_text = self

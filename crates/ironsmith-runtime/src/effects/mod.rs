@@ -177,6 +177,7 @@ pub use replacement::{
     RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
+pub(crate) use stack::EpicSpellCopyEffect;
 pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
     NewTargetRestriction, RetargetMode, RetargetStackObjectEffect,

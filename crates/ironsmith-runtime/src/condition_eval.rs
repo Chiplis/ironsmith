@@ -308,6 +308,62 @@ mod tests {
             "expected Bob not to satisfy Alice's historical artifact condition"
         );
     }
+
+    #[test]
+    fn evaluate_external_target_matches_uses_triggering_snapshot_and_source_power() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source_card = CardBuilder::new(CardId::from_raw(11), "Small Watcher")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let larger_card = CardBuilder::new(CardId::from_raw(12), "Departing Giant")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 5))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let departing = game.create_object_from_card(&larger_card, alice, Zone::Battlefield);
+        let snapshot = {
+            let object = game.object(departing).expect("departing creature exists");
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, &game,
+            )
+        };
+        game.move_object_by_effect(departing, Zone::Graveyard);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                departing,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let condition = Condition::TargetMatches(crate::target::ObjectFilter {
+            card_types: vec![CardType::Creature],
+            power: Some(crate::target::Comparison::GreaterThanExpr(Box::new(
+                Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            ))),
+            ..crate::target::ObjectFilter::default()
+        });
+        let ctx = ExternalEvaluationContext {
+            controller: alice,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: None,
+            triggering_event: Some(&event),
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+
+        assert!(
+            evaluate_condition_external(&game, &condition, &ctx),
+            "trigger-time target condition should compare the LKI creature to the source's power"
+        );
+    }
 }
 
 fn player_has_card_in_hand_matching(
@@ -1559,6 +1615,25 @@ pub fn evaluate_condition_external(
             game.object(ctx.source)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
         }
+        Condition::TargetMatches(filter) => {
+            let filter_ctx = condition_filter_context(
+                game,
+                ctx.controller,
+                ctx.source,
+                &PlayerFilter::You,
+                ctx.triggering_event,
+            );
+            let Some(event) = ctx.triggering_event else {
+                return false;
+            };
+            if let Some(snapshot) = event.snapshot() {
+                return filter.matches_snapshot(snapshot, &filter_ctx, game);
+            }
+            event.object_id().is_some_and(|object_id| {
+                game.object(object_id)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+            })
+        }
         Condition::SourcePowerAtLeast(min_power) => game
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
@@ -1579,7 +1654,6 @@ pub fn evaluate_condition_external(
         | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
-        | Condition::TargetMatches(_)
         | Condition::TargetIsSoulbondPaired
         | Condition::PlayerTaggedObjectMatches { .. }
         | Condition::TargetIsTapped

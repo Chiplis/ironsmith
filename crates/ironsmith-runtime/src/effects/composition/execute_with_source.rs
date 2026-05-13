@@ -34,7 +34,11 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         let Some(source_obj) = game.object(source_id) else {
             return Ok(EffectOutcome::target_invalid());
         };
-        let source_snapshot = Some(ObjectSnapshot::from_object(source_obj, game));
+        let source_snapshot = match &self.source {
+            ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
+            _ => None,
+        }
+        .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game)));
 
         let original_source = ctx.source;
         let original_source_snapshot = ctx.source_snapshot.clone();

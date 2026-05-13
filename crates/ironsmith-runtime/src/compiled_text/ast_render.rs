@@ -824,7 +824,20 @@ fn describe_structural_echo_pair(first: &Ability, second: &Ability) -> Option<St
     if !segment.self_replacements.is_empty() {
         return None;
     }
-    let [remove_effect, if_effect] = segment.default_effects.as_slice() else {
+    let echo_effects = match segment.default_effects.as_slice() {
+        [conditional_effect] => {
+            let conditional =
+                conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+            if conditional.condition != crate::effect::Condition::SourceIsInZone(Zone::Battlefield)
+                || !conditional.if_false.is_empty()
+            {
+                return None;
+            }
+            conditional.if_true.as_slice()
+        }
+        effects => effects,
+    };
+    let [remove_effect, if_effect] = echo_effects else {
         return None;
     };
     let Some(remove_with_id) = remove_effect.downcast_ref::<crate::effects::WithIdEffect>() else {
@@ -1705,6 +1718,12 @@ pub(super) fn describe_alternative_cast_line(
                 .mana_cost()
                 .map(|cost| format!("Spectacle {}", cost.to_oracle()))
                 .unwrap_or_else(|| "Spectacle".to_string())
+        }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Emerge") => {
+            method
+                .mana_cost()
+                .map(|cost| format!("Emerge {}", cost.to_oracle()))
+                .unwrap_or_else(|| "Emerge".to_string())
         }
         method if method.is_composed_cost() => {
             let name = method.name();

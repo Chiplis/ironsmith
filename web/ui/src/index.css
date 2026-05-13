@@ -9909,6 +9909,7 @@ textarea,
 .ironsmith-inspector-shell {
   border-radius: 0 !important;
   border-right: 0 !important;
+  border-bottom: 0 !important;
   clip-path: none !important;
   border-color: rgba(var(--player-accent-rgb, 216, 191, 106), 0.82) !important;
   box-shadow:
@@ -9922,6 +9923,10 @@ textarea,
 .ironsmith-inspector-shell--expanded .hover-art-stage-frame {
   border-radius: 0 !important;
   border-right: 0 !important;
+  border-bottom: 0 !important;
+  box-shadow:
+    inset 1px 0 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.46),
+    inset 0 1px 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.46) !important;
 }
 
 .hand-inspector-inline-shell.ironsmith-inspector-shell--expanded::after {

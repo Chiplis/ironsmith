@@ -986,10 +986,28 @@ pub fn resolve_value(
         Value::ManaValueOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+                ctx.get_tagged(tag)
+            } else {
+                None
+            };
             if matches!(target_spec.base(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
             {
                 snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(|cost| cost.mana_value() as i32)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no mana value".to_string())
+                    })
+            } else if let Some(snapshot) = tagged_snapshot
+                && game
+                    .object(snapshot.object_id)
+                    .is_none_or(|object| object.zone != snapshot.zone)
+            {
+                latest_tagged_lki_snapshot(game, snapshot)
+                    .unwrap_or(snapshot)
                     .mana_cost
                     .as_ref()
                     .map(|cost| cost.mana_value() as i32)
@@ -1003,9 +1021,7 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no mana value".to_string())
                     })
-            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
-                && let Some(snapshot) = ctx.get_tagged(tag)
-            {
+            } else if let Some(snapshot) = tagged_snapshot {
                 snapshot
                     .mana_cost
                     .as_ref()

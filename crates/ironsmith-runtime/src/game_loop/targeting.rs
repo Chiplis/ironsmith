@@ -421,61 +421,67 @@ fn simultaneous_sba_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tri
 }
 
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
-    let pending_events = game.take_pending_trigger_events();
-    let batch_lki_events = simultaneous_sba_ltb_batch_events(&pending_events);
     let mut one_or_more_zone_changes_seen = HashSet::new();
-    for event in pending_events {
-        let source_leave = event
-            .downcast::<crate::events::zones::ZoneChangeEvent>()
-            .and_then(|zone_change| {
-                (zone_change.from == crate::zone::Zone::Battlefield
-                    && zone_change.to != crate::zone::Zone::Battlefield)
-                    .then(|| zone_change.objects.clone())
-            });
-        let queue_start = trigger_queue.entries.len();
-        queue_triggers_from_event(game, trigger_queue, event, true);
-        suppress_duplicate_one_or_more_zone_change_triggers(
-            trigger_queue,
-            queue_start,
-            &mut one_or_more_zone_changes_seen,
-        );
-        if let Some(source_ids) = source_leave {
-            for source_id in source_ids {
-                game.return_exiled_for_source_leave(source_id);
+    loop {
+        let pending_events = game.take_pending_trigger_events();
+        if pending_events.is_empty() {
+            break;
+        }
+        let batch_lki_events = simultaneous_sba_ltb_batch_events(&pending_events);
+        for event in pending_events {
+            let source_leave = event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+                .and_then(|zone_change| {
+                    (zone_change.from == crate::zone::Zone::Battlefield
+                        && zone_change.to != crate::zone::Zone::Battlefield)
+                        .then(|| zone_change.objects.clone())
+                });
+            let queue_start = trigger_queue.entries.len();
+            queue_triggers_from_event(game, trigger_queue, event, true);
+            suppress_duplicate_one_or_more_zone_change_triggers(
+                trigger_queue,
+                queue_start,
+                &mut one_or_more_zone_changes_seen,
+            );
+            if let Some(source_ids) = source_leave {
+                for source_id in source_ids {
+                    game.return_exiled_for_source_leave(source_id);
+                }
             }
         }
-    }
 
-    for event in batch_lki_events {
-        let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
-            continue;
-        };
-        let source_stable_ids: HashSet<_> = zone_change
-            .snapshots()
-            .iter()
-            .map(|snapshot| snapshot.stable_id)
-            .collect();
-        trigger_queue.entries.retain(|entry| {
-            if entry.source_snapshot.is_none()
-                || !source_stable_ids.contains(&entry.source_stable_id)
-            {
-                return true;
-            }
-            let Some(entry_zone_change) = entry
-                .triggering_event
-                .downcast::<crate::events::zones::ZoneChangeEvent>()
+        for event in batch_lki_events {
+            let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>()
             else {
-                return true;
+                continue;
             };
-            entry_zone_change.from != zone_change.from
-                || entry_zone_change.to != zone_change.to
-                || entry_zone_change.cause != zone_change.cause
-        });
-        for trigger in crate::triggers::check_triggers(game, &event) {
-            if trigger.source_snapshot.is_some()
-                && source_stable_ids.contains(&trigger.source_stable_id)
-            {
-                trigger_queue.add(trigger);
+            let source_stable_ids: HashSet<_> = zone_change
+                .snapshots()
+                .iter()
+                .map(|snapshot| snapshot.stable_id)
+                .collect();
+            trigger_queue.entries.retain(|entry| {
+                if entry.source_snapshot.is_none()
+                    || !source_stable_ids.contains(&entry.source_stable_id)
+                {
+                    return true;
+                }
+                let Some(entry_zone_change) = entry
+                    .triggering_event
+                    .downcast::<crate::events::zones::ZoneChangeEvent>()
+                else {
+                    return true;
+                };
+                entry_zone_change.from != zone_change.from
+                    || entry_zone_change.to != zone_change.to
+                    || entry_zone_change.cause != zone_change.cause
+            });
+            for trigger in crate::triggers::check_triggers(game, &event) {
+                if trigger.source_snapshot.is_some()
+                    && source_stable_ids.contains(&trigger.source_stable_id)
+                {
+                    trigger_queue.add(trigger);
+                }
             }
         }
     }
@@ -672,6 +678,14 @@ pub(super) fn resolve_modal_mode_counts(
     source_id: Option<ObjectId>,
     modal: crate::effects::ModalEffectSpec<'_>,
 ) -> (usize, usize) {
+    if source_id
+        .and_then(|id| game.object(id))
+        .is_some_and(|source| source.optional_costs_paid.was_entwined())
+    {
+        let all_modes = modal.modes.len();
+        return (all_modes, all_modes);
+    }
+
     let max_modes = resolve_modal_count_value_for_source(
         game,
         source_id,

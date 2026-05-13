@@ -296,6 +296,19 @@ fn dispatch_select_target_object(wasm: &mut WasmGame, object_id: ObjectId) {
     .expect("select_targets should succeed");
 }
 
+fn dispatch_select_target_player(wasm: &mut WasmGame, player: PlayerId) {
+    wasm.dispatch(
+        serde_wasm_bindgen::to_value(&json!({
+            "type": "select_targets",
+            "targets": [
+                { "kind": "player", "player": player.0 },
+            ],
+        }))
+        .expect("select_targets should serialize"),
+    )
+    .expect("select_targets should succeed");
+}
+
 fn dispatch_pass_priority(wasm: &mut WasmGame) {
     dispatch_matching_priority_action(wasm, |action| matches!(action, LegalAction::PassPriority));
 }
@@ -3633,6 +3646,113 @@ fn duress_snapshot_keeps_revealed_hand_visible_during_discard_choice() {
         candidate_ids,
         vec![peek_id, keyrune_id],
         "discard decision should only offer the legal noncreature nonland cards"
+    );
+}
+
+#[test]
+fn gitaxian_probe_snapshot_keeps_looked_at_hand_visible_after_draw() {
+    let mut wasm = WasmGame::new();
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+    wasm.runner_awaiting_priority = true;
+
+    let probe = compile_to_runtime_definition(
+        "Gitaxian Probe",
+        "Mana Cost: {U/P}\nType: Sorcery\nLook at target player's hand.\nDraw a card.",
+        false,
+    )
+    .expect("Gitaxian Probe should compile");
+    let probe_id = wasm
+        .game
+        .create_object_from_definition(&probe, alice, Zone::Hand);
+    wasm.game
+        .create_object_from_definition(&basic_island(), alice, Zone::Library);
+    let bolt_id = wasm
+        .game
+        .create_object_from_definition(&lightning_bolt(), bob, Zone::Hand);
+    let mountain_id = wasm
+        .game
+        .create_object_from_definition(&basic_mountain(), bob, Zone::Hand);
+    wasm.game
+        .player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    dispatch_matching_priority_action(
+        &mut wasm,
+        |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == probe_id),
+    );
+    dispatch_select_target_player(&mut wasm, bob);
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectOptions(options)) => {
+            let option_index = options
+                .options
+                .iter()
+                .find(|option| option.legal && option.description.contains("2 life"))
+                .map(|option| option.index)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "expected phyrexian life payment option, got {:?}",
+                        options
+                            .options
+                            .iter()
+                            .map(|option| option.description.clone())
+                            .collect::<Vec<_>>()
+                    )
+                });
+            dispatch_select_options(&mut wasm, &[option_index]);
+        }
+        other => panic!("expected Gitaxian Probe payment option, got {other:?}"),
+    }
+
+    dispatch_pass_priority(&mut wasm);
+    dispatch_pass_priority(&mut wasm);
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        wasm.perspective,
+        wasm.pending_decision.as_ref(),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        wasm.active_viewed_cards.as_ref(),
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+
+    let viewed_cards = snapshot
+        .viewed_cards
+        .as_ref()
+        .expect("Gitaxian Probe should keep the looked-at hand in the next snapshot");
+    assert_eq!(viewed_cards.visibility, "private");
+    assert_eq!(viewed_cards.viewer, alice.0);
+    assert_eq!(viewed_cards.subject, bob.0);
+    assert_eq!(viewed_cards.zone, "Hand");
+    assert_eq!(viewed_cards.card_ids, vec![bolt_id.0, mountain_id.0]);
+    assert_eq!(
+        viewed_cards
+            .cards
+            .iter()
+            .map(|card| card.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Lightning Bolt", "Mountain"]
     );
 }
 

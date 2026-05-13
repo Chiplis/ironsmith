@@ -310,6 +310,56 @@ mod tests {
         );
     }
 
+    #[test]
+    fn emerge_alternative_cost_reduces_generic_by_sacrificed_creature_mana_value() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let sacrifice = CardBuilder::new(CardId::from_raw(7010), "Silvercoat Lion")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(1),
+                ManaSymbol::White,
+            ]))
+            .build();
+        game.create_object_from_card(&sacrifice, alice, Zone::Battlefield);
+
+        let spell = CardBuilder::new(CardId::from_raw(7011), "Wretched Gryff")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(7),
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let emerge = crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+            "Emerge",
+            Some(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(5),
+                ManaSymbol::Blue,
+            ])),
+            vec![crate::costs::Cost::sacrifice(
+                ObjectFilter::creature().you_control(),
+            )],
+        );
+        game.object_mut(spell_id)
+            .expect("emerge spell should exist")
+            .alternative_casts
+            .push(emerge);
+
+        let spell_obj = game.object(spell_id).expect("emerge spell should exist");
+        let reduced = spell_mana_cost_for_cast(
+            &game,
+            alice,
+            spell_obj,
+            &CastingMethod::Alternative(0),
+            Zone::Hand,
+        )
+        .expect("emerge cost should resolve");
+
+        assert_eq!(reduced.to_oracle(), "{3}{U}");
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_blocks_force_of_will_alternative_cost() {
@@ -1121,6 +1171,72 @@ mod tests {
             red_effective.to_oracle(),
             "{R}",
             "red-only filter should reduce matching red spell costs"
+        );
+    }
+
+    #[test]
+    fn prototype_cost_reduction_filters_see_prototyped_color() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let mut red_filter = ObjectFilter::default();
+        red_filter.cast_by = Some(PlayerFilter::You);
+        red_filter.colors = Some(ColorSet::RED);
+
+        let reducer_card = CardBuilder::new(CardId::from_raw(19), "Red Cost Reducer")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let reducer_id = game.create_object_from_card(&reducer_card, alice, Zone::Battlefield);
+        let reduction = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            red_filter,
+            Value::Fixed(1),
+        ));
+        game.object_mut(reducer_id)
+            .expect("reducer exists")
+            .abilities
+            .push(Ability::static_ability(reduction));
+
+        let prototype_cost =
+            ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Red]]);
+        let prototype_def = CardDefinitionBuilder::new(CardId::from_raw(20), "Prototype Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(6, 4))
+            .parse_text("Prototype {2}{R} — 3/2\nHaste")
+            .expect("prototype probe should parse");
+        let spell_id = game.create_object_from_definition(&prototype_def, alice, Zone::Hand);
+        let spell = game.object(spell_id).expect("prototype spell exists");
+        let view = DerivedGameView::new(&game);
+
+        let normal_effective = calculate_effective_mana_cost_with_view_for_casting_method(
+            &game,
+            alice,
+            spell,
+            spell
+                .mana_cost
+                .as_ref()
+                .expect("spell has printed mana cost"),
+            &CastingMethod::Normal,
+            &view,
+        );
+        assert_eq!(
+            normal_effective.to_oracle(),
+            "{7}",
+            "normally cast artifact creature should remain colorless for red reductions"
+        );
+
+        let prototype_effective = calculate_effective_mana_cost_with_view_for_casting_method(
+            &game,
+            alice,
+            spell,
+            &prototype_cost,
+            &CastingMethod::Alternative(0),
+            &view,
+        );
+        assert_eq!(
+            prototype_effective.to_oracle(),
+            "{1}{R}",
+            "prototyped spell should be red for red spell cost reductions"
         );
     }
 

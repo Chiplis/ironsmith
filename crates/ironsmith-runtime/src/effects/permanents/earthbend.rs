@@ -5,6 +5,7 @@ use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{
     ApplyContinuousEffect, EffectExecutor, PutCountersEffect, ScheduleDelayedTriggerEffect,
+    TargetReusePolicy,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
@@ -108,6 +109,10 @@ impl EffectExecutor for EarthbendEffect {
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
+    }
+
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        TargetReusePolicy::AlwaysDeclareNew
     }
 
     fn target_description(&self) -> &'static str {

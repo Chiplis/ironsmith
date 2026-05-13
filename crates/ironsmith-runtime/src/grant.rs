@@ -93,6 +93,25 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     total_cost: TotalCost::from_costs(costs),
                 })
             }
+            Self::BlitzFromCardManaCost => {
+                let mana_cost = card.mana_cost.clone()?;
+                Some(AlternativeCastingMethod::Blitz {
+                    total_cost: TotalCost::mana(mana_cost),
+                })
+            }
+            Self::EmergeFromCardManaCost => {
+                let mana_cost = card.mana_cost.clone()?;
+                if card.zone != Zone::Hand || !card.has_card_type(CardType::Creature) {
+                    return None;
+                }
+                Some(AlternativeCastingMethod::alternative_cost(
+                    "Emerge",
+                    Some(mana_cost),
+                    vec![Cost::sacrifice(
+                        crate::target::ObjectFilter::creature().you_control(),
+                    )],
+                ))
+            }
             Self::EscapeFromCardManaCost { exile_count } => {
                 let mana_cost = card.mana_cost.clone()?;
                 if card.zone != Zone::Graveyard {
@@ -158,6 +177,9 @@ mod tests {
 
         let mana_value = Grantable::mana_value_as_generic_from_hand();
         assert_eq!(mana_value.display(), "Pay mana value");
+
+        let emerge = Grantable::emerge_from_cards_mana_cost();
+        assert_eq!(emerge.display(), "Emerge");
     }
 
     #[test]

@@ -330,6 +330,12 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
             ironsmith::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
         }
+        compiler::grant::DerivedAlternativeCast::BlitzFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::BlitzFromCardManaCost
+        }
+        compiler::grant::DerivedAlternativeCast::EmergeFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::EmergeFromCardManaCost
+        }
         compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
             ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }

@@ -6,11 +6,12 @@ use self::helpers::{
 };
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
-    find_negation_span, parse_cant_restriction_clause, parse_cant_restrictions,
-    parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
+    build_may_cast_tagged_effect, find_negation_span, parse_cant_restriction_clause,
+    parse_cant_restrictions, parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
-    parse_single_word_keyword_action, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause, parse_you_choose_player_clause, starts_with_target_indicator,
+    parse_may_cast_it_sentence, parse_single_word_keyword_action,
+    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
+    parse_you_choose_player_clause, starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{
@@ -296,6 +297,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
+
+    if let Some(spec) = parse_may_cast_it_sentence(tokens) {
+        return Ok(build_may_cast_tagged_effect(&spec));
+    }
 
     if let Some(player) = parse_leading_player_may(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");

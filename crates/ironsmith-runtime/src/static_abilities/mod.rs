@@ -927,12 +927,17 @@ pub struct ChooseNamedOptionAsEntersSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterAsCopyAsEntersSpec {
     pub filter: crate::target::ObjectFilter,
+    pub affected_filter: Option<crate::target::ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub copy_source_self: bool,
+    pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
     pub added_card_types: Vec<crate::types::CardType>,
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
+    pub set_base_power_toughness: Option<(i32, i32)>,
+    pub set_base_power_toughness_from_self: bool,
 }
 
 /// Spec for static abilities that duplicate matching triggered abilities.

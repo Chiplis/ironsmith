@@ -1666,8 +1666,13 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            let player_filter =
-                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let player_filter = match player {
+                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(ObjectRef::tagged(resolved_tag.clone())),
+                PlayerAst::ItsController => {
+                    PlayerFilter::ControllerOf(ObjectRef::tagged(resolved_tag.clone()))
+                }
+                _ => resolve_non_target_player_filter(*player, &current_reference_env(ctx))?,
+            };
             Ok((
                 vec![Effect::cast_tagged(
                     resolved_tag,

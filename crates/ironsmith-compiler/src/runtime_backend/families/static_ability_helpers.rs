@@ -94,6 +94,10 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
             "unearth {}",
             cost.to_oracle()
         ))),
+        KeywordAction::Eternalize(cost) => Some(StaticAbility::keyword_marker(format!(
+            "eternalize {}",
+            cost.to_oracle()
+        ))),
         KeywordAction::Ninjutsu(cost) => Some(StaticAbility::keyword_marker(format!(
             "ninjutsu {}",
             cost.to_oracle()
@@ -261,6 +265,22 @@ pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
     ]
 }
 
+pub(crate) fn exalted_triggered_ability() -> Ability {
+    let attacker_tag = crate::tag::TagKey::from("exalted_attacker");
+    Ability::triggered(
+        Trigger::attacks_alone(ObjectFilter::creature().you_control()),
+        vec![
+            Effect::tag_triggering_object(attacker_tag.clone()),
+            Effect::pump(
+                1,
+                1,
+                crate::target::ChooseSpec::Tagged(attacker_tag),
+                crate::effect::Until::EndOfTurn,
+            ),
+        ],
+    )
+}
+
 fn graveyard_return_counter_ability(
     counter_type: crate::object::CounterType,
     trigger_tag: &'static str,
@@ -380,6 +400,9 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
             }
             GrantedAbilityAst::KeywordAction(KeywordAction::Undying) => {
                 lowered.push(undying_triggered_ability());
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Exalted) => {
+                lowered.push(exalted_triggered_ability());
             }
             _ => lowered.push(lower_granted_ability_ast_to_object_ability(ability)?),
         }

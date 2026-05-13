@@ -84,7 +84,7 @@ use super::reference_model::{
 };
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::{
-    decayed_triggered_ability, lower_granted_abilities_ast,
+    decayed_triggered_ability, exalted_triggered_ability, lower_granted_abilities_ast,
     lower_granted_abilities_ast_to_object_abilities, persist_triggered_ability,
     undying_triggered_ability,
 };
@@ -1676,6 +1676,11 @@ fn lower_granted_ability_grant_modifications(
             GrantedAbilityAst::KeywordAction(crate::KeywordAction::Undying) => {
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(
                     undying_triggered_ability(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Exalted) => {
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    exalted_triggered_ability(),
                 ));
             }
             _ => {

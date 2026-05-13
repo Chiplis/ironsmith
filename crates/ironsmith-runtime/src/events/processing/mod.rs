@@ -22,7 +22,7 @@ use crate::events::DamageTarget;
 use crate::events::{Event, EventContext};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
-use crate::ids::PlayerId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::replacement::{ReplacementAction, ReplacementEffect, ReplacementEffectId};
 use crate::types::CardType;
@@ -51,6 +51,91 @@ fn replacement_effect_related_objects(effect: &ReplacementEffect) -> Vec<crate::
     match &effect.replacement {
         ReplacementAction::EnterAsCopy { source, .. } => vec![*source],
         _ => Vec::new(),
+    }
+}
+
+fn push_enter_as_copy_effects_for_spec(
+    game: &GameState,
+    entering_object: ObjectId,
+    source: ObjectId,
+    controller: PlayerId,
+    spec: &crate::static_abilities::EnterAsCopyAsEntersSpec,
+    copy_choice_effects: &mut Vec<ReplacementEffect>,
+) {
+    let filter_ctx = game.filter_context_for(controller, Some(source));
+    if let Some(affected_filter) = &spec.affected_filter {
+        let Some(entering) = game.object(entering_object) else {
+            return;
+        };
+        let mut prospective = entering.clone();
+        prospective.zone = Zone::Battlefield;
+        if !affected_filter.matches(&prospective, &filter_ctx, game) {
+            return;
+        }
+    } else if source != entering_object {
+        return;
+    }
+
+    let mut candidates = if spec.copy_source_self {
+        vec![source]
+    } else if spec.copy_source_enchanted {
+        game.object(source)
+            .and_then(|obj| obj.attached_to.and_then(|target| target.object_id()))
+            .into_iter()
+            .collect::<Vec<_>>()
+    } else {
+        game.objects_in_deterministic_order()
+            .into_iter()
+            .filter(|candidate| candidate.id != entering_object)
+            .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+    };
+    candidates.sort_by_key(|id| id.0);
+    candidates.dedup();
+    if candidates.is_empty() {
+        return;
+    }
+
+    if spec.may {
+        copy_choice_effects.push(
+            ReplacementEffect::with_matcher(
+                entering_object,
+                controller,
+                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::Additionally(Vec::new()),
+            )
+            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+        );
+    }
+
+    let set_base_power_toughness = spec.set_base_power_toughness.or_else(|| {
+        spec.set_base_power_toughness_from_self
+            .then(|| {
+                game.object(entering_object)
+                    .and_then(|obj| Some((obj.power()?, obj.toughness()?)))
+            })
+            .flatten()
+    });
+
+    for candidate in candidates {
+        copy_choice_effects.push(
+            ReplacementEffect::with_matcher(
+                entering_object,
+                controller,
+                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::EnterAsCopy {
+                    source: candidate,
+                    enters_tapped: spec.enters_tapped_if_chosen,
+                    name_override: spec.name_override.clone(),
+                    added_card_types: spec.added_card_types.clone(),
+                    added_subtypes: spec.added_subtypes.clone(),
+                    added_abilities: spec.added_abilities.clone(),
+                    set_base_power_toughness,
+                },
+            )
+            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+        );
     }
 }
 
@@ -1771,6 +1856,42 @@ fn assign_ephemeral_effect_ids(effects: &mut [ReplacementEffect], id_base: u64) 
     }
 }
 
+fn copied_object_etb_replacement_effects(
+    game: &GameState,
+    object: crate::ids::ObjectId,
+    event: &Event,
+    id_base: u64,
+) -> Vec<ReplacementEffect> {
+    let Some(etb) =
+        crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+    else {
+        return Vec::new();
+    };
+    let Some(copy_source_id) = etb.enters_as_copy_of else {
+        return Vec::new();
+    };
+    let Some(controller) = game.object(object).map(|obj| game.controller_of(obj)) else {
+        return Vec::new();
+    };
+
+    let mut copied_abilities = game
+        .object(copy_source_id)
+        .map(|source| source.abilities.clone())
+        .unwrap_or_default();
+    copied_abilities.extend(etb.added_abilities.clone());
+
+    let mut effects = Vec::new();
+    for ability in copied_abilities {
+        if let crate::ability::AbilityKind::Static(static_ability) = ability.kind
+            && let Some(effect) = static_ability.generate_replacement_effect(object, controller)
+        {
+            effects.push(effect);
+        }
+    }
+    assign_ephemeral_effect_ids(&mut effects, id_base);
+    effects
+}
+
 /// Result of processing an ETB (Enter the Battlefield) event.
 #[derive(Debug, Clone, Default)]
 pub struct EtbEventResult {
@@ -2367,51 +2488,63 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 object_etb_effects.push(effect);
             }
             if let Some(spec) = s.enter_as_copy_as_enters() {
-                let filter_ctx = game.filter_context_for(controller, Some(object));
-                let mut candidates = game
-                    .objects_in_deterministic_order()
-                    .into_iter()
-                    .filter(|candidate| candidate.id != object)
-                    .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
-                    .map(|candidate| candidate.id)
-                    .collect::<Vec<_>>();
-                candidates.sort_by_key(|id| id.0);
-
-                if spec.may {
-                    copy_choice_effects.push(
-                        ReplacementEffect::with_matcher(
-                            object,
-                            controller,
-                            crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                            ReplacementAction::Additionally(Vec::new()),
-                        )
-                        .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                    );
-                }
-
-                for candidate in candidates {
-                    copy_choice_effects.push(
-                        ReplacementEffect::with_matcher(
-                            object,
-                            controller,
-                            crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                            ReplacementAction::EnterAsCopy {
-                                source: candidate,
-                                enters_tapped: spec.enters_tapped_if_chosen,
-                                name_override: spec.name_override.clone(),
-                                added_card_types: spec.added_card_types.clone(),
-                                added_subtypes: spec.added_subtypes.clone(),
-                                added_abilities: spec.added_abilities.clone(),
-                            },
-                        )
-                        .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-                    );
-                }
+                push_enter_as_copy_effects_for_spec(
+                    game,
+                    object,
+                    object,
+                    controller,
+                    spec,
+                    &mut copy_choice_effects,
+                );
             }
+        }
+    }
+
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let battlefield_sources = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|candidate| candidate.id != object && candidate.zone == Zone::Battlefield)
+        .map(|candidate| candidate.id)
+        .collect::<Vec<_>>();
+    for source in battlefield_sources {
+        let Some(source_obj) = game.object(source) else {
+            continue;
+        };
+        let controller = game.controller_of(source_obj);
+        let static_abilities = view
+            .static_abilities_rc(source)
+            .map(|abilities| abilities.as_ref().clone())
+            .unwrap_or_else(|| {
+                source_obj
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for static_ability in &static_abilities {
+            let Some(spec) = static_ability.enter_as_copy_as_enters() else {
+                continue;
+            };
+            if spec.affected_filter.is_none() {
+                continue;
+            }
+            push_enter_as_copy_effects_for_spec(
+                game,
+                object,
+                source,
+                controller,
+                spec,
+                &mut copy_choice_effects,
+            );
         }
     }
     // Keep ephemeral IDs far away from manager-issued IDs.
     const OBJECT_ETB_ID_BASE: u64 = u64::MAX - 1_000_000;
+    const COPIED_OBJECT_ETB_ID_BASE: u64 = u64::MAX - 750_000;
     const COPY_CHOICE_ID_BASE: u64 = u64::MAX - 500_000;
     assign_ephemeral_effect_ids(&mut object_etb_effects, OBJECT_ETB_ID_BASE);
     assign_ephemeral_effect_ids(&mut copy_choice_effects, COPY_CHOICE_ID_BASE);
@@ -2445,6 +2578,12 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             downcast_event::<EnterBattlefieldEvent>(current_event.inner())
                 .map(|etb| etb.enters_as_copy_of.is_none())
                 .unwrap_or(false);
+        let copied_object_etb_effects = copied_object_etb_replacement_effects(
+            game,
+            object,
+            &current_event,
+            COPIED_OBJECT_ETB_ID_BASE,
+        );
         let current_additional_effects: Vec<ReplacementEffect> = copy_choice_effects
             .iter()
             .filter(|_| !copy_choice_consumed)
@@ -2452,6 +2591,11 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 object_etb_effects
                     .iter()
                     .filter(|_| original_object_effects_still_apply),
+            )
+            .chain(
+                copied_object_etb_effects
+                    .iter()
+                    .filter(|effect| !state.was_applied(effect.id)),
             )
             .cloned()
             .collect();
@@ -2472,6 +2616,18 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             }
             TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
                 if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(e.inner()) {
+                    let copied_effects = copied_object_etb_replacement_effects(
+                        game,
+                        object,
+                        &e,
+                        COPIED_OBJECT_ETB_ID_BASE,
+                    );
+                    if !find_applicable_trait_replacements(game, &e, &state, &copied_effects, None)
+                        .is_empty()
+                    {
+                        current_event = e;
+                        continue;
+                    }
                     return EtbEventResult {
                         enters_tapped: etb.enters_tapped,
                         enters_with_counters: etb.enters_with_counters.clone(),

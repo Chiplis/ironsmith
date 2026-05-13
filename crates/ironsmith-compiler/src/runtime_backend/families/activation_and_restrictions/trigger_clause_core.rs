@@ -1747,6 +1747,24 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(fight_word_idx) = find_index(&words, |word| {
+        matches!(
+            crate::events::KeywordActionKind::from_trigger_word(word),
+            Some(crate::events::KeywordActionKind::Fight)
+        )
+    }) {
+        let subject_tokens = &tokens[..fight_word_idx];
+        if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)?
+            && words[fight_word_idx + 1..].is_empty()
+        {
+            return Ok(TriggerSpec::KeywordAction {
+                action: crate::events::KeywordActionKind::Fight,
+                player: PlayerFilter::Any,
+                source_filter: Some(filter),
+            });
+        }
+    }
+
     if let Some(put_word_idx) = find_index(&words, |word| *word == "put" || *word == "puts") {
         let subject = &words[..put_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {

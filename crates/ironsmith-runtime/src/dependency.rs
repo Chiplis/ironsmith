@@ -951,6 +951,14 @@ fn object_matches_filter_with_chars(
     {
         return false;
     }
+    if filter.has_x_in_cost
+        && !object
+            .mana_cost
+            .as_ref()
+            .is_some_and(crate::mana::ManaCost::has_x)
+    {
+        return false;
+    }
 
     if let Some(required_name) = &filter.name
         && object.name != *required_name
