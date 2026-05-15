@@ -121,7 +121,9 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
         };
         let to_remove = if self.remove_all {
             max_removable
-        } else if self.display_x && let Some(x_value) = ctx.x_value {
+        } else if self.display_x
+            && let Some(x_value) = ctx.x_value
+        {
             if x_value > max_removable {
                 return Err(ExecutionError::Impossible(format!(
                     "cannot remove X counters: X is {x_value}, but only {max_removable} counter(s) are available"

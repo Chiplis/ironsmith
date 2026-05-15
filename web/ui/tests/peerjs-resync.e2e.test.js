@@ -2235,6 +2235,300 @@ test("full UI PeerJS Mulligan redraw stays synced", { timeout: 300000 }, async (
   }
 });
 
+test("full UI PeerJS guest Mulligan redraw stays synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const deck = deckUrlParam("30 Swamp\n30 Island");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${deck}`, "host-guest-mulligan-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, `expected the full UI to create a lobby code\n${await visibleBodyText(hostPage)}`);
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${deck}`,
+      "guest-guest-mulligan-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    const initialText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(initialText, "match start should not sync-fail before guest mulligan");
+    assert.match(initialText, /KEEP HAND[\s\S]*MULLIGAN/i, "expected a visible opening-hand decision");
+
+    await waitForLocalButton(hostPage, /KEEP HAND/i, "expected Player 0 keep button to become local");
+    const hostKeep = await activateLocalButton(hostPage, "host-keep-before-guest-mulligan", /KEEP HAND/i);
+    assert.ok(hostKeep, `expected Player 0 to be able to keep\n${await visibleBodyText(hostPage)}`);
+    await sleep(3000);
+
+    const afterHostKeepText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(afterHostKeepText, "host keep before guest mulligan should not sync-fail");
+
+    await waitForLocalButton(guestPage, /Mulligan/i, "expected Player 1 mulligan button to become local", 120000);
+    const guestMulligan = await activateLocalButton(guestPage, "guest-mulligan", /Mulligan/i);
+    assert.ok(
+      guestMulligan,
+      `expected Player 1 to be able to mulligan\nhost body:\n${await visibleBodyText(hostPage)}\nguest body:\n${await visibleBodyText(guestPage)}`
+    );
+    await sleep(5000);
+
+    const afterGuestMulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    try {
+      assertNoSyncFailureText(afterGuestMulliganText, "guest mulligan click should not sync-fail");
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+      );
+    }
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS repeated host Mulligans stay synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const deck = deckUrlParam("30 Swamp\n30 Island");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${deck}`, "host-repeated-mulligan-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, `expected the full UI to create a lobby code\n${await visibleBodyText(hostPage)}`);
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${deck}`,
+      "guest-repeated-mulligan-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    const initialText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(initialText, "match start should not sync-fail before repeated mulligans");
+    assert.match(initialText, /KEEP HAND[\s\S]*MULLIGAN/i, "expected a visible opening-hand decision");
+
+    await waitForLocalButton(hostPage, /Mulligan/i, "expected Player 0 first mulligan button to become local");
+    const firstHostMulligan = await activateLocalButton(hostPage, "host-first-mulligan", /Mulligan/i);
+    assert.ok(firstHostMulligan, `expected Player 0 to be able to mulligan\n${await visibleBodyText(hostPage)}`);
+    await sleep(3000);
+    assertNoSyncFailureText(
+      `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`,
+      "first host mulligan should not sync-fail"
+    );
+
+    await waitForLocalButton(guestPage, /KEEP HAND/i, "expected Player 1 keep button after first host mulligan", 120000);
+    const guestKeep = await activateLocalButton(guestPage, "guest-keep-before-second-host-mulligan", /KEEP HAND/i);
+    assert.ok(guestKeep, `expected Player 1 to keep\n${await visibleBodyText(guestPage)}`);
+    await sleep(3000);
+    assertNoSyncFailureText(
+      `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`,
+      "guest keep before second host mulligan should not sync-fail"
+    );
+
+    for (let mulliganNumber = 2; mulliganNumber <= 4; mulliganNumber += 1) {
+      await waitForLocalButton(
+        hostPage,
+        /Mulligan/i,
+        `expected Player 0 mulligan ${mulliganNumber} button to become local`,
+        120000,
+      );
+      const hostMulliganAgain = await activateLocalButton(
+        hostPage,
+        `host-mulligan-${mulliganNumber}`,
+        /Mulligan/i
+      );
+      assert.ok(
+        hostMulliganAgain,
+        `expected Player 0 to be able to mulligan ${mulliganNumber} times\n${await visibleBodyText(hostPage)}`
+      );
+      await sleep(mulliganNumber === 4 ? 20000 : 5000);
+
+      const afterMulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+      try {
+        assertNoSyncFailureText(afterMulliganText, `host mulligan ${mulliganNumber} should not sync-fail`);
+      } catch (err) {
+        assert.fail(
+          `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+        );
+      }
+    }
+
+    await waitForLocalButton(hostPage, /KEEP HAND/i, "expected Player 0 keep button after four mulligans", 120000);
+    const hostKeepAfterFour = await activateLocalButton(hostPage, "host-keep-after-four-mulligans", /KEEP HAND/i);
+    assert.ok(hostKeepAfterFour, `expected Player 0 to keep after four mulligans\n${await visibleBodyText(hostPage)}`);
+    await sleep(5000);
+    assertNoSyncFailureText(
+      `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`,
+      "host keep after four mulligans should not sync-fail"
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS both players Mulligan then host remulligans stays synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const deck = deckUrlParam("30 Swamp\n30 Island");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${deck}`, "host-both-mulligan-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, `expected the full UI to create a lobby code\n${await visibleBodyText(hostPage)}`);
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${deck}`,
+      "guest-both-mulligan-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    const initialText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(initialText, "match start should not sync-fail before both players mulligan");
+    assert.match(initialText, /KEEP HAND[\s\S]*MULLIGAN/i, "expected a visible opening-hand decision");
+
+    await waitForLocalButton(hostPage, /Mulligan/i, "expected Player 0 mulligan button to become local");
+    const hostMulligan = await activateLocalButton(hostPage, "host-both-round-mulligan", /Mulligan/i);
+    assert.ok(hostMulligan, `expected Player 0 to be able to mulligan\n${await visibleBodyText(hostPage)}`);
+    await sleep(3000);
+    assertNoSyncFailureText(
+      `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`,
+      "host mulligan before guest mulligan should not sync-fail"
+    );
+
+    await waitForLocalButton(guestPage, /Mulligan/i, "expected Player 1 mulligan button to become local", 120000);
+    const guestMulligan = await activateLocalButton(guestPage, "guest-both-round-mulligan", /Mulligan/i);
+    assert.ok(guestMulligan, `expected Player 1 to be able to mulligan\n${await visibleBodyText(guestPage)}`);
+    await sleep(5000);
+
+    const afterBothMulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    try {
+      assertNoSyncFailureText(afterBothMulliganText, "both-player mulligan round should not sync-fail");
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+      );
+    }
+
+    await waitForLocalButton(hostPage, /Mulligan/i, "expected Player 0 remulligan button after both players redraw", 120000);
+    const hostSecondMulligan = await activateLocalButton(hostPage, "host-remulligan-after-both", /Mulligan/i);
+    assert.ok(hostSecondMulligan, `expected Player 0 to be able to mulligan again\n${await visibleBodyText(hostPage)}`);
+    await sleep(5000);
+
+    const afterHostRemulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    try {
+      assertNoSyncFailureText(afterHostRemulliganText, "host remulligan after both-player round should not sync-fail");
+    } catch (err) {
+      assert.fail(
+        `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
+      );
+    }
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library choice", { timeout: 300000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);

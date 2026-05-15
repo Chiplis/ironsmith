@@ -569,6 +569,11 @@ impl WasmGame {
                 .iter()
                 .copied()
                 .map(ObjectId::from_raw)
+                .map(|object_id| {
+                    self.game
+                        .current_object_id_after_zone_change(object_id)
+                        .unwrap_or(object_id)
+                })
                 .collect()
         };
         let mut seen = HashSet::new();
@@ -579,7 +584,31 @@ impl WasmGame {
             if !seen.insert(object_id) {
                 return Err(JsValue::from_str("hidden shuffle order contains duplicate cards"));
             }
+            let Some(zone) = self.game.object(object_id).map(|object| object.zone) else {
+                return Err(JsValue::from_str("hidden shuffle card is not present"));
+            };
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
+                if self
+                    .game
+                    .object(object_id)
+                    .is_some_and(|object| object.card.is_some() && object.owner == owner)
+                {
+                    self.game.set_hidden_card_info(
+                        object_id,
+                        ironsmith::game_state::HiddenCardInfo {
+                            owner,
+                            zone,
+                            slot: position as u16,
+                            commitment: format!("ziffle:{}:{}", input.deck_hash, position),
+                            public_slot: Some(position as u16),
+                            public_commitment: Some(format!(
+                                "ziffle:{}:{}",
+                                input.deck_hash, position
+                            )),
+                        },
+                    );
+                    continue;
+                }
                 return Err(JsValue::from_str(&format!(
                     "cannot reseal library shuffle with non-hidden card {} at position {}",
                     object_id.0, position
@@ -588,9 +617,6 @@ impl WasmGame {
             if info.owner != owner {
                 return Err(JsValue::from_str("hidden shuffle library owner mismatch"));
             }
-            let Some(zone) = self.game.object(object_id).map(|object| object.zone) else {
-                return Err(JsValue::from_str("hidden shuffle card is not present"));
-            };
             if self
                 .game
                 .object(object_id)

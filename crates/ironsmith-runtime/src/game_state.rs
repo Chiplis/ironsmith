@@ -8539,6 +8539,24 @@ impl GameState {
             .insert(source_id, result_ids);
     }
 
+    /// Return the live object for a prior object id after a zone change, if known.
+    pub fn current_object_id_after_zone_change(&self, source_id: ObjectId) -> Option<ObjectId> {
+        let mut current = source_id;
+        let mut seen = HashSet::new();
+        loop {
+            if self.objects.contains_key(&current) {
+                return Some(current);
+            }
+            if !seen.insert(current) {
+                return None;
+            }
+            current = self
+                .zone_change_result_objects
+                .get(&current)
+                .and_then(|result_ids| result_ids.first().copied())?;
+        }
+    }
+
     /// Take the destination objects created by a zone change.
     pub fn take_zone_change_results(&mut self, source_id: ObjectId) -> Vec<ObjectId> {
         self.zone_change_result_objects

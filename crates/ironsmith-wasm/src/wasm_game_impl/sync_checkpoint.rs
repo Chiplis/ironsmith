@@ -1453,6 +1453,50 @@ mod sync_checkpoint_tests {
     use super::*;
 
     #[test]
+    fn normalized_shuffle_after_order_uses_live_order_when_remap_duplicates_ids() {
+        let alice = PlayerId::from_index(0);
+        let mut before = CryptoAuditState::default();
+        let mut after = CryptoAuditState::default();
+
+        let stale_order = vec![
+            ObjectId::from_raw(101),
+            ObjectId::from_raw(102),
+            ObjectId::from_raw(103),
+            ObjectId::from_raw(104),
+        ];
+        let live_order = vec![
+            ObjectId::from_raw(201),
+            ObjectId::from_raw(202),
+            ObjectId::from_raw(203),
+            ObjectId::from_raw(204),
+        ];
+        before
+            .stable_by_id
+            .insert(stale_order[0], StableId::from_raw(1));
+        before
+            .stable_by_id
+            .insert(stale_order[1], StableId::from_raw(1));
+        before
+            .stable_by_id
+            .insert(stale_order[2], StableId::from_raw(3));
+        before
+            .stable_by_id
+            .insert(stale_order[3], StableId::from_raw(4));
+        after.id_by_stable.insert(StableId::from_raw(1), live_order[0]);
+        after.id_by_stable.insert(StableId::from_raw(3), live_order[2]);
+        after.id_by_stable.insert(StableId::from_raw(4), live_order[3]);
+        after.libraries.insert(alice, live_order.clone());
+
+        let normalized = normalized_after_shuffle_order(alice, &before, &after, &stale_order);
+
+        assert_eq!(normalized, live_order);
+        assert!(
+            object_order_has_unique_ids(&normalized),
+            "normalized post-shuffle order should not contain duplicate object ids"
+        );
+    }
+
+    #[test]
     fn sync_checkpoint_restores_battlefield_state_for_guest_perspective() {
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
@@ -1718,6 +1762,192 @@ mod sync_checkpoint_tests {
                 info.commitment,
                 format!("ziffle:mulligan-deck:{position}")
             );
+        }
+    }
+
+    #[test]
+    fn verified_shuffle_reseal_accepts_pre_draw_after_order_ids() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let bob = PlayerId::from_index(1);
+        for slot in 0..10 {
+            game.game.create_hidden_card_placeholder(
+                bob,
+                Zone::Library,
+                slot,
+                format!("bob-slot-{slot}"),
+            );
+        }
+        let initial_hand = game.game.draw_cards(bob, 2);
+        assert_eq!(initial_hand.len(), 2);
+
+        game.registry.ensure_cards_loaded(["Swamp"]);
+        let definition = game
+            .find_card_definition("Swamp")
+            .expect("fixture card should load")
+            .clone();
+        for hand_id in &initial_hand {
+            game.game
+                .reveal_hidden_card_with_definition(*hand_id, &definition)
+                .expect("drawn hand card should reveal");
+        }
+
+        for id in initial_hand {
+            let _ = game.game.move_object_by_effect(id, Zone::Library);
+        }
+        game.game.shuffle_player_library(bob);
+        let pre_draw_after_order = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .library
+            .clone();
+        assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
+
+        game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+            owner: 1,
+            deck_hash: "mulligan-deck".to_string(),
+            after_order: pre_draw_after_order.iter().map(|id| id.0).collect(),
+        })
+        .expect("verified shuffle should resolve pre-draw ids through zone-change results");
+
+        for (position, stale_id) in pre_draw_after_order.iter().copied().enumerate() {
+            let current_id = game
+                .game
+                .current_object_id_after_zone_change(stale_id)
+                .expect("stale shuffle id should resolve to a live object");
+            let info = game
+                .game
+                .hidden_card_info(current_id)
+                .expect("all shuffled hidden cards should still have metadata");
+            assert_eq!(info.owner, bob);
+            if game
+                .game
+                .object(current_id)
+                .is_some_and(|object| object.card.is_some())
+            {
+                assert_eq!(info.public_slot, Some(position as u16));
+                assert_eq!(
+                    info.public_commitment.as_deref(),
+                    Some(format!("ziffle:mulligan-deck:{position}").as_str())
+                );
+            } else {
+                assert_eq!(info.slot, position as u16);
+                assert_eq!(
+                    info.commitment,
+                    format!("ziffle:mulligan-deck:{position}")
+                );
+            }
+        }
+
+        let second_hand = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .hand
+            .clone();
+        assert_eq!(second_hand.len(), 2);
+        for id in second_hand {
+            let _ = game.game.move_object_by_effect(id, Zone::Library);
+        }
+        game.game.shuffle_player_library(bob);
+        let second_pre_draw_after_order = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .library
+            .clone();
+        assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
+
+        game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+            owner: 1,
+            deck_hash: "second-mulligan-deck".to_string(),
+            after_order: second_pre_draw_after_order
+                .iter()
+                .map(|id| id.0)
+                .collect(),
+        })
+        .expect("verified shuffle should follow multi-zone-change id chains");
+
+        for stale_id in second_pre_draw_after_order {
+            let current_id = game
+                .game
+                .current_object_id_after_zone_change(stale_id)
+                .expect("multi-hop stale shuffle id should resolve to a live object");
+            let info = game
+                .game
+                .hidden_card_info(current_id)
+                .expect("all reshuffled hidden cards should still have metadata");
+            assert_eq!(info.owner, bob);
+        }
+    }
+
+    #[test]
+    fn repeated_mulligan_shuffle_requirements_keep_unique_after_orders() {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        for slot in 0..60 {
+            game.game.create_hidden_card_placeholder(
+                alice,
+                Zone::Library,
+                slot,
+                format!("alice-slot-{slot}"),
+            );
+        }
+        game.registry.ensure_cards_loaded(["Swamp"]);
+        let definition = game
+            .find_card_definition("Swamp")
+            .expect("fixture card should load")
+            .clone();
+
+        let mut hand = game.game.draw_cards(alice, 7);
+        for hand_id in &hand {
+            game.game
+                .reveal_hidden_card_with_definition(*hand_id, &definition)
+                .expect("drawn hand card should reveal");
+        }
+
+        for mulligan_index in 0..4 {
+            let before = game.capture_crypto_audit_state();
+            for id in hand.drain(..) {
+                let _ = game.game.move_object_by_effect(id, Zone::Library);
+            }
+            game.game.shuffle_player_library(alice);
+            hand = game.game.draw_cards(alice, 7);
+            for hand_id in &hand {
+                if game.game.is_hidden_card_placeholder(*hand_id) {
+                    game.game
+                        .reveal_hidden_card_with_definition(*hand_id, &definition)
+                        .expect("drawn hand card should reveal");
+                }
+            }
+            game.update_crypto_requirements_from(before);
+
+            let requirement = game
+                .last_crypto_requirements
+                .iter()
+                .find(|requirement| {
+                    requirement.requirement_type == "verifiable_shuffle" && requirement.owner == 0
+                })
+                .expect("mulligan redraw should require a verifiable shuffle");
+            let after_order = requirement
+                .after_order
+                .as_ref()
+                .expect("shuffle requirement should include after order")
+                .clone();
+            let mut seen = std::collections::HashSet::new();
+            assert!(
+                after_order.iter().all(|id| seen.insert(*id)),
+                "mulligan {mulligan_index} produced duplicate after-order ids: {after_order:?}"
+            );
+
+            game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+                owner: 0,
+                deck_hash: format!("mulligan-{mulligan_index}"),
+                after_order,
+            })
+            .expect("verified shuffle should reseal repeated mulligan order");
         }
     }
 

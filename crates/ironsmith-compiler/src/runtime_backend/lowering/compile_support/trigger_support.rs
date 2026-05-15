@@ -388,11 +388,11 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
-            | TriggerSpec::BeginningOfCombat(_)
-            | TriggerSpec::BeginningOfEndStep(_)
-            | TriggerSpec::BeginningOfPrecombatMain(_)
-            | TriggerSpec::BeginningOfPostcombatMain(_)
-            | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+        | TriggerSpec::BeginningOfCombat(_)
+        | TriggerSpec::BeginningOfEndStep(_)
+        | TriggerSpec::BeginningOfPrecombatMain(_)
+        | TriggerSpec::BeginningOfPostcombatMain(_)
+        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
         | TriggerSpec::KeywordAction { .. }

@@ -953,12 +953,22 @@ function missingRemotePublicOpenRequirements(requirements = [], material = {}, l
 
 function shuffleProofMatchesRequirement(proof, requirement) {
   if (!proof || !requirement) return false;
+  const proofRequirementId = String(proof?.requirementId || proof?.requirement_id || "");
+  const requirementId = String(requirement.id || requirement.requirementId || requirement.requirement_id || "");
+  if (proofRequirementId && requirementId) {
+    return proofRequirementId === requirementId;
+  }
   return (
-    String(proof?.requirementId || "") === String(requirement.id || "")
-    || (
-      Number(proof?.owner) === Number(requirement.owner)
-      && String(proof?.zone || "library") === String(requirement.zone || "library")
-    )
+    Number(proof?.owner) === Number(requirement.owner)
+    && String(proof?.zone || "library") === String(requirement.zone || "library")
+  );
+}
+
+function shuffleProofSameOwnerZone(proof, requirement) {
+  if (!proof || !requirement) return false;
+  return (
+    Number(proof?.owner) === Number(requirement.owner)
+    && String(proof?.zone || "library") === String(requirement.zone || "library")
   );
 }
 
@@ -998,6 +1008,103 @@ function sameShuffleOrder(left, right) {
   const normalizedRight = normalizeShuffleOrder(right);
   if (normalizedLeft.length !== normalizedRight.length) return false;
   return normalizedLeft.every((entry, index) => entry === normalizedRight[index]);
+}
+
+function shuffleOrderIdMap(proofBeforeOrder, localBeforeOrder) {
+  const proofBefore = normalizeShuffleOrder(proofBeforeOrder);
+  const localBefore = normalizeShuffleOrder(localBeforeOrder);
+  if (proofBefore.length === 0 || localBefore.length === 0) return null;
+  if (proofBefore.length !== localBefore.length) return null;
+  if (new Set(proofBefore).size !== proofBefore.length) return null;
+  if (new Set(localBefore).size !== localBefore.length) return null;
+  const mapping = new Map();
+  const mappedLocalIds = new Set();
+  for (let index = 0; index < proofBefore.length; index += 1) {
+    const proofId = proofBefore[index];
+    const localId = localBefore[index];
+    if (mappedLocalIds.has(localId)) return null;
+    mapping.set(proofId, localId);
+    mappedLocalIds.add(localId);
+  }
+  return mapping;
+}
+
+function localizeShuffleOrder(order, idMap) {
+  const normalized = normalizeShuffleOrder(order);
+  if (!idMap) return normalized;
+  const localized = [];
+  for (const entry of normalized) {
+    if (!idMap.has(entry)) return null;
+    localized.push(idMap.get(entry));
+  }
+  return localized;
+}
+
+function localizeShuffleProofForRequirement(proof, requirement) {
+  if (!proof || !requirement) return proof;
+  const requirementBefore = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
+  const requirementAfter = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
+  const proofBefore = normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order);
+  const proofAfter = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
+  const beforeMap = shuffleOrderIdMap(proofBefore, requirementBefore);
+  const afterMap = shuffleOrderIdMap(proofAfter, requirementAfter);
+  if (!beforeMap && !afterMap) return proof;
+  const localizedBefore = beforeMap ? localizeShuffleOrder(proofBefore, beforeMap) : proofBefore;
+  const localizedAfter = afterMap ? localizeShuffleOrder(proofAfter, afterMap) : proofAfter;
+  if (!localizedBefore || !localizedAfter) return proof;
+  return {
+    ...proof,
+    beforeOrder: localizedBefore,
+    before_order: localizedBefore,
+    afterOrder: localizedAfter,
+    after_order: localizedAfter,
+  };
+}
+
+function localizeShuffleProofForRequirements(proof, requirements = []) {
+  const requirement = (requirements || []).find((candidate) =>
+    shuffleProofMatchesRequirement(proof, candidate)
+  ) || (requirements || []).find((candidate) =>
+    shuffleProofSameOwnerZone(proof, candidate)
+  );
+  return requirement ? localizeShuffleProofForRequirement(proof, requirement) : proof;
+}
+
+function shuffleProofWithRequirementOrder(proof, requirement) {
+  if (!proof || !requirement) return proof;
+  const beforeOrder = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
+  const afterOrder = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
+  return {
+    ...proof,
+    requirementId: String(requirement.id || proof.requirementId || ""),
+    owner: Number(proof.owner ?? requirement.owner),
+    zone: String(proof.zone || requirement.zone || "library"),
+    deckCount: Number(afterOrder.length || beforeOrder.length || proof.deckCount || 0),
+    beforeOrder,
+    before_order: beforeOrder,
+    afterOrder,
+    after_order: afterOrder,
+  };
+}
+
+function alignShuffleProofsWithRequirements(shuffleProofs = [], requirements = []) {
+  const shuffleRequirements = (requirements || []).filter((requirement) =>
+    String(requirement?.type || requirement?.requirement_type || "") === "verifiable_shuffle"
+  );
+  if (shuffleRequirements.length === 0) return shuffleProofs || [];
+  const aligned = [];
+  const usedProofs = new Set();
+  for (const requirement of shuffleRequirements) {
+    const proof = (shuffleProofs || []).find((candidate) =>
+      !usedProofs.has(candidate) && shuffleProofMatchesRequirement(candidate, requirement)
+    ) || (shuffleProofs || []).find((candidate) =>
+      !usedProofs.has(candidate) && shuffleProofSameOwnerZone(candidate, requirement)
+    );
+    if (!proof) continue;
+    usedProofs.add(proof);
+    aligned.push(shuffleProofWithRequirementOrder(proof, requirement));
+  }
+  return aligned.length > 0 ? aligned : (shuffleProofs || []);
 }
 
 function wasmObjectIdArg(objectId) {
@@ -5887,7 +5994,8 @@ export function usePeerLobby({
       rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
       await verifyShuffleProofsForRequirements(
         cryptoRequirements,
-        message.audit?.shuffleProofs || []
+        message.audit?.shuffleProofs || [],
+        { allowAfterOrderMismatch: true }
       );
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: cryptoRequirements,
@@ -5938,7 +6046,15 @@ export function usePeerLobby({
           shuffleProofMatchesRequirement(proof, requirement)
         )
       );
-      await applyVerifiedShuffleProofs(actionShuffleProofs);
+      const actionShuffleApplicationRequirements = [
+        ...appliedCryptoRequirements,
+        ...cryptoRequirements,
+      ];
+      const localizedActionShuffleProofs = alignShuffleProofsWithRequirements(
+        actionShuffleProofs,
+        actionShuffleApplicationRequirements
+      );
+      await applyVerifiedShuffleProofs(localizedActionShuffleProofs);
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: appliedCryptoRequirements,
         audit: message.audit,
@@ -6954,8 +7070,9 @@ export function usePeerLobby({
     return buildLiveZiffleShuffleProofs(requirements, seq);
   }
 
-  async function verifyShuffleProofsForRequirements(requirements = [], shuffleProofs = []) {
+  async function verifyShuffleProofsForRequirements(requirements = [], shuffleProofs = [], options = {}) {
     const currentGame = gameRef.current;
+    const allowAfterOrderMismatch = Boolean(options.allowAfterOrderMismatch);
     let verifiedCount = 0;
     let skippedCount = 0;
     let verifyMs = 0;
@@ -6972,17 +7089,23 @@ export function usePeerLobby({
       const requirementAfter = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
       const proofBefore = normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order);
       const proofAfter = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
+      const beforeMap = shuffleOrderIdMap(proofBefore, requirementBefore);
+      const afterMap = shuffleOrderIdMap(proofAfter, requirementAfter);
+      const localizedProofBefore = beforeMap ? localizeShuffleOrder(proofBefore, beforeMap) : proofBefore;
+      const localizedProofAfter = afterMap ? localizeShuffleOrder(proofAfter, afterMap) : proofAfter;
       if (
         requirementBefore.length > 0
-        && !sameShuffleOrder(proofBefore, requirementBefore)
+        && !sameShuffleOrder(localizedProofBefore, requirementBefore)
       ) {
         throw new Error(`Verifiable shuffle before-order mismatch for player ${Number(requirement.owner) + 1}`);
       }
       if (
         requirementAfter.length > 0
-        && !sameShuffleOrder(proofAfter, requirementAfter)
+        && !sameShuffleOrder(localizedProofAfter, requirementAfter)
       ) {
-        throw new Error(`Verifiable shuffle after-order mismatch for player ${Number(requirement.owner) + 1}`);
+        if (!allowAfterOrderMismatch) {
+          throw new Error(`Verifiable shuffle after-order mismatch for player ${Number(requirement.owner) + 1}`);
+        }
       }
       if (verifiedShuffleProofsRef.current.has(proof)) {
         skippedCount += 1;
@@ -11075,7 +11198,7 @@ export function usePeerLobby({
           skewMs: 0,
         });
         stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
-        const cryptoRequirements = filterCryptoRequirementsForCommand(
+        let cryptoRequirements = filterCryptoRequirementsForCommand(
           command,
           preSubmitState,
           freshCryptoRequirementsForSequence(
@@ -11084,7 +11207,7 @@ export function usePeerLobby({
           )
         );
         rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
-        const requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(
+        let requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(
           command,
           preSubmitState,
           cryptoRequirements
@@ -11100,7 +11223,7 @@ export function usePeerLobby({
           cryptoRequirements,
           nextSequence
         );
-        const actionCryptoOptions = {
+        let actionCryptoOptions = {
           command,
           seq: nextSequence,
           actorIndex: session.localPlayerIndex,
@@ -11110,6 +11233,27 @@ export function usePeerLobby({
           shuffleProofs,
           rngReveals,
         }, actionCryptoOptions);
+        if (shuffleProofs.length > 0) {
+          cryptoRequirements = filterCryptoRequirementsForCommand(
+            command,
+            preSubmitState,
+            freshCryptoRequirementsForSequence(
+              nextSequence,
+              await previewRequirementsForCommand(command)
+            )
+          );
+          rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
+          shuffleProofs = alignShuffleProofsWithRequirements(shuffleProofs, cryptoRequirements);
+          requestRemoteCryptoPreview = shouldRequestRemoteCryptoPreview(
+            command,
+            preSubmitState,
+            cryptoRequirements
+          );
+          actionCryptoOptions = {
+            ...actionCryptoOptions,
+            requirements: cryptoRequirements,
+          };
+        }
         let remoteCryptoMaterial = await collectRemoteCryptoMaterialForRequirements(
           cryptoRequirements,
           requestRemoteCryptoPreview
@@ -11143,6 +11287,12 @@ export function usePeerLobby({
           )
         );
         rememberActionCryptoRequirements(nextSequence, appliedRequirements);
+        if (shuffleProofs.length > 0) {
+          shuffleProofs = alignShuffleProofsWithRequirements(
+            shuffleProofs,
+            appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements
+          );
+        }
         const postShuffleRequirements = missingShuffleRequirements(
           appliedRequirements,
           shuffleProofs
@@ -11158,7 +11308,15 @@ export function usePeerLobby({
           [...cryptoRequirements, ...appliedRequirements],
           shuffleProofs
         );
-        await applyVerifiedShuffleProofs(shuffleProofs);
+        const shuffleApplicationRequirements = [
+          ...appliedRequirements,
+          ...cryptoRequirements,
+        ];
+        const localizedShuffleProofs = alignShuffleProofsWithRequirements(
+          shuffleProofs,
+          shuffleApplicationRequirements
+        );
+        await applyVerifiedShuffleProofs(localizedShuffleProofs);
         await revealLocalZiffleHand(matchStartPayloadRef.current, {
           skipIfHandUnchanged: true,
           stateHint: appliedState,

@@ -14,8 +14,8 @@ use crate::color::Color;
 use crate::effect::{Effect, Until};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
-use std::collections::HashMap;
 pub use ironsmith_core::{DamageFilter, PreventionTarget};
+use std::collections::HashMap;
 
 /// Unique identifier for a prevention shield.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -339,7 +339,7 @@ impl PreventionEffectManager {
                     || source_filter_matches.get(&s.id).copied().unwrap_or(false);
                 source_filter_ok
                     && s.damage_filter
-                    .matches(is_combat, source, source_colors, source_card_types)
+                        .matches(is_combat, source, source_colors, source_card_types)
             })
             .map(|s| s.id)
             .collect();
@@ -436,7 +436,7 @@ impl PreventionEffectManager {
                     || source_filter_matches.get(&s.id).copied().unwrap_or(false);
                 source_filter_ok
                     && s.damage_filter
-                    .matches(is_combat, source, source_colors, source_card_types)
+                        .matches(is_combat, source, source_colors, source_card_types)
             })
             .map(|s| s.id)
             .collect();

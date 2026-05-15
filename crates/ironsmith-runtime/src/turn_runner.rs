@@ -11,9 +11,9 @@ use crate::decision::{
 use crate::decisions::context::{BooleanContext, DecisionContext};
 use crate::game_loop::{
     GameLoopError, apply_attacker_declarations, apply_attacker_declarations_with_dm,
-    apply_blocker_declarations, execute_combat_damage_step, generate_and_queue_step_triggers,
-    get_declare_attackers_decision, get_declare_blockers_decision,
-    drain_pending_trigger_events, preview_optional_attack_cost_prompts, put_triggers_on_stack,
+    apply_blocker_declarations, drain_pending_trigger_events, execute_combat_damage_step,
+    generate_and_queue_step_triggers, get_declare_attackers_decision,
+    get_declare_blockers_decision, preview_optional_attack_cost_prompts, put_triggers_on_stack,
     queue_combat_damage_triggers,
 };
 use crate::game_state::{GameState, Phase, Step};

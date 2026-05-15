@@ -2293,9 +2293,9 @@ fn apply_prevention_for_damage_assignment(
         .filter_map(|shield| {
             let source_filter = shield.damage_filter.from_source.as_ref()?;
             let filter_ctx = game.filter_context_for(shield.controller, Some(shield.source));
-            let matches_current = game.object(source).is_some_and(|source_obj| {
-                source_filter.matches(source_obj, &filter_ctx, game)
-            });
+            let matches_current = game
+                .object(source)
+                .is_some_and(|source_obj| source_filter.matches(source_obj, &filter_ctx, game));
             let matches_lki = source_snapshot
                 .filter(|snapshot| snapshot.object_id == source)
                 .is_some_and(|snapshot| {

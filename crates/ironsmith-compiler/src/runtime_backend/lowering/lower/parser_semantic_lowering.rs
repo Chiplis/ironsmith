@@ -248,8 +248,7 @@ fn lower_rewrite_statement_to_chunks_impl(
                     parse_self_enters_with_x_counters_static_chunk(&group_tokens)
                 {
                     chunks.push(chunk);
-                } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens)
-                {
+                } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)?
                 {
@@ -449,11 +448,9 @@ fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<L
             || normalized.contains("as this permanent enters")
             || normalized.contains("as this object enters"));
     starts_day.then(|| {
-        LineAst::StaticAbilities(vec![
-            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::rule_fallback_text(
-                rendered.trim().trim_end_matches('.').to_string(),
-            )),
-        ])
+        LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(
+            StaticAbility::rule_fallback_text(rendered.trim().trim_end_matches('.').to_string()),
+        )])
     })
 }
 

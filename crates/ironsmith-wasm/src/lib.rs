@@ -476,6 +476,8 @@ fn merge_carried_active_viewed_cards(
 struct CryptoAuditState {
     hidden_by_id: HashMap<ObjectId, HiddenAuditCard>,
     hidden_by_key: HashMap<(u8, u16, String), HiddenAuditCard>,
+    stable_by_id: HashMap<ObjectId, StableId>,
+    id_by_stable: HashMap<StableId, ObjectId>,
     libraries: HashMap<PlayerId, Vec<ObjectId>>,
     hands: HashMap<PlayerId, Vec<ObjectId>>,
     random_count: u64,
@@ -1180,6 +1182,11 @@ fn effective_after_shuffle_order(
     order
 }
 
+fn object_order_has_unique_ids(order: &[ObjectId]) -> bool {
+    let mut seen = HashSet::new();
+    order.iter().copied().all(|id| seen.insert(id))
+}
+
 fn remap_journaled_after_shuffle_order(
     before: &CryptoAuditState,
     after: &CryptoAuditState,
@@ -1195,9 +1202,32 @@ fn remap_journaled_after_shuffle_order(
                 .or_else(|| before.hidden_by_id.get(&id))
                 .map(hidden_audit_key);
             key.and_then(|key| after.hidden_by_key.get(&key).map(|card| card.object_id))
+                .or_else(|| {
+                    before
+                        .stable_by_id
+                        .get(&id)
+                        .and_then(|stable_id| after.id_by_stable.get(stable_id).copied())
+                })
                 .unwrap_or(id)
         })
         .collect()
+}
+
+fn normalized_after_shuffle_order(
+    player: PlayerId,
+    before: &CryptoAuditState,
+    after: &CryptoAuditState,
+    after_order: &[ObjectId],
+) -> Vec<ObjectId> {
+    let remapped = remap_journaled_after_shuffle_order(before, after, after_order);
+    let effective = effective_after_shuffle_order(player, before, after);
+    if remapped.is_empty()
+        || !object_order_has_unique_ids(&remapped)
+        || (!effective.is_empty() && remapped.len() != effective.len())
+    {
+        return effective;
+    }
+    remapped
 }
 
 fn effective_before_shuffle_order(
@@ -1266,6 +1296,12 @@ impl WasmGame {
         for player in &self.game.players {
             state.libraries.insert(player.id, player.library.clone());
             state.hands.insert(player.id, player.hand.clone());
+            for &object_id in player.library.iter().chain(player.hand.iter()) {
+                if let Some(object) = self.game.object(object_id) {
+                    state.stable_by_id.insert(object_id, object.stable_id);
+                    state.id_by_stable.insert(object.stable_id, object_id);
+                }
+            }
         }
         state
     }
@@ -1320,9 +1356,12 @@ impl WasmGame {
                     journaled_random_delta = journaled_random_delta
                         .saturating_add(random_count_after.saturating_sub(random_count_before));
                     let mut after_shuffle_order =
-                        remap_journaled_after_shuffle_order(&before, &after, &after_order);
+                        normalized_after_shuffle_order(player, &before, &after, &after_order);
                     if after_shuffle_order.is_empty() {
                         after_shuffle_order = after_order;
+                    }
+                    if !object_order_has_unique_ids(&after_shuffle_order) {
+                        continue;
                     }
                     let mut before_shuffle_order = effective_before_shuffle_order(
                         player,
