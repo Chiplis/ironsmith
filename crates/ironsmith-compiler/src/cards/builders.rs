@@ -552,9 +552,25 @@ impl CardDefinitionBuilder {
     }
 
     pub fn prowess(self) -> Self {
-        self.with_ability(crate::ability::Ability::static_ability(
-            crate::static_abilities::StaticAbility::prowess(),
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::spell_cast(
+                    Some(crate::target::ObjectFilter::noncreature_spell()),
+                    crate::target::PlayerFilter::You,
+                ),
+                effects: vec![crate::effect::Effect::pump(
+                    1,
+                    1,
+                    crate::target::ChooseSpec::Source,
+                    crate::effect::Until::EndOfTurn,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some("keyword:prowess".to_string()),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn trample(self) -> Self {
@@ -1545,42 +1561,15 @@ impl CardDefinitionBuilder {
     }
 
     pub fn daybound(self) -> Self {
-        self.day_nightbound()
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::daybound(),
+        ))
     }
 
     pub fn nightbound(self) -> Self {
-        self.day_nightbound()
-    }
-
-    fn day_nightbound(self) -> Self {
-        self.with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::beginning_of_upkeep(
-                    crate::target::PlayerFilter::Any,
-                ),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::conditional(
-                        crate::ConditionExpr::SourceIsFaceDown,
-                        vec![crate::effect::Effect::conditional_only(
-                            crate::ConditionExpr::SpellsWereCastLastTurnOrMore(2),
-                            vec![crate::effect::Effect::transform(
-                                crate::target::ChooseSpec::Source,
-                            )],
-                        )],
-                        vec![crate::effect::Effect::conditional_only(
-                            crate::ConditionExpr::NoSpellsWereCastLastTurn,
-                            vec![crate::effect::Effect::transform(
-                                crate::target::ChooseSpec::Source,
-                            )],
-                        )],
-                    ),
-                ]),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: None,
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::nightbound(),
+        ))
     }
 
     pub fn haunt(self) -> Self {

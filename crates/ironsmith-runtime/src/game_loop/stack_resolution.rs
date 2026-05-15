@@ -17,6 +17,17 @@ pub(super) fn active_target_assignments_for_effect(
         consumed_modal_selection,
         declared_targets,
     );
+    if count == 1
+        && let Some(profile) = effect.target_selection_profile()
+    {
+        if let Some(next) = assignments.get(*cursor)
+            && (next.spec == *profile.spec || next.spec.base() == profile.spec.base())
+        {
+            *cursor += 1;
+            return vec![next.clone()];
+        }
+        return Vec::new();
+    }
     let start = *cursor;
     let end = start.saturating_add(count).min(assignments.len());
     *cursor = end;
@@ -871,6 +882,11 @@ pub(super) fn resolve_stack_entry_full(
                         use_alternative: Some(idx),
                         zone,
                         ..
+                    }
+                    | CastingMethod::SplitOtherHalfPlayFrom {
+                        use_alternative: idx,
+                        zone,
+                        ..
                     } => matches!(
                         crate::decision::resolve_play_from_alternative_method(
                             game,
@@ -890,6 +906,11 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     CastingMethod::PlayFrom {
                         use_alternative: Some(idx),
+                        zone,
+                        ..
+                    }
+                    | CastingMethod::SplitOtherHalfPlayFrom {
+                        use_alternative: idx,
                         zone,
                         ..
                     } => matches!(
@@ -914,6 +935,11 @@ pub(super) fn resolve_stack_entry_full(
                         use_alternative: Some(idx),
                         zone,
                         ..
+                    }
+                    | CastingMethod::SplitOtherHalfPlayFrom {
+                        use_alternative: idx,
+                        zone,
+                        ..
                     } => matches!(
                         crate::decision::resolve_play_from_alternative_method(
                             game,
@@ -933,6 +959,11 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     CastingMethod::PlayFrom {
                         use_alternative: Some(idx),
+                        zone,
+                        ..
+                    }
+                    | CastingMethod::SplitOtherHalfPlayFrom {
+                        use_alternative: idx,
                         zone,
                         ..
                     } => matches!(
@@ -1151,7 +1182,11 @@ pub(super) fn resolve_stack_entry_full(
             let should_exile = match &entry.casting_method {
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown => false,
-                CastingMethod::SplitOtherHalf | CastingMethod::Fuse => false,
+                CastingMethod::SplitOtherHalf => {
+                    obj.subtypes.contains(&crate::types::Subtype::Adventure)
+                }
+                CastingMethod::SplitOtherHalfPlayFrom { .. } => true,
+                CastingMethod::Fuse => false,
                 CastingMethod::Alternative(idx) => obj
                     .alternative_casts
                     .get(*idx)
@@ -1228,17 +1263,25 @@ pub(super) fn resolve_stack_entry_full(
                         });
                 }
             } else if should_exile {
-                let _ = crate::effects::zones::apply_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Exile,
-                    crate::events::cause::EventCause::from_effect(
+                let was_adventure = obj.subtypes.contains(&crate::types::Subtype::Adventure);
+                if let crate::events::processing::EventOutcome::Proceed(result) =
+                    crate::effects::zones::apply_zone_change(
+                        game,
                         entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut *decision_maker,
-                );
+                        Zone::Stack,
+                        Zone::Exile,
+                        crate::events::cause::EventCause::from_effect(
+                            entry.object_id,
+                            entry.controller,
+                        ),
+                        &mut *decision_maker,
+                    )
+                    && result.final_zone == Zone::Exile
+                    && let Some(exiled_id) = result.new_object_id
+                    && was_adventure
+                {
+                    game.set_adventure_exiled(exiled_id);
+                }
             } else if entry.optional_costs_paid.was_bought_back()
                 || obj.optional_costs_paid.was_bought_back()
             {

@@ -671,6 +671,19 @@ pub(super) struct BattlefieldTransitionSnapshot {
     pub(super) kind: BattlefieldTransitionKindSnapshot,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct ZoneTransitionSnapshot {
+    pub(super) id: u64,
+    pub(super) old_object_id: u64,
+    pub(super) new_object_id: u64,
+    pub(super) stable_id: u64,
+    pub(super) owner: u8,
+    pub(super) controller: u8,
+    pub(super) from_zone: String,
+    pub(super) to_zone: String,
+    pub(super) card: ZoneCardSnapshot,
+}
+
 pub(super) fn battlefield_transition_snapshots(
     transitions: impl IntoIterator<Item = UiBattlefieldTransition>,
 ) -> Vec<BattlefieldTransitionSnapshot> {
@@ -688,6 +701,39 @@ pub(super) fn battlefield_transition_snapshots(
                 }
                 UiBattlefieldTransitionKind::Exiled => BattlefieldTransitionKindSnapshot::Exiled,
             },
+        })
+        .collect()
+}
+
+fn zone_transition_snapshots(
+    game: &GameState,
+    perspective: PlayerId,
+    viewed_cards: Option<&ActiveViewedCards>,
+) -> Vec<ZoneTransitionSnapshot> {
+    let hidden_label = hidden_object_label().to_ascii_lowercase();
+    game.ui_zone_transitions()
+        .iter()
+        .filter_map(|transition| {
+            let object = game.object(transition.new_object_id)?;
+            if !object_visible_to_perspective(game, perspective, viewed_cards, object.id) {
+                return None;
+            }
+            let card =
+                build_zone_card_snapshot(game, perspective, viewed_cards, object, transition.to);
+            if card.name.trim().to_ascii_lowercase() == hidden_label {
+                return None;
+            }
+            Some(ZoneTransitionSnapshot {
+                id: transition.id,
+                old_object_id: transition.old_object_id.0,
+                new_object_id: transition.new_object_id.0,
+                stable_id: transition.stable_id.0.0,
+                owner: transition.owner.0,
+                controller: transition.controller.0,
+                from_zone: transition.from.to_string(),
+                to_zone: transition.to.to_string(),
+                card,
+            })
         })
         .collect()
 }
@@ -735,6 +781,7 @@ pub(super) struct GameSnapshot {
     pub(super) exile_size: usize,
     pub(super) players: Vec<PlayerSnapshot>,
     pub(super) battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
+    pub(super) zone_transitions: Vec<ZoneTransitionSnapshot>,
     pub(super) crypto_requirements: Vec<CryptoRequirementView>,
     pub(super) viewed_cards: Option<ViewedCardsSnapshot>,
     pub(super) decision: Option<DecisionView>,
@@ -797,7 +844,11 @@ pub(super) struct ViewedCardSnapshot {
     pub(super) oracle_text: String,
 }
 
-fn resolve_viewed_card(game: &GameState, id: ObjectId) -> (ObjectId, u64, String, String) {
+fn resolve_viewed_card(
+    game: &GameState,
+    id: ObjectId,
+    stable_id: StableId,
+) -> (ObjectId, u64, String, String) {
     if let Some(obj) = game.object(id) {
         return (
             id,
@@ -807,8 +858,20 @@ fn resolve_viewed_card(game: &GameState, id: ObjectId) -> (ObjectId, u64, String
         );
     }
 
-    let stable_id = StableId::from_raw(id.0);
     if let Some(current_id) = game.find_object_by_stable_id(stable_id)
+        && let Some(obj) = game.object(current_id)
+    {
+        return (
+            current_id,
+            obj.stable_id.0.0,
+            obj.name.clone(),
+            obj.compiled_card_text.clone(),
+        );
+    }
+
+    let id_as_stable_id = StableId::from_raw(id.0);
+    if id_as_stable_id != stable_id
+        && let Some(current_id) = game.find_object_by_stable_id(id_as_stable_id)
         && let Some(obj) = game.object(current_id)
     {
         return (
@@ -888,8 +951,6 @@ impl GameSnapshot {
                         && view.subject == p.id
                         && (view.public || view.viewer == perspective)
                 });
-                let visible_hand_ids = visible_hand_view
-                    .map(|view| view.cards.iter().copied().collect::<HashSet<_>>());
                 let hand_revealed_by_static = hand_revealed_by_static_ability(game, p.id);
                 let can_view_hand =
                     is_perspective_player || visible_hand_view.is_some() || hand_revealed_by_static;
@@ -904,9 +965,8 @@ impl GameSnapshot {
                             .filter(|id| {
                                 is_perspective_player
                                     || hand_revealed_by_static
-                                    || visible_hand_ids
-                                        .as_ref()
-                                        .is_some_and(|visible_ids| visible_ids.contains(id))
+                                    || visible_hand_view
+                                        .is_some_and(|view| view.contains_object(game, **id))
                             })
                             .filter_map(|id| game.object(*id))
                             .map(|o| {
@@ -1038,6 +1098,7 @@ impl GameSnapshot {
                 }
             })
             .collect();
+        let zone_transitions = zone_transition_snapshots(game, perspective, viewed_cards);
 
         let mut stack_preview: Vec<String> = game
             .stack
@@ -1109,6 +1170,7 @@ impl GameSnapshot {
             exile_size: game.exile.len(),
             players,
             battlefield_transitions,
+            zone_transitions,
             crypto_requirements: Vec::new(),
             viewed_cards: viewed_cards
                 .filter(|view| view.public || view.viewer == perspective)
@@ -1124,9 +1186,10 @@ impl GameSnapshot {
                     cards: view
                         .cards
                         .iter()
-                        .map(|id| {
+                        .enumerate()
+                        .map(|(index, id)| {
                             let (current_id, stable_id, name, oracle_text) =
-                                resolve_viewed_card(game, *id);
+                                resolve_viewed_card(game, *id, view.stable_id_at(index, *id));
                             ViewedCardSnapshot {
                                 id: current_id.0,
                                 stable_id,
@@ -1138,7 +1201,12 @@ impl GameSnapshot {
                     card_ids: view
                         .cards
                         .iter()
-                        .map(|id| resolve_viewed_card(game, *id).0.0)
+                        .enumerate()
+                        .map(|(index, id)| {
+                            resolve_viewed_card(game, *id, view.stable_id_at(index, *id))
+                                .0
+                                .0
+                        })
                         .collect(),
                     source: view.source.map(|id| id.0),
                     description: view.description.clone(),

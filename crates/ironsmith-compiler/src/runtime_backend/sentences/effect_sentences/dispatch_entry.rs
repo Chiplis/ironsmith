@@ -1207,6 +1207,7 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::AddManaAnyOneColor { .. }
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaColorsAmong { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
                 | SubjectVerbActionAst::AddManaImprintedColors
         ),
@@ -2357,6 +2358,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
             | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }
             | SubjectVerbActionAst::GainControl { .. }
+            | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -2425,6 +2427,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }

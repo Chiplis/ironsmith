@@ -880,6 +880,8 @@ pub(super) fn apply_reference_and_tag_stage(
     }
     let has_exiled_with_phrase =
         find_word_slice_phrase_start(all_words, &["exiled", "with"]).is_some();
+    let has_used_to_craft_phrase =
+        find_word_slice_phrase_start(all_words, &["used", "to", "craft"]).is_some();
     let owner_only_tail_after_exiled_cards = starts_with_exiled_card
         && all_words
             .iter()
@@ -887,7 +889,9 @@ pub(super) fn apply_reference_and_tag_stage(
             .all(|word| matches!(*word, "you" | "your" | "they" | "their" | "own" | "owns"));
     let is_source_linked_exile_reference = has_exiled_with_phrase
         || (starts_with_exiled_card
-            && (all_words.len() == 2 || owner_only_tail_after_exiled_cards));
+            && (all_words.len() == 2
+                || owner_only_tail_after_exiled_cards
+                || has_used_to_craft_phrase));
     let mut source_linked_exile_reference = false;
     if is_source_linked_exile_reference {
         source_linked_exile_reference = true;
@@ -916,6 +920,26 @@ pub(super) fn apply_reference_and_tag_stage(
             if reference_end > exiled_with_idx + 1 {
                 all_words.drain(exiled_with_idx + 1..reference_end);
             }
+        }
+        if let Some(used_to_craft_idx) =
+            find_word_slice_phrase_start(all_words, &["used", "to", "craft"])
+        {
+            let mut reference_end = used_to_craft_idx + 3;
+            if all_words
+                .get(reference_end)
+                .is_some_and(|word| matches!(*word, "this" | "that" | "the" | "it" | "them"))
+            {
+                reference_end += 1;
+            }
+            if all_words.get(reference_end).is_some_and(|word| {
+                matches!(
+                    *word,
+                    "artifact" | "creature" | "permanent" | "card" | "spell" | "source"
+                )
+            }) {
+                reference_end += 1;
+            }
+            all_words.drain(used_to_craft_idx..reference_end);
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
@@ -947,6 +971,35 @@ pub(super) fn apply_reference_and_tag_stage(
             if reference_end > exiled_with_idx + 1 {
                 segment_tokens.drain(exiled_with_token_idx + 1..reference_end);
             }
+        }
+        let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+        let segment_words = segment_words_view.to_word_refs();
+        if let Some(used_to_craft_idx) =
+            find_word_slice_phrase_start(&segment_words, &["used", "to", "craft"])
+            && let Some(used_to_craft_token_idx) =
+                normalized_token_index_for_word_index(segment_tokens.as_slice(), used_to_craft_idx)
+        {
+            let mut reference_end = used_to_craft_token_idx + 3;
+            if segment_tokens.get(reference_end).is_some_and(|token| {
+                token.is_word("this")
+                    || token.is_word("that")
+                    || token.is_word("the")
+                    || token.is_word("it")
+                    || token.is_word("them")
+            }) {
+                reference_end += 1;
+            }
+            if segment_tokens.get(reference_end).is_some_and(|token| {
+                token.is_word("artifact")
+                    || token.is_word("creature")
+                    || token.is_word("permanent")
+                    || token.is_word("card")
+                    || token.is_word("spell")
+                    || token.is_word("source")
+            }) {
+                reference_end += 1;
+            }
+            segment_tokens.drain(used_to_craft_token_idx..reference_end);
         }
     }
 

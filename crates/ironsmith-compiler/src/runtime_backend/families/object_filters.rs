@@ -6,7 +6,7 @@ use crate::cards::builders::{CardTextError, IT_TAG};
 use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::ParityRequirement;
 use crate::{
-    CardType, Color, ColorSet, ObjectFilter, PlayerFilter, Supertype, TagKey,
+    CardType, Color, ColorSet, ObjectFilter, PlayerFilter, Subtype, Supertype, TagKey,
     TaggedObjectConstraint, TaggedOpbjectRelation, Zone,
 };
 
@@ -947,6 +947,20 @@ mod tests {
         assert!(type_filter.chosen_creature_type);
         assert_eq!(type_filter.controller, Some(PlayerFilter::You));
         assert_eq!(type_filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_treats_other_than_types_as_exclusions() {
+        let tokens = tokenize_line("creatures other than Werewolves and Wolves", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert!(!filter.other);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.excluded_subtypes,
+            vec![Subtype::Werewolf, Subtype::Wolf]
+        );
     }
 
     #[test]

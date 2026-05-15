@@ -123,6 +123,9 @@ pub(crate) enum TriggerSpec {
     ThisBecomesBlockedByObject(ObjectFilter),
     ThisDies,
     ThisDiesOrIsExiled,
+    ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
+        marker: String,
+    },
     ThisLeavesBattlefield,
     ThisBecomesMonstrous,
     ThisBecomesTapped,
@@ -276,6 +279,7 @@ pub(crate) enum TriggerSpec {
     BeginningOfEndStep(PlayerFilter),
     BeginningOfPrecombatMain(PlayerFilter),
     BeginningOfPostcombatMain(PlayerFilter),
+    DayNightChanged,
     ThisEntersBattlefield,
     ThisEntersBattlefieldWithSurface(crate::target::SourceReferenceSurface),
     ThisEntersBattlefieldFromZone {
@@ -748,6 +752,9 @@ pub(crate) enum SubjectVerbActionAst {
         allow_colorless: bool,
         same_type: bool,
     },
+    AddManaColorsAmong {
+        filter: ObjectFilter,
+    },
     AddManaCommanderIdentity {
         amount: Value,
     },
@@ -888,6 +895,10 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllCombatDamageFromSource {
         duration: Until,
         source: TargetAst,
+    },
+    PreventAllCombatDamageFromSourceFilter {
+        duration: Until,
+        source_filter: ObjectFilter,
     },
     PreventAllCombatDamageToPlayers {
         duration: Until,
@@ -1736,6 +1747,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_colorless", allow_colorless)
                 .field("same_type", same_type)
                 .finish(),
+            Self::AddManaColorsAmong { filter } => f
+                .debug_struct("AddManaColorsAmong")
+                .field("filter", filter)
+                .finish(),
             Self::AddManaCommanderIdentity { amount } => f
                 .debug_tuple("AddManaCommanderIdentity")
                 .field(amount)
@@ -1944,6 +1959,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PreventAllCombatDamageFromSource")
                 .field("duration", duration)
                 .field("source", source)
+                .finish(),
+            Self::PreventAllCombatDamageFromSourceFilter {
+                duration,
+                source_filter,
+            } => f
+                .debug_struct("PreventAllCombatDamageFromSourceFilter")
+                .field("duration", duration)
+                .field("source_filter", source_filter)
                 .finish(),
             Self::PreventAllCombatDamageToPlayers { duration } => f
                 .debug_struct("PreventAllCombatDamageToPlayers")
@@ -3006,9 +3029,18 @@ pub(crate) enum EffectAst {
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
     },
+    MayCastMatchingSpellWithoutPayingManaCost {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+    },
     RepeatThisProcess,
     RepeatThisProcessMay,
     RepeatThisProcessOnce,
+    RepeatEffects {
+        count: Value,
+        effects: Vec<EffectAst>,
+    },
     May {
         effects: Vec<EffectAst>,
     },
@@ -3203,6 +3235,20 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_prevent_all_combat_damage_from_source_filter(
+        source_filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
+                duration,
+                source_filter,
+            },
+        )
+    }
+
     pub(crate) fn subject_verb_prevent_all_combat_damage_to_players(duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3383,6 +3429,18 @@ impl EffectAst {
                 cost_reduction,
             },
         )
+    }
+
+    pub(crate) fn may_cast_matching_spell_without_paying_mana_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+        }
     }
 
     pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn(
@@ -4784,6 +4842,17 @@ impl EffectAst {
                 allow_colorless,
                 same_type,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_add_mana_colors_among(
+        player: PlayerAst,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::AddManaColorsAmong { filter },
         )
     }
 

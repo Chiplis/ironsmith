@@ -13,7 +13,8 @@ use crate::game_loop::{
     GameLoopError, apply_attacker_declarations, apply_attacker_declarations_with_dm,
     apply_blocker_declarations, execute_combat_damage_step, generate_and_queue_step_triggers,
     get_declare_attackers_decision, get_declare_blockers_decision,
-    preview_optional_attack_cost_prompts, put_triggers_on_stack, queue_combat_damage_triggers,
+    drain_pending_trigger_events, preview_optional_attack_cost_prompts, put_triggers_on_stack,
+    queue_combat_damage_triggers,
 };
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
@@ -240,6 +241,7 @@ impl TurnRunner {
             TurnState::Upkeep => {
                 game.turn.step = Some(Step::Upkeep);
                 game.turn.priority_player = Some(game.turn.active_player);
+                drain_pending_trigger_events(game, tq);
                 generate_and_queue_step_triggers(game, tq);
 
                 self.state = TurnState::UpkeepPriority;

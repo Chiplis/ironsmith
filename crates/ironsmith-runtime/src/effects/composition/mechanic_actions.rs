@@ -5,7 +5,7 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeValue, Until};
+use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::player::CastTaggedEffect;
@@ -14,8 +14,11 @@ use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::Event;
 use crate::events::permanents::SacrificeEvent;
-use crate::events::processing::EventOutcome;
+use crate::events::processing::{
+    EventOutcome, TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+};
 use crate::events::zones::ZoneChangeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::filter::PlayerFilter;
@@ -23,9 +26,11 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+use std::collections::HashMap;
 pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
 pub use ironsmith_core::{BolsterEffect, CipherEffect, DevourEffect};
 
@@ -160,6 +165,89 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
         .collect()
 }
 
+fn execute_keyword_action_replacement_effects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: Vec<Effect>,
+    effect_id: crate::replacement::ReplacementEffectId,
+    action_snapshot: Option<ObjectSnapshot>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let replacement_effect = game
+        .effect_store
+        .replacement_effects
+        .get_effect(effect_id)
+        .cloned();
+    let (replacement_source, replacement_controller) = replacement_effect
+        .as_ref()
+        .map(|effect| (effect.source, effect.controller))
+        .unwrap_or((ctx.source, ctx.controller));
+    let replacement_key = replacement_effect
+        .as_ref()
+        .map(|effect| effect.application_key());
+
+    let original_source = ctx.source;
+    let original_controller = ctx.controller;
+    let original_cause = ctx.cause.clone();
+    let original_it = ctx.clear_object_tag("__it__");
+    let original_plain_it = ctx.clear_object_tag("it");
+    let was_suppressed = !ctx
+        .replacement
+        .suppressed_replacement_effects
+        .insert(effect_id);
+    let key_was_suppressed = if let Some(key) = replacement_key.as_ref() {
+        !ctx.replacement
+            .suppressed_replacement_effect_keys
+            .insert(key.clone())
+    } else {
+        true
+    };
+
+    ctx.source = replacement_source;
+    ctx.controller = replacement_controller;
+    ctx.cause =
+        crate::events::cause::EventCause::from_effect(replacement_source, replacement_controller);
+    if let Some(snapshot) = action_snapshot {
+        ctx.set_tagged_objects("__it__", vec![snapshot.clone()]);
+        ctx.set_tagged_objects("it", vec![snapshot]);
+    }
+
+    let execution_result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let mut outcomes = Vec::new();
+        for effect in effects {
+            outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
+        }
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+    })();
+
+    ctx.source = original_source;
+    ctx.controller = original_controller;
+    ctx.cause = original_cause;
+    if !was_suppressed {
+        ctx.replacement
+            .suppressed_replacement_effects
+            .remove(&effect_id);
+    }
+    if !key_was_suppressed && let Some(key) = replacement_key {
+        ctx.replacement
+            .suppressed_replacement_effect_keys
+            .remove(&key);
+    }
+    match original_it {
+        Some(snapshots) => ctx.set_tagged_objects("__it__", snapshots),
+        None => {
+            ctx.clear_object_tag("__it__");
+        }
+    }
+    match original_plain_it {
+        Some(snapshots) => ctx.set_tagged_objects("it", snapshots),
+        None => {
+            ctx.clear_object_tag("it");
+        }
+    }
+
+    execution_result
+}
+
 impl EffectExecutor for ExploreEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -274,6 +362,58 @@ impl EffectExecutor for ExploreEffect {
                 let controller = instruction.controller;
                 let pre_snapshot = instruction.snapshot.clone();
 
+                let would_event = Event::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Explore,
+                        controller,
+                        instruction.object_id,
+                        1,
+                    )
+                    .with_snapshot(pre_snapshot.clone()),
+                    ctx.provenance,
+                );
+                let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+                let applied_effect_keys =
+                    ctx.replacement.suppressed_replacement_effect_keys.clone();
+                if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                    game.update_replacement_effects();
+                }
+                match process_trait_event_with_dm_and_applied_effects(
+                    game,
+                    would_event,
+                    ctx.decision_maker,
+                    &applied_effects,
+                    &applied_effect_keys,
+                ) {
+                    TraitEventResult::Replaced { effects, effect_id } => {
+                        let replacement_outcome = execute_keyword_action_replacement_effects(
+                            game,
+                            ctx,
+                            effects,
+                            effect_id,
+                            pre_snapshot.clone(),
+                        )?;
+                        for event in &replacement_outcome.events {
+                            if let Some(keyword) =
+                                event.inner().as_any().downcast_ref::<KeywordActionEvent>()
+                                && keyword.action == KeywordActionKind::Explore
+                            {
+                                explored_objects.push(keyword.source);
+                            }
+                        }
+                        events.extend(replacement_outcome.events);
+                        continue;
+                    }
+                    TraitEventResult::Prevented => continue,
+                    TraitEventResult::NeedsChoice { .. }
+                    | TraitEventResult::NeedsInteraction { .. } => {
+                        return Ok(
+                            EffectOutcome::with_objects(explored_objects).with_events(events)
+                        );
+                    }
+                    TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+                }
+
                 let revealed_card_id = game
                     .player(controller)
                     .and_then(|entry| entry.library.last().copied());
@@ -366,6 +506,15 @@ impl EffectExecutor for ExploreEffect {
                     .object(instruction.object_id)
                     .map(|object| ObjectSnapshot::from_object(object, game))
                     .or(pre_snapshot);
+                let object_tags = revealed_snapshot
+                    .clone()
+                    .map(|snapshot| {
+                        HashMap::from([(
+                            TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+                            vec![snapshot],
+                        )])
+                    })
+                    .unwrap_or_default();
                 events.push(TriggerEvent::new_with_provenance(
                     KeywordActionEvent::new(
                         KeywordActionKind::Explore,
@@ -373,7 +522,8 @@ impl EffectExecutor for ExploreEffect {
                         instruction.object_id,
                         1,
                     )
-                    .with_snapshot(action_snapshot),
+                    .with_snapshot(action_snapshot)
+                    .with_object_tags(object_tags),
                     ctx.provenance,
                 ));
                 explored_objects.push(instruction.object_id);
@@ -1459,6 +1609,15 @@ mod tests {
         assert_eq!(keyword.action, KeywordActionKind::Explore);
         assert_eq!(keyword.source, explorer);
         assert_eq!(keyword.player, alice);
+        assert!(
+            keyword
+                .object_tags
+                .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+                .is_some_and(|snapshots| snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == land)),
+            "explore keyword action should remember the revealed card"
+        );
     }
 
     #[test]
@@ -1501,6 +1660,15 @@ mod tests {
             .expect("explore should emit a keyword action");
         let snapshot = keyword.snapshot.as_ref().expect("explore snapshot");
         assert_eq!(snapshot.counter_count(CounterType::PlusOnePlusOne), 1);
+        assert!(
+            keyword
+                .object_tags
+                .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+                .is_some_and(|snapshots| snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == spell)),
+            "explore keyword action should remember a nonland revealed card left on top"
+        );
     }
 
     #[test]
@@ -1567,6 +1735,17 @@ mod tests {
                 .iter()
                 .any(|event| event.kind() == EventKind::KeywordAction),
             "empty-library explore should still count as exploring"
+        );
+        let keyword = outcome
+            .events
+            .iter()
+            .find_map(|event| event.inner().as_any().downcast_ref::<KeywordActionEvent>())
+            .expect("explore should emit a keyword action");
+        assert!(
+            !keyword
+                .object_tags
+                .contains_key(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG)),
+            "empty-library explore should not pretend a land or nonland card was revealed"
         );
     }
 

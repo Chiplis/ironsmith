@@ -3102,62 +3102,13 @@ impl CardDefinitionBuilder {
     }
 
     /// Add daybound.
-    ///
-    /// In this engine, daybound/nightbound use a single upkeep trigger keyed off the
-    /// permanent's current face:
-    /// - face up (day): transform if no spells were cast last turn
-    /// - face down (night): transform if two or more spells were cast last turn
     pub fn daybound(self) -> Self {
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::beginning_of_upkeep(PlayerFilter::Any),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::conditional(
-                        Condition::SourceIsFaceDown,
-                        vec![Effect::conditional_only(
-                            Condition::SpellsWereCastLastTurnOrMore(2),
-                            vec![Effect::transform(ChooseSpec::Source)],
-                        )],
-                        vec![Effect::conditional_only(
-                            Condition::NoSpellsWereCastLastTurn,
-                            vec![Effect::transform(ChooseSpec::Source)],
-                        )],
-                    ),
-                ]),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: None,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+        self.with_ability(Ability::static_ability(StaticAbility::daybound()))
     }
 
     /// Add nightbound.
-    ///
-    /// Uses the same day/night transition trigger implementation as `daybound`.
     pub fn nightbound(self) -> Self {
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::beginning_of_upkeep(PlayerFilter::Any),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::conditional(
-                        Condition::SourceIsFaceDown,
-                        vec![Effect::conditional_only(
-                            Condition::SpellsWereCastLastTurnOrMore(2),
-                            vec![Effect::transform(ChooseSpec::Source)],
-                        )],
-                        vec![Effect::conditional_only(
-                            Condition::NoSpellsWereCastLastTurn,
-                            vec![Effect::transform(ChooseSpec::Source)],
-                        )],
-                    ),
-                ]),
-                choices: vec![],
-                intervening_if: None,
-                presentation_label: None,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+        self.with_ability(Ability::static_ability(StaticAbility::nightbound()))
     }
 
     /// Add enlist.
@@ -6983,8 +6934,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .expect("daybound transform effect should execute");
         }
         assert!(
-            game.is_face_down(source),
-            "daybound runtime should transform the source permanent"
+            !game.is_face_down(source),
+            "daybound runtime should transform the source to a visible back face"
         );
         assert_eq!(
             game.object(source)
@@ -7001,8 +6952,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .expect("daybound/nightbound transform effect should execute");
         }
         assert!(
-            game.is_face_down(source),
-            "night side should stay transformed when fewer than two spells were cast last turn"
+            !game.is_face_down(source),
+            "night side should stay visible when fewer than two spells were cast last turn"
         );
         assert_eq!(
             game.object(source)
@@ -12984,6 +12935,26 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             static_ids
                 .contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction),
             "expected activated-ability cost reduction static ability, got {static_ids:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_conditional_cycling_zero_cost_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "New Perspectives Variant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "As long as you have seven or more cards in hand, you may pay {0} rather than pay cycling costs.",
+            )
+            .expect("conditional cycling alternative cost should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("ActivatedAbilityCostReduction")
+                && debug.contains("replacement_mana_cost: Some")
+                && debug.contains("cycling")
+                && debug.contains("PlayerCardsInHandOrMore"),
+            "expected conditional cycling zero-cost modifier, got {debug}"
         );
     }
 

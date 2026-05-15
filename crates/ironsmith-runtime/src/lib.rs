@@ -110,6 +110,7 @@ pub use events::processing::{
     process_event_with_chosen_replacement_trait,
     process_life_gain_with_event,
     process_put_counters_with_event,
+    process_token_creation_with_event,
     // Event-based processing functions
     process_trait_event,
     process_zone_change_full,

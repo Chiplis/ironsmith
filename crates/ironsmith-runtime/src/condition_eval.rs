@@ -11,6 +11,12 @@ use crate::zone::Zone;
 
 use crate::triggers::{TriggerEvent, TriggerIdentity};
 
+fn source_is_face_down_or_alternate_face(game: &GameState, source: ObjectId) -> bool {
+    // `SourceIsFaceDown` is also used by daybound/nightbound lowering to mean
+    // "this DFC is currently showing its alternate face."
+    game.is_face_down(source) || game.transform_count(source) % 2 == 1
+}
+
 fn source_was_cast(
     game: &GameState,
     source: ObjectId,
@@ -77,6 +83,9 @@ fn this_spell_was_cast_from_zone(
         crate::alternative_cast::CastingMethod::GrantedFlashback => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::GrantedEscape { .. } => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::PlayFrom {
+            zone: from_zone, ..
+        } => *from_zone == zone,
+        crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
             zone: from_zone, ..
         } => *from_zone == zone,
         crate::alternative_cast::CastingMethod::Alternative(idx) => game
@@ -1609,7 +1618,7 @@ pub fn evaluate_condition_external(
             game.devoured_count(ctx.source) >= *count
         }
         Condition::SourceIsMonstrous => game.is_monstrous(ctx.source),
-        Condition::SourceIsFaceDown => game.is_face_down(ctx.source),
+        Condition::SourceIsFaceDown => source_is_face_down_or_alternate_face(game, ctx.source),
         Condition::SourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
             game.object(ctx.source)
@@ -3094,7 +3103,7 @@ fn evaluate_condition(
             Ok(game.devoured_count(ctx.source) >= *count)
         }
         Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
-        Condition::SourceIsFaceDown => Ok(game.is_face_down(ctx.source)),
+        Condition::SourceIsFaceDown => Ok(source_is_face_down_or_alternate_face(game, ctx.source)),
         Condition::SourceMatches(filter) => {
             let filter_ctx = ctx.filter_context(game);
             Ok(game

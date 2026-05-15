@@ -1218,6 +1218,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "ki" => Some(CounterType::Ki),
         "energy" => Some(CounterType::Energy),
         "age" => Some(CounterType::Age),
+        "ice" => Some(CounterType::Ice),
         "finality" => Some(CounterType::Finality),
         "time" => Some(CounterType::Time),
         "brain" => Some(CounterType::Brain),
@@ -1945,6 +1946,20 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             .collect::<Vec<_>>();
         let filter = parse_object_filter(&filter_tokens, false).ok()?;
         return Some((Value::BasicLandTypesAmong(filter), filter_end));
+    }
+    if words_have_prefix(filter_words, &["color", "among"])
+        || words_have_prefix(filter_words, &["colors", "among"])
+    {
+        let mut scope_start = filter_start + 2;
+        if words.get(scope_start).copied() == Some("the") {
+            scope_start += 1;
+        }
+        let filter_tokens = words[scope_start..filter_end]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        return Some((Value::ColorsAmong(filter), filter_end));
     }
     if matches!(
         filter_words.get(..3),

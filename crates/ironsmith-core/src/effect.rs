@@ -1330,6 +1330,7 @@ pub struct MoveToZoneEffect {
     pub to_top: bool,
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
+    pub transfer_exiled_with_source_links: bool,
 }
 
 impl MoveToZoneEffect {
@@ -1340,6 +1341,7 @@ impl MoveToZoneEffect {
             to_top,
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
+            transfer_exiled_with_source_links: false,
         }
     }
 
@@ -1361,6 +1363,11 @@ impl MoveToZoneEffect {
 
     pub fn under_owner_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::Owner;
+        self
+    }
+
+    pub fn transfer_exiled_with_source_links(mut self) -> Self {
+        self.transfer_exiled_with_source_links = true;
         self
     }
 
@@ -2948,6 +2955,23 @@ impl GrantTaggedSpellLifeCostByManaValueEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
+    pub zone: crate::Zone,
+}
+
+impl MayCastMatchingSpellWithoutPayingManaCostEffect {
+    pub fn new(player: PlayerFilter, filter: ObjectFilter, zone: crate::Zone) -> Self {
+        Self {
+            player,
+            filter,
+            zone,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfChosenColorEffect {
     pub amount: Value,
     pub player: PlayerFilter,
@@ -2988,6 +3012,22 @@ impl AddManaOfImprintedColorsEffect {
 impl Default for AddManaOfImprintedColorsEffect {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddManaOfColorsAmongEffect {
+    pub filter: ObjectFilter,
+    pub player: PlayerFilter,
+}
+
+impl AddManaOfColorsAmongEffect {
+    pub fn new(filter: ObjectFilter, player: PlayerFilter) -> Self {
+        Self { filter, player }
+    }
+
+    pub fn you(filter: ObjectFilter) -> Self {
+        Self::new(filter, PlayerFilter::You)
     }
 }
 

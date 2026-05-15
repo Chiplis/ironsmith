@@ -22,6 +22,9 @@ pub(super) fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
+        return Ok(None);
+    }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
         || matches!(
@@ -139,6 +142,15 @@ pub(super) fn parse_statement_line_cst(
         parse_tokens: line.tokens.clone(),
         parse_groups,
     }))
+}
+
+fn looks_like_day_night_starts_day_as_enters_static_line(tokens: &[OwnedLexToken]) -> bool {
+    token_words_have_any_prefix(tokens, &[&["if"]])
+        && token_words_have_sequence(tokens, &["neither", "day", "nor", "night"])
+        && token_words_have_sequence(tokens, &["it", "becomes", "day"])
+        && (token_words_have_sequence(tokens, &["as", "this", "creature", "enters"])
+            || token_words_have_sequence(tokens, &["as", "this", "permanent", "enters"])
+            || token_words_have_sequence(tokens, &["as", "this", "object", "enters"]))
 }
 
 fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {

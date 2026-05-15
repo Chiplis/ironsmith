@@ -127,6 +127,183 @@ pub(crate) fn parse_channel_line_lexed(
     parse_hand_keyword_activated_body_lexed(&tokens[1..], "channel", "Channel", &clause_text)
 }
 
+pub(crate) fn parse_craft_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    parse_craft_line_lexed(tokens)
+}
+
+pub(crate) fn parse_craft_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let reminder_start = tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::LParen))
+        .unwrap_or(tokens.len());
+    let tokens = &tokens[..reminder_start];
+    let words = ActivationRestrictionCompatWords::new(tokens);
+    let words = words.to_word_refs();
+    if !matches!(words.as_slice(), ["craft", "with", ..]) {
+        return Ok(None);
+    }
+
+    let Some(cost_start) = tokens
+        .iter()
+        .enumerate()
+        .skip(2)
+        .find_map(|(idx, token)| mana_pips_from_token(token).is_some().then_some(idx))
+    else {
+        return Ok(None);
+    };
+    let material_tokens = trim_edge_punctuation(&tokens[2..cost_start]);
+    let cost_tokens = trim_edge_punctuation(&tokens[cost_start..]);
+    if material_tokens.is_empty() || cost_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let (material_filter, material_count, material_text) =
+        parse_craft_material_spec(&material_tokens)?;
+    let base_cost = parse_activation_cost(&cost_tokens)?;
+    let mut merged_costs = base_cost.costs().to_vec();
+    merged_costs.push(crate::costs::Cost::validated_effect(Effect::exile(
+        ChooseSpec::Object(material_filter).with_count(material_count),
+    )));
+    merged_costs.push(
+        crate::costs::payment_effect_to_cost(Effect::emit_keyword_action(
+            crate::events::KeywordActionKind::Craft,
+            1,
+        ))
+        .map_err(CardTextError::ParseError)?,
+    );
+    merged_costs.push(crate::costs::Cost::exile_self());
+
+    let return_transformed = Effect::new(
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false)
+            .under_owner_control()
+            .transfer_exiled_with_source_links(),
+    );
+    let transform = Effect::transform(ChooseSpec::Source);
+
+    let cost_text = base_cost
+        .mana_cost()
+        .map(|cost| cost.to_oracle())
+        .unwrap_or_else(|| crate::runtime_backend::token_word_refs(&cost_tokens).join(" "));
+
+    Ok(Some(ParsedAbility {
+        ability: Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::from_costs(merged_costs),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    return_transformed,
+                    transform,
+                ]),
+                choices: Vec::new(),
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        }
+        .into(),
+        text: Some(format!("Craft with {material_text} {cost_text}")),
+        effects_ast: None,
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: None,
+    }))
+}
+
+fn parse_craft_material_spec(
+    tokens: &[OwnedLexToken],
+) -> Result<(ObjectFilter, ChoiceCount, String), CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    match words.as_slice() {
+        ["artifact"] => Ok((
+            craft_battlefield_or_graveyard_filter(CardType::Artifact),
+            ChoiceCount::exactly(1),
+            "artifact".to_string(),
+        )),
+        ["one", "or", "more"] => {
+            let mut filter = ObjectFilter::default();
+            filter.any_of = vec![
+                ObjectFilter::permanent()
+                    .in_zone(Zone::Battlefield)
+                    .controlled_by(PlayerFilter::You)
+                    .other(),
+                ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You)
+                    .other(),
+            ];
+            Ok((filter, ChoiceCount::at_least(1), "one or more".to_string()))
+        }
+        [
+            "four",
+            "or",
+            "more",
+            "red",
+            "instant",
+            "and",
+            "or",
+            "sorcery",
+            "cards",
+        ]
+        | [
+            "four",
+            "or",
+            "more",
+            "red",
+            "instant",
+            "and/or",
+            "sorcery",
+            "cards",
+        ]
+        | [
+            "four",
+            "or",
+            "more",
+            "red",
+            "instant",
+            "or",
+            "sorcery",
+            "cards",
+        ] => Ok((
+            ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You)
+                .with_colors(ColorSet::from_color(crate::color::Color::Red))
+                .with_type(CardType::Instant)
+                .with_type(CardType::Sorcery),
+            ChoiceCount::at_least(4),
+            "four or more red instant and/or sorcery cards".to_string(),
+        )),
+        _ => Err(CardTextError::ParseError(format!(
+            "unsupported craft material clause '{}'",
+            words.join(" ")
+        ))),
+    }
+}
+
+fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        ObjectFilter::default()
+            .with_type(card_type)
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::You)
+            .other(),
+        ObjectFilter::default()
+            .with_type(card_type)
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .other(),
+    ];
+    filter
+}
+
 pub(crate) fn parse_cycling_keyword_cost_groups(
     tokens: &[OwnedLexToken],
 ) -> Vec<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {

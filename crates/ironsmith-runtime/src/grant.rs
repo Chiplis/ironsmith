@@ -99,6 +99,18 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     total_cost: TotalCost::mana(mana_cost),
                 })
             }
+            Self::RetraceFromCardManaCost => {
+                let mana_cost = card.mana_cost.clone()?;
+                if card.zone != Zone::Graveyard {
+                    return None;
+                }
+                Some(AlternativeCastingMethod::Retrace {
+                    total_cost: TotalCost::from_costs(vec![
+                        Cost::mana(mana_cost),
+                        Cost::discard(1, Some(CardType::Land)),
+                    ]),
+                })
+            }
             Self::EmergeFromCardManaCost => {
                 let mana_cost = card.mana_cost.clone()?;
                 if card.zone != Zone::Hand || !card.has_card_type(CardType::Creature) {

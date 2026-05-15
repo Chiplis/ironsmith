@@ -101,11 +101,13 @@ export class WasmGame {
      * Get the current semantic threshold as percentage points.
      */
     getSemanticThreshold(): number;
+    hasDayNight(): boolean;
     /**
      * Replace this WASM engine with a checkpoint from the current authoritative host.
      */
     importSyncCheckpoint(checkpoint: any, perspective_index: number): any;
     injectTranscriptRandomSeeds(input: any): void;
+    isDaytime(): boolean;
     /**
      * Return whether the query resolves to a locally known card name.
      */
@@ -177,6 +179,7 @@ export class WasmGame {
      * Set an explicit combat damage assignment for the next combat damage step.
      */
     setCombatDamageAssignment(attacker_id: bigint, recipient_id: bigint, amount: number): void;
+    setDaytime(daytime: boolean): any;
     /**
      * Set a player's life total.
      */
@@ -254,6 +257,9 @@ export interface InitOutput {
     readonly wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_forfeitPlayer: (a: number, b: number) => [number, number, number];
     readonly wasmgame_forceNextDieRoll: (a: number, b: number) => void;
+    readonly wasmgame_setDaytime: (a: number, b: number) => [number, number, number];
+    readonly wasmgame_isDaytime: (a: number) => number;
+    readonly wasmgame_hasDayNight: (a: number) => number;
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];
     readonly wasmgame_moveHandCardToBattlefieldFaceDown: (a: number, b: number, c: bigint, d: number) => [bigint, number, number];
     readonly wasmgame_forceTurnFaceUp: (a: number, b: number, c: bigint) => [number, number];

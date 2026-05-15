@@ -352,6 +352,7 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "ki" => Some(CounterType::Ki),
         "energy" => Some(CounterType::Energy),
         "age" => Some(CounterType::Age),
+        "ice" => Some(CounterType::Ice),
         "finality" => Some(CounterType::Finality),
         "time" => Some(CounterType::Time),
         "brain" => Some(CounterType::Brain),
@@ -689,7 +690,10 @@ fn parse_sacrifice_segment_tokens(
     }
 
     let mut other = false;
-    if tail.get(idx) == Some(&"another") {
+    if tail
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "another" | "other"))
+    {
         other = true;
         idx += 1;
     }
@@ -733,7 +737,10 @@ fn parse_tap_chosen_segment_tokens(
         idx = 1;
     }
 
-    if tail.get(idx) == Some(&"another") {
+    if tail
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "another" | "other"))
+    {
         other = true;
         idx += 1;
     }

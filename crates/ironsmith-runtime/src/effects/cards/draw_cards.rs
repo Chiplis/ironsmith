@@ -2,11 +2,14 @@
 
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{BooleanContext, ViewCardsContext};
-use crate::effect::EffectOutcome;
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{CardRevealedEvent, CardsDrawnEvent};
+use crate::events::processing::{
+    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+};
+use crate::events::{CardRevealedEvent, CardsDrawnEvent, Event};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
@@ -14,6 +17,70 @@ use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::DrawCardsEffect;
+
+fn execute_draw_replacement_effects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: Vec<Effect>,
+    effect_id: crate::replacement::ReplacementEffectId,
+) -> Result<EffectOutcome, ExecutionError> {
+    let replacement_effect = game
+        .effect_store
+        .replacement_effects
+        .get_effect(effect_id)
+        .cloned();
+    let (replacement_source, replacement_controller) = replacement_effect
+        .as_ref()
+        .map(|effect| (effect.source, effect.controller))
+        .unwrap_or((ctx.source, ctx.controller));
+    let replacement_key = replacement_effect
+        .as_ref()
+        .map(|effect| effect.application_key());
+
+    let original_source = ctx.source;
+    let original_controller = ctx.controller;
+    let original_cause = ctx.cause.clone();
+    let was_suppressed = !ctx
+        .replacement
+        .suppressed_replacement_effects
+        .insert(effect_id);
+    let key_was_suppressed = if let Some(key) = replacement_key.as_ref() {
+        !ctx.replacement
+            .suppressed_replacement_effect_keys
+            .insert(key.clone())
+    } else {
+        true
+    };
+
+    ctx.source = replacement_source;
+    ctx.controller = replacement_controller;
+    ctx.cause =
+        crate::events::cause::EventCause::from_effect(replacement_source, replacement_controller);
+
+    let execution_result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let mut outcomes = Vec::new();
+        for effect in effects {
+            outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
+        }
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+    })();
+
+    ctx.source = original_source;
+    ctx.controller = original_controller;
+    ctx.cause = original_cause;
+    if !was_suppressed {
+        ctx.replacement
+            .suppressed_replacement_effects
+            .remove(&effect_id);
+    }
+    if !key_was_suppressed && let Some(key) = replacement_key {
+        ctx.replacement
+            .suppressed_replacement_effect_keys
+            .remove(&key);
+    }
+
+    execution_result
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct AutomaticDrawRevealCandidate {
@@ -181,91 +248,139 @@ impl EffectExecutor for DrawCardsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::events::processing::{EventOutcome, process_draw};
-
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
-            game.draw_step_context_for_player(player_id);
-
-        // Check if this is the first draw this turn
-        let current_draws = game
-            .turn_store
-            .turn_history
-            .cards_drawn_by_player(player_id);
-        let is_first = current_draws == 0;
+        let requested_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
         // Check for "can't draw extra cards" restriction (e.g., Narset)
         let count = if !game.can_draw_extra_cards(player_id) {
+            let current_draws = game
+                .turn_store
+                .turn_history
+                .cards_drawn_by_player(player_id);
             // Player can only draw their first card of the turn
             if current_draws >= 1 {
                 // Already drew this turn, can't draw any more
                 return Ok(EffectOutcome::prevented());
             }
             // First draw - can only draw 1, not more
-            count.min(1)
+            requested_count.min(1)
         } else {
-            count
+            requested_count
         };
 
-        // Process through replacement effects with decision maker
-        match process_draw(game, player_id, count, is_first, &mut *ctx.decision_maker) {
-            EventOutcome::Prevented => Ok(EffectOutcome::prevented()),
-            EventOutcome::Proceed(final_count) => {
-                let drawn = game.draw_cards_with_dm(
-                    player_id,
-                    final_count as usize,
-                    &mut *ctx.decision_maker,
-                );
-                let count = drawn.len() as i32;
+        let mut total_drawn = 0;
+        let mut replacement_count = 0;
+        let mut events = Vec::new();
+        let mut direct_drawn = Vec::new();
+        let mut direct_draw_is_first = false;
+        let mut direct_draw_step_context = (false, 0);
+        let mut direct_draws_before = 0;
 
-                // Only emit event if cards were actually drawn
-                if drawn.is_empty() {
-                    return Ok(EffectOutcome::count(0));
+        for _ in 0..count {
+            if !game.can_draw(player_id) {
+                continue;
+            }
+
+            let current_draws = game
+                .turn_store
+                .turn_history
+                .cards_drawn_by_player(player_id)
+                .saturating_add(direct_drawn.len() as u32);
+            let is_first = current_draws == 0;
+            let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
+                game.draw_step_context_for_player(player_id);
+            let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+            let applied_effect_keys = ctx.replacement.suppressed_replacement_effect_keys.clone();
+            if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                game.update_replacement_effects();
+            }
+
+            let draw_event = Event::draw(player_id, 1, is_first);
+            match process_trait_event_with_dm_and_applied_effects(
+                game,
+                draw_event,
+                ctx.decision_maker,
+                &applied_effects,
+                &applied_effect_keys,
+            ) {
+                TraitEventResult::Prevented => continue,
+                TraitEventResult::Replaced { effects, effect_id } => {
+                    let replacement_outcome =
+                        execute_draw_replacement_effects(game, ctx, effects, effect_id)?;
+                    replacement_count += replacement_outcome.count_or_zero();
+                    events.extend(replacement_outcome.events);
+                    continue;
                 }
+                TraitEventResult::NeedsChoice { .. }
+                | TraitEventResult::NeedsInteraction { .. } => {
+                    return Ok(
+                        EffectOutcome::count(total_drawn + replacement_count).with_events(events)
+                    );
+                }
+                TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
+                    let final_count =
+                        crate::events::downcast_event::<crate::events::DrawEvent>(e.inner())
+                            .map(|draw| draw.count)
+                            .unwrap_or(1);
 
-                let event = TriggerEvent::new_with_provenance(
-                    CardsDrawnEvent::new_with_step_context(
+                    let drawn = game.draw_cards_with_dm(
                         player_id,
-                        drawn,
-                        is_first,
-                        is_during_players_draw_step,
-                        cards_previously_drawn_this_draw_step,
-                    ),
-                    ctx.provenance,
-                );
-                let drawn_count = event
-                    .downcast::<CardsDrawnEvent>()
-                    .map(CardsDrawnEvent::amount)
-                    .unwrap_or(0);
-                game.record_cards_drawn_in_current_draw_step(player_id, drawn_count);
-                let reveal_events = automatic_reveal_events_for_draw(
-                    game,
-                    player_id,
-                    event
-                        .downcast::<CardsDrawnEvent>()
-                        .map(|drawn_event| drawn_event.cards.as_slice())
-                        .unwrap_or(&[]),
-                    current_draws,
-                    &mut *ctx.decision_maker,
-                    ctx.provenance,
-                );
+                        final_count as usize,
+                        &mut *ctx.decision_maker,
+                    );
 
-                let mut outcome = EffectOutcome::count(count).with_event(event);
-                for reveal_event in reveal_events {
-                    outcome = outcome.with_event(reveal_event);
+                    // Only emit event if cards were actually drawn
+                    if drawn.is_empty() {
+                        continue;
+                    }
+                    let drawn_len = drawn.len() as i32;
+                    if direct_drawn.is_empty() {
+                        direct_draw_is_first = is_first;
+                        direct_draw_step_context = (
+                            is_during_players_draw_step,
+                            cards_previously_drawn_this_draw_step,
+                        );
+                        direct_draws_before = current_draws;
+                    }
+                    total_drawn += drawn_len;
+                    direct_drawn.extend(drawn);
                 }
-                Ok(outcome)
-            }
-            EventOutcome::Replaced => {
-                // Replacement effects already executed by process_draw
-                Ok(EffectOutcome::replaced())
-            }
-            EventOutcome::NotApplicable => {
-                // Player can't draw (no library, etc.)
-                Ok(EffectOutcome::prevented())
             }
         }
+
+        if !direct_drawn.is_empty() {
+            let event = TriggerEvent::new_with_provenance(
+                CardsDrawnEvent::new_with_step_context(
+                    player_id,
+                    direct_drawn,
+                    direct_draw_is_first,
+                    direct_draw_step_context.0,
+                    direct_draw_step_context.1,
+                ),
+                ctx.provenance,
+            );
+            let drawn_count = event
+                .downcast::<CardsDrawnEvent>()
+                .map(CardsDrawnEvent::amount)
+                .unwrap_or(0);
+            game.record_cards_drawn_in_current_draw_step(player_id, drawn_count);
+            let reveal_events = automatic_reveal_events_for_draw(
+                game,
+                player_id,
+                event
+                    .downcast::<CardsDrawnEvent>()
+                    .map(|drawn_event| drawn_event.cards.as_slice())
+                    .unwrap_or(&[]),
+                direct_draws_before,
+                &mut *ctx.decision_maker,
+                ctx.provenance,
+            );
+
+            events.push(event);
+            events.extend(reveal_events);
+        }
+
+        Ok(EffectOutcome::count(total_drawn + replacement_count).with_events(events))
     }
 }
 
@@ -273,7 +388,7 @@ impl EffectExecutor for DrawCardsEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::ids::{CardId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -288,6 +403,51 @@ mod tests {
                 .card_types(vec![CardType::Instant])
                 .build();
             game.create_object_from_card(&card, owner, Zone::Library);
+        }
+    }
+
+    fn add_static_source(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        ability: crate::static_abilities::StaticAbility,
+    ) -> ObjectId {
+        let source_card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, owner, Zone::Battlefield);
+        game.object_mut(source)
+            .unwrap()
+            .abilities
+            .push(crate::ability::Ability::static_ability(ability));
+        source
+    }
+
+    struct ChooseReplacementNamed(&'static str);
+
+    impl crate::decision::DecisionMaker for ChooseReplacementNamed {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx
+                .description
+                .eq_ignore_ascii_case("Choose which replacement effect to apply")
+                && let Some(option) = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.contains(self.0))
+            {
+                return vec![option.index];
+            }
+
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
         }
     }
 
@@ -398,6 +558,134 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).unwrap().hand.len(), 2);
         assert_eq!(game.player(alice).unwrap().library.len(), 3);
+    }
+
+    #[test]
+    fn test_draw_cards_executes_instead_draw_replacement() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 3);
+        let source = add_static_source(
+            &mut game,
+            alice,
+            "Draw Replacer",
+            crate::static_abilities::StaticAbility::draw_replacement_exile_top_face_down(),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = DrawCardsEffect::you(2);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(game.player(alice).unwrap().library.len(), 1);
+        assert_eq!(game.exile.len(), 2);
+    }
+
+    #[test]
+    fn test_draw_replacement_double_executes_nested_draws() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 5);
+        let source = add_static_source(
+            &mut game,
+            alice,
+            "Thought Reflection",
+            crate::static_abilities::StaticAbility::draw_replacement_double(),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = DrawCardsEffect::you(1);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+        assert_eq!(game.player(alice).unwrap().library.len(), 3);
+    }
+
+    #[test]
+    fn test_draw_replacement_double_allows_other_replacements_on_nested_draws() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 5);
+        let asmodeus = add_static_source(
+            &mut game,
+            alice,
+            "Asmodeus the Archfiend",
+            crate::static_abilities::StaticAbility::draw_replacement_exile_top_face_down(),
+        );
+        add_static_source(
+            &mut game,
+            alice,
+            "Thought Reflection",
+            crate::static_abilities::StaticAbility::draw_replacement_double(),
+        );
+        let mut dm = ChooseReplacementNamed("Thought Reflection");
+        let mut ctx = ExecutionContext::new(asmodeus, alice, &mut dm);
+
+        let effect = DrawCardsEffect::you(1);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(game.player(alice).unwrap().library.len(), 3);
+        assert_eq!(game.exile.len(), 2);
+    }
+
+    #[test]
+    fn test_draw_replacement_instead_can_preempt_double_replacement() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 5);
+        let asmodeus = add_static_source(
+            &mut game,
+            alice,
+            "Asmodeus the Archfiend",
+            crate::static_abilities::StaticAbility::draw_replacement_exile_top_face_down(),
+        );
+        add_static_source(
+            &mut game,
+            alice,
+            "Thought Reflection",
+            crate::static_abilities::StaticAbility::draw_replacement_double(),
+        );
+        let mut dm = ChooseReplacementNamed("Asmodeus the Archfiend");
+        let mut ctx = ExecutionContext::new(asmodeus, alice, &mut dm);
+
+        let effect = DrawCardsEffect::you(1);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(game.player(alice).unwrap().library.len(), 4);
+        assert_eq!(game.exile.len(), 1);
+    }
+
+    #[test]
+    fn test_draw_cards_executes_static_instead_replacement_for_each_requested_card() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 3);
+        let source = add_static_source(
+            &mut game,
+            alice,
+            "Asmodeus the Archfiend",
+            crate::static_abilities::StaticAbility::draw_replacement_exile_top_face_down(),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = DrawCardsEffect::you(2);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(game.player(alice).unwrap().library.len(), 1);
+        assert_eq!(game.exile.len(), 2);
     }
 
     #[test]

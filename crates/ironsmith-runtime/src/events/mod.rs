@@ -73,6 +73,7 @@ pub mod life;
 pub mod mana;
 pub mod permanents;
 pub mod raw_event;
+pub mod tokens;
 pub mod zones;
 
 // New event type modules for unified trigger system
@@ -96,6 +97,7 @@ pub use damage::DamageEvent;
 pub use life::{LifeGainEvent, LifeLossEvent};
 pub use mana::ManaAddedEvent;
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
+pub use tokens::CreateTokensEvent;
 pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 
 // Re-export new event types
@@ -105,11 +107,11 @@ pub use combat::{
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
-    ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, GiftGivenEvent, KeywordActionEvent,
-    KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
+    ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
+    KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent, TransformedEvent,
-    TurnedFaceUpEvent,
+    TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
 pub use phase::{
     BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
@@ -125,6 +127,7 @@ pub use counters::matchers::*;
 pub use damage::matchers::*;
 pub use life::matchers::*;
 pub use permanents::matchers::*;
+pub use tokens::matchers::*;
 pub use zones::matchers::*;
 
 use crate::ids::{ObjectId, PlayerId};
@@ -351,6 +354,14 @@ impl Event {
     ) -> Self {
         Self::new_with_provenance(
             PutCountersEvent::with_cause(target, counter_type, count, cause),
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a token creation event.
+    pub fn create_tokens(controller: PlayerId, count: u32, cause: EventCause) -> Self {
+        Self::new_with_provenance(
+            CreateTokensEvent::with_cause(controller, count, cause),
             ProvNodeId::default(),
         )
     }

@@ -300,6 +300,7 @@ pub enum Restriction {
 pub struct ManaSpendPermission {
     pub player: PlayerFilter,
     pub scope: ManaSpendScope,
+    pub mana_source_filter: Option<ObjectFilter>,
 }
 
 impl ManaSpendPermission {
@@ -307,6 +308,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::AllCosts,
+            mana_source_filter: None,
         }
     }
 
@@ -314,6 +316,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::ActivationCostsOf(filter),
+            mana_source_filter: None,
         }
     }
 
@@ -324,6 +327,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
+            mana_source_filter: None,
         }
     }
 
@@ -331,7 +335,25 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsMatching(filter),
+            mana_source_filter: None,
         }
+    }
+
+    pub fn any_color_from_sources_for_casting_matching(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        mana_source_filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::CastingSpellsMatching(filter),
+            mana_source_filter: Some(mana_source_filter),
+        }
+    }
+
+    pub fn with_mana_source_filter(mut self, filter: ObjectFilter) -> Self {
+        self.mana_source_filter = Some(filter);
+        self
     }
 }
 

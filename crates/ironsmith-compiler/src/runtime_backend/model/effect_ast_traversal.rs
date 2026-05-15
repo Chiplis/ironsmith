@@ -70,6 +70,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::RepeatEffects {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilNextEndStep {
                 effects: $effects,
                 ..
@@ -123,9 +127,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessMay => {}
         EffectAst::RepeatThisProcessOnce => {}
+        EffectAst::RepeatEffects { .. } => {}
         EffectAst::May { .. } => {}
         EffectAst::MayByPlayer { .. } => {}
         EffectAst::ResolvedIfResult { .. } => {}

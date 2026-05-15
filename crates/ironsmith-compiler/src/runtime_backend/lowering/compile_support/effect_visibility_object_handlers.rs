@@ -176,10 +176,26 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             {
                 resolved_filter.zone = None;
             }
+            normalize_hand_or_graveyard_cross_zone_filter(&mut resolved_filter);
+            let cross_zone_choices = hand_or_graveyard_choice_zones(&resolved_filter);
+            if let Some(zones) = &cross_zone_choices {
+                strip_choice_zones_from_filter(&mut resolved_filter, zones);
+            }
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
-            let (effects, choices) = if chooses_tagged_pool {
+            let (effects, choices) = if let Some(zones) = cross_zone_choices {
+                compile_choose_objects_across_zones_with_subject(
+                    subject,
+                    resolved_filter,
+                    *count,
+                    count_value.clone(),
+                    tag.clone(),
+                    zones,
+                    None,
+                    false,
+                )
+            } else if chooses_tagged_pool {
                 compile_choose_objects_across_zones_with_subject(
                     subject,
                     resolved_filter,

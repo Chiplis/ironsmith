@@ -903,6 +903,104 @@ pub(crate) fn parse_all_creatures_lose_flying_line(
     Ok(None)
 }
 
+pub(crate) fn parse_subject_loses_keywords_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(lose_idx) = anthem_token_offset(tokens, |token| {
+        token.is_word("lose") || token.is_word("loses")
+    }) else {
+        return Ok(None);
+    };
+    if lose_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..lose_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = match parse_object_filter(&subject_tokens, false) {
+        Ok(filter) => filter,
+        Err(_) => return Ok(None),
+    };
+
+    let tail = trim_edge_punctuation(&tokens[lose_idx + 1..]);
+    if tail.is_empty() {
+        return Ok(None);
+    }
+
+    let mut loss_end = tail.len();
+    let mut cant_tail: Option<Vec<OwnedLexToken>> = None;
+    for (idx, token) in tail.iter().enumerate() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let after_and = trim_edge_punctuation(&tail[idx + 1..]);
+        let after_words_storage = normalize_cant_words(&after_and);
+        let after_words = after_words_storage
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if anthem_word_slice_starts_with(&after_words, &["cant", "have", "or", "gain"])
+            || anthem_word_slice_starts_with(&after_words, &["cant", "gain"])
+        {
+            loss_end = idx;
+            cant_tail = Some(after_and);
+            break;
+        }
+    }
+
+    let loss_tokens = trim_edge_punctuation(&tail[..loss_end]);
+    let Some(loss_actions) = parse_ability_line(&loss_tokens) else {
+        return Ok(None);
+    };
+
+    let mut actions = loss_actions;
+    if let Some(cant_tail) = cant_tail {
+        let Some(gain_idx) = anthem_token_offset(&cant_tail, |token| token.is_word("gain")) else {
+            return Ok(None);
+        };
+        let gain_tokens = trim_edge_punctuation(&cant_tail[gain_idx + 1..]);
+        if gain_tokens.is_empty() {
+            return Ok(None);
+        }
+        let Some(gain_actions) = parse_ability_line(&gain_tokens) else {
+            return Ok(None);
+        };
+        actions.extend(gain_actions);
+    }
+
+    let clause_text = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    reject_unimplemented_keyword_actions(&actions, &clause_text)?;
+
+    let mut result = Vec::new();
+    for action in actions {
+        if !action.lowers_to_static_ability() {
+            return Ok(None);
+        }
+        if result.iter().any(|existing| {
+            matches!(
+                existing,
+                StaticAbilityAst::RemoveKeywordAction {
+                    filter: existing_filter,
+                    action: existing_action,
+                } if existing_filter == &filter && existing_action == &action
+            )
+        }) {
+            continue;
+        }
+        result.push(StaticAbilityAst::RemoveKeywordAction {
+            filter: filter.clone(),
+            action,
+        });
+    }
+
+    if result.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(result))
+}
+
 pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -4510,6 +4608,10 @@ fn parse_granted_object_ability_segment(
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
     {
         return Ok(Some((ability, display)));
+    }
+
+    if let Some(parsed) = parse_attached_nonstatic_keyword_ability(&ability_tokens)? {
+        return Ok(Some(parsed));
     }
 
     if let Some(parsed) = parse_cycling_line(&ability_tokens)? {

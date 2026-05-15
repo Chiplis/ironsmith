@@ -1,10 +1,11 @@
 use super::WasmReplayDecisionMaker;
 use super::ui_snapshot::grouped_battlefield_for_player;
 use super::{
-    CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot, MatchFormatInput,
-    MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
-    TargetChoiceView, TargetInput, WasmGame, action_drag_metadata, build_object_details_snapshot,
-    build_stack_object_snapshot, convert_and_validate_targets, normalize_select_object_choice_ids,
+    ActiveViewedCards, CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
+    MatchFormatInput, MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome,
+    ReplayRoot, TargetChoiceView, TargetInput, WasmGame, action_drag_metadata,
+    build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
+    normalize_select_object_choice_ids, stable_ids_for_viewed_cards,
 };
 use crate::colors_for_context;
 use ironsmith::ability::Ability;
@@ -5790,6 +5791,79 @@ fn doubling_chant_same_name_search_prompts_are_ui_friendly_in_wasm_flow() {
 }
 
 #[test]
+fn cascade_replay_surfaces_adventure_choice_after_accepting_free_cast() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let bloodbraid_id = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Bloodbraid Elf".to_string(), "hand".to_string(), true)
+            .expect("Bloodbraid Elf should be added to hand"),
+    );
+    for _ in 0..3 {
+        wasm.add_card_to_zone(0, "Mountain".to_string(), "battlefield".to_string(), true)
+            .expect("Mountain should be added");
+    }
+    wasm.add_card_to_zone(0, "Forest".to_string(), "battlefield".to_string(), true)
+        .expect("Forest should be added");
+    wasm.add_card_to_zone(0, "Curious Pair".to_string(), "library".to_string(), true)
+        .expect("Curious Pair should be added to library");
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+    dispatch_matching_priority_action(
+        &mut wasm,
+        |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == bloodbraid_id),
+    );
+
+    for _ in 0..32 {
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx))
+                if ctx.description.starts_with("Pay mana pip") =>
+            {
+                let index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("mana payment should have a legal option")
+                    .index;
+                dispatch_select_options(&mut wasm, &[index]);
+            }
+            Some(DecisionContext::Priority(_)) => dispatch_pass_priority(&mut wasm),
+            Some(DecisionContext::Boolean(ctx))
+                if ctx.description.contains("Cast Curious Pair without paying") =>
+            {
+                break;
+            }
+            other => panic!("expected mana, priority, or cascade may prompt, got {other:?}"),
+        }
+    }
+
+    dispatch_select_options(&mut wasm, &[1]);
+
+    let choose_ctx = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectOptions(ctx)) => ctx,
+        other => panic!("expected cascade Adventure choice after accepting may, got {other:?}"),
+    };
+    assert!(
+        choose_ctx
+            .options
+            .iter()
+            .any(|option| option.description == "Cast Treats to Share"),
+        "expected Cascade to offer the Adventure half, got {:?}",
+        choose_ctx.options
+    );
+}
+
+#[test]
 fn saw_in_half_formidable_speaker_no_advances_resolution_chain() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);
@@ -6093,6 +6167,101 @@ fn tainted_pact_declining_first_card_advances_to_second_prompt_in_live_ui_flow()
 }
 
 #[test]
+fn tainted_pact_declining_first_revealed_unique_card_prompts_for_second_card() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let spell_id = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Tainted Pact".to_string(), "hand".to_string(), true)
+            .expect("Tainted Pact should be added to hand"),
+    );
+    wasm.game
+        .create_hidden_card_placeholder(alice, Zone::Library, 0, "alice-slot-0".to_string());
+    wasm.game
+        .create_hidden_card_placeholder(alice, Zone::Library, 1, "alice-slot-1".to_string());
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    dispatch_matching_priority_action(
+        &mut wasm,
+        |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+    );
+
+    dispatch_pass_priority(&mut wasm);
+    dispatch_pass_priority(&mut wasm);
+
+    wasm.reveal_hidden_slot(
+        serde_wasm_bindgen::to_value(&json!({
+            "owner": 0,
+            "slot": 1,
+            "cardName": "Tainted Pact",
+            "commitment": "alice-slot-1",
+        }))
+        .expect("reveal input should serialize"),
+    )
+    .expect("first exiled card should reveal");
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::Boolean(ctx)) => {
+            assert!(
+                ctx.description
+                    .to_ascii_lowercase()
+                    .contains("tainted pact"),
+                "expected first revealed Tainted Pact prompt, got {:?}",
+                ctx.description
+            );
+        }
+        other => panic!("expected first Tainted Pact boolean prompt, got {other:?}"),
+    }
+
+    dispatch_select_options(&mut wasm, &[0]);
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::Boolean(ctx)) => {
+            assert!(
+                ctx.description.to_ascii_lowercase().contains("hidden card")
+                    || ctx.description.to_ascii_lowercase().contains("swamp"),
+                "declining a unique first card should advance to the second prompt, got {:?}",
+                ctx.description
+            );
+        }
+        other => panic!("expected second Tainted Pact boolean prompt, got {other:?}"),
+    }
+
+    wasm.reveal_hidden_slot(
+        serde_wasm_bindgen::to_value(&json!({
+            "owner": 0,
+            "slot": 0,
+            "cardName": "Swamp",
+            "commitment": "alice-slot-0",
+        }))
+        .expect("reveal input should serialize"),
+    )
+    .expect("second exiled card should reveal");
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::Boolean(ctx)) => {
+            assert!(
+                ctx.description.to_ascii_lowercase().contains("swamp"),
+                "revealing the second unique card should preserve the choice prompt, got {:?}",
+                ctx.description
+            );
+        }
+        other => panic!("expected revealed second Tainted Pact prompt, got {other:?}"),
+    }
+}
+
+#[test]
 fn demonic_consultation_resolution_prompts_for_card_name_in_wasm_flow() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);
@@ -6367,6 +6536,57 @@ fn public_reveal_resolves_stale_replay_ids_to_live_card_names() {
     assert_eq!(viewed_cards.card_ids, vec![moved_id.0]);
     assert_eq!(viewed_cards.cards[0].id, moved_id.0);
     assert_eq!(viewed_cards.cards[0].name, "Bob's Moving Top");
+}
+
+#[test]
+fn viewed_card_snapshots_follow_stable_identity_when_object_id_is_stale() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let revealed_card = CardBuilder::new(CardId::from_raw(90_202), "Bob's Stable Secret")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let revealed_id = wasm
+        .game
+        .create_object_from_card(&revealed_card, bob, Zone::Hand);
+    let stale_unrelated_id = ObjectId::from_raw(revealed_id.0.saturating_add(10_000));
+    wasm.active_viewed_cards = Some(ActiveViewedCards {
+        viewer: alice,
+        subject: bob,
+        zone: Zone::Hand,
+        cards: vec![stale_unrelated_id],
+        card_stable_ids: stable_ids_for_viewed_cards(&wasm.game, &[revealed_id]),
+        public: false,
+        source: None,
+        description: "Inspect hidden card for decision".to_string(),
+    });
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        alice,
+        wasm.pending_decision.as_ref(),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        wasm.active_viewed_cards.as_ref(),
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+
+    let viewed_cards = snapshot
+        .viewed_cards
+        .as_ref()
+        .expect("view should resolve through the card's stable id");
+    assert_eq!(viewed_cards.card_ids, vec![revealed_id.0]);
+    assert_eq!(viewed_cards.cards[0].name, "Bob's Stable Secret");
+    assert_eq!(
+        snapshot.players[bob.index()].hand_cards[0].name,
+        "Bob's Stable Secret"
+    );
 }
 
 #[test]

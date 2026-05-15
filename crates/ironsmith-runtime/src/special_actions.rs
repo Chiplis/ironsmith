@@ -51,7 +51,33 @@ impl TurnFaceUpMethod {
 
 fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<TurnFaceUpSpec> {
     let mut specs = Vec::new();
-    for ability in &object.abilities {
+    append_turn_face_up_specs_from_abilities(&mut specs, &object.abilities);
+
+    if let Some(restore) = object.face_down_cast_state.as_ref() {
+        append_turn_face_up_specs_from_abilities(&mut specs, &restore.abilities);
+    }
+
+    if game.is_manifested(object.id)
+        && let Some(restore) = object.face_down_cast_state.as_ref()
+        && restore.card_types.contains(&CardType::Creature)
+        && let Some(cost) = restore.mana_cost.clone()
+    {
+        specs.push(TurnFaceUpSpec {
+            method: TurnFaceUpMethod::PrintedManaCost,
+            cost: crate::cost::TotalCost::mana(cost),
+            description: TurnFaceUpMethod::PrintedManaCost.description(),
+            megamorph: false,
+        });
+    }
+
+    specs
+}
+
+fn append_turn_face_up_specs_from_abilities(
+    specs: &mut Vec<TurnFaceUpSpec>,
+    abilities: &[crate::ability::Ability],
+) {
+    for ability in abilities {
         if !ability.functions_in(&Zone::Battlefield) {
             continue;
         }
@@ -77,21 +103,6 @@ fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<T
         };
         specs.push(candidate);
     }
-
-    if game.is_manifested(object.id)
-        && let Some(restore) = object.face_down_cast_state.as_ref()
-        && restore.card_types.contains(&CardType::Creature)
-        && let Some(cost) = restore.mana_cost.clone()
-    {
-        specs.push(TurnFaceUpSpec {
-            method: TurnFaceUpMethod::PrintedManaCost,
-            cost: crate::cost::TotalCost::mana(cost),
-            description: TurnFaceUpMethod::PrintedManaCost.description(),
-            megamorph: false,
-        });
-    }
-
-    specs
 }
 
 pub(crate) fn available_turn_face_up_methods(
@@ -106,6 +117,26 @@ pub(crate) fn available_turn_face_up_methods(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub fn turn_face_up_cost_display(
+    game: &GameState,
+    permanent_id: ObjectId,
+    method: TurnFaceUpMethod,
+) -> Option<String> {
+    let object = game.object(permanent_id)?;
+    let spec = turn_face_up_spec(game, object, method)?;
+    let controller = game.controller_of(object);
+    Some(
+        adjust_total_cost_mana_components_for_reason(
+            game,
+            controller,
+            permanent_id,
+            &spec.cost,
+            crate::costs::PaymentReason::TurnFaceUp,
+        )
+        .display(),
+    )
 }
 
 fn turn_face_up_spec(
@@ -448,13 +479,16 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
 
     // Check the object exists
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    let can_play_from_zone = if object.zone == Zone::Hand {
-        true
-    } else {
-        game.effect_store
-            .grant_registry
-            .card_can_play_from_zone(game, card_id, object.zone, player)
-    };
+    let can_play_from_zone = object.zone == Zone::Hand
+        || (object.zone == Zone::Exile
+            && game.is_adventure_exiled(card_id)
+            && game.controller_of(object) == player)
+        || game.effect_store.grant_registry.card_can_play_from_zone(
+            game,
+            card_id,
+            object.zone,
+            player,
+        );
     if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
@@ -1937,7 +1971,8 @@ fn pay_selected_cost_without_execution_context(
         .cloned()
         .or_else(|| match cost.processing_mode() {
             crate::costs::CostProcessingMode::ExileFromHand { .. }
-            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. } => {
+            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. }
+            | crate::costs::CostProcessingMode::ExileObjects { .. } => {
                 Some(crate::tag::TagKey::from("exile_cost"))
             }
             _ => None,
@@ -2425,6 +2460,43 @@ fn resolve_cost_choice(
                 )),
             }
         }
+        CostProcessingMode::ExileObjects {
+            count,
+            filter,
+            zone,
+        } => {
+            let candidates = legal_exile_objects(game, ctx.payer, ctx.source, &filter, zone);
+            let required = count as usize;
+            if candidates.len() < required {
+                return Err(CostPaymentError::InsufficientCardsToExile);
+            }
+
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} object{} to exile",
+                    required,
+                    if required == 1 { "" } else { "s" }
+                ),
+                candidates.clone(),
+                required,
+                Some(required),
+            );
+            let chosen: Vec<ObjectId> =
+                make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
+            let to_exile = normalize_selection(chosen, &candidates, required);
+            if to_exile.len() != required {
+                return Err(CostPaymentError::InsufficientCardsToExile);
+            }
+
+            ctx.pre_chosen_cards.extend(to_exile);
+            match cost.pay(game, ctx)? {
+                CostPaymentResult::Paid => Ok(()),
+                CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
+                    "Exile-object cost still needs choice after preselection".to_string(),
+                )),
+            }
+        }
         CostProcessingMode::RevealFromHand { count, card_type } => {
             let candidates = legal_reveal_cards(game, ctx.payer, ctx.source, card_type);
             let required = count as usize;
@@ -2598,6 +2670,39 @@ fn legal_exile_from_graveyard_cards(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn legal_exile_objects(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+    zone: Zone,
+) -> Vec<ObjectId> {
+    let ids: Vec<ObjectId> = match zone {
+        Zone::Battlefield => game.battlefield.clone(),
+        Zone::Hand => game
+            .player(payer)
+            .map(|p| p.hand.iter().copied().collect())
+            .unwrap_or_default(),
+        Zone::Graveyard => game
+            .player(payer)
+            .map(|p| p.graveyard.iter().copied().collect())
+            .unwrap_or_default(),
+        Zone::Exile => game.exile.clone(),
+        _ => Vec::new(),
+    };
+    let ctx = game.filter_context_for(payer, Some(source));
+    ids.into_iter()
+        .filter(|&id| {
+            game.object(id).is_some_and(|obj| {
+                if filter.other && obj.id == source {
+                    return false;
+                }
+                filter.matches(obj, &ctx, game)
+            })
+        })
+        .collect()
 }
 
 fn legal_reveal_cards(

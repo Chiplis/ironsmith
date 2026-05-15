@@ -18409,7 +18409,7 @@ pub(super) fn describe_look_at_top_exile_face_down_then_play_while_exiled(
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
     let mana_suffix = if grant.allow_any_color_for_cast {
-        format!(", and mana of any type can be spent to cast {cast_ref}")
+        format!(", and you may spend mana as though it were mana of any color to cast {cast_ref}")
     } else {
         String::new()
     };
@@ -27959,6 +27959,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             add_land_produced.land_filter.description()
         );
     }
+    if let Some(add_colors_among) =
+        effect.downcast_ref::<crate::effects::AddManaOfColorsAmongEffect>()
+    {
+        return format!(
+            "For each color among {}, add one mana of that color{}",
+            describe_for_each_filter(&add_colors_among.filter),
+            describe_add_mana_destination_suffix(&add_colors_among.player)
+        );
+    }
     if let Some(add_commander) =
         effect.downcast_ref::<crate::effects::AddManaFromCommanderColorIdentityEffect>()
     {
@@ -28873,9 +28882,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
         };
         if grant_play_tagged.allow_any_color_for_cast {
-            if helper_tag && !grant_play_tagged.allow_land {
+            if helper_tag
+                && !grant_play_tagged.allow_land
+                && grant_play_tagged.duration
+                    == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+            {
                 return format!(
-                    "{} may cast spells from among those cards this turn, and mana of any type can be spent to cast them",
+                    "{} may cast spells from among those cards this turn, and you may spend mana as though it were mana of any color to cast them",
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
@@ -28885,7 +28898,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "them"
             };
             return format!(
-                "{} may {verb} {object_text} {timing}, and mana of any type can be spent to cast {pronoun}",
+                "{} may {verb} {object_text} {timing}, and you may spend mana as though it were mana of any color to cast {pronoun}",
                 describe_player_filter(&grant_play_tagged.player),
             );
         }
@@ -28911,6 +28924,34 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&grant_tagged_spell_free_cast.player),
             grant_tagged_spell_free_cast.tag.as_str()
         );
+    }
+    if let Some(may_cast_matching) =
+        effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+    {
+        let player = describe_player_filter(&may_cast_matching.player);
+        let mut spell_text = describe_cast_limit_spell_filter(&may_cast_matching.filter);
+        if spell_text == "spell" {
+            spell_text = "a spell".to_string();
+        } else if !spell_text.starts_with("a ")
+            && !spell_text.starts_with("an ")
+            && !spell_text.starts_with("the ")
+        {
+            spell_text = format!("a {spell_text}");
+        }
+        let zone_text = match may_cast_matching.zone {
+            Zone::Hand => format!(
+                "from {} hand",
+                describe_possessive_player_filter(&may_cast_matching.player)
+            ),
+            Zone::Graveyard => "from a graveyard".to_string(),
+            Zone::Library => "from a library".to_string(),
+            Zone::Exile => "from exile".to_string(),
+            Zone::Battlefield => "from the battlefield".to_string(),
+            Zone::Stack => "from the stack".to_string(),
+            Zone::Command => "from the command zone".to_string(),
+            Zone::OutsideGame => "from outside the game".to_string(),
+        };
+        return format!("{player} may cast {spell_text} {zone_text} without paying its mana cost");
     }
     if let Some(grant_next_spell_cost_reduction) =
         effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()
@@ -29645,6 +29686,11 @@ pub(super) fn join_activation_restriction_clauses(clauses: &[String]) -> String 
 
 pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(craft) = describe_structural_craft_keyword(ability, activated)
+    {
+        return Some(craft);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(cycling) = describe_structural_cycling_keyword(ability, activated)
     {
         return Some(cycling);
@@ -29763,6 +29809,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(devour) = describe_structural_devour_keyword(triggered)
     {
         return Some(devour);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(prowess) = describe_structural_prowess_keyword(triggered)
+    {
+        return Some(prowess);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(toxic) = describe_structural_toxic_keyword(triggered)
@@ -30075,6 +30126,125 @@ fn describe_structural_cycling_keyword(
         .collect::<Vec<_>>()
         .join(", ");
     Some(rendered)
+}
+
+fn describe_structural_craft_keyword(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !ability.functional_zones.contains(&Zone::Battlefield)
+        || !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.choices.is_empty()
+        || !activated.mana_cost.costs().iter().any(is_exile_source_cost)
+        || !activated.mana_cost.costs().iter().any(is_craft_event_cost)
+    {
+        return None;
+    }
+
+    let material = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .find_map(craft_material_cost)?;
+    let effects = activated.effects.flattened_default_effects();
+    if effects.len() != 2 {
+        return None;
+    }
+    let returns_source = effects[0]
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_to_zone| {
+            matches!(move_to_zone.target, ChooseSpec::Source)
+                && move_to_zone.zone == Zone::Battlefield
+                && matches!(
+                    move_to_zone.battlefield_controller,
+                    crate::effects::BattlefieldController::Owner
+                )
+                && move_to_zone.transfer_exiled_with_source_links
+        });
+    let transforms_source = effects[1]
+        .downcast_ref::<crate::effects::TransformEffect>()
+        .is_some_and(|transform| matches!(transform.target, ChooseSpec::Source));
+    if !returns_source || !transforms_source {
+        return None;
+    }
+
+    let cost_text = keyword_base_cost_text(activated.mana_cost.costs(), |cost| {
+        is_exile_source_cost(cost)
+            || is_craft_event_cost(cost)
+            || craft_material_cost(cost).is_some()
+    })?;
+    Some(format!("Craft with {material} {cost_text}"))
+}
+
+fn craft_material_cost(cost: &crate::costs::Cost) -> Option<String> {
+    let exile = cost
+        .effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())?;
+    if matches!(exile.spec, ChooseSpec::Source) {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = exile.spec.base() else {
+        return None;
+    };
+    describe_craft_material_filter(filter, exile.spec.count())
+}
+
+fn describe_craft_material_filter(filter: &ObjectFilter, count: ChoiceCount) -> Option<String> {
+    if count == ChoiceCount::exactly(1) && is_craft_artifact_material_filter(filter) {
+        return Some("artifact".to_string());
+    }
+    if count == ChoiceCount::at_least(1) && is_craft_one_or_more_material_filter(filter) {
+        return Some("one or more".to_string());
+    }
+    if count == ChoiceCount::at_least(4) && is_craft_red_spell_material_filter(filter) {
+        return Some("four or more red instant and/or sorcery cards".to_string());
+    }
+    None
+}
+
+fn is_craft_artifact_material_filter(filter: &ObjectFilter) -> bool {
+    filter.any_of.len() == 2
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Battlefield)
+                && branch.controller == Some(PlayerFilter::You)
+                && branch.owner.is_none()
+                && branch.other
+                && branch.card_types == vec![CardType::Artifact]
+        })
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Graveyard)
+                && branch.owner == Some(PlayerFilter::You)
+                && branch.controller.is_none()
+                && branch.other
+                && branch.card_types == vec![CardType::Artifact]
+        })
+}
+
+fn is_craft_one_or_more_material_filter(filter: &ObjectFilter) -> bool {
+    filter.any_of.len() == 2
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Battlefield)
+                && branch.controller == Some(PlayerFilter::You)
+                && branch.owner.is_none()
+                && branch.other
+                && branch.card_types.is_empty()
+        })
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Graveyard)
+                && branch.owner == Some(PlayerFilter::You)
+                && branch.controller.is_none()
+                && branch.other
+                && branch.card_types.is_empty()
+        })
+}
+
+fn is_craft_red_spell_material_filter(filter: &ObjectFilter) -> bool {
+    filter.zone == Some(Zone::Graveyard)
+        && filter.owner == Some(PlayerFilter::You)
+        && filter.colors == Some(crate::color::ColorSet::RED)
+        && filter.card_types.len() == 2
+        && filter.card_types.contains(&CardType::Instant)
+        && filter.card_types.contains(&CardType::Sorcery)
 }
 
 fn describe_structural_transmute_keyword(
@@ -31085,6 +31255,34 @@ fn describe_structural_exalted_keyword(
     }
 }
 
+fn describe_structural_prowess_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.trigger.display() != "Whenever you cast a noncreature spell"
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::SpellCastTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+    let [pump] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let pump = pump.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()?;
+    if pump.power == Value::Fixed(1)
+        && pump.toughness == Value::Fixed(1)
+        && matches!(pump.duration, Until::EndOfTurn)
+        && matches!(pump.target, ChooseSpec::Source)
+    {
+        Some("Prowess".to_string())
+    } else {
+        None
+    }
+}
+
 fn describe_structural_persist_or_undying_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -31426,6 +31624,14 @@ fn is_cycle_event_cost(cost: &crate::costs::Cost) -> bool {
         .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
         .is_some_and(|emit| {
             emit.action == crate::events::KeywordActionKind::Cycle && emit.amount == 1
+        })
+}
+
+fn is_craft_event_cost(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
+        .is_some_and(|emit| {
+            emit.action == crate::events::KeywordActionKind::Craft && emit.amount == 1
         })
 }
 

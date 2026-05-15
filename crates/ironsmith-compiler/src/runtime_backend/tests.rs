@@ -4032,6 +4032,45 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_grants() {
+    let tokens = lex_line(
+        "Until your next turn, you may cast sorcery spells as though they had flash",
+        0,
+    )
+    .expect("rewrite lexer should classify until-next-turn flash permission clause");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::GrantBySpec {
+            player: crate::cards::builders::PlayerAst::You,
+            spec,
+            lifetime: super::PermissionLifetime::UntilYourNextTurn,
+        })) if spec.filter.card_types == vec![CardType::Sorcery]
+            && spec.zone == crate::zone::Zone::Hand
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("until-next-turn flash permission should parse as an effect");
+
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::GrantBySpec {
+                        spec,
+                        player: crate::cards::builders::PlayerAst::You,
+                        duration: crate::grant::GrantDuration::UntilYourNextTurnEnd,
+                    } if spec.filter.card_types == vec![CardType::Sorcery]
+                        && spec.zone == crate::zone::Zone::Hand
+                )
+        )),
+        "expected until-next-turn sorcery flash grant, got {effects:#?}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_parse_temporary_graveyard_cast_grants() {
     let tokens = lex_line(
         "You may cast a creature spell from your graveyard this turn",
@@ -4156,6 +4195,62 @@ fn rewrite_lexed_permission_helpers_route_free_cast_spell_filters_through_gramma
             && spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Hand
     ));
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_effect() {
+    let tokens = lex_line(
+        "You may cast a spell with mana value 3 or less from your hand without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify singular free-cast permission clause");
+
+    assert!(
+        matches!(
+            super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+            Ok(None)
+        ),
+        "singular hand free-cast permissions should not become static grants"
+    );
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("singular free-cast effect should parse");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+            },
+        ] => (player, filter, zone),
+        [
+            crate::cards::builders::EffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,
+            },
+        ] => match effects.as_slice() {
+            [
+                crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                },
+            ] => (player, filter, zone),
+            _ => panic!("expected nested singular hand free-cast effect, got {effects:#?}"),
+        },
+        _ => panic!("expected singular hand free-cast effect, got {effects:#?}"),
+    };
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert_eq!(filter.excluded_card_types, vec![CardType::Land]);
+    assert_eq!(
+        filter.mana_value,
+        Some(crate::filter::Comparison::LessThanOrEqual(3))
+    );
 }
 
 #[test]
@@ -4505,6 +4600,71 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_tail_lifetime() {
         "{debug}"
     );
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix() {
+    let tokens = lex_line(
+        "cast that card for as long as it remains exiled and you may spend mana as though it were mana of any color to cast that spell",
+        0,
+    )
+    .expect("rewrite lexer should classify while-exiled tagged cast permission");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("while-exiled tagged permission should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choice_zones()
+-> Result<(), CardTextError> {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Psychic Intrusion Variant")
+        .mana_cost(super::util::parse_scryfall_mana_cost("{3}{U}{B}").unwrap())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+        )?;
+
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("spell should lower")
+        .segments[0]
+        .default_effects;
+    let choose = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("choice effect should be present");
+
+    assert_eq!(choose.filter.zone, None);
+    assert_eq!(choose.filter.controller, None);
+    assert!(choose.filter.excluded_card_types.contains(&CardType::Land));
+    assert!(matches!(
+        (choose.zone, choose.additional_zones.as_slice()),
+        (
+            Some(crate::zone::Zone::Graveyard),
+            [crate::zone::Zone::Hand]
+        ) | (
+            Some(crate::zone::Zone::Hand),
+            [crate::zone::Zone::Graveyard]
+        )
+    ));
+    let exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+        .expect("chosen card should be exiled");
+    assert!(matches!(
+        &exile.target,
+        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+
+    Ok(())
 }
 
 #[test]
@@ -9022,6 +9182,167 @@ fn rewrite_dealt_damage_by_source_would_die_static_replacement() {
 }
 
 #[test]
+fn rewrite_nontoken_opponent_creature_would_die_static_replacement_with_token_followup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kalitas Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If a nontoken creature an opponent controls would die, instead exile that card and create a 2/2 black Zombie creature token.",
+        )
+        .expect("nontoken opponent creature replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("nontoken: true"), "{debug}");
+    assert!(debug.contains("follow_up_effects"), "{debug}");
+    assert!(debug.contains("CreateTokenEffect"), "{debug}");
+    assert!(debug.contains("name: \"Zombie\""), "{debug}");
+}
+
+#[test]
+fn rewrite_nontoken_opponent_creature_would_die_with_counter_static_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Draugr Necromancer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If a nontoken creature an opponent controls would die, exile that card with an ice counter on it instead.",
+        )
+        .expect("ice-counter exile replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("nontoken: true"), "{debug}");
+    assert!(debug.contains("exile_with_counters"), "{debug}");
+    assert!(debug.contains("Ice"), "{debug}");
+    assert!(debug.contains("follow_up_effects: []"), "{debug}");
+}
+
+#[test]
+fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
+    let line = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells.";
+    let tokens = lex_line(line, 0).expect("permission line should lex");
+    let direct =
+        super::keyword_static::parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
+            &tokens,
+        )
+        .expect("direct parser should not error");
+    assert!(
+        direct.is_some(),
+        "expected direct parser to accept {:?}",
+        crate::runtime_backend::token_word_refs(&tokens)
+    );
+    let direct_abilities = direct.expect("direct parser should produce abilities");
+    assert_eq!(direct_abilities.len(), 2);
+    let grant = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::Grants(spec) => Some(spec),
+            _ => None,
+        })
+        .expect("expected PlayFrom grant");
+    assert!(matches!(
+        &grant.grantable,
+        crate::grant::Grantable::PlayFrom
+    ));
+    assert_eq!(grant.zone, crate::zone::Zone::Exile);
+    assert_eq!(grant.beneficiary, crate::filter::PlayerFilter::You);
+    assert_eq!(grant.filter.zone, Some(crate::zone::Zone::Exile));
+    assert_eq!(
+        grant.filter.owner,
+        Some(crate::filter::PlayerFilter::Opponent)
+    );
+    assert!(grant.filter.excluded_card_types.contains(&CardType::Land));
+    assert_eq!(
+        grant.filter.with_counter,
+        Some(crate::filter::CounterConstraint::Typed(CounterType::Ice))
+    );
+
+    let permission = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::ManaSpendPermission {
+                permission,
+                ..
+            } => {
+                assert_eq!(permission.player, crate::filter::PlayerFilter::You);
+                Some(permission)
+            }
+            _ => None,
+        })
+        .expect("expected mana spend permission");
+    let mana_filter = match &permission.scope {
+        ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter) => filter,
+        other => panic!("expected casting mana permission, got {other:?}"),
+    };
+    assert_eq!(mana_filter.zone, Some(crate::zone::Zone::Exile));
+    assert_eq!(
+        mana_filter.owner,
+        Some(crate::filter::PlayerFilter::Opponent)
+    );
+    assert_eq!(
+        mana_filter.with_counter,
+        Some(crate::filter::CounterConstraint::Typed(CounterType::Ice))
+    );
+    let source_filter = permission
+        .mana_source_filter
+        .as_ref()
+        .expect("expected snow source restriction");
+    assert!(source_filter.supertypes.contains(&Supertype::Snow));
+
+    let parsed_static = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("static permission parser should not error");
+    assert!(
+        parsed_static.is_some(),
+        "expected static parser to accept {:?}",
+        crate::runtime_backend::token_word_refs(&tokens)
+    );
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Draugr Necromancer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(line)
+        .expect("exile counter cast permission should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("Grants"), "{debug}");
+    assert!(debug.contains("grantable: PlayFrom"), "{debug}");
+    assert!(debug.contains("Exile"), "{debug}");
+    assert!(debug.contains("Opponent"), "{debug}");
+    assert!(debug.contains("Ice"), "{debug}");
+    assert!(debug.contains("ManaSpendPermission"), "{debug}");
+    assert!(debug.contains("CastingSpellsMatching"), "{debug}");
+}
+
+#[test]
+fn rewrite_source_you_control_noncombat_damage_to_opponent_creature_as_counters() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Soul-Scar Mage Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If a source you control would deal noncombat damage to a creature an opponent controls, put that many -1/-1 counters on that creature instead.",
+        )
+        .expect("damage-to-counters replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        debug.contains("ReplaceDamageWithCountersInstead"),
+        "{debug}"
+    );
+    assert!(debug.contains("MinusOneMinusOne"), "{debug}");
+    assert!(debug.contains("combat_only: Some"), "{debug}");
+}
+
+#[test]
+fn rewrite_prowess_keyword_lowers_to_spell_cast_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Prowess Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Prowess")
+        .expect("prowess keyword should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("Triggered"), "{debug}");
+    assert!(debug.contains("SpellCast"), "{debug}");
+    assert!(debug.contains("ModifyPowerToughnessEffect"), "{debug}");
+    assert!(debug.contains("keyword:prowess"), "{debug}");
+}
+
+#[test]
 fn rewrite_damage_this_way_would_die_registers_source_history_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Yamabushi's Storm Variant")
         .card_types(vec![CardType::Sorcery])
@@ -10868,6 +11189,48 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
         doc.items.as_slice(),
         [RewriteSemanticItem::Statement(_)]
     ));
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spec() -> Result<(), CardTextError>
+{
+    let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Fight Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target creature you control gets +2/+2 until end of turn if its power is 2. Then it fights target creature you don't control.",
+        )?;
+
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("spell should lower to a resolution program")
+        .segments[0]
+        .default_effects;
+    let conditional = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+        .expect("conditional pump should lower to a conditional effect");
+    let condition_tag = match &conditional.condition {
+        crate::effect::Condition::TaggedObjectMatches(tag, _) => tag,
+        other => panic!("expected tagged-object condition, got {other:?}"),
+    };
+
+    let tagged_prelude = effects
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            (tagged.tag.as_str() == condition_tag.as_str()).then_some(tagged)
+        })
+        .expect("condition tag should be established by a prelude effect");
+
+    assert!(
+        tagged_prelude
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some(),
+        "condition antecedent prelude must carry target metadata, got {tagged_prelude:?}"
+    );
     Ok(())
 }
 

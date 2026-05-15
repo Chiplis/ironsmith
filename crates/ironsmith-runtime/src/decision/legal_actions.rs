@@ -96,6 +96,24 @@ fn append_granted_play_from_actions_for_card(
             }
         }
     }
+
+    let Some(adventure_view) = spell_view_for_split_other_half_cast(game, card) else {
+        return;
+    };
+    let adventure_play_from_grants =
+        view.granted_play_from_for_card_view(card_id, &adventure_view, source_zone, player);
+    if adventure_play_from_grants.is_empty()
+        || !can_cast_spell_with_view(game, player, card, &CastingMethod::SplitOtherHalf, view)
+    {
+        return;
+    }
+    for grant in adventure_play_from_grants {
+        actions.push(LegalAction::CastSpell {
+            spell_id: card_id,
+            from_zone: grant.zone,
+            casting_method: CastingMethod::SplitOtherHalf,
+        });
+    }
 }
 
 fn append_native_alternative_cast_actions_for_card_from_zone(
@@ -174,6 +192,11 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
                 zone: Zone::Graveyard,
                 use_alternative: Some(base_alt_idx + offset),
             },
+            _ if method.cast_from_zone() == Zone::Graveyard => CastingMethod::PlayFrom {
+                source: grant.source_id,
+                zone: Zone::Graveyard,
+                use_alternative: Some(base_alt_idx + offset),
+            },
             _ => continue,
         };
 
@@ -184,6 +207,65 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
             card_id,
             mana_cost,
             None,
+            &requirements,
+            &casting_method,
+            view,
+        ) {
+            continue;
+        }
+
+        actions.push(LegalAction::CastSpell {
+            spell_id: card_id,
+            from_zone: Zone::Graveyard,
+            casting_method,
+        });
+    }
+}
+
+fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+    view: &DerivedGameView<'_>,
+) {
+    let Some(adventure_view) = spell_view_for_split_other_half_cast(game, card) else {
+        return;
+    };
+    let front_granted_count = view
+        .granted_alternative_casts_for_card(card_id, Zone::Graveyard, player)
+        .len();
+    let granted_casts = view.granted_alternative_casts_for_card_view(
+        card_id,
+        &adventure_view,
+        Zone::Graveyard,
+        player,
+    );
+
+    let base_alt_idx = card.alternative_casts.len() + front_granted_count;
+    for (offset, grant) in granted_casts.into_iter().enumerate() {
+        let method = &grant.method;
+        if method.cast_from_zone() != Zone::Graveyard
+            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+        {
+            continue;
+        }
+
+        let requirements = build_requirements_for_method(method);
+        let mana_cost = get_mana_cost_for_method(method, &adventure_view);
+        let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
+            source: grant.source_id,
+            zone: Zone::Graveyard,
+            use_alternative: base_alt_idx + offset,
+        };
+        if !can_cast_with_cost_with_view_for_casting_method(
+            game,
+            player,
+            &adventure_view,
+            card_id,
+            mana_cost,
+            adventure_view.spell_effect.as_deref(),
             &requirements,
             &casting_method,
             view,
@@ -258,6 +340,9 @@ fn append_cast_actions_from_zone_for_card(
         append_graveyard_granted_alternative_cast_actions_for_card(
             game, actions, player, card_id, card, view,
         );
+        append_graveyard_granted_adventure_alternative_cast_actions_for_card(
+            game, actions, player, card_id, card, view,
+        );
     }
     if zone_has_active_grants {
         append_granted_play_from_actions_for_card(
@@ -283,6 +368,29 @@ fn append_granted_land_play_actions_from_public_zone(
         if view
             .granted_play_from_for_card(card_id, zone, player)
             .is_empty()
+        {
+            continue;
+        }
+
+        let action = SpecialAction::PlayLand { card_id };
+        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::PlayLand { land_id: card_id });
+        }
+    }
+}
+
+fn append_adventure_exiled_land_play_actions(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+) {
+    for &card_id in &game.exile {
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        if !game.is_adventure_exiled(card_id)
+            || !card.is_land()
+            || game.controller_of(card) != player
         {
             continue;
         }
@@ -323,6 +431,7 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
                     has_hand_native_alternatives = true;
                 }
             }
+            let has_split_other_half = spell_has_castable_linked_other_half(game, card);
             Some(HandCardSummary {
                 card_id,
                 card,
@@ -332,9 +441,9 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
                 has_suspend,
                 has_plot,
                 can_cast_face_down: spell_can_be_cast_face_down(card),
-                has_split_other_half: card.linked_face_layout
-                    == crate::card::LinkedFaceLayout::Split,
-                has_fuse: card.has_fuse,
+                has_split_other_half,
+                has_fuse: card.has_fuse
+                    && card.linked_face_layout == crate::card::LinkedFaceLayout::Split,
                 has_hand_native_alternatives,
             })
         })
@@ -359,6 +468,7 @@ fn add_land_actions(
     hand_summaries: &[HandCardSummary<'_>],
     graveyard_has_active_grants: bool,
     exile_has_active_grants: bool,
+    library_has_active_grants: bool,
     view: &DerivedGameView<'_>,
 ) {
     use crate::special_actions::{SpecialAction, can_perform_check};
@@ -386,6 +496,22 @@ fn add_land_actions(
     }
     if exile_has_active_grants {
         append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view);
+    }
+    append_adventure_exiled_land_play_actions(game, actions, player);
+    if library_has_active_grants
+        && let Some(card_id) = game
+            .player(player)
+            .and_then(|player_obj| player_obj.library.last().copied())
+        && let Some(card) = game.object(card_id)
+        && card.is_land()
+        && !view
+            .granted_play_from_for_card(card_id, Zone::Library, player)
+            .is_empty()
+    {
+        let action = SpecialAction::PlayLand { card_id };
+        if can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::PlayLand { land_id: card_id });
+        }
     }
 }
 
@@ -473,6 +599,37 @@ fn add_graveyard_cast_actions(
     }
 }
 
+fn add_library_cast_actions(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+    library_has_active_grants: bool,
+) {
+    if !library_has_active_grants {
+        return;
+    }
+    let Some(card_id) = game
+        .player(player)
+        .and_then(|player_obj| player_obj.library.last().copied())
+    else {
+        return;
+    };
+    let Some(card) = game.object(card_id) else {
+        return;
+    };
+    append_cast_actions_from_zone_for_card(
+        game,
+        actions,
+        player,
+        card_id,
+        card,
+        Zone::Library,
+        view,
+        true,
+    );
+}
+
 fn add_exile_cast_actions(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -494,6 +651,16 @@ fn add_exile_cast_actions(
             view,
             exile_has_active_grants,
         );
+        if game.is_adventure_exiled(card_id)
+            && game.controller_of(card) == player
+            && can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, view)
+        {
+            actions.push(LegalAction::CastSpell {
+                spell_id: card_id,
+                from_zone: Zone::Exile,
+                casting_method: CastingMethod::Normal,
+            });
+        }
     }
     if exile_has_active_grants {
         append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view);
@@ -510,7 +677,7 @@ fn add_hand_alternative_cast_actions(
     cast_ctx: &CastLegalityContext<'_>,
 ) {
     for summary in hand_summaries {
-        if summary.is_land || !summary.has_any_alternative_branch(hand_has_active_grants) {
+        if !summary.has_any_alternative_branch(hand_has_active_grants) {
             continue;
         }
         if summary.can_cast_face_down
@@ -541,9 +708,7 @@ fn add_hand_alternative_cast_actions(
                 casting_method: CastingMethod::Fuse,
             });
         }
-        let normal_cast_available = summary.has_normal_mana_cost
-            && can_cast_spell_with_context(summary.card, &CastingMethod::Normal, cast_ctx);
-        if summary.has_hand_native_alternatives && !normal_cast_available {
+        if summary.has_hand_native_alternatives {
             for (idx, alt_cast) in summary.card.alternative_casts.iter().enumerate() {
                 if alt_cast.cast_from_zone() == Zone::Hand
                     && can_cast_with_alternative_from_hand_with_context(
@@ -747,8 +912,10 @@ fn add_non_battlefield_ability_actions(
         }
 
         if game.can_activate_non_mana_abilities(player) {
+            let current_abilities = view.abilities_rc(source_id);
+            let abilities = current_abilities.as_deref().unwrap_or(&obj.abilities);
             for &ability_index in ability_summary.activated_ability_indices() {
-                let Some(ability) = obj.abilities.get(ability_index) else {
+                let Some(ability) = abilities.get(ability_index) else {
                     continue;
                 };
                 if !ability.functions_in(&obj.zone) {
@@ -801,6 +968,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     let graveyard_has_active_grants =
         view.player_has_active_grants_for_zone(player, Zone::Graveyard);
     let exile_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Exile);
+    let library_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Library);
     let hand_summaries = build_hand_summaries(game, hand);
     let controlled_battlefield = collect_controlled_battlefield(game, player);
     let prewarm_started_at = PerfTimer::start();
@@ -817,6 +985,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         &hand_summaries,
         graveyard_has_active_grants,
         exile_has_active_grants,
+        library_has_active_grants,
         &view,
     );
     perf.lands_ms = lands_started_at.elapsed_ms();
@@ -843,6 +1012,8 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     let exile_casts_started_at = PerfTimer::start();
     add_exile_cast_actions(game, &mut actions, player, &view, exile_has_active_grants);
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
+
+    add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants);
 
     let hand_alternatives_started_at = PerfTimer::start();
     add_hand_alternative_cast_actions(

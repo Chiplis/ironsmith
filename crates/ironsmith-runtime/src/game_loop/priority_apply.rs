@@ -203,9 +203,9 @@ pub fn apply_priority_response_with_dm(
         return apply_x_value_response(game, trigger_queue, state, *x, &mut *decision_maker);
     }
 
-    // Handle mode selection for a pending cast (per MTG rule 601.2b, modes before optional costs)
+    // Handle mode selection for a pending cast or activated ability.
     if let PriorityResponse::Modes(modes) = response
-        && state.pending_cast.is_some()
+        && (state.pending_cast.is_some() || state.pending_activation.is_some())
     {
         return apply_modes_response(game, trigger_queue, state, modes, &mut *decision_maker);
     }
@@ -807,11 +807,14 @@ pub fn apply_priority_response_with_dm(
             let target_requirements =
                 extract_target_requirements(game, &effects, player, Some(*source));
 
-            // Check if mana cost has X
+            // Check if the activation has a modal effect or any cost references X.
+            let has_modal =
+                extract_modal_spec_from_program(game, &effects, player, *source).is_some();
             let has_x = mana_cost_to_pay
                 .as_ref()
                 .map(|c| c.has_x())
-                .unwrap_or(false);
+                .unwrap_or(false)
+                || activation_cost_steps_reference_x(&remaining_cost_steps);
 
             // Check for hybrid/Phyrexian pips requiring announcement (per MTG rule 601.2b via 602.2b)
             let pips_to_announce = mana_cost_to_pay
@@ -822,16 +825,19 @@ pub fn apply_priority_response_with_dm(
 
             // Create pending activation if there are choices to make
             if has_x
+                || has_modal
                 || !remaining_cost_steps.is_empty()
                 || has_hybrid_pips
                 || !target_requirements.is_empty()
                 || mana_cost_to_pay.is_some()
             {
                 // Determine starting stage (per MTG rule 602.2b, follows 601.2b-h order)
-                // Order: X value → Hybrid/Phyrexian announcement → Targets → non-mana costs
-                // → Mana payment.
+                // Order: X value → modes → Hybrid/Phyrexian announcement → Targets
+                // → non-mana costs → Mana payment.
                 let stage = if has_x {
                     ActivationStage::ChoosingX
+                } else if has_modal {
+                    ActivationStage::ChoosingModes
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
@@ -1391,8 +1397,18 @@ pub(super) fn apply_x_value_response(
         }
 
         // Move to next stage (per MTG rule 602.2b, follows 601.2b-h order)
-        // After X: Hybrid/Phyrexian announcement → Targets → non-mana costs → mana payment
-        if !pending.pending_hybrid_pips.is_empty() {
+        // After X: modes → Hybrid/Phyrexian announcement → Targets → non-mana costs → mana payment
+        if pending.chosen_modes.is_none()
+            && extract_modal_spec_from_program(
+                game,
+                &pending.effects,
+                pending.activator,
+                pending.source,
+            )
+            .is_some()
+        {
+            pending.stage = ActivationStage::ChoosingModes;
+        } else if !pending.pending_hybrid_pips.is_empty() {
             // Hybrid pips were populated at activation start
             pending.stage = ActivationStage::AnnouncingCost;
         } else if pending.hybrid_choices.is_empty() {
@@ -1411,6 +1427,7 @@ pub(super) fn apply_x_value_response(
                     );
                 }
             }
+            pending.stage = stage_after_activation_announcements(&pending);
         } else {
             pending.stage = stage_after_activation_announcements(&pending);
         }

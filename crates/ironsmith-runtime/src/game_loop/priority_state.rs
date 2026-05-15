@@ -213,6 +213,8 @@ pub struct PendingRemoveCountersAmongChoice {
 /// Stage of the ability activation process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivationStage {
+    /// Need to choose modes for modal activated abilities.
+    ChoosingModes,
     /// Need to choose X value for abilities with X in cost.
     ChoosingX,
     /// Need to announce hybrid/Phyrexian mana payment choices (per MTG rule 601.2b via 602.2b).
@@ -236,6 +238,7 @@ pub enum ActivationStage {
 impl ActivationStage {
     pub fn name(&self) -> &'static str {
         match self {
+            ActivationStage::ChoosingModes => "choosing modes",
             ActivationStage::ChoosingX => "choosing X",
             ActivationStage::AnnouncingCost => "announcing costs",
             ActivationStage::ChoosingTargets => "choosing targets",
@@ -331,6 +334,18 @@ pub(crate) fn tagged_filter_matches(filter: &ObjectFilter, tag: &crate::tag::Tag
             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
 }
 
+fn single_exile_object_cost(filter: &ObjectFilter, zone: Zone) -> crate::costs::Cost {
+    let mut single_filter = filter.clone();
+    if single_filter.zone.is_none() {
+        single_filter.zone = Some(zone);
+    }
+    crate::costs::Cost::validated_effect(crate::effect::Effect::new(
+        crate::effects::ExileEffect::with_spec(
+            ChooseSpec::Object(single_filter).with_count(crate::effect::ChoiceCount::exactly(1)),
+        ),
+    ))
+}
+
 pub(crate) fn choose_tagged_cost_step(
     choose: &crate::effects::ChooseObjectsEffect,
     next: &crate::costs::Cost,
@@ -376,29 +391,13 @@ pub(crate) fn choose_tagged_cost_step(
             .display(),
             _ => format!("Exile {}", choose.filter.description()),
         };
+        let cost = single_exile_object_cost(&choose.filter, zone);
 
         match exile.spec.base() {
             ChooseSpec::Tagged(tag) if tag == &choose.tag => {
                 return Some(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileChosenObject {
-                        cost: match zone {
-                            Zone::Hand => {
-                                crate::costs::Cost::exile_from_hand(1, choose.filter.colors)
-                            }
-                            Zone::Graveyard => crate::costs::Cost::exile_from_graveyard(
-                                1,
-                                if choose.filter.card_types.len() == 1 {
-                                    choose.filter.card_types.first().copied()
-                                } else {
-                                    None
-                                },
-                            ),
-                            _ => crate::costs::Cost::validated_effect(crate::effect::Effect::new(
-                                crate::effects::ExileEffect::with_spec(ChooseSpec::Object(
-                                    choose.filter.clone(),
-                                )),
-                            )),
-                        },
+                        cost: cost.clone(),
                         filter: choose.filter.clone(),
                         zone,
                         description,
@@ -409,24 +408,7 @@ pub(crate) fn choose_tagged_cost_step(
             ChooseSpec::Object(filter) if tagged_filter_matches(filter, &choose.tag) => {
                 return Some(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileChosenObject {
-                        cost: match zone {
-                            Zone::Hand => {
-                                crate::costs::Cost::exile_from_hand(1, choose.filter.colors)
-                            }
-                            Zone::Graveyard => crate::costs::Cost::exile_from_graveyard(
-                                1,
-                                if choose.filter.card_types.len() == 1 {
-                                    choose.filter.card_types.first().copied()
-                                } else {
-                                    None
-                                },
-                            ),
-                            _ => crate::costs::Cost::validated_effect(crate::effect::Effect::new(
-                                crate::effects::ExileEffect::with_spec(ChooseSpec::Object(
-                                    choose.filter.clone(),
-                                )),
-                            )),
-                        },
+                        cost: cost.clone(),
                         filter: choose.filter.clone(),
                         zone,
                         description,
@@ -507,6 +489,9 @@ fn single_choice_cost(cost: &crate::costs::Cost) -> crate::costs::Cost {
         }
         CostProcessingMode::ExileFromGraveyard { card_type, .. } => {
             crate::costs::Cost::exile_from_graveyard(1, card_type)
+        }
+        CostProcessingMode::ExileObjects { filter, zone, .. } => {
+            single_exile_object_cost(&filter, zone)
         }
         CostProcessingMode::RevealFromHand { card_type, .. } => {
             crate::costs::Cost::reveal_from_hand(1, card_type)
@@ -594,6 +579,23 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                 ));
             }
         }
+        CostProcessingMode::ExileObjects {
+            count,
+            filter,
+            zone,
+        } => {
+            for _ in 0..count {
+                out.push(ActivationCostStep::CardChoice(
+                    ActivationCardCostChoice::ExileChosenObject {
+                        cost: single_choice_cost(cost),
+                        filter: filter.clone(),
+                        zone,
+                        description: description.clone(),
+                        choice_tag: crate::tag::TagKey::from("exile_cost"),
+                    },
+                ));
+            }
+        }
         CostProcessingMode::RevealFromHand { count, card_type } => {
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
@@ -674,6 +676,9 @@ pub struct PendingActivation {
     pub source_name: String,
     /// The chosen X value for abilities with X in cost.
     pub x_value: Option<usize>,
+    /// Pre-chosen modes for modal activated abilities.
+    /// Set during activation and used during resolution.
+    pub chosen_modes: Option<Vec<usize>>,
     /// Spending restrictions for mana produced as this activated ability resolves.
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for restricted mana produced by the source.
@@ -735,6 +740,7 @@ impl PendingActivation {
             source_snapshot,
             source_name,
             x_value,
+            chosen_modes: None,
             mana_usage_restrictions,
             mana_source_chosen_creature_type,
             hybrid_choices: Vec::new(),

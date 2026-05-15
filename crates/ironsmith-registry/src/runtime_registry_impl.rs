@@ -72,6 +72,7 @@ impl CardRegistry {
             .filter(|name| !name.is_empty() && self.get(name).is_none())
             .collect::<Vec<_>>();
         if unresolved_names.is_empty() {
+            self.ensure_requested_linked_faces_loaded(&requested_names);
             return;
         }
 
@@ -187,6 +188,41 @@ impl CardRegistry {
                             .is_some_and(|stripped| requested_keys.contains(stripped))
                 },
             );
+        }
+
+        self.ensure_requested_linked_faces_loaded(&requested_names);
+    }
+
+    fn ensure_requested_linked_faces_loaded(&mut self, requested_names: &[&str]) {
+        let mut linked_names = Vec::new();
+        for requested in requested_names {
+            let trimmed = requested.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            if let Some(definition) = self.get(trimmed) {
+                push_missing_linked_face_name(self, &mut linked_names, definition);
+            }
+
+            for face_name in trimmed.split("//").map(str::trim) {
+                if face_name.is_empty() || face_name == trimmed {
+                    continue;
+                }
+                if self.get(face_name).is_none() {
+                    push_unique(&mut linked_names, face_name);
+                } else if let Some(definition) = self.get(face_name) {
+                    push_missing_linked_face_name(self, &mut linked_names, definition);
+                }
+            }
+        }
+
+        let missing = linked_names
+            .into_iter()
+            .filter(|name| self.get(name).is_none())
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            self.ensure_cards_loaded(missing.iter().map(String::as_str));
         }
     }
 
@@ -397,6 +433,7 @@ impl CardRegistry {
         maybe_register!(krrik_son_of_yawgmoth);
         maybe_register!(shelter);
         maybe_register!(mox_diamond);
+        maybe_register!(mox_sapphire);
         maybe_register!(library_of_leng);
         maybe_register!(invisible_stalker);
         maybe_register!(dauthi_slayer);
@@ -706,6 +743,26 @@ fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&
     })
 }
 
+fn push_missing_linked_face_name(
+    registry: &CardRegistry,
+    linked_names: &mut Vec<String>,
+    definition: &CardDefinition,
+) {
+    let Some(face_name) = definition.card.other_face_name.as_deref() else {
+        return;
+    };
+    if registry.get(face_name).is_none() {
+        push_unique(linked_names, face_name);
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if values.iter().any(|existing| existing == value) {
+        return;
+    }
+    values.push(value.to_string());
+}
+
 #[cfg(any(test, feature = "handwritten-parse-support"))]
 fn first_face_lookup<'a>(
     registry: &'a CardRegistry,
@@ -772,10 +829,16 @@ pub fn linked_face_definition_by_name_or_id(
         }
     }
 
-    if let Some(name) = name
-        && let Ok(definition) = CardRegistry::try_compile_card(name)
-    {
-        return Some(definition);
+    if let Some(name) = name {
+        if let Ok(definition) = CardRegistry::try_compile_card(name) {
+            return Some(definition);
+        }
+
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded([name]);
+        if let Some(definition) = registry.get(name).cloned() {
+            return Some(definition);
+        }
     }
 
     let card_id = id?;

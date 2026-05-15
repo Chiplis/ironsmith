@@ -34,6 +34,9 @@ pub enum StaticAbilityId {
     CantBeBlockedAsLongAsDefendingPlayerControlsCardType,
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes,
     Bloodthirst,
+    Daybound,
+    Nightbound,
+    DayNightStartsDayAsEnters,
     Morph,
     Megamorph,
     Shadow,
@@ -164,6 +167,7 @@ pub enum StaticAbilityId {
     PreventDamageToSelfRemoveCounter,
     PreventDamageToSelfPutCountersInstead,
     PreventConstrainedDamageToSelfPutCountersInstead,
+    ReplaceDamageWithCountersInstead,
     PreventDamageToOtherCreatureYouControlPutCountersInstead,
     DoesntUntap,
     UntapDuringEachOtherPlayersUntapStep,
@@ -201,11 +205,13 @@ pub enum StaticAbilityId {
     EffectDiscardToLibraryReplacement,
     DrawReplacementExileTopFaceDown,
     DrawReplacementDouble,
+    KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
     ExileToExileInsteadOfGraveyard,
     ExileWouldDieInstead,
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
+    DoubleTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     SuppressMatchingTriggeredAbilities,
@@ -261,6 +267,9 @@ impl StaticAbilityId {
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
             | Bloodthirst
+            | Daybound
+            | Nightbound
+            | DayNightStartsDayAsEnters
             | Morph
             | Megamorph
             | Shadow
@@ -391,6 +400,7 @@ impl StaticAbilityId {
             | PreventDamageToSelfRemoveCounter
             | PreventDamageToSelfPutCountersInstead
             | PreventConstrainedDamageToSelfPutCountersInstead
+            | ReplaceDamageWithCountersInstead
             | PreventDamageToOtherCreatureYouControlPutCountersInstead
             | DoesntUntap
             | UntapDuringEachOtherPlayersUntapStep
@@ -428,11 +438,13 @@ impl StaticAbilityId {
             | EffectDiscardToLibraryReplacement
             | DrawReplacementExileTopFaceDown
             | DrawReplacementDouble
+            | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard
             | ExileToExileInsteadOfGraveyard
             | ExileWouldDieInstead
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
+            | DoubleTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | SuppressMatchingTriggeredAbilities

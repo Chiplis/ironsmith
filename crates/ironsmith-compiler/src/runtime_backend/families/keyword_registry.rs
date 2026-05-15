@@ -4,8 +4,8 @@ use crate::cards::builders::{
 use winnow::Parser;
 
 use super::activation_and_restrictions::{
-    parse_activation_cost, parse_channel_line_lexed, parse_cycling_line_lexed,
-    parse_equip_line_lexed, parse_reconfigure_line_lexed,
+    parse_activation_cost, parse_channel_line_lexed, parse_craft_line_lexed,
+    parse_cycling_line_lexed, parse_equip_line_lexed, parse_reconfigure_line_lexed,
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
@@ -294,6 +294,17 @@ pub(super) fn lower_cycling(
         line,
         "cycling",
         parse_cycling_line_lexed(tokens)?,
+    )?))
+}
+
+pub(super) fn lower_craft(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::Ability(require_keyword_parse(
+        line,
+        "craft",
+        parse_craft_line_lexed(tokens)?,
     )?))
 }
 
@@ -638,6 +649,13 @@ pub(super) fn matches_cycling(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_cycling_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_craft(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_craft_line_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_reinforce(

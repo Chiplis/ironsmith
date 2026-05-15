@@ -39,6 +39,22 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisDies => Trigger::this_dies(),
         TriggerSpec::ThisDiesOrIsExiled => Trigger::this_dies_or_is_exiled(),
+        TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker { marker } => {
+            Trigger::new(
+                crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .from(crate::zone::Zone::Battlefield)
+                    .to(crate::zone::Zone::Exile)
+                    .filter(crate::target::ObjectFilter::creature())
+                    .this()
+                    .cause_filter(Some(
+                        crate::events::cause::CauseFilter::from_cost()
+                            .with_source(
+                                crate::target::ObjectFilter::default().with_ability_marker(marker),
+                            )
+                            .with_controller(crate::events::cause::ControllerFilter::You),
+                    )),
+            )
+        }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
@@ -268,6 +284,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfPostcombatMain(player) => {
             Trigger::beginning_of_postcombat_main_phase(player)
         }
+        TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
         TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
         TriggerSpec::ThisEntersBattlefieldWithSurface(surface) => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
@@ -371,11 +388,11 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
-        | TriggerSpec::BeginningOfCombat(_)
-        | TriggerSpec::BeginningOfEndStep(_)
-        | TriggerSpec::BeginningOfPrecombatMain(_)
-        | TriggerSpec::BeginningOfPostcombatMain(_)
-        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::BeginningOfCombat(_)
+            | TriggerSpec::BeginningOfEndStep(_)
+            | TriggerSpec::BeginningOfPrecombatMain(_)
+            | TriggerSpec::BeginningOfPostcombatMain(_)
+            | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
         | TriggerSpec::KeywordAction { .. }
@@ -396,7 +413,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
 
 pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
-        TriggerSpec::StateBased { .. } => None,
+        TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         TriggerSpec::EntersBattlefield { .. }
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }

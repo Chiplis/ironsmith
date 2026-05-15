@@ -304,6 +304,25 @@ fn strip_flash_tail_tokens<'a>(
     Some((rest, lifetime))
 }
 
+fn combine_flash_permission_lifetime(
+    prefixed_lifetime: Option<PermissionLifetime>,
+    tail_lifetime: PermissionLifetime,
+) -> PermissionLifetime {
+    if tail_lifetime == PermissionLifetime::Static {
+        prefixed_lifetime.unwrap_or(tail_lifetime)
+    } else {
+        tail_lifetime
+    }
+}
+
+fn grant_spec_grants_flash_to_hand(spec: &crate::grant::GrantSpec) -> bool {
+    matches!(
+        &spec.grantable,
+        crate::grant::Grantable::Ability(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::Flash
+    ) && spec.zone == Zone::Hand
+}
+
 fn strip_cast_from_hand_without_paying_mana_cost_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<&'a [OwnedLexToken]> {
@@ -339,6 +358,22 @@ fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
             &[
                 "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
                 "spell",
+            ][..],
+            &[
+                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
+                "any", "color", "to", "cast", "it",
+            ][..],
+            &[
+                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
+                "any", "color", "to", "cast", "that", "spell",
+            ][..],
+            &[
+                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
+                "any", "color", "to", "cast", "them",
+            ][..],
+            &[
+                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
+                "any", "color", "to", "cast", "those", "spells",
             ][..],
         ],
     )
@@ -506,6 +541,34 @@ fn parse_permission_subject_filter_tokens_lexed(
     }
 
     Ok(None)
+}
+
+fn parse_static_hand_free_cast_grant_spec_from_rest(
+    rest_tokens: &[OwnedLexToken],
+) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
+    let Some(filter_tokens) =
+        strip_cast_from_hand_without_paying_mana_cost_suffix_tokens(rest_tokens)
+    else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_lexed_commas(filter_tokens);
+    let filter_refs = token_word_refs(filter_tokens);
+    if filter_refs.is_empty()
+        || !filter_refs
+            .iter()
+            .any(|word| *word == "spell" || *word == "spells")
+    {
+        return Ok(None);
+    }
+
+    let mut filter = ObjectFilter::nonland();
+    merge_spell_filters(
+        &mut filter,
+        parse_spell_filter_with_grammar_entrypoint_lexed(filter_tokens),
+    );
+    Ok(Some(
+        crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(filter),
+    ))
 }
 
 pub(crate) fn parse_permission_clause_spec(
@@ -924,7 +987,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             (crate::grant::GrantSpec::flash_to_spells(), None)
         };
         if let Some(tail_tokens) = subject_tokens {
-            if let Some(lifetime) = parse_exact_lexed_prefix(tail_tokens, parse_flash_tail_inner) {
+            if let Some(tail_lifetime) =
+                parse_exact_lexed_prefix(tail_tokens, parse_flash_tail_inner)
+            {
+                let lifetime = combine_flash_permission_lifetime(prefixed_lifetime, tail_lifetime);
                 return Ok(Some(PermissionClauseSpec::GrantBySpec {
                     player,
                     spec,
@@ -938,6 +1004,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             if !filter_tokens.is_empty()
                 && let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)?
             {
+                let lifetime = combine_flash_permission_lifetime(prefixed_lifetime, lifetime);
                 return Ok(Some(PermissionClauseSpec::GrantBySpec {
                     player,
                     spec: crate::grant::GrantSpec::flash_to_spells_matching(filter),
@@ -948,29 +1015,13 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     }
 
     if prefixed_lifetime.is_none() && !allow_land {
-        if let Some(filter_tokens) =
-            strip_cast_from_hand_without_paying_mana_cost_suffix_tokens(rest_tokens)
-        {
-            let filter_tokens = trim_lexed_commas(filter_tokens);
-            let filter_refs = token_word_refs(filter_tokens);
-            if filter_refs.is_empty()
-                || !filter_refs
-                    .iter()
-                    .any(|word| *word == "spell" || *word == "spells")
-            {
+        if let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)? {
+            if clause_is_singular_free_cast_from_hand(&clause_refs) {
                 return Ok(None);
             }
-
-            let mut filter = ObjectFilter::nonland();
-            merge_spell_filters(
-                &mut filter,
-                parse_spell_filter_with_grammar_entrypoint_lexed(filter_tokens),
-            );
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
-                spec: crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(
-                    filter,
-                ),
+                spec,
                 lifetime: PermissionLifetime::Static,
             }));
         }
@@ -1124,18 +1175,40 @@ pub(crate) fn parse_cast_spells_as_though_they_had_flash_clause(
         Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec,
-            lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
-        }) if spec == crate::grant::GrantSpec::flash_to_spells()
-            || spec == crate::grant::GrantSpec::flash_to_noncreature_spells() =>
+            lifetime,
+        }) if matches!(
+            lifetime,
+            PermissionLifetime::ThisTurn
+                | PermissionLifetime::UntilEndOfTurn
+                | PermissionLifetime::UntilYourNextTurn
+        ) && grant_spec_grants_flash_to_hand(&spec) =>
         {
+            let duration = match lifetime {
+                PermissionLifetime::UntilYourNextTurn => {
+                    crate::grant::GrantDuration::UntilYourNextTurnEnd
+                }
+                _ => crate::grant::GrantDuration::UntilEndOfTurn,
+            };
             Ok(Some(EffectAst::subject_verb_grant_by_spec(
-                spec,
-                player,
-                crate::grant::GrantDuration::UntilEndOfTurn,
+                spec, player, duration,
             )))
         }
         _ => Ok(None),
     }
+}
+
+fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
+    spec.zone == Zone::Hand
+        && matches!(
+            &spec.grantable,
+            crate::grant::Grantable::AlternativeCast(method)
+                if method.mana_cost().is_none() && method.non_mana_costs().is_empty()
+        )
+}
+
+fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
+    word_slice_has_sequence(clause_words, &["cast", "a", "spell"])
+        || word_slice_has_sequence(clause_words, &["cast", "one", "spell"])
 }
 
 pub(crate) fn parse_cast_or_play_tagged_clause(
@@ -1153,6 +1226,21 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(&trimmed) {
         allow_any_color_for_cast = true;
         trimmed.truncate(stripped.len());
+    }
+
+    if let Some((lead, rest_tokens)) = parse_permission_lead_tokens(&trimmed)
+        && matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
+        && !lead.allow_land
+        && clause_is_singular_free_cast_from_hand(&token_word_refs(&trimmed))
+        && let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)?
+    {
+        return Ok(Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                lead.player,
+                spec.filter,
+                spec.zone,
+            ),
+        ));
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)
@@ -1261,13 +1349,35 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec,
-            lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+            lifetime:
+                lifetime @ (PermissionLifetime::ThisTurn
+                | PermissionLifetime::UntilEndOfTurn
+                | PermissionLifetime::UntilYourNextTurn),
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+            let duration = if lifetime == PermissionLifetime::UntilYourNextTurn {
+                crate::grant::GrantDuration::UntilYourNextTurnEnd
+            } else {
+                crate::grant::GrantDuration::UntilEndOfTurn
+            };
             Ok(Some(EffectAst::subject_verb_grant_by_spec(
-                spec,
-                player,
-                crate::grant::GrantDuration::UntilEndOfTurn,
+                spec, player, duration,
             )))
+        }
+        Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: PermissionLifetime::Static,
+        }) if (player == PlayerAst::Implicit || player == PlayerAst::You)
+            && grant_spec_is_free_cast_from_hand(&spec)
+            && clause_is_singular_free_cast_from_hand(&token_word_refs(&trimmed)) =>
+        {
+            Ok(Some(
+                EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                    player,
+                    spec.filter,
+                    spec.zone,
+                ),
+            ))
         }
         Some(PermissionClauseSpec::Tagged {
             tag,

@@ -51,7 +51,8 @@ fn pay_selected_cost(
         .cloned()
         .or_else(|| match cost.processing_mode() {
             crate::costs::CostProcessingMode::ExileFromHand { .. }
-            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. } => {
+            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. }
+            | crate::costs::CostProcessingMode::ExileObjects { .. } => {
                 Some(crate::tag::TagKey::from("exile_cost"))
             }
             _ => None,
@@ -479,6 +480,12 @@ pub(super) fn build_pip_payment_options(
     if !has_pool_options || is_phyrexian {
         let mana_abilities = get_available_mana_abilities(game, player, decision_maker);
         for (perm_id, ability_index, description) in mana_abilities {
+            let allow_source_any_color = allow_any_color
+                || game.can_spend_mana_as_any_color_from_mana_source(
+                    player,
+                    source_for_pip_alternatives,
+                    perm_id,
+                );
             // Check if this ability produces mana that can pay this pip
             if mana_ability_can_pay_pip(
                 game,
@@ -486,7 +493,7 @@ pub(super) fn build_pip_payment_options(
                 ability_index,
                 source_for_pip_alternatives,
                 pip,
-                allow_any_color,
+                allow_source_any_color,
             ) {
                 options.push(ManaPipPaymentOption {
                     index,
@@ -1239,7 +1246,9 @@ pub(super) fn execute_pip_payment_action(
             let before_pool = game
                 .player(player)
                 .map(|player_obj| player_obj.mana_pool.clone());
-            let mana_color_restriction = pip_mana_color_restriction(pip, allow_any_color);
+            let allow_source_any_color = allow_any_color
+                || game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id);
+            let mana_color_restriction = pip_mana_color_restriction(pip, allow_source_any_color);
             let emitted_events =
                 crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
                 game,
@@ -1270,7 +1279,7 @@ pub(super) fn execute_pip_payment_action(
                 player,
                 source,
                 pip,
-                allow_any_color,
+                allow_source_any_color,
                 &produced_symbols,
             ) {
                 if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
@@ -1495,9 +1504,9 @@ pub(super) fn format_pip(pip: &[crate::mana::ManaSymbol]) -> String {
     }
 }
 
-/// Apply a modes response to the pending cast.
+/// Apply a modes response to the pending cast or activation.
 ///
-/// This handles the player's mode selection for modal spells per MTG rule 601.2b.
+/// This handles mode selection for modal spells and activated abilities.
 pub(super) fn apply_modes_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1505,8 +1514,37 @@ pub(super) fn apply_modes_response(
     modes: &[usize],
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if state.pending_cast.is_none()
+        && let Some(mut pending) = state.pending_activation.take()
+    {
+        let has_legal_targets = spell_program_has_legal_targets_with_modes(
+            game,
+            &pending.effects,
+            pending.activator,
+            Some(pending.source),
+            Some(modes),
+        );
+
+        if !has_legal_targets {
+            return Err(GameLoopError::InvalidState(
+                "Selected mode combination has no legal targets".to_string(),
+            ));
+        }
+
+        pending.chosen_modes = Some(modes.to_vec());
+        pending.remaining_requirements = extract_target_requirements_from_program_with_modes(
+            game,
+            &pending.effects,
+            pending.activator,
+            Some(pending.source),
+            Some(modes),
+        );
+        pending.stage = activation_stage_after_modes(&pending);
+        return continue_activation(game, trigger_queue, state, pending, decision_maker);
+    }
+
     let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast for modes response".to_string())
+        GameLoopError::InvalidState("No pending cast or activation for modes response".to_string())
     })?;
 
     let has_legal_targets = game
@@ -3234,7 +3272,7 @@ pub(super) fn apply_casting_method_choice_response(
 /// If casting fails later (e.g., can't pay costs), the spell should be reverted.
 ///
 /// Returns the new ObjectId on the stack.
-pub(super) fn propose_spell_cast(
+pub(crate) fn propose_spell_cast(
     game: &mut GameState,
     spell_id: ObjectId,
     _from_zone: Zone,
@@ -3247,8 +3285,17 @@ pub(super) fn propose_spell_cast(
             use_alternative: Some(idx),
             zone,
             ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
         _ => None,
+    });
+    let selected_method_for_overlay = selected_method.clone();
+    let cast_origin_snapshot = game.object(spell_id).map(|obj| {
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
 
     let new_id = game
@@ -3256,6 +3303,9 @@ pub(super) fn propose_spell_cast(
         .ok_or_else(|| {
             GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
         })?;
+    if let Some(snapshot) = cast_origin_snapshot {
+        game.set_cast_origin_snapshot(new_id, snapshot);
+    }
     let disturb_other_def = if matches!(
         selected_method,
         Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
@@ -3280,7 +3330,9 @@ pub(super) fn propose_spell_cast(
         None
     };
     let split_other_def = match casting_method {
-        CastingMethod::SplitOtherHalf | CastingMethod::Fuse => {
+        CastingMethod::SplitOtherHalf
+        | CastingMethod::SplitOtherHalfPlayFrom { .. }
+        | CastingMethod::Fuse => {
             let obj = game.object(new_id).ok_or_else(|| {
                 GameLoopError::InvalidState(
                     "Split spell should exist before cast overlays".to_string(),
@@ -3294,7 +3346,8 @@ pub(super) fn propose_spell_cast(
                 .ok_or_else(|| {
                     GameLoopError::InvalidState(
                         match casting_method {
-                            CastingMethod::SplitOtherHalf => {
+                            CastingMethod::SplitOtherHalf
+                            | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
                                 "Split back face definition could not be resolved"
                             }
                             CastingMethod::Fuse => {
@@ -3365,11 +3418,16 @@ pub(super) fn propose_spell_cast(
                 obj.apply_face_down_cast_overlay();
                 mark_face_down = true;
             }
-            CastingMethod::SplitOtherHalf => {
+            CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
                 let other_def = split_other_def
                     .as_ref()
                     .expect("split linked face should be resolved before mutating the spell");
                 obj.apply_definition_face(&other_def);
+                if let CastingMethod::SplitOtherHalfPlayFrom { .. } = casting_method
+                    && let Some(method) = selected_method_for_overlay.clone()
+                {
+                    obj.cast_alternative_method = Some(method);
+                }
             }
             CastingMethod::Fuse => {
                 let other_def = split_other_def
@@ -3559,6 +3617,11 @@ pub(super) fn finalize_spell_cast(
                 } => (base_mana_cost, crate::cost::TotalCost::free(), None),
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
+                    zone,
+                    ..
+                }
+                | CastingMethod::SplitOtherHalfPlayFrom {
+                    use_alternative: idx,
                     zone,
                     ..
                 } => crate::decision::resolve_play_from_alternative_method(

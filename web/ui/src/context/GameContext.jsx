@@ -1163,6 +1163,7 @@ export function GameProvider({ children }) {
         allowOpponentAutomation = true,
         allowTrivialAutomation = true,
         clearViewedCards = false,
+        publishState = true,
       } = {}
     ) => {
       const finalizeStartedAt = performance.now();
@@ -1221,8 +1222,10 @@ export function GameProvider({ children }) {
       };
       console.info("[ironsmith] finalize:state", finalizePerfPayload);
       recordPerfEvent("finalize:state", finalizePerfPayload);
-      setState(st);
-      stateRef.current = st;
+      if (publishState) {
+        setState(st);
+        stateRef.current = st;
+      }
 
       const parts = [];
       if (message) parts.push(message);
@@ -1337,6 +1340,7 @@ export function GameProvider({ children }) {
           allowOpponentAutomation: false,
           allowTrivialAutomation: false,
           clearViewedCards: true,
+          publishState: syncContext?.publishState !== false,
         });
         const finalizeMs = performance.now() - finalizeStartedAt;
         const syncedDispatchTimingPayload = {

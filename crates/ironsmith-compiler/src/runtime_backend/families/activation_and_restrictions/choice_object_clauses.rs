@@ -1,5 +1,32 @@
 use super::*;
 
+fn expand_graveyard_or_hand_disjunction_filter(
+    mut filter: ObjectFilter,
+    words: &[&str],
+) -> ObjectFilter {
+    let has_graveyard = words
+        .iter()
+        .any(|word| matches!(*word, "graveyard" | "graveyards"));
+    let has_hand = words.iter().any(|word| matches!(*word, "hand" | "hands"));
+    if !(has_graveyard && has_hand) {
+        return filter;
+    }
+
+    filter.zone = None;
+    filter.controller = None;
+    filter.any_of = vec![
+        ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            ..ObjectFilter::default()
+        },
+        ObjectFilter {
+            zone: Some(Zone::Hand),
+            ..ObjectFilter::default()
+        },
+    ];
+    filter
+}
+
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
@@ -105,6 +132,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
             clause_words.join(" ")
         ))
     })?;
+    choose_filter = expand_graveyard_or_hand_disjunction_filter(choose_filter, &clause_words);
     if matches!(
         choose_filter.zone,
         Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile)
@@ -312,6 +340,7 @@ pub(crate) fn parse_you_choose_objects_clause(
                 ))
             })?
         };
+    choose_filter = expand_graveyard_or_hand_disjunction_filter(choose_filter, &choose_words);
     if references_it {
         if explicit_container_reference
             && matches!(choose_filter.zone, None | Some(Zone::Battlefield))
@@ -658,6 +687,33 @@ mod tests {
             filter.owner.is_none(),
             "expected no owner pin, got {filter:?}"
         );
+    }
+
+    #[test]
+    fn parse_you_choose_objects_clause_supports_opponent_graveyard_or_hand() {
+        let tokens = tokenize_line(
+            "You choose a nonland card from that player's graveyard or hand.",
+            0,
+        );
+
+        let (chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse choose from graveyard-or-hand clause")
+            .expect("expected choose clause");
+
+        assert_eq!(chooser, PlayerAst::You);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert_eq!(filter.zone, None);
+        assert_eq!(filter.controller, None);
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+        assert!(filter.excluded_card_types.contains(&CardType::Land));
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|arm| arm.zone == Some(Zone::Graveyard))
+        );
+        assert!(filter.any_of.iter().any(|arm| arm.zone == Some(Zone::Hand)));
     }
 
     #[test]

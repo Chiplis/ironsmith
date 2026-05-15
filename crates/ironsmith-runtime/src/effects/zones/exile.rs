@@ -11,6 +11,7 @@ use crate::events::processing::EventOutcome;
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -110,6 +111,17 @@ fn fixed_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
     Some((filter, count.min as u32))
 }
 
+fn material_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, usize)> {
+    let ChooseSpec::Object(filter) = effect.spec.base() else {
+        return None;
+    };
+    let count = effect.spec.count();
+    if count.min == 0 {
+        return None;
+    }
+    Some((filter, count.min))
+}
+
 fn exile_from_hand_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
     let (filter, count) = fixed_cost_filter(effect)?;
     (filter.zone == Some(Zone::Hand)).then_some((filter, count))
@@ -127,31 +139,7 @@ fn matching_cost_candidates(
     controller: crate::ids::PlayerId,
 ) -> Vec<crate::ids::ObjectId> {
     let filter_ctx = FilterContext::new(controller).with_source(source);
-    let candidate_ids: Vec<_> = match filter.zone {
-        Some(Zone::Hand) => game
-            .players
-            .iter()
-            .flat_map(|player| player.hand.iter().copied())
-            .collect(),
-        Some(Zone::Graveyard) => game
-            .players
-            .iter()
-            .flat_map(|player| player.graveyard.iter().copied())
-            .collect(),
-        Some(Zone::Battlefield) => game.battlefield.clone(),
-        Some(Zone::Library) => game
-            .players
-            .iter()
-            .flat_map(|player| player.library.iter().copied())
-            .collect(),
-        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Some(Zone::Exile) => game.exile.clone(),
-        Some(Zone::Command) => game.command_zone.clone(),
-        Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-        None => Vec::new(),
-    };
-
-    candidate_ids
+    candidate_ids_for_filter(game, filter)
         .into_iter()
         .filter(|id| {
             game.object(*id)
@@ -389,11 +377,9 @@ impl CostExecutableEffect for ExileEffect {
             return Ok(());
         }
 
-        if let Some((filter, count)) = fixed_cost_filter(self)
-            && matches!(filter.zone, Some(Zone::Hand | Zone::Graveyard))
-        {
+        if let Some((filter, count)) = material_cost_filter(self) {
             let matching = matching_cost_candidates(game, filter, source, controller);
-            if matching.len() < count as usize {
+            if matching.len() < count {
                 return Err(crate::effects::CostValidationError::NotEnoughCards);
             }
             return Ok(());
@@ -523,6 +509,70 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.exile.len(), 1);
+    }
+
+    #[test]
+    fn red_instant_or_sorcery_material_cost_counts_multicolor_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Battlefield,
+            "Craft Source",
+            vec![ManaSymbol::Generic(1)],
+            CardType::Artifact,
+        );
+
+        add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Arc Lightning",
+            vec![ManaSymbol::Generic(2), ManaSymbol::Red],
+            CardType::Sorcery,
+        );
+        add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Lightning Helix",
+            vec![ManaSymbol::Red, ManaSymbol::White],
+            CardType::Instant,
+        );
+        add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Lightning Strike",
+            vec![ManaSymbol::Generic(1), ManaSymbol::Red],
+            CardType::Instant,
+        );
+        add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Lightning Bolt",
+            vec![ManaSymbol::Red],
+            CardType::Instant,
+        );
+
+        let effect = ExileEffect::with_spec(
+            ChooseSpec::Object(
+                ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You)
+                    .with_colors(ColorSet::from(Color::Red))
+                    .with_type(CardType::Instant)
+                    .with_type(CardType::Sorcery),
+            )
+            .with_count(ChoiceCount::at_least(4)),
+        );
+
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice)
+                .is_ok()
+        );
     }
 
     #[test]

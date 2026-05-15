@@ -797,6 +797,68 @@ impl<'a> DerivedGameView<'a> {
         grants
     }
 
+    pub(crate) fn granted_alternative_casts_for_card_view(
+        &self,
+        card_id: ObjectId,
+        card: &crate::object::Object,
+        zone: Zone,
+        player: PlayerId,
+    ) -> Vec<GrantedAlternativeCast> {
+        let ctx = self.game.filter_context_for(player, None);
+        self.active_grants()
+            .iter()
+            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| {
+                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+            })
+            .filter_map(|grant| match &grant.grantable {
+                Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
+                    method: method.clone(),
+                    source_id: grant.source.source_id(),
+                    zone: grant.zone,
+                    usage_limit: None,
+                }),
+                Grantable::DerivedAlternativeCast(spec) => {
+                    materialize_derived_alternative_cast(card, spec).map(|method| {
+                        GrantedAlternativeCast {
+                            method,
+                            source_id: grant.source.source_id(),
+                            zone: grant.zone,
+                            usage_limit: spec.usage_limit(),
+                        }
+                    })
+                }
+                Grantable::Ability(_) | Grantable::PlayFrom => None,
+            })
+            .collect()
+    }
+
+    pub(crate) fn granted_play_from_for_card_view(
+        &self,
+        card_id: ObjectId,
+        card: &crate::object::Object,
+        zone: Zone,
+        player: PlayerId,
+    ) -> Vec<GrantedPlayFrom> {
+        let ctx = self.game.filter_context_for(player, None);
+        self.active_grants()
+            .iter()
+            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| {
+                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
+            })
+            .filter_map(|grant| match &grant.grantable {
+                Grantable::PlayFrom => Some(GrantedPlayFrom {
+                    source_id: grant.source.source_id(),
+                    zone: grant.zone,
+                }),
+                Grantable::Ability(_)
+                | Grantable::AlternativeCast(_)
+                | Grantable::DerivedAlternativeCast(_) => None,
+            })
+            .collect()
+    }
+
     pub(crate) fn card_has_granted_static_ability_id(
         &self,
         card_id: ObjectId,
@@ -1213,7 +1275,10 @@ fn grant_applies_to_card(
     game: &GameState,
 ) -> bool {
     if let Some(target_id) = grant.target_id {
-        return target_id == card_id;
+        return target_id == card_id
+            || grant
+                .target_stable_id
+                .is_some_and(|target_stable_id| target_stable_id == card.stable_id);
     }
 
     grant
@@ -1230,7 +1295,10 @@ fn grant_applies_to_card_non_recursive(
     game: &GameState,
 ) -> bool {
     if let Some(target_id) = grant.target_id {
-        return target_id == card_id;
+        return target_id == card_id
+            || grant
+                .target_stable_id
+                .is_some_and(|target_stable_id| target_stable_id == card.stable_id);
     }
 
     grant

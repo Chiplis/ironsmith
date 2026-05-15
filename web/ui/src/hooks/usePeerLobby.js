@@ -586,6 +586,22 @@ function shouldRequestRemoteCryptoPreview(command, state, previewedRequirements 
   return !hasOnlyOwnerPrivateViewRequirements(previewedRequirements);
 }
 
+function commandMayProducePostApplyOpenings(command, state, previewedRequirements = []) {
+  if (!command) return false;
+  if (shouldRequestRemoteCryptoPreview(command, state, previewedRequirements)) return true;
+  if (
+    (previewedRequirements || []).some((requirement) =>
+      ["public_open", "private_open", "public_view_window", "private_view_window"].includes(
+        String(requirement?.type || requirement?.requirement_type || "")
+      )
+      && !isOwnerPrivateViewRequirement(requirement)
+    )
+  ) {
+    return true;
+  }
+  return ["select_options", "select_objects", "targets"].includes(String(command.type || ""));
+}
+
 function isUnauthorizedAddCardCommand(command) {
   return command?.type === "add_card_to_zone";
 }
@@ -902,6 +918,12 @@ function mergeAuditOpenings(...openingLists) {
   return [...merged.values()];
 }
 
+function hasPostTimedOpenings(...openingLists) {
+  return openingLists.flat().some((opening) =>
+    String(opening?.timing || "pre") === "post"
+  );
+}
+
 function mergePrivateViewProofs(...proofLists) {
   const merged = new Map();
   for (const proof of proofLists.flat()) {
@@ -916,6 +938,17 @@ function mergePrivateViewProofs(...proofLists) {
     merged.set(key, proof);
   }
   return [...merged.values()];
+}
+
+function missingRemotePublicOpenRequirements(requirements = [], material = {}, localSeat = null) {
+  return (requirements || []).filter((requirement) => {
+    if (String(requirement?.type || "") !== "public_open") return false;
+    const owner = Number(requirement.owner);
+    if (!Number.isInteger(owner) || owner === Number(localSeat)) return false;
+    return !(material.openings || []).some((opening) =>
+      openingMatchesRequirement(opening, requirement)
+    );
+  });
 }
 
 function shuffleProofMatchesRequirement(proof, requirement) {
@@ -3314,9 +3347,11 @@ export function usePeerLobby({
       const type = String(requirement?.type || "");
       if (!type || type === "hidden_move" || type === "hidden_order_update") continue;
       if (type === "public_open") {
-        const match = (audit.openings || []).find((opening) =>
-          openingMatchesRequirement(opening, requirement)
-        );
+        const match =
+          (audit.openings || []).find((opening) =>
+            openingMatchesRequirement(opening, requirement)
+          )
+          || localRevealedOpeningForRequirement(requirement);
         if (!match) {
           throw new Error(
             `Missing ${type} audit opening for player ${Number(requirement.owner) + 1}`
@@ -3372,7 +3407,27 @@ export function usePeerLobby({
           Number(entry.owner) === Number(requirement.owner)
           && (type !== "private_view_window" || Number(entry.viewer) === Number(requirement.viewer))
         );
-        if (matchingProofs.length < Number(requirement.count || 0)) {
+        let materialCount = matchingProofs.length;
+        if (type === "public_view_window") {
+          const known = new Map();
+          const addKnownOpening = (entry) => {
+            if (!entry || Number(entry.owner) !== Number(requirement.owner)) return;
+            const key = [
+              Number(entry.owner),
+              Number(entry.slot ?? -1),
+              Number(entry.objectId ?? -1),
+              String(entry.commitment || entry.positionCommitment || ""),
+              String(entry.card || ""),
+            ].join(":");
+            known.set(key, entry);
+          };
+          matchingProofs.forEach(addKnownOpening);
+          for (const opening of localRevealedOpeningsRef.current.values()) {
+            addKnownOpening(opening);
+          }
+          materialCount = known.size;
+        }
+        if (materialCount < Number(requirement.count || 0)) {
           throw new Error(
             `Missing audit material for ${type} of player ${Number(requirement.owner) + 1}`
           );
@@ -3461,19 +3516,25 @@ export function usePeerLobby({
         }
       }
     }
-  }, [auditEncryptionPublicKeyForPlayer, currentAuditMatchId]);
+  }, [auditEncryptionPublicKeyForPlayer, currentAuditMatchId, localRevealedOpeningForRequirement]);
 
   const revealAuditOpenings = useCallback(async (openings = [], options = {}) => {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.revealHiddenSlot !== "function") return;
     const timing = options.timing || null;
+    const commandObjectIds = timing === "pre"
+      ? collectCommandObjectIds(options.command)
+      : new Set();
     let changed = false;
     let latestState = null;
     for (const opening of openings || []) {
       if (!opening || opening.owner == null || opening.slot == null || !opening.card) {
         continue;
       }
-      if (timing && String(opening.timing || "pre") !== timing) {
+      const opensCommandObject =
+        opening.objectId != null && commandObjectIds.has(Number(opening.objectId));
+      const recomputeDecision = Boolean(timing === "pre" && opensCommandObject);
+      if (timing && String(opening.timing || "pre") !== timing && !opensCommandObject) {
         continue;
       }
       try {
@@ -3495,6 +3556,43 @@ export function usePeerLobby({
         const revealPositionCommitment =
           String(opening.positionCommitment || "")
           || localHiddenZiffleCommitment;
+        const revealByObjectMetadata = async () => {
+          if (
+            opening.objectId == null
+            || !localHiddenMetadata
+            || typeof currentGame.revealHiddenObject !== "function"
+          ) {
+            return null;
+          }
+          const metadataSlot = Number(localHiddenMetadata.slot);
+          const metadataCommitment = String(localHiddenMetadata.commitment || "");
+          const matchesOriginal =
+            Number.isSafeInteger(metadataSlot)
+            && metadataSlot === Number(opening.slot)
+            && (!opening.commitment || metadataCommitment === String(opening.commitment || ""));
+          const matchesPosition =
+            Number.isSafeInteger(metadataSlot)
+            && revealPosition != null
+            && metadataSlot === Number(revealPosition)
+            && (!revealPositionCommitment || metadataCommitment === revealPositionCommitment);
+          if (!matchesOriginal && !matchesPosition) {
+            return null;
+          }
+          return currentGame.revealHiddenObject({
+            objectId: Number(opening.objectId),
+            slot: metadataSlot,
+            cardName: String(opening.card),
+            commitment: metadataCommitment || undefined,
+            recomputeDecision,
+          });
+        };
+        const revealByCommittedSlot = () => currentGame.revealHiddenSlot({
+          owner: Number(opening.owner),
+          slot: Number(opening.slot),
+          cardName: String(opening.card),
+          commitment: opening.commitment || undefined,
+          recomputeDecision,
+        });
         if (
           revealPosition != null
           && typeof currentGame.revealHiddenPosition === "function"
@@ -3502,29 +3600,55 @@ export function usePeerLobby({
           const ceremony = ziffleCeremonyForOwner(opening.owner, {
             commitment: revealPositionCommitment,
           });
-          latestState = await currentGame.revealHiddenPosition({
-            owner: Number(opening.owner),
-            position: Number(revealPosition),
-            originalSlot: Number(opening.slot),
-            cardName: String(opening.card),
-            positionCommitment: revealPositionCommitment
-              || (ceremony
-                ? ziffleRuntimeCommitment(ceremony.deckHash, revealPosition)
-                : undefined),
-            commitment: opening.commitment || undefined,
-          });
+          try {
+            latestState = await currentGame.revealHiddenPosition({
+              owner: Number(opening.owner),
+              position: Number(revealPosition),
+              originalSlot: Number(opening.slot),
+              cardName: String(opening.card),
+              positionCommitment: revealPositionCommitment
+                || (ceremony
+                  ? ziffleRuntimeCommitment(ceremony.deckHash, revealPosition)
+                  : undefined),
+              commitment: opening.commitment || undefined,
+              recomputeDecision,
+            });
+          } catch (err) {
+            const message = String(err?.message || err || "");
+            if (!message.includes("not present") && !message.includes("not a hidden")) {
+              throw err;
+            }
+            latestState = await revealByObjectMetadata();
+            if (!latestState) {
+              const metadataSlot = localHiddenMetadata?.slot == null
+                ? null
+                : Number(localHiddenMetadata.slot);
+              const metadataCommitment = String(localHiddenMetadata?.commitment || "");
+              if (
+                metadataSlot === Number(opening.slot)
+                && (!opening.commitment || metadataCommitment === String(opening.commitment || ""))
+              ) {
+                latestState = await revealByCommittedSlot();
+              } else {
+                throw err;
+              }
+            }
+          }
         } else {
-          latestState = await currentGame.revealHiddenSlot({
-            owner: Number(opening.owner),
-            slot: Number(opening.slot),
-            cardName: String(opening.card),
-            commitment: opening.commitment || undefined,
-          });
+          latestState = await revealByCommittedSlot();
         }
+        rememberLocalRevealedOpening(opening, {
+          objectId: opening.objectId,
+          position: revealPosition,
+          positionCommitment: revealPositionCommitment,
+        });
         changed = true;
       } catch (err) {
         const message = String(err?.message || err || "");
-        if (!message.includes("not present") && !message.includes("not a hidden")) {
+        if (
+          opensCommandObject
+          || (!message.includes("not present") && !message.includes("not a hidden"))
+        ) {
           throw err;
         }
       }
@@ -3535,7 +3659,13 @@ export function usePeerLobby({
       setState(nextState);
     }
     return latestState;
-  }, [currentHiddenCardMetadataForObject, setState, verifyAuditOpeningsAgainstManifests, ziffleCeremonyForOwner]);
+  }, [
+    currentHiddenCardMetadataForObject,
+    rememberLocalRevealedOpening,
+    setState,
+    verifyAuditOpeningsAgainstManifests,
+    ziffleCeremonyForOwner,
+  ]);
 
   async function previewRequirementsForCommand(command) {
     const currentGame = gameRef.current;
@@ -5736,6 +5866,7 @@ export function usePeerLobby({
       }
       await revealAuditOpenings(message.audit?.openings || [], {
         timing: "pre",
+        command: message.command,
         updateState: !dryRun,
       });
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
@@ -5769,14 +5900,22 @@ export function usePeerLobby({
         requirements: cryptoRequirements,
         updateState: !dryRun,
       });
+      const publishAppliedStateImmediately =
+        !commandMayProducePostApplyOpenings(localCommand, liveStateForClock, cryptoRequirements)
+        && !hasPostTimedOpenings(message.audit?.openings || []);
       const appliedState = await applySyncedCommand(localCommand, message.label || "", {
         actorIndex: message.actorIndex,
         sequence: nextSequence,
+        publishState: publishAppliedStateImmediately,
       });
-      await revealAuditOpenings(message.audit?.openings || [], {
+      const remotePostOpeningState = await revealAuditOpenings(message.audit?.openings || [], {
         timing: "post",
         updateState: !dryRun,
       });
+      if (!remotePostOpeningState && !publishAppliedStateImmediately && !dryRun) {
+        stateRef.current = appliedState;
+        setState(appliedState);
+      }
       const appliedCryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
         liveStateForClock,
@@ -5803,6 +5942,9 @@ export function usePeerLobby({
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: appliedCryptoRequirements,
         audit: message.audit,
+      });
+      await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
+        updateState: !dryRun,
       });
       await revealLocalZiffleHand(matchStartPayloadRef.current, {
         skipIfHandUnchanged: true,
@@ -6588,11 +6730,6 @@ export function usePeerLobby({
       const cardPositions = Array.isArray(message.cardPositions) && message.cardPositions.length > 0
         ? message.cardPositions
         : [message.cardPosition];
-      const allowedPositions = await waitForAuthorizedZiffleRevealPositions(
-        requestedOwner,
-        String(ceremony.deckHash || message.deckHash || ""),
-        cardPositions
-      );
       const authorizedByCryptoRequest = ziffleRevealAuthorizedByOutboundCryptoRequest(
         message,
         requester,
@@ -6608,6 +6745,13 @@ export function usePeerLobby({
           cardPositions,
           ceremony,
           actionAuthorizationDebug
+        );
+      const allowedPositions = (authorizedByCryptoRequest || authorizedByAction)
+        ? new Set()
+        : await waitForAuthorizedZiffleRevealPositions(
+          requestedOwner,
+          String(ceremony.deckHash || message.deckHash || ""),
+          cardPositions
         );
       for (const position of cardPositions) {
         if (
@@ -10966,7 +11110,7 @@ export function usePeerLobby({
           shuffleProofs,
           rngReveals,
         }, actionCryptoOptions);
-        const remoteCryptoMaterial = await collectRemoteCryptoMaterialForRequirements(
+        let remoteCryptoMaterial = await collectRemoteCryptoMaterialForRequirements(
           cryptoRequirements,
           requestRemoteCryptoPreview
             ? { command, seq: nextSequence, actorIndex: session.localPlayerIndex }
@@ -10974,11 +11118,22 @@ export function usePeerLobby({
         );
         await revealAuditOpenings(remoteCryptoMaterial.openings || [], { timing: "pre" });
         const preOpenings = await buildLocalOpeningsForCommand(command, cryptoRequirements, actionCryptoOptions);
-        const appliedState = await applySyncedCommand(command, label || "", {
+        const publishAppliedStateImmediately =
+          !commandMayProducePostApplyOpenings(command, preSubmitState, cryptoRequirements)
+          && !hasPostTimedOpenings(remoteCryptoMaterial.openings, preOpenings);
+        let appliedState = await applySyncedCommand(command, label || "", {
           actorIndex: session.localPlayerIndex,
           sequence: nextSequence,
+          publishState: publishAppliedStateImmediately,
         });
-        await revealAuditOpenings(remoteCryptoMaterial.openings || [], { timing: "post" });
+        const remotePostOpeningState = await revealAuditOpenings(
+          remoteCryptoMaterial.openings || [],
+          { timing: "post" }
+        );
+        if (remotePostOpeningState) {
+          appliedState = remotePostOpeningState;
+        }
+        let publishedPostOpeningState = Boolean(remotePostOpeningState);
         const appliedRequirements = filterCryptoRequirementsForCommand(
           command,
           preSubmitState,
@@ -11015,13 +11170,63 @@ export function usePeerLobby({
         const openingRequirements = appliedRequirements.length > 0
           ? [...cryptoRequirements, ...appliedRequirements]
           : cryptoRequirements;
+        const missingRemotePostOpenRequirements = missingRemotePublicOpenRequirements(
+          openingRequirements,
+          remoteCryptoMaterial,
+          session.localPlayerIndex
+        );
+        if (missingRemotePostOpenRequirements.length > 0) {
+          const postRemoteCryptoMaterial = await collectRemoteCryptoMaterialForRequirements(
+            missingRemotePostOpenRequirements
+          );
+          remoteCryptoMaterial = {
+            openings: mergeAuditOpenings(
+              remoteCryptoMaterial.openings,
+              postRemoteCryptoMaterial.openings
+            ),
+            privateViewProofs: mergePrivateViewProofs(
+              remoteCryptoMaterial.privateViewProofs,
+              postRemoteCryptoMaterial.privateViewProofs
+            ),
+          };
+          const postRemoteOpeningState = await revealAuditOpenings(postRemoteCryptoMaterial.openings || [], {
+            timing: "post",
+            updateState: true,
+          });
+          if (postRemoteOpeningState) {
+            appliedState = postRemoteOpeningState;
+            publishedPostOpeningState = true;
+          }
+        }
         const postOpenings = await buildLocalOpeningsForCommand(command, openingRequirements, {
           ...actionCryptoOptions,
           requirements: openingRequirements,
         });
+        const localRequirementOpenings = await buildLocalRequirementOpeningsForRequirements(
+          openingRequirements,
+          {
+            ...actionCryptoOptions,
+            requirements: openingRequirements,
+          }
+        );
+        const localPostOpeningState = await revealAuditOpenings(
+          mergeAuditOpenings(postOpenings, localRequirementOpenings),
+          {
+            timing: "post",
+            updateState: true,
+          }
+        );
+        if (localPostOpeningState) {
+          appliedState = localPostOpeningState;
+          publishedPostOpeningState = true;
+        } else if (!publishAppliedStateImmediately && !publishedPostOpeningState) {
+          stateRef.current = appliedState;
+          setState(appliedState);
+        }
         const openings = mergeAuditOpenings(
           preOpenings,
           postOpenings,
+          localRequirementOpenings,
           remoteCryptoMaterial.openings
         );
         const localPrivateViewProofs = await buildLocalPrivateViewProofsForRequirements(
@@ -11031,6 +11236,9 @@ export function usePeerLobby({
           localPrivateViewProofs,
           remoteCryptoMaterial.privateViewProofs
         );
+        await revealPrivateAuditProofsForLocalViewer({ privateViewProofs }, {
+          updateState: true,
+        });
         const localPublicCheckpointHash = await currentPublicAuditCheckpointHash();
         const audit = await buildSequencedActionAudit({
           seq: nextSequence,
@@ -11096,6 +11304,7 @@ export function usePeerLobby({
     [
       buildLocalOpeningsForCommand,
       buildLocalPrivateViewProofsForRequirements,
+      buildLocalRequirementOpeningsForRequirements,
       buildLocalRngRevealsForRequirements,
       collectRemoteCryptoMaterialForRequirements,
       buildSequencedActionAudit,

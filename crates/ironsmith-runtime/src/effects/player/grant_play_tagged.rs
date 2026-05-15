@@ -169,16 +169,28 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            game.effect_store.grant_registry.grant_to_card(
-                object_id,
-                object.zone,
-                player_id,
-                Grantable::PlayFrom,
-                GrantSource::Effect {
-                    source_id: ctx.source,
-                    expires_end_of_turn,
-                },
-            );
+            let source = GrantSource::Effect {
+                source_id: ctx.source,
+                expires_end_of_turn,
+            };
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+                game.effect_store.grant_registry.grant_to_stable_card(
+                    object_id,
+                    object.stable_id,
+                    object.zone,
+                    player_id,
+                    Grantable::PlayFrom,
+                    source,
+                );
+            } else {
+                game.effect_store.grant_registry.grant_to_card(
+                    object_id,
+                    object.zone,
+                    player_id,
+                    Grantable::PlayFrom,
+                    source,
+                );
+            }
             granted += 1;
         }
 

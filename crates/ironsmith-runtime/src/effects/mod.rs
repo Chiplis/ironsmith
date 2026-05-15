@@ -142,8 +142,8 @@ pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLife
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
-    AddManaOfLandProducedTypesEffect, AddScaledManaEffect, DoubleManaPoolEffect,
-    EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, PayManaEffect,
+    AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect, AddScaledManaEffect,
+    DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, PayManaEffect,
     RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
@@ -166,10 +166,10 @@ pub use player::{
     GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
-    PayAnyEnergyEffect, PayEnergyEffect, PoisonCountersEffect, ReduceSpeedEffect,
-    RingTemptsYouEffect, RollDieEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
-    VentureIntoDungeonEffect, WinTheGameEffect,
+    MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayEnergyEffect,
+    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDieEffect,
+    SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
+    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

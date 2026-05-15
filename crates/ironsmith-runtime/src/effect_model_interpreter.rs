@@ -528,6 +528,11 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::AddManaOfColorsAmongEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::AddManaEffect>(&effect) {
         return Ok(converted);
     }
@@ -1476,6 +1481,7 @@ where
         crate::effects::GrantNextSpellCostReductionEffect,
         crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
         crate::effects::GrantTaggedSpellLifeCostByManaValueEffect,
+        crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,
         crate::effects::LookAtHandEffect,
         crate::effects::MeldEffect,
         crate::effects::MillEffect,
@@ -1508,6 +1514,7 @@ where
         crate::effects::UntapEffect,
         crate::effects::VariableCasualtyPlaneswalkerCopyEffect,
         crate::effects::AddManaOfChosenColorEffect,
+        crate::effects::AddManaOfColorsAmongEffect,
         crate::effects::mana::AddManaOfImprintedColorsEffect,
         crate::effects::AddScaledManaEffect,
     );

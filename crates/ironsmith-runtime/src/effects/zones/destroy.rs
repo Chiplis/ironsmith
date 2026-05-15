@@ -243,14 +243,17 @@ impl EffectExecutor for DestroyEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::ColorSet;
+    use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::Effect;
     use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::filter::ObjectRef;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::StaticAbility;
     use crate::target::PlayerFilter;
     use crate::types::CardType;
     use crate::types::Subtype;
@@ -282,6 +285,77 @@ mod tests {
                 .token()
                 .build(),
         )
+    }
+
+    fn create_zombie_token() -> crate::cards::CardDefinition {
+        crate::cards::CardDefinition::new(
+            CardBuilder::new(CardId::new(), "Zombie")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Zombie])
+                .color_indicator(ColorSet::BLACK)
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .token()
+                .build(),
+        )
+    }
+
+    #[test]
+    fn destroy_replacement_exiles_with_source_link_and_runs_followup_effects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let replacement_source = crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(50_200),
+            "Kalitas Replacement",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::exile_would_die_instead_with_damage_source_and_follow_up(
+                ObjectFilter::creature()
+                    .nontoken()
+                    .controlled_by(PlayerFilter::Opponent),
+                None,
+                vec![Effect::create_tokens(create_zombie_token(), 1)],
+            ),
+        ))
+        .build();
+        let source =
+            game.create_object_from_definition(&replacement_source, alice, Zone::Battlefield);
+        let victim = create_creature(&mut game, bob, "Opponent Target", 50_201);
+        let victim_stable_id = game.object(victim).expect("victim").stable_id;
+
+        game.update_replacement_effects();
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm);
+
+        assert!(
+            matches!(outcome, EventOutcome::Replaced),
+            "expected replacement outcome, got {outcome:?}"
+        );
+        let exiled_victim = game
+            .find_object_by_stable_id(victim_stable_id)
+            .expect("exiled victim should still be findable");
+        assert_eq!(
+            game.object(exiled_victim).expect("exiled victim").zone,
+            Zone::Exile
+        );
+        assert!(
+            game.get_exiled_with_source_links(source)
+                .contains(&exiled_victim),
+            "replacement should link the exiled card to its source"
+        );
+
+        let zombie_count = game
+            .battlefield
+            .iter()
+            .filter(|&&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Zombie" && game.controller_of(obj) == alice)
+            })
+            .count();
+        assert_eq!(zombie_count, 1);
     }
 
     #[test]

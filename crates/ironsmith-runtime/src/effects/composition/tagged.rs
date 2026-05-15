@@ -461,6 +461,41 @@ mod tests {
         assert!(spec.is_some());
     }
 
+    #[test]
+    fn test_tagged_target_only_with_count_captures_all_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let alice_target = create_creature(&mut game, "Alice Target", alice);
+        let bob_target = create_creature(&mut game, "Bob Target", bob);
+        let spec = ChooseSpec::target(ChooseSpec::creature())
+            .with_count(crate::effect::ChoiceCount::exactly(2));
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(alice_target),
+                ResolvedTarget::Object(bob_target),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: spec.clone(),
+                range: 0..2,
+            }]);
+
+        let effect = TaggedEffect::new(
+            "targeted",
+            Effect::new(crate::effects::TargetOnlyEffect::new(spec)),
+        );
+        effect.execute(&mut game, &mut ctx).expect("execute");
+
+        let tagged = ctx
+            .get_tagged_all("targeted")
+            .expect("tagged targets should exist");
+        assert_eq!(tagged.len(), 2);
+        assert_eq!(tagged[0].object_id, alice_target);
+        assert_eq!(tagged[1].object_id, bob_target);
+    }
+
     // ========================================
     // TagAllEffect Tests
     // ========================================

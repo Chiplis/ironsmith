@@ -4,6 +4,7 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -63,11 +64,79 @@ impl FightEffect {
             return Err(ExecutionError::InvalidTarget);
         }
 
+        if let (Ok(creature1_candidates), Ok(creature2_candidates)) = (
+            Self::resolve_fighter_candidates(game, ctx, &self.creature1),
+            Self::resolve_fighter_candidates(game, ctx, &self.creature2),
+        ) && let Some(fighters) =
+            Self::select_fighter_pair(&creature1_candidates, &creature2_candidates)
+        {
+            return Ok(fighters);
+        }
+
         let creature1 =
             crate::effects::helpers::resolve_single_object_for_effect(game, ctx, &self.creature1)?;
         let creature2 =
             crate::effects::helpers::resolve_single_object_for_effect(game, ctx, &self.creature2)?;
         Ok((creature1, creature2))
+    }
+
+    fn resolve_fighter_candidates(
+        game: &GameState,
+        ctx: &ExecutionContext,
+        spec: &ChooseSpec,
+    ) -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
+        if let ChooseSpec::Object(filter) = spec.base() {
+            let filter_ctx = ctx.filter_context(game);
+            let scoped = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Object(id) => Some(*id),
+                    ResolvedTarget::Player(_) => None,
+                })
+                .filter(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                })
+                .collect::<Vec<_>>();
+            if !scoped.is_empty() {
+                return Ok(scoped);
+            }
+
+            let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
+            let candidates = game
+                .objects_in_zone(zone)
+                .into_iter()
+                .filter(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                })
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
+            return Ok(candidates);
+        }
+
+        crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)
+    }
+
+    fn select_fighter_pair(
+        creature1_candidates: &[crate::ids::ObjectId],
+        creature2_candidates: &[crate::ids::ObjectId],
+    ) -> Option<(crate::ids::ObjectId, crate::ids::ObjectId)> {
+        for creature1 in creature1_candidates {
+            for creature2 in creature2_candidates {
+                if creature1 != creature2 {
+                    return Some((*creature1, *creature2));
+                }
+            }
+        }
+
+        Some((
+            *creature1_candidates.first()?,
+            *creature2_candidates.first()?,
+        ))
     }
 
     fn execute_fight_damage(
@@ -216,9 +285,11 @@ mod tests {
     use crate::object::{CounterType, Object};
     use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
     use crate::static_abilities::StaticAbility;
-    use crate::target::ObjectFilter;
+    use crate::tag::TagKey;
+    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
     use crate::types::CardType;
     use crate::zone::Zone;
+    use std::collections::HashMap;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -422,6 +493,43 @@ mod tests {
 
         assert_eq!(game.damage_on(ogre), 4);
         assert_eq!(game.damage_on(bear), 2);
+    }
+
+    #[test]
+    fn test_fight_between_two_objects_from_same_tagged_target_group() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let mammoth = create_creature(&mut game, "Mammoth Spider", 3, 5, alice);
+        let hurda = create_creature(&mut game, "Caravan Hurda", 1, 5, alice);
+        add_static_ability(&mut game, hurda, StaticAbility::lifelink());
+        let source = game.new_object_id();
+
+        let tag = TagKey::from("targeted");
+        let tagged_snapshots = vec![
+            ObjectSnapshot::from_object(game.object(mammoth).expect("mammoth"), &game),
+            ObjectSnapshot::from_object(game.object(hurda).expect("hurda"), &game),
+        ];
+        let mut tagged_filter = ObjectFilter::creature();
+        tagged_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_tagged_objects(HashMap::from([(tag.clone(), tagged_snapshots)]));
+        let effect = FightEffect::new(ChooseSpec::Object(tagged_filter), ChooseSpec::Tagged(tag));
+        effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(game.damage_on(mammoth), 1);
+        assert_eq!(game.damage_on(hurda), 3);
+        assert_eq!(
+            game.player(alice).expect("player").life,
+            21,
+            "lifelink creature in the tagged pair should deal fight damage"
+        );
     }
 
     #[test]

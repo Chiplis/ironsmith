@@ -202,6 +202,7 @@ pub(crate) fn register_builtin_handwritten_cards_if_for_runtime_tests<F>(
     maybe_register!(krrik_son_of_yawgmoth);
     maybe_register!(shelter);
     maybe_register!(mox_diamond);
+    maybe_register!(mox_sapphire);
     maybe_register!(library_of_leng);
     maybe_register!(invisible_stalker);
     maybe_register!(dauthi_slayer);

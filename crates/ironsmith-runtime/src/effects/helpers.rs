@@ -2450,31 +2450,7 @@ fn candidate_object_ids_for_filter(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     let filter_ctx = ctx.filter_context(game);
-    let candidate_ids: Vec<ObjectId> = match filter.zone {
-        Some(Zone::Battlefield) => game.battlefield.clone(),
-        Some(Zone::Graveyard) => game
-            .players
-            .iter()
-            .flat_map(|player| player.graveyard.iter().copied())
-            .collect(),
-        Some(Zone::Hand) => game
-            .players
-            .iter()
-            .flat_map(|player| player.hand.iter().copied())
-            .collect(),
-        Some(Zone::Library) => game
-            .players
-            .iter()
-            .flat_map(|player| player.library.iter().copied())
-            .collect(),
-        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Some(Zone::Exile) => game.exile.clone(),
-        Some(Zone::Command) => game.command_zone.clone(),
-        Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-        None => game.battlefield.clone(),
-    };
-
-    candidate_ids
+    candidate_ids_for_filter(game, filter)
         .iter()
         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
         .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
@@ -2550,6 +2526,24 @@ pub fn resolve_objects_for_effect_with_choice_description(
 
         if candidates.len() < min {
             return Err(ExecutionError::InvalidTarget);
+        }
+
+        if ctx.targets_are_cost_choices && !ctx.targets.is_empty() {
+            let mut chosen = Vec::new();
+            for target in &ctx.targets {
+                if let ResolvedTarget::Object(object_id) = target
+                    && candidates.contains(object_id)
+                    && !chosen.contains(object_id)
+                {
+                    chosen.push(*object_id);
+                }
+            }
+            if chosen.len() >= min && chosen.len() <= max {
+                return Ok(chosen);
+            }
+            if !chosen.is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
         }
 
         if candidates.iter().any(|id| {
@@ -2802,37 +2796,7 @@ pub fn resolve_objects_from_spec(
 
             if let ChooseSpec::Object(filter) = inner.base() {
                 let filter_ctx = ctx.filter_context(game);
-                let candidate_ids: Vec<ObjectId> = match filter.zone {
-                    Some(Zone::Battlefield) => game.battlefield.clone(),
-                    Some(Zone::Graveyard) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.graveyard.iter().copied())
-                        .collect(),
-                    Some(Zone::Hand) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.hand.iter().copied())
-                        .collect(),
-                    Some(Zone::Library) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.library.iter().copied())
-                        .collect(),
-                    Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                    Some(Zone::Exile) => game.exile.clone(),
-                    Some(Zone::Command) => game.command_zone.clone(),
-                    Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-                    None => game
-                        .battlefield
-                        .iter()
-                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                        .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
-                        .map(|(id, _)| id)
-                        .collect(),
-                };
-
-                let mut objects: Vec<ObjectId> = candidate_ids
+                let mut objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
                     .iter()
                     .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                     .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
@@ -2885,37 +2849,7 @@ pub fn resolve_objects_from_spec(
                 }
 
                 let filter_ctx = ctx.filter_context(game);
-                let candidate_ids: Vec<ObjectId> = match filter.zone {
-                    Some(Zone::Battlefield) => game.battlefield.clone(),
-                    Some(Zone::Graveyard) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.graveyard.iter().copied())
-                        .collect(),
-                    Some(Zone::Hand) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.hand.iter().copied())
-                        .collect(),
-                    Some(Zone::Library) => game
-                        .players
-                        .iter()
-                        .flat_map(|player| player.library.iter().copied())
-                        .collect(),
-                    Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                    Some(Zone::Exile) => game.exile.clone(),
-                    Some(Zone::Command) => game.command_zone.clone(),
-                    Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-                    None => game
-                        .battlefield
-                        .iter()
-                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                        .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
-                        .map(|(id, _)| id)
-                        .collect(),
-                };
-
-                let objects: Vec<ObjectId> = candidate_ids
+                let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
                     .iter()
                     .filter_map(|&id| game.object(id))
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
@@ -2965,31 +2899,7 @@ pub fn resolve_objects_from_spec(
         // All matching - filter battlefield
         ChooseSpec::All(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-                None => game.battlefield.clone(),
-            };
-
-            let objects: Vec<ObjectId> = candidate_ids
+            let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))

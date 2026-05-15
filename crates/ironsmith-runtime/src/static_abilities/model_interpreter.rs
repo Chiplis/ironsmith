@@ -527,13 +527,28 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost,
+                display,
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
                 minimum_total_mana,
             } => {
-                let mut converted =
-                    super::ActivatedAbilityCostReduction::new(filter.clone(), *reduction);
+                let mut converted = if let Some(replacement_mana_cost) = replacement_mana_cost {
+                    super::ActivatedAbilityCostReduction::replacement_mana_cost(
+                        filter.clone(),
+                        replacement_mana_cost.clone(),
+                        display.clone().unwrap_or_else(|| {
+                            format!(
+                                "You may pay {} rather than pay activated ability costs of {}",
+                                replacement_mana_cost.to_oracle(),
+                                filter.description()
+                            )
+                        }),
+                    )
+                } else {
+                    super::ActivatedAbilityCostReduction::new(filter.clone(), *reduction)
+                };
                 if let Some(minimum) = minimum_total_mana {
                     converted = converted.with_minimum_total_mana(*minimum);
                 }
@@ -557,8 +572,9 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(converted)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_activated_ability_cost_reduction(ability)
+                    .map(|reduction| reduction.with_static_condition(condition.clone()))
             }
             _ => None,
         }
@@ -779,8 +795,8 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn leaf_static_ability(&self) -> Option<StaticAbility> {
-        self.leaf_static_ability.clone()
+    fn leaf_static_ability(&self) -> Option<&StaticAbility> {
+        self.leaf_static_ability.as_ref()
     }
 
     fn cached_leaf_static_ability(model: &CompiledStaticAbility) -> Option<StaticAbility> {
@@ -1176,16 +1192,17 @@ impl StaticAbilityModelInterpreter {
                     )
                 }
             }
-            ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
-                if let Some(damaged_by) = damaged_by {
-                    StaticAbility::exile_would_die_instead_damaged_by(
-                        filter.clone(),
-                        damaged_by.clone(),
-                    )
-                } else {
-                    StaticAbility::exile_would_die_instead(filter.clone())
-                }
-            }
+            ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
+                filter,
+                damaged_by,
+                exile_with_counters,
+                follow_up_effects,
+            } => StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
+                filter.clone(),
+                *damaged_by,
+                exile_with_counters.clone(),
+                follow_up_effects.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -1232,6 +1249,24 @@ impl StaticAbilityModelInterpreter {
             } => StaticAbility::double_counters_replacement(
                 filter.clone(),
                 *counter_type,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::DoubleTokenCreationReplacement {
+                controller,
+                display,
+            } => StaticAbility::double_token_creation_replacement(
+                controller.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
+                action,
+                source_filter,
+                replacement_effects,
+                display,
+            } => StaticAbility::keyword_action_replacement(
+                *action,
+                source_filter.clone(),
+                replacement_effects.clone(),
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
@@ -1286,6 +1321,19 @@ impl StaticAbilityModelInterpreter {
                 display.clone(),
                 source_filter.clone(),
                 *combat_only,
+            ),
+            ironsmith_core::StaticAbilityPayload::ReplaceDamageWithCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                target_filter,
+                combat_only,
+            } => StaticAbility::replace_damage_with_counters_instead(
+                *counter_type,
+                source_filter.clone(),
+                target_filter.clone(),
+                *combat_only,
+                display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(
                 amount,
@@ -1403,6 +1451,36 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        if let Some(reduction) = &self.activated_ability_cost_reduction {
+            return Some(StaticAbility::new(
+                reduction.clone().with_static_condition(condition),
+            ));
+        }
+        if let Some(increase) = &self.activated_ability_cost_increase {
+            return Some(StaticAbility::new(
+                increase.clone().with_condition(condition),
+            ));
+        }
+        if let Some(reduction) = &self.cost_reduction {
+            return Some(StaticAbility::new(
+                reduction.clone().with_condition(condition),
+            ));
+        }
+        if let Some(reduction) = &self.cost_reduction_mana_cost {
+            return Some(StaticAbility::new(
+                reduction.clone().with_condition(condition),
+            ));
+        }
+        if let Some(increase) = &self.cost_increase {
+            return Some(StaticAbility::new(
+                increase.clone().with_condition(condition),
+            ));
+        }
+        if let Some(increase) = &self.cost_increase_mana_cost {
+            return Some(StaticAbility::new(
+                increase.clone().with_condition(condition),
+            ));
+        }
         self.leaf_static_ability()?.with_condition(condition)
     }
 
@@ -1508,6 +1586,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_flash(&self) -> bool {
         self.id() == StaticAbilityId::Flash
+    }
+
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
+        self.leaf_static_ability()?.turn_face_up_cost()
+    }
+
+    fn is_megamorph(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.is_megamorph())
     }
 
     fn forbids_paying_life_for_cast_or_activate(&self) -> bool {

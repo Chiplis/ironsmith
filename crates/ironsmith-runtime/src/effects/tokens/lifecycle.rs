@@ -14,6 +14,9 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerEvent};
 use crate::zone::Zone;
 
+/// Ported MAGE scenarios assume a per-player cap on token permanents.
+pub(crate) const TOKEN_PER_PLAYER_LIMIT: usize = 500;
+
 /// Entry-processing options for newly created tokens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct TokenEntryOptions {
@@ -28,6 +31,20 @@ impl TokenEntryOptions {
             enters_attacking,
         }
     }
+}
+
+pub(crate) fn remaining_token_slots(game: &GameState, controller: PlayerId) -> usize {
+    let existing = game
+        .battlefield
+        .iter()
+        .filter(|object_id| {
+            game.object(**object_id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::Token
+                    && game.current_controller(**object_id) == Some(controller)
+            })
+        })
+        .count();
+    TOKEN_PER_PLAYER_LIMIT.saturating_sub(existing)
 }
 
 /// Apply common post-create entry processing for a token that entered the battlefield.

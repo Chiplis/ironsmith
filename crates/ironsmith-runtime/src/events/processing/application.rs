@@ -55,6 +55,14 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::ExileWithSourceLink => TraitApplyResult::Replaced(Vec::new()),
 
+        ReplacementAction::ExileWithSourceLinkThen(effects) => {
+            TraitApplyResult::Replaced(effects.clone())
+        }
+
+        ReplacementAction::ExileWithSourceLinkCountersThen { effects, .. } => {
+            TraitApplyResult::Replaced(effects.clone())
+        }
+
         ReplacementAction::EnterTapped => {
             let modified = apply_trait_enter_tapped(&event);
             match modified {
@@ -431,7 +439,9 @@ fn apply_trait_modification(
     modification: &EventModification,
     effect: &ReplacementEffect,
 ) -> Option<Event> {
-    use crate::events::{DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event};
+    use crate::events::{
+        CreateTokensEvent, DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event,
+    };
 
     match event.kind() {
         EventKind::Damage => {
@@ -498,6 +508,27 @@ fn apply_trait_modification(
             };
             Some(event.rewrap(modified))
         }
+        EventKind::CreateTokens => {
+            let create_tokens = downcast_event::<CreateTokensEvent>(event.inner())?;
+            let modified = match modification {
+                EventModification::Multiply(factor) => {
+                    create_tokens.with_count(create_tokens.count.saturating_mul(*factor))
+                }
+                EventModification::Add(delta) => {
+                    create_tokens.with_count((create_tokens.count as i32 + delta).max(0) as u32)
+                }
+                EventModification::Subtract(delta) => {
+                    create_tokens.with_count(create_tokens.count.saturating_sub(*delta))
+                }
+                EventModification::SetTo(value) => create_tokens.with_count(*value),
+                EventModification::SetToAtLeast(value) => {
+                    let floor = resolve_value_for_replacement(value, game, effect.source);
+                    create_tokens.with_count(create_tokens.count.max(floor))
+                }
+                EventModification::ReduceToZero => create_tokens.with_count(0),
+            };
+            Some(event.rewrap(modified))
+        }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
             let modified = match modification {
@@ -524,7 +555,9 @@ fn apply_trait_modification(
 }
 
 fn apply_trait_double(event: &Event) -> Option<Event> {
-    use crate::events::{DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event};
+    use crate::events::{
+        CreateTokensEvent, DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event,
+    };
 
     match event.kind() {
         EventKind::Damage => {
@@ -538,6 +571,10 @@ fn apply_trait_double(event: &Event) -> Option<Event> {
         EventKind::PutCounters => {
             let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
             Some(event.rewrap(put_counters.doubled()))
+        }
+        EventKind::CreateTokens => {
+            let create_tokens = downcast_event::<CreateTokensEvent>(event.inner())?;
+            Some(event.rewrap(create_tokens.doubled()))
         }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;

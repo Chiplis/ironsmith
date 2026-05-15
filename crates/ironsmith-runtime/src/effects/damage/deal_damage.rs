@@ -466,7 +466,7 @@ mod tests {
     use crate::object::{CounterType, Object};
     use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
     use crate::static_abilities::StaticAbility;
-    use crate::target::ObjectFilter;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -641,6 +641,39 @@ mod tests {
             .expect("damage resolves");
 
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 2);
+        assert_eq!(game.damage_on(target), 0);
+    }
+
+    #[test]
+    fn noncombat_damage_replacement_from_your_source_puts_counters_on_opponent_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let _replacement_source = create_creature(
+            &mut game,
+            "Soul-Scar Stand-In",
+            1,
+            2,
+            alice,
+            vec![StaticAbility::replace_damage_with_counters_instead(
+                CounterType::MinusOneMinusOne,
+                ObjectFilter::default().controlled_by(PlayerFilter::You),
+                ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+                Some(false),
+                "If a source you control would deal noncombat damage to a creature an opponent controls, put that many -1/-1 counters on that creature instead.",
+            )],
+        );
+        let source = create_creature(&mut game, "Pinger", 1, 1, alice, vec![]);
+        let target = create_creature(&mut game, "Target", 2, 2, bob, vec![]);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+
+        DealDamageEffect::new(2, ChooseSpec::AnyTarget)
+            .execute(&mut game, &mut ctx)
+            .expect("damage replacement should resolve");
+
         assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 2);
         assert_eq!(game.damage_on(target), 0);
     }

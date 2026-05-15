@@ -3,9 +3,9 @@ use std::any::Any;
 use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType, Color,
     ColorSet, Condition, CostComponent, CounterType, DamagedBySource, DerivedAlternativeCast,
-    GrantSpec, Grantable, ManaCost, ManaSpendPermission, ObjectFilter, PlayerFilter,
-    ProtectionFrom, Restriction, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost,
-    TriggeredAbility, Value, Zone,
+    GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission, ObjectFilter,
+    PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype, SubtypeFamily, Supertype,
+    TotalCost, TriggeredAbility, Value, Zone,
 };
 
 type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C>;
@@ -315,6 +315,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ActivatedAbilityCostReduction {
         filter: ObjectFilter,
         reduction: u32,
+        replacement_mana_cost: Option<ManaCost>,
+        display: Option<String>,
         condition: Option<ActivatedAbilityCostCondition>,
         per_matching_objects: Option<ObjectFilter>,
         per_basic_land_types_among: Option<ObjectFilter>,
@@ -363,6 +365,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ExileWouldDieInstead {
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
+        exile_with_counters: Vec<(CounterType, u32)>,
+        follow_up_effects: Vec<E>,
     },
     ModifyDamageAmountReplacement {
         source_filter: ObjectFilter,
@@ -388,6 +392,16 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     DoubleCountersReplacement {
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
+        display: String,
+    },
+    DoubleTokenCreationReplacement {
+        controller: PlayerFilter,
+        display: String,
+    },
+    KeywordActionReplacement {
+        action: KeywordActionKind,
+        source_filter: ObjectFilter,
+        replacement_effects: Vec<E>,
         display: String,
     },
     CharacteristicDefiningPt {
@@ -417,6 +431,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         counter_type: CounterType,
         display: String,
         source_filter: Option<ObjectFilter>,
+        combat_only: Option<bool>,
+    },
+    ReplaceDamageWithCountersInstead {
+        counter_type: CounterType,
+        display: String,
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
         combat_only: Option<bool>,
     },
     CantAttackYouUnlessControllerPaysPerAttacker(u32),
@@ -592,6 +613,9 @@ where
                 }
                 DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
                     DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
+                }
+                DerivedAlternativeCast::RetraceFromCardManaCost => {
+                    DerivedAlternativeCast::RetraceFromCardManaCost
                 }
                 DerivedAlternativeCast::BlitzFromCardManaCost => {
                     DerivedAlternativeCast::BlitzFromCardManaCost
@@ -1006,6 +1030,8 @@ where
             StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost,
+                display,
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
@@ -1013,6 +1039,8 @@ where
             } => StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost,
+                display,
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
@@ -1114,9 +1142,20 @@ where
                 graveyard_owner,
                 exclude_cycled,
             },
-            StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by } => {
-                StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by }
-            }
+            StaticAbilityPayload::ExileWouldDieInstead {
+                filter,
+                damaged_by,
+                exile_with_counters,
+                follow_up_effects,
+            } => StaticAbilityPayload::ExileWouldDieInstead {
+                filter,
+                damaged_by,
+                exile_with_counters,
+                follow_up_effects: follow_up_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+            },
             StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -1163,6 +1202,27 @@ where
             } => StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 counter_type,
+                display,
+            },
+            StaticAbilityPayload::DoubleTokenCreationReplacement {
+                controller,
+                display,
+            } => StaticAbilityPayload::DoubleTokenCreationReplacement {
+                controller,
+                display,
+            },
+            StaticAbilityPayload::KeywordActionReplacement {
+                action,
+                source_filter,
+                replacement_effects,
+                display,
+            } => StaticAbilityPayload::KeywordActionReplacement {
+                action,
+                source_filter,
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
                 display,
             },
             StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } => {
@@ -1212,6 +1272,19 @@ where
                 counter_type,
                 display,
                 source_filter,
+                combat_only,
+            },
+            StaticAbilityPayload::ReplaceDamageWithCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                target_filter,
+                combat_only,
+            } => StaticAbilityPayload::ReplaceDamageWithCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                target_filter,
                 combat_only,
             },
             StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(amount) => {
@@ -1454,6 +1527,21 @@ impl<
             label: "morph".to_string(),
             payload: StaticAbilityPayload::Morph(cost),
         }
+    }
+
+    pub fn daybound() -> Self {
+        Self::identified(StaticAbilityId::Daybound, "Daybound")
+    }
+
+    pub fn nightbound() -> Self {
+        Self::identified(StaticAbilityId::Nightbound, "Nightbound")
+    }
+
+    pub fn day_night_starts_day_as_enters() -> Self {
+        Self::identified(
+            StaticAbilityId::DayNightStartsDayAsEnters,
+            "If it's neither day nor night, it becomes day as this creature enters",
+        )
     }
 
     pub fn megamorph(cost: TotalCost<C>) -> Self {
@@ -2080,6 +2168,8 @@ impl<
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost: None,
+                display: None,
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
@@ -2099,6 +2189,8 @@ impl<
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost: None,
+                display: None,
                 condition: Some(condition),
                 per_matching_objects: None,
                 per_basic_land_types_among: None,
@@ -2118,6 +2210,8 @@ impl<
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost: None,
+                display: None,
                 condition: None,
                 per_matching_objects: Some(per_filter),
                 per_basic_land_types_among: None,
@@ -2137,10 +2231,32 @@ impl<
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
+                replacement_mana_cost: None,
+                display: None,
                 condition: None,
                 per_matching_objects: None,
                 per_basic_land_types_among: Some(lands_filter),
                 minimum_total_mana,
+            },
+        }
+    }
+    pub fn replace_activated_ability_mana_cost(
+        filter: ObjectFilter,
+        replacement_mana_cost: ManaCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
+            label: "replace activated ability mana cost".into(),
+            payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                filter,
+                reduction: 0,
+                replacement_mana_cost: Some(replacement_mana_cost),
+                display: Some(display.into()),
+                condition: None,
+                per_matching_objects: None,
+                per_basic_land_types_among: None,
+                minimum_total_mana: None,
             },
         }
     }
@@ -2488,6 +2604,26 @@ impl<
             payload: StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
                 display,
+            },
+        }
+    }
+    pub fn replace_damage_with_counters_instead(
+        counter_type: CounterType,
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        combat_only: Option<bool>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ReplaceDamageWithCountersInstead),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ReplaceDamageWithCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                target_filter,
+                combat_only,
             },
         }
     }
@@ -2991,6 +3127,26 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+
+    pub fn keyword_action_replacement(
+        action: KeywordActionKind,
+        source_filter: ObjectFilter,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::KeywordActionReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::KeywordActionReplacement {
+                action,
+                source_filter,
+                replacement_effects,
+                display,
+            },
+        }
+    }
+
     pub fn exile_to_countered_exile_instead_of_graveyard(
         player: PlayerFilter,
         counter_type: CounterType,
@@ -3043,10 +3199,37 @@ impl<
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
     ) -> Self {
+        Self::exile_would_die_instead_with_damage_source_and_follow_up(filter, damaged_by, vec![])
+    }
+
+    pub fn exile_would_die_instead_with_damage_source_and_follow_up(
+        filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
+        follow_up_effects: Vec<E>,
+    ) -> Self {
+        Self::exile_would_die_instead_with_damage_source_counters_and_follow_up(
+            filter,
+            damaged_by,
+            Vec::new(),
+            follow_up_effects,
+        )
+    }
+
+    pub fn exile_would_die_instead_with_damage_source_counters_and_follow_up(
+        filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
+        exile_with_counters: Vec<(CounterType, u32)>,
+        follow_up_effects: Vec<E>,
+    ) -> Self {
         Self {
             id: Some(StaticAbilityId::ExileWouldDieInstead),
             label: "exile would die instead".into(),
-            payload: StaticAbilityPayload::ExileWouldDieInstead { filter, damaged_by },
+            payload: StaticAbilityPayload::ExileWouldDieInstead {
+                filter,
+                damaged_by,
+                exile_with_counters,
+                follow_up_effects,
+            },
         }
     }
     pub fn modify_damage_amount_replacement(
@@ -3122,6 +3305,21 @@ impl<
             payload: StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 counter_type,
+                display,
+            },
+        }
+    }
+
+    pub fn double_token_creation_replacement(
+        controller: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DoubleTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleTokenCreationReplacement {
+                controller,
                 display,
             },
         }

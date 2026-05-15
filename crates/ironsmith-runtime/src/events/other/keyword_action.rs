@@ -4,11 +4,14 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use super::players_finished_voting::PlayerVote;
-use crate::events::traits::{EventKind, GameEventType};
+use crate::events::context::EventContext;
+use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
+use crate::target::ObjectFilter;
 
 pub use ironsmith_core::KeywordActionKind;
 
@@ -111,6 +114,55 @@ impl GameEventType for KeywordActionEvent {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+/// Matches when an object matching a filter would perform a keyword action.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WouldKeywordActionMatcher {
+    pub action: KeywordActionKind,
+    pub source_filter: ObjectFilter,
+}
+
+impl WouldKeywordActionMatcher {
+    pub fn new(action: KeywordActionKind, source_filter: ObjectFilter) -> Self {
+        Self {
+            action,
+            source_filter,
+        }
+    }
+}
+
+impl ReplacementMatcher for WouldKeywordActionMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::KeywordAction {
+            return false;
+        }
+        let Some(keyword_event) = downcast_event::<KeywordActionEvent>(event) else {
+            return false;
+        };
+        if keyword_event.action != self.action {
+            return false;
+        }
+
+        if let Some(snapshot) = keyword_event.snapshot.as_ref() {
+            return self
+                .source_filter
+                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+        }
+
+        ctx.game.object(keyword_event.source).is_some_and(|object| {
+            self.source_filter
+                .matches(object, &ctx.filter_ctx, ctx.game)
+        })
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "When {} would {}",
+            self.source_filter.description(),
+            self.action.infinitive()
+        )
     }
 }
 

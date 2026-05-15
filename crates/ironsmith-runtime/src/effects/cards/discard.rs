@@ -182,6 +182,8 @@ impl EffectExecutor for DiscardEffect {
 
         let cards_to_discard = if !explicit_cards.is_empty() {
             normalize_object_selection(explicit_cards, &hand_cards, required)
+        } else if self.discards_source_as_cost() && hand_cards.contains(&ctx.source) {
+            vec![ctx.source]
         } else if self.random {
             game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()

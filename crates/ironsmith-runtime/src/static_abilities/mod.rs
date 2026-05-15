@@ -1812,6 +1812,18 @@ impl StaticAbility {
         Self::new(DoesntUntap)
     }
 
+    pub fn daybound() -> Self {
+        Self::new(Daybound)
+    }
+
+    pub fn nightbound() -> Self {
+        Self::new(Nightbound)
+    }
+
+    pub fn day_night_starts_day_as_enters() -> Self {
+        Self::new(DayNightStartsDayAsEnters)
+    }
+
     pub fn boast_twice_each_turn() -> Self {
         Self::new(BoastTwiceEachTurn)
     }
@@ -2224,6 +2236,22 @@ impl StaticAbility {
         ))
     }
 
+    pub fn replace_damage_with_counters_instead(
+        counter_type: crate::object::CounterType,
+        source_filter: crate::target::ObjectFilter,
+        target_filter: crate::target::ObjectFilter,
+        combat_only: Option<bool>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ReplaceDamageWithCountersInstead::new(
+            counter_type,
+            source_filter,
+            target_filter,
+            combat_only,
+            display,
+        ))
+    }
+
     pub fn prevent_damage_to_other_creature_you_control_put_counters_instead(
         counter_type: crate::object::CounterType,
         display: impl Into<String>,
@@ -2301,6 +2329,18 @@ impl StaticAbility {
             ability = ability.with_minimum_total_mana(minimum);
         }
         Self::new(ability)
+    }
+
+    pub fn replace_activated_ability_mana_cost(
+        filter: crate::target::ObjectFilter,
+        replacement_mana_cost: crate::mana::ManaCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ActivatedAbilityCostReduction::replacement_mana_cost(
+            filter,
+            replacement_mana_cost,
+            display,
+        ))
     }
 
     pub fn increase_activated_ability_costs(
@@ -2556,6 +2596,13 @@ impl StaticAbility {
         ))
     }
 
+    pub fn double_token_creation_replacement(
+        controller: crate::target::PlayerFilter,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleTokenCreationReplacement::new(controller, display))
+    }
+
     pub fn effect_discard_to_library_replacement() -> Self {
         Self::new(EffectDiscardToLibraryReplacement)
     }
@@ -2580,6 +2627,20 @@ impl StaticAbility {
 
     pub fn draw_replacement_double() -> Self {
         Self::new(DrawReplacementDouble)
+    }
+
+    pub fn keyword_action_replacement(
+        action: crate::events::KeywordActionKind,
+        source_filter: crate::target::ObjectFilter,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(KeywordActionReplacement::new(
+            action,
+            source_filter,
+            replacement_effects,
+            display,
+        ))
     }
 
     pub fn reveal_first_card_you_draw_each_turn(optional: bool, your_turns_only: bool) -> Self {
@@ -2625,6 +2686,33 @@ impl StaticAbility {
         damaged_by: ironsmith_core::DamagedBySource,
     ) -> Self {
         Self::new(ExileWouldDieInstead::damaged_by(filter, damaged_by))
+    }
+
+    pub fn exile_would_die_instead_with_damage_source_and_follow_up(
+        filter: crate::target::ObjectFilter,
+        damaged_by: Option<ironsmith_core::DamagedBySource>,
+        follow_up_effects: Vec<crate::effect::Effect>,
+    ) -> Self {
+        Self::new(ExileWouldDieInstead::with_counters_and_follow_up(
+            filter,
+            damaged_by,
+            Vec::new(),
+            follow_up_effects,
+        ))
+    }
+
+    pub fn exile_would_die_instead_with_damage_source_counters_and_follow_up(
+        filter: crate::target::ObjectFilter,
+        damaged_by: Option<ironsmith_core::DamagedBySource>,
+        exile_with_counters: Vec<(crate::object::CounterType, u32)>,
+        follow_up_effects: Vec<crate::effect::Effect>,
+    ) -> Self {
+        Self::new(ExileWouldDieInstead::with_counters_and_follow_up(
+            filter,
+            damaged_by,
+            exile_with_counters,
+            follow_up_effects,
+        ))
     }
 
     pub fn players_cant_gain_life() -> Self {

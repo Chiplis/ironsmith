@@ -2397,6 +2397,59 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                             format!("{} [other half]", obj.name)
                         }
                     }
+                    crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
+                        zone,
+                        use_alternative,
+                        ..
+                    } => {
+                        let acting_player = game.turn.priority_player.unwrap_or(obj.owner);
+                        let alt_method = resolve_play_from_alternative_method(
+                            game,
+                            acting_player,
+                            obj,
+                            *zone,
+                            *use_alternative,
+                        );
+                        let method_name = alt_method
+                            .as_ref()
+                            .map(|method| method.name())
+                            .unwrap_or("Alternative");
+                        let cost_desc = if let Some(method) = alt_method.as_ref() {
+                            let costs = method.non_mana_costs();
+                            if !costs.is_empty() {
+                                let effects_desc = format_non_mana_costs(&costs);
+                                if let Some(mana) = method.mana_cost() {
+                                    format!(
+                                        "{}, {}",
+                                        format_mana_cost_from_cost(mana),
+                                        effects_desc
+                                    )
+                                } else {
+                                    effects_desc
+                                }
+                            } else if let Some(mana_cost) = method.mana_cost() {
+                                format_mana_cost_from_cost(mana_cost)
+                            } else {
+                                format_mana_cost(obj)
+                            }
+                        } else {
+                            format_mana_cost(obj)
+                        };
+                        let name = game
+                            .linked_face_definition_by_name_or_id(
+                                obj.other_face_name.as_deref(),
+                                obj.other_face,
+                            )
+                            .map(|other_def| other_def.card.name)
+                            .unwrap_or_else(|| obj.name.clone());
+                        format!(
+                            "{} [from {}, {}] ({})",
+                            name,
+                            zone_label(*zone),
+                            method_name,
+                            cost_desc
+                        )
+                    }
                     crate::alternative_cast::CastingMethod::Fuse => {
                         let fused_cost = spell_mana_cost_for_cast(
                             game,
@@ -2568,12 +2621,23 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 .object(*creature_id)
                 .map(|o| o.name.as_str())
                 .unwrap_or("?");
-            format!("Turn face up {} for its {}", name, method.description())
+            let cost_prefix =
+                crate::special_actions::turn_face_up_cost_display(game, *creature_id, *method)
+                    .map(|cost| format!("{cost}: "))
+                    .unwrap_or_default();
+            format!("{cost_prefix}Turn this face-down permanent face up. ({name})")
         }
         LegalAction::SpecialAction(special) => match special {
             crate::special_actions::SpecialAction::PlayLand { .. } => "Play land".to_string(),
-            crate::special_actions::SpecialAction::TurnFaceUp { method, .. } => {
-                format!("Turn face up for its {}", method.description())
+            crate::special_actions::SpecialAction::TurnFaceUp {
+                permanent_id,
+                method,
+            } => {
+                let cost_prefix =
+                    crate::special_actions::turn_face_up_cost_display(game, *permanent_id, *method)
+                        .map(|cost| format!("{cost}: "))
+                        .unwrap_or_default();
+                format!("{cost_prefix}Turn this face-down permanent face up.")
             }
             crate::special_actions::SpecialAction::Suspend { .. } => "Suspend".to_string(),
             crate::special_actions::SpecialAction::Foretell { .. } => "Foretell".to_string(),

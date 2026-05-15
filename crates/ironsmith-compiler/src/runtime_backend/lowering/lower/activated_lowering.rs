@@ -5,17 +5,41 @@ use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     let line_words = token_word_refs(tokens);
-    word_refs_find(line_words.as_slice(), "add").is_some()
-        && matches!(
-            line_words.as_slice(),
-            ["add", ..]
-                | ["adds", ..]
-                | ["you", "add", ..]
-                | ["that", "player", "add", ..]
-                | ["that", "player", "adds", ..]
-                | ["target", "player", "add", ..]
-                | ["target", "player", "adds", ..]
-        )
+    activated_effect_is_for_each_color_among_add_mana_lexed(tokens)
+        || word_refs_find(line_words.as_slice(), "add").is_some()
+            && matches!(
+                line_words.as_slice(),
+                ["add", ..]
+                    | ["adds", ..]
+                    | ["you", "add", ..]
+                    | ["that", "player", "add", ..]
+                    | ["that", "player", "adds", ..]
+                    | ["target", "player", "add", ..]
+                    | ["target", "player", "adds", ..]
+            )
+}
+
+fn word_refs_contain_sequence(words: &[&str], sequence: &[&str]) -> bool {
+    if sequence.is_empty() {
+        return true;
+    }
+    if words.len() < sequence.len() {
+        return false;
+    }
+    let mut start = 0usize;
+    while start + sequence.len() <= words.len() {
+        if words[start..].starts_with(sequence) {
+            return true;
+        }
+        start += 1;
+    }
+    false
+}
+
+fn activated_effect_is_for_each_color_among_add_mana_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    word_refs_contain_sequence(&words, &["for", "each", "color", "among"])
+        && word_refs_contain_sequence(&words, &["add", "one", "mana", "of", "that", "color"])
 }
 
 fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
@@ -180,6 +204,7 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::AddManaAnyOneColor { .. }
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaColorsAmong { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
                 | SubjectVerbActionAst::AddManaImprintedColors
         ),
@@ -366,6 +391,11 @@ fn parse_activated_effects_lexed(
     tokens: &[OwnedLexToken],
     _line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if activated_effect_is_for_each_color_among_add_mana_lexed(tokens) {
+        return Ok(vec![
+            crate::runtime_backend::activation_helpers::parse_add_mana(tokens, None)?,
+        ]);
+    }
     if let Some(effects) =
         parse_each_player_and_their_creatures_damage_sentence_rewrite(effect_text, tokens)
     {

@@ -240,6 +240,10 @@ impl EffectExecutor for MoveToZoneEffect {
         }
 
         if moves_source && let Some(new_source_id) = moved_ids.first().copied() {
+            let old_source_id = ctx.source;
+            if self.transfer_exiled_with_source_links {
+                game.transfer_exiled_with_source_links(old_source_id, new_source_id);
+            }
             ctx.source = new_source_id;
         }
         if let Some(snapshot) = moved_source_lki {
@@ -268,7 +272,19 @@ impl EffectExecutor for MoveToZoneEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        if self.target.is_target() {
+            Some(&self.target)
+        } else {
+            None
+        }
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        if self.target.is_target() {
+            Some(self.target.count())
+        } else {
+            None
+        }
     }
 
     fn target_description(&self) -> &'static str {
@@ -329,6 +345,32 @@ mod tests {
             .build();
         game.add_object(Object::from_card(id, &card, owner, Zone::Battlefield));
         id
+    }
+
+    #[test]
+    fn non_target_move_to_zone_does_not_request_cast_time_targets() {
+        let move_choice = MoveToZoneEffect::new(
+            ChooseSpec::WithCount(
+                Box::new(ChooseSpec::Object(crate::filter::ObjectFilter {
+                    zone: Some(Zone::Exile),
+                    ..crate::filter::ObjectFilter::default()
+                })),
+                crate::effect::ChoiceCount::exactly(1),
+            ),
+            Zone::Graveyard,
+            false,
+        );
+        assert!(move_choice.target_selection_profile().is_none());
+
+        let move_target = MoveToZoneEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter {
+                zone: Some(Zone::Battlefield),
+                ..crate::filter::ObjectFilter::default()
+            })),
+            Zone::Graveyard,
+            false,
+        );
+        assert!(move_target.target_selection_profile().is_some());
     }
 
     #[test]

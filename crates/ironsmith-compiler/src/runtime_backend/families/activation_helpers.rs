@@ -142,6 +142,12 @@ pub(crate) fn parse_add_mana(
     let has_card_word = clause_words
         .iter()
         .any(|word| *word == "card" || *word == "cards");
+    if let Some(colors_among) = parse_add_mana_colors_among_filter(tokens)? {
+        return Ok(EffectAst::subject_verb_add_mana_colors_among(
+            player,
+            colors_among,
+        ));
+    }
     if word_slice_contains(&clause_words, "exiled")
         && has_card_word
         && word_slice_contains(&clause_words, "colors")
@@ -502,6 +508,42 @@ pub(crate) fn parse_add_mana(
         "missing mana symbols (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+fn parse_add_mana_colors_among_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let words = token_word_refs(tokens);
+    if find_word_sequence_index(&words, &["for", "each", "color", "among"]).is_none()
+        || find_word_sequence_index(&words, &["add", "one", "mana", "of", "that", "color"])
+            .is_none()
+    {
+        return Ok(None);
+    }
+
+    let mut among_token_idx = None;
+    let mut add_token_idx = None;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.is_word("among") && among_token_idx.is_none() {
+            among_token_idx = Some(idx);
+        }
+        if token.is_word("add") && add_token_idx.is_none() {
+            add_token_idx = Some(idx);
+        }
+    }
+    let (Some(among_token_idx), Some(add_token_idx)) = (among_token_idx, add_token_idx) else {
+        return Ok(None);
+    };
+    if add_token_idx <= among_token_idx + 1 {
+        return Ok(None);
+    }
+
+    let filter_tokens = trim_commas(&tokens[among_token_idx + 1..add_token_idx]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    Ok(Some(filter))
 }
 
 pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {

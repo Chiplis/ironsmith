@@ -31,7 +31,9 @@ use ironsmith::game_loop::{
     last_priority_advance_perf,
 };
 use ironsmith::game_state::{GameState, HiddenInfoOperation, StackEntry, Target};
-use ironsmith::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
+use ironsmith::ids::{
+    CardId, ObjectId, PlayerId, StableId, restore_id_counters, snapshot_id_counters,
+};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
@@ -367,9 +369,107 @@ struct ActiveViewedCards {
     subject: PlayerId,
     zone: Zone,
     cards: Vec<ObjectId>,
+    card_stable_ids: Vec<StableId>,
     public: bool,
     source: Option<ObjectId>,
     description: String,
+}
+
+fn stable_id_for_viewed_card(game: &GameState, card: ObjectId) -> StableId {
+    game.object(card)
+        .map(|object| object.stable_id)
+        .unwrap_or_else(|| StableId::from_raw(card.0))
+}
+
+fn stable_ids_for_viewed_cards(game: &GameState, cards: &[ObjectId]) -> Vec<StableId> {
+    cards
+        .iter()
+        .map(|card| stable_id_for_viewed_card(game, *card))
+        .collect()
+}
+
+impl ActiveViewedCards {
+    fn push_unique_card(&mut self, game: &GameState, card: ObjectId) {
+        self.push_unique_card_with_stable_id(card, stable_id_for_viewed_card(game, card));
+    }
+
+    fn push_unique_card_with_stable_id(&mut self, card: ObjectId, stable_id: StableId) {
+        if let Some(index) = self
+            .card_stable_ids
+            .iter()
+            .position(|existing| *existing == stable_id)
+        {
+            self.cards[index] = card;
+            return;
+        }
+        if let Some(index) = self.cards.iter().position(|existing| *existing == card) {
+            if let Some(existing_stable_id) = self.card_stable_ids.get_mut(index) {
+                *existing_stable_id = stable_id;
+            } else {
+                self.card_stable_ids.push(stable_id);
+            }
+            return;
+        }
+        if !self.cards.contains(&card) {
+            self.cards.push(card);
+            self.card_stable_ids.push(stable_id);
+        }
+    }
+
+    fn stable_id_at(&self, index: usize, card: ObjectId) -> StableId {
+        self.card_stable_ids
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| StableId::from_raw(card.0))
+    }
+
+    fn resolved_object_id(&self, game: &GameState, index: usize, card: ObjectId) -> ObjectId {
+        if game.object(card).is_some() {
+            return card;
+        }
+        game.find_object_by_stable_id(self.stable_id_at(index, card))
+            .unwrap_or(card)
+    }
+
+    fn contains_object(&self, game: &GameState, card: ObjectId) -> bool {
+        if self.cards.contains(&card) {
+            return true;
+        }
+        let Some(object) = game.object(card) else {
+            return false;
+        };
+        self.card_stable_ids.contains(&object.stable_id)
+    }
+}
+
+fn active_viewed_cards_can_carry_over(
+    existing: &ActiveViewedCards,
+    next: &ActiveViewedCards,
+) -> bool {
+    existing.public
+        && next.public
+        && existing.zone == next.zone
+        && existing.subject == next.subject
+        && existing.source == next.source
+}
+
+fn merge_carried_active_viewed_cards(
+    carry: Option<ActiveViewedCards>,
+    next: Option<ActiveViewedCards>,
+) -> Option<ActiveViewedCards> {
+    match (carry, next) {
+        (Some(mut carry), Some(next)) if active_viewed_cards_can_carry_over(&carry, &next) => {
+            for (index, card) in next.cards.iter().copied().enumerate() {
+                carry.push_unique_card_with_stable_id(card, next.stable_id_at(index, card));
+            }
+            carry.viewer = next.viewer;
+            carry.description = next.description;
+            Some(carry)
+        }
+        (_, Some(next)) => Some(next),
+        (Some(carry), None) => Some(carry),
+        (None, None) => None,
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -554,6 +654,7 @@ fn mana_payment_view_from_pending_activation(
 }
 
 fn merge_active_viewed_cards(
+    game: &GameState,
     current: &mut Option<ActiveViewedCards>,
     viewer: PlayerId,
     cards: &[ObjectId],
@@ -566,9 +667,7 @@ fn merge_active_viewed_cards(
     if can_merge {
         if let Some(existing) = current.as_mut() {
             for &card in cards {
-                if !existing.cards.contains(&card) {
-                    existing.cards.push(card);
-                }
+                existing.push_unique_card(game, card);
             }
         }
         return;
@@ -579,6 +678,7 @@ fn merge_active_viewed_cards(
         subject: ctx.subject,
         zone: ctx.zone,
         cards: cards.to_vec(),
+        card_stable_ids: stable_ids_for_viewed_cards(game, cards),
         public: ctx.public,
         source: ctx.source,
         description: ctx.description.clone(),
@@ -621,6 +721,7 @@ fn audit_viewed_cards_can_merge(
 }
 
 fn merge_audit_viewed_cards(
+    game: &GameState,
     current: &mut Vec<ActiveViewedCards>,
     viewer: PlayerId,
     cards: &[ObjectId],
@@ -631,9 +732,7 @@ fn merge_audit_viewed_cards(
         .find(|existing| audit_viewed_cards_can_merge(existing, viewer, ctx))
     {
         for &card in cards {
-            if !existing.cards.contains(&card) {
-                existing.cards.push(card);
-            }
+            existing.push_unique_card(game, card);
         }
         return;
     }
@@ -643,6 +742,7 @@ fn merge_audit_viewed_cards(
         subject: ctx.subject,
         zone: ctx.zone,
         cards: cards.to_vec(),
+        card_stable_ids: stable_ids_for_viewed_cards(game, cards),
         public: ctx.public,
         source: ctx.source,
         description: ctx.description.clone(),
@@ -688,8 +788,8 @@ fn merge_hidden_decision_views(
                         zone,
                         view.description.clone(),
                     );
-                    merge_active_viewed_cards(current, viewer, &cards, &view_ctx);
-                    merge_audit_viewed_cards(audit, viewer, &cards, &view_ctx);
+                    merge_active_viewed_cards(game, current, viewer, &cards, &view_ctx);
+                    merge_audit_viewed_cards(game, audit, viewer, &cards, &view_ctx);
                 }
                 DecisionHiddenCardVisibility::Public => {
                     for viewer_idx in 0..game.players.len() {
@@ -702,8 +802,8 @@ fn merge_hidden_decision_views(
                             view.description.clone(),
                         )
                         .with_public(true);
-                        merge_active_viewed_cards(current, viewer, &cards, &view_ctx);
-                        merge_audit_viewed_cards(audit, viewer, &cards, &view_ctx);
+                        merge_active_viewed_cards(game, current, viewer, &cards, &view_ctx);
+                        merge_audit_viewed_cards(game, audit, viewer, &cards, &view_ctx);
                     }
                 }
                 DecisionHiddenCardVisibility::None => {}
@@ -724,6 +824,7 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
                 subject: source_snapshot.owner,
                 zone: source_snapshot.zone,
                 cards: vec![source_snapshot.object_id],
+                card_stable_ids: vec![source_snapshot.stable_id],
                 public: true,
                 source: Some(entry.object_id),
                 description: "Revealed while on the stack".to_string(),
@@ -747,12 +848,14 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
         let first_zone = first.zone;
 
         let mut cards = Vec::new();
+        let mut card_stable_ids = Vec::new();
         for snapshot in hidden {
             if snapshot.owner == first_owner
                 && snapshot.zone == first_zone
                 && !cards.contains(&snapshot.object_id)
             {
                 cards.push(snapshot.object_id);
+                card_stable_ids.push(snapshot.stable_id);
             }
         }
 
@@ -762,6 +865,7 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
                 subject: first_owner,
                 zone: first_zone,
                 cards,
+                card_stable_ids,
                 public: true,
                 source: Some(entry.object_id),
                 description: "Revealed while on the stack".to_string(),
@@ -833,6 +937,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                     subject: player.id,
                     zone: Zone::Library,
                     cards: vec![top_card],
+                    card_stable_ids: stable_ids_for_viewed_cards(game, &[top_card]),
                     public: true,
                     source: None,
                     description: "Static ability reveals the top card of a library".to_string(),
@@ -843,6 +948,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                     subject: player.id,
                     zone: Zone::Library,
                     cards: vec![top_card],
+                    card_stable_ids: stable_ids_for_viewed_cards(game, &[top_card]),
                     public: false,
                     source: None,
                     description: "Static ability allows viewing the top card of a library"
@@ -857,6 +963,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                 subject: player.id,
                 zone: Zone::Hand,
                 cards: player.hand.clone(),
+                card_stable_ids: stable_ids_for_viewed_cards(game, &player.hand),
                 public: true,
                 source: None,
                 description: "Static ability reveals a player's hand".to_string(),
@@ -1418,11 +1525,14 @@ impl WasmGame {
             };
             push_requirement_unique(&mut requirements, &mut seen, view_requirement);
 
-            for &object_id in &view.cards {
+            for (index, &object_id) in view.cards.iter().enumerate() {
+                let resolved_object_id = view.resolved_object_id(&self.game, index, object_id);
                 let Some(card) = before
                     .hidden_by_id
                     .get(&object_id)
                     .or_else(|| after.hidden_by_id.get(&object_id))
+                    .or_else(|| before.hidden_by_id.get(&resolved_object_id))
+                    .or_else(|| after.hidden_by_id.get(&resolved_object_id))
                 else {
                     continue;
                 };
@@ -1732,6 +1842,11 @@ enum CastingMethodRef {
         zone: String,
         use_alternative: Option<usize>,
     },
+    SplitOtherHalfPlayFrom {
+        source: u64,
+        zone: String,
+        use_alternative: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1875,6 +1990,59 @@ enum DecisionView {
 }
 
 impl DecisionView {
+    fn text_with_visible_hidden_cards<F>(
+        game: &GameState,
+        ctx: &DecisionContext,
+        text: &str,
+        object_visible: &F,
+    ) -> String
+    where
+        F: Fn(ObjectId) -> bool,
+    {
+        if !text.contains("Hidden Card") && !text.contains("Hidden card") {
+            return text.to_string();
+        }
+
+        let mut names = Vec::new();
+        let mut seen = HashSet::new();
+        for view in ctx.hidden_card_views() {
+            for id in &view.object_ids {
+                if !object_visible(*id) {
+                    continue;
+                }
+                let Some(object) = game.object(*id) else {
+                    continue;
+                };
+                if object.name.eq_ignore_ascii_case("hidden card") {
+                    continue;
+                }
+                if seen.insert(object.name.clone()) {
+                    names.push(object.name.clone());
+                }
+            }
+        }
+
+        match names.as_slice() {
+            [] => text.to_string(),
+            [name] => text
+                .replace("Hidden Card", name)
+                .replace("Hidden card", name),
+            many => {
+                let mut replaced = text.to_string();
+                for name in many {
+                    if replaced.contains("Hidden Card") {
+                        replaced = replaced.replacen("Hidden Card", name, 1);
+                    } else if replaced.contains("Hidden card") {
+                        replaced = replaced.replacen("Hidden card", name, 1);
+                    } else {
+                        break;
+                    }
+                }
+                replaced
+            }
+        }
+    }
+
     fn from_context(
         game: &GameState,
         ctx: &DecisionContext,
@@ -1910,7 +2078,12 @@ impl DecisionView {
         match ctx {
             DecisionContext::Boolean(boolean) => DecisionView::SelectOptions {
                 player: decision_player_for(boolean.player).0,
-                description: boolean.description.clone(),
+                description: Self::text_with_visible_hidden_cards(
+                    game,
+                    ctx,
+                    &boolean.description,
+                    &decision_object_visible,
+                ),
                 min: 1,
                 max: 1,
                 options: vec![
@@ -1970,7 +2143,12 @@ impl DecisionView {
             }
             DecisionContext::TextInput(text) => DecisionView::TextInput {
                 player: decision_player_for(text.player).0,
-                description: text.description.clone(),
+                description: Self::text_with_visible_hidden_cards(
+                    game,
+                    ctx,
+                    &text.description,
+                    &decision_object_visible,
+                ),
                 placeholder: text.placeholder.clone(),
                 value: text.initial_value.clone(),
                 require_known_value: text.require_known_value,
@@ -1982,7 +2160,12 @@ impl DecisionView {
             },
             DecisionContext::Number(number) => DecisionView::Number {
                 player: decision_player_for(number.player).0,
-                description: number.description.clone(),
+                description: Self::text_with_visible_hidden_cards(
+                    game,
+                    ctx,
+                    &number.description,
+                    &decision_object_visible,
+                ),
                 min: number.min,
                 max: number.max,
                 is_x_value: number.is_x_value,
@@ -1994,7 +2177,12 @@ impl DecisionView {
             },
             DecisionContext::SelectOptions(options) => DecisionView::SelectOptions {
                 player: decision_player_for(options.player).0,
-                description: options.description.clone(),
+                description: Self::text_with_visible_hidden_cards(
+                    game,
+                    ctx,
+                    &options.description,
+                    &decision_object_visible,
+                ),
                 min: options.min,
                 max: options.max,
                 options: {
@@ -2022,15 +2210,20 @@ impl DecisionView {
                                         .map(|id| id.0)
                                         .collect::<Vec<_>>()
                                 });
-                            OptionView {
-                                index: opt.index,
-                                description: if opt.object_id.is_some()
-                                    && visible_object_id.is_none()
-                                {
+                            let description =
+                                if opt.object_id.is_some() && visible_object_id.is_none() {
                                     hidden_object_label()
                                 } else {
                                     opt.description.clone()
-                                },
+                                };
+                            OptionView {
+                                index: opt.index,
+                                description: Self::text_with_visible_hidden_cards(
+                                    game,
+                                    ctx,
+                                    &description,
+                                    &decision_object_visible,
+                                ),
                                 legal: opt.legal,
                                 repeatable,
                                 max_count,
@@ -3018,13 +3211,13 @@ impl DecisionMaker for WasmReplayDecisionMaker {
 
     fn view_cards(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         viewer: PlayerId,
         cards: &[ObjectId],
         ctx: &ironsmith::decisions::context::ViewCardsContext,
     ) {
-        merge_active_viewed_cards(&mut self.viewed_cards, viewer, cards, ctx);
-        merge_audit_viewed_cards(&mut self.audit_viewed_cards, viewer, cards, ctx);
+        merge_active_viewed_cards(game, &mut self.viewed_cards, viewer, cards, ctx);
+        merge_audit_viewed_cards(game, &mut self.audit_viewed_cards, viewer, cards, ctx);
     }
 }
 
@@ -3299,6 +3492,8 @@ struct RevealHiddenObjectInput {
     slot: Option<u16>,
     #[serde(default)]
     commitment: Option<String>,
+    #[serde(default)]
+    recompute_decision: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3309,6 +3504,8 @@ struct RevealHiddenSlotInput {
     card_name: String,
     #[serde(default)]
     commitment: Option<String>,
+    #[serde(default)]
+    recompute_decision: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3322,6 +3519,8 @@ struct RevealHiddenPositionInput {
     position_commitment: Option<String>,
     #[serde(default)]
     commitment: Option<String>,
+    #[serde(default)]
+    recompute_decision: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3826,6 +4025,107 @@ mod native_tests {
     }
 
     #[test]
+    fn decision_description_names_visible_hidden_card_views() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let hidden_exiled = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Exile,
+            0,
+            "alice-exile-decision-commitment".to_string(),
+        );
+        let definition =
+            ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Tainted Pact")
+                .card_types(vec![CardType::Instant])
+                .build();
+        game.reveal_hidden_card_with_definition(hidden_exiled, &definition)
+            .expect("hidden card should reveal in test state");
+        let ctx = DecisionContext::Boolean(
+            ironsmith::decisions::context::BooleanContext::new(
+                alice,
+                None,
+                "Put Hidden Card into your hand?",
+            )
+            .with_hidden_card_view(
+                vec![hidden_exiled],
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                "Inspect hidden card for decision",
+            ),
+        );
+        let viewed_cards = ActiveViewedCards {
+            viewer: alice,
+            subject: alice,
+            zone: Zone::Exile,
+            cards: vec![hidden_exiled],
+            card_stable_ids: stable_ids_for_viewed_cards(&game, &[hidden_exiled]),
+            public: false,
+            source: None,
+            description: "Inspect hidden card for decision".to_string(),
+        };
+
+        let view = DecisionView::from_context(&game, &ctx, alice, Some(&viewed_cards), None);
+
+        match view {
+            DecisionView::SelectOptions { description, .. } => {
+                assert_eq!(description, "Put Tainted Pact into your hand?");
+            }
+            other => panic!("expected select options view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn viewed_card_snapshots_follow_stable_identity_when_object_id_is_stale() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let revealed_card =
+            ironsmith::card::CardBuilder::new(CardId::from_raw(90_202), "Bob's Stable Secret")
+                .card_types(vec![CardType::Instant])
+                .build();
+        let revealed_id = wasm
+            .game
+            .create_object_from_card(&revealed_card, bob, Zone::Hand);
+        let stale_unrelated_id = ObjectId::from_raw(revealed_id.0.saturating_add(10_000));
+        wasm.active_viewed_cards = Some(ActiveViewedCards {
+            viewer: alice,
+            subject: bob,
+            zone: Zone::Hand,
+            cards: vec![stale_unrelated_id],
+            card_stable_ids: stable_ids_for_viewed_cards(&wasm.game, &[revealed_id]),
+            public: false,
+            source: None,
+            description: "Inspect hidden card for decision".to_string(),
+        });
+
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            alice,
+            wasm.pending_decision.as_ref(),
+            None,
+            wasm.game_over.as_ref(),
+            None,
+            wasm.active_resolving_stack_object.clone(),
+            Vec::new(),
+            wasm.active_viewed_cards.as_ref(),
+            wasm.is_cancelable(),
+            None,
+            0,
+        );
+
+        let viewed_cards = snapshot
+            .viewed_cards
+            .as_ref()
+            .expect("view should resolve through the card's stable id");
+        assert_eq!(viewed_cards.card_ids, vec![revealed_id.0]);
+        assert_eq!(viewed_cards.cards[0].name, "Bob's Stable Secret");
+        assert_eq!(
+            snapshot.players[bob.index()].hand_cards[0].name,
+            "Bob's Stable Secret"
+        );
+    }
+
+    #[test]
     fn crypto_requirements_include_journaled_library_shuffle() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
@@ -4029,19 +4329,28 @@ mod native_tests {
         .with_public(true);
 
         merge_active_viewed_cards(
+            &wasm.game,
             &mut wasm.active_viewed_cards,
             alice,
             &[alice_top],
             &alice_view,
         );
-        merge_active_viewed_cards(&mut wasm.active_viewed_cards, alice, &[bob_top], &bob_view);
+        merge_active_viewed_cards(
+            &wasm.game,
+            &mut wasm.active_viewed_cards,
+            alice,
+            &[bob_top],
+            &bob_view,
+        );
         merge_audit_viewed_cards(
+            &wasm.game,
             &mut wasm.active_audit_viewed_cards,
             alice,
             &[alice_top],
             &alice_view,
         );
         merge_audit_viewed_cards(
+            &wasm.game,
             &mut wasm.active_audit_viewed_cards,
             alice,
             &[bob_top],

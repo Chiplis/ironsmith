@@ -4,21 +4,21 @@
 //! mana value is exiled, lets you cast it without paying its mana cost, then
 //! puts all other exiled cards on the bottom of your library in random order.
 
-use crate::alternative_cast::CastingMethod;
-use crate::cost::OptionalCostsPaid;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
     LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::GameState;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
-use crate::zone::Zone;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::{
+    cast_effect_driven_spell_without_paying, effect_driven_cast_options_for_card,
+    with_spell_cast_event,
+};
 
 /// Effect that resolves a single cascade trigger.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -109,57 +109,48 @@ impl EffectExecutor for CascadeEffect {
             )
             .with_source_name(&source_name);
             let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
             if should_cast {
-                let from_zone = candidate_obj.zone;
-                let mana_cost = candidate_obj.mana_cost.clone();
-                let stable_id = candidate_obj.stable_id;
-                let x_value = mana_cost
-                    .as_ref()
-                    .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-
-                if let Some(new_id) = game.move_object_by_effect(candidate_id, Zone::Stack) {
-                    if let Some(obj) = game.object_mut(new_id) {
-                        obj.x_value = x_value;
-                    }
-
-                    let stack_entry = StackEntry {
-                        object_id: new_id,
-                        controller: ctx.controller,
-                        provenance: ctx.provenance,
-                        targets: vec![],
-                        target_assignments: vec![],
-                        x_value,
-                        ability_effects: None,
-                        mana_usage_restrictions: Vec::new(),
-                        mana_source_chosen_creature_type: None,
-                        is_ability: false,
-                        casting_method: CastingMethod::PlayFrom {
-                            source: ctx.source,
-                            zone: from_zone,
-                            use_alternative: None,
-                        },
-                        optional_costs_paid: OptionalCostsPaid::default(),
-                        defending_player: None,
-                        chosen_player: None,
-                        chapter_ability_source: None,
-                        source_stable_id: Some(stable_id),
-                        source_snapshot: None,
-                        source_name: Some(candidate_name),
-                        triggering_event: None,
-                        event_value_amount: None,
-                        trigger_identity: None,
-                        ability_index: None,
-                        intervening_if: None,
-                        keyword_payment_contributions: vec![],
-                        crew_contributors: vec![],
-                        saddle_contributors: vec![],
-                        chosen_modes: None,
-                        tagged_objects: std::collections::HashMap::new(),
+                let filter = crate::target::ObjectFilter::nonland().with_mana_value(
+                    crate::filter::Comparison::LessThan(source_mana_value as i32),
+                );
+                let options = effect_driven_cast_options_for_card(
+                    game,
+                    ctx.controller,
+                    ctx.source,
+                    candidate_id,
+                    candidate_obj.zone,
+                    &filter,
+                );
+                let option = if options.len() == 1 {
+                    options[0].clone()
+                } else if options.len() > 1 {
+                    let choices = options
+                        .iter()
+                        .cloned()
+                        .map(|option| (option.label.clone(), option))
+                        .collect::<Vec<_>>();
+                    let Some(choice) = crate::decisions::ask_choose_one(
+                        game,
+                        ctx.decision_maker,
+                        ctx.controller,
+                        ctx.source,
+                        &choices,
+                    ) else {
+                        return Ok(EffectOutcome::count(0));
                     };
+                    choice
+                } else {
+                    return Ok(EffectOutcome::count(0));
+                };
 
-                    game.push_to_stack(stack_entry);
-                    casted_card = Some((candidate_id, new_id, from_zone));
+                if let Some(result) =
+                    cast_effect_driven_spell_without_paying(game, ctx, ctx.controller, &option)?
+                {
+                    casted_card = Some((candidate_id, result.new_id, result.from_zone));
                 }
             }
         }

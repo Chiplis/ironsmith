@@ -7106,6 +7106,55 @@ fn test_parse_explore_trigger_subject_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_explore_trigger_revealed_card_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nicanzil Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a creature you control explores a nonland card, put a +1/+1 counter on this creature.",
+        )
+        .expect("explore nonland trigger should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("explores a nonland card"),
+        "expected revealed-card filter in rendered trigger, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("KeywordActionTaggedObject")
+            || (debug.contains("tagged_object_filter") && debug.contains("__public_revealed")),
+        "expected explore trigger to filter on the revealed card tag, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_repeated_explore_clauses() {
+    let repeated = CardDefinitionBuilder::new(CardId::from_raw(1), "Jadelight Ranger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, it explores, then it explores again.")
+        .expect("explores again should parse");
+    let repeated_debug = format!("{:?}", repeated.abilities);
+    assert!(
+        repeated_debug.matches("ExploreEffect").count() >= 2,
+        "expected two explore effects, got {repeated_debug}"
+    );
+
+    let x_times = CardDefinitionBuilder::new(CardId::from_raw(2), "Jadelight Spelunker Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, it explores X times.")
+        .expect("explores X times should parse");
+    let x_debug = format!("{:?}", x_times.abilities);
+    assert!(
+        x_debug.contains("RepeatEffectsEffect") && x_debug.contains("ExploreEffect"),
+        "expected dynamic repeat of explore, got {x_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_open_attraction_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Open Attraction Probe")
         .card_types(vec![CardType::Creature])

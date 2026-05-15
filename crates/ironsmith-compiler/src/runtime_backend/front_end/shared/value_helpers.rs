@@ -381,6 +381,19 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
         let filter = parse_object_filter(&scope_tokens, false).ok()?;
         return Some(Value::BasicLandTypesAmong(filter));
     }
+    if word_refs_have_prefix(&filter_words, &["color", "among"])
+        || word_refs_have_prefix(&filter_words, &["colors", "among"])
+    {
+        let mut scope_start_word_idx = 2usize;
+        if filter_words.get(scope_start_word_idx).copied() == Some("the") {
+            scope_start_word_idx += 1;
+        }
+        let scope_start_token_idx =
+            token_index_for_word_index(&filter_tokens, scope_start_word_idx)?;
+        let scope_tokens = trim_edge_punctuation(&filter_tokens[scope_start_token_idx..]);
+        let filter = parse_object_filter(&scope_tokens, false).ok()?;
+        return Some(Value::ColorsAmong(filter));
+    }
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -707,6 +720,19 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
         let scope_tokens = trim_lexed_edge_punctuation(&filter_tokens[scope_start_token_idx..]);
         let filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
         return Some(Value::BasicLandTypesAmong(filter));
+    }
+    if word_refs_have_prefix(&filter_words, &["color", "among"])
+        || word_refs_have_prefix(&filter_words, &["colors", "among"])
+    {
+        let mut scope_start_word_idx = 2usize;
+        if filter_words.get(scope_start_word_idx).copied() == Some("the") {
+            scope_start_word_idx += 1;
+        }
+        let scope_start_token_idx = ValueHelperCompatWords::new(filter_tokens)
+            .token_index_for_word_index(scope_start_word_idx)?;
+        let scope_tokens = trim_lexed_edge_punctuation(&filter_tokens[scope_start_token_idx..]);
+        let filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
+        return Some(Value::ColorsAmong(filter));
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))

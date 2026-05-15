@@ -2341,6 +2341,21 @@ impl Effect {
         ))
     }
 
+    /// Create a "prevent all combat damage from sources matching a filter" effect.
+    pub fn prevent_all_combat_damage_from_filter(
+        source_filter: ObjectFilter,
+        until: Until,
+    ) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        use crate::prevention::DamageFilter;
+        let mut damage_filter = DamageFilter::combat();
+        damage_filter.from_source = Some(source_filter);
+        Self::new(PreventAllDamageEffect::all_with_filter(
+            damage_filter,
+            until,
+        ))
+    }
+
     /// Create a "prevent all damage to matching permanents" effect.
     pub fn prevent_all_damage_to(filter: ObjectFilter, until: Until) -> Self {
         use crate::effects::PreventAllDamageEffect;
@@ -2670,6 +2685,19 @@ impl Effect {
     ) -> Self {
         use crate::effects::GrantBySpecEffect;
         Self::new(GrantBySpecEffect::new(spec, player, duration))
+    }
+
+    /// Create a one-shot effect that lets a player cast a matching spell from a
+    /// zone without paying its mana cost.
+    pub fn may_cast_matching_spell_without_paying_mana_cost(
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        use crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect;
+        Self::new(MayCastMatchingSpellWithoutPayingManaCostEffect::new(
+            player, filter, zone,
+        ))
     }
 
     /// Create an effect that grants the next matching spell this turn a static ability.

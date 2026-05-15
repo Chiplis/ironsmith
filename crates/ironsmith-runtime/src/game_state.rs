@@ -10,7 +10,7 @@ use rand::{SeedableRng, rngs::StdRng};
 
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
-use crate::card::Card;
+use crate::card::{Card, LinkedFaceLayout};
 use crate::cards::CardRegistry;
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectId, ContinuousEffectManager,
@@ -116,6 +116,23 @@ pub struct UiBattlefieldTransition {
     pub kind: UiBattlefieldTransitionKind,
 }
 
+/// A UI-only zone transition record for inspector/navigation labels.
+///
+/// This is intentionally separate from gameplay zone-change events: gameplay
+/// events drive rules/triggers, while this bounded feed gives the frontend the
+/// original `from` and `to` zones without having to infer them from snapshots.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiZoneTransition {
+    pub id: u64,
+    pub old_object_id: ObjectId,
+    pub new_object_id: ObjectId,
+    pub stable_id: StableId,
+    pub owner: PlayerId,
+    pub controller: PlayerId,
+    pub from: Zone,
+    pub to: Zone,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenCardInfo {
     pub owner: PlayerId,
@@ -160,6 +177,8 @@ pub enum HiddenInfoOperation {
 #[derive(Debug, Clone, Default)]
 struct MetadataStateStore {
     ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
+    ui_zone_transitions: Vec<UiZoneTransition>,
+    next_ui_zone_transition_id: u64,
     provenance_graph: ProvenanceGraph,
 }
 
@@ -1301,6 +1320,44 @@ impl ManaSpendEffectTracker {
 
 impl ActiveManaSpendPermission {
     pub fn allows(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
+        if self.permission.mana_source_filter.is_some() {
+            return false;
+        }
+        self.allows_scope(game, payer, source)
+    }
+
+    pub fn allows_for_mana_source(
+        &self,
+        game: &GameState,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        mana_source: ObjectId,
+    ) -> bool {
+        if !self.allows_scope(game, payer, payment_source) {
+            return false;
+        }
+
+        let Some(filter) = &self.permission.mana_source_filter else {
+            return true;
+        };
+        let Some(source_obj) = game.object(mana_source) else {
+            return false;
+        };
+        let filter_ctx = game.filter_context_for(self.controller, Some(mana_source));
+        filter.matches(source_obj, &filter_ctx, game)
+    }
+
+    pub fn allows_with_source_filtered_mana(
+        &self,
+        game: &GameState,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+    ) -> bool {
+        self.permission.mana_source_filter.is_some()
+            && self.allows_scope(game, payer, payment_source)
+    }
+
+    fn allows_scope(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
         if matches!(
             self.source,
             ManaSpendPermissionSource::Effect {
@@ -1352,6 +1409,12 @@ impl ActiveManaSpendPermission {
                 };
                 let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
                 filter.matches(source_obj, &filter_ctx, game)
+                    || (source_obj.zone == Zone::Stack
+                        && game
+                            .cast_origin_snapshot(source_id)
+                            .is_some_and(|snapshot| {
+                                filter.matches_snapshot(snapshot, &filter_ctx, game)
+                            }))
             }
         }
     }
@@ -1811,6 +1874,8 @@ pub struct GameState {
     /// Current combat state (Some during combat phase, None otherwise).
     /// Effects can directly add creatures to combat when this is set.
     pub combat: Option<crate::combat_state::CombatState>,
+    /// Whether the game currently has a day/night designation.
+    pub has_day_night: bool,
     /// Whether the game is currently in night mode (day/night designation).
     pub is_night: bool,
     /// Current monarch designation holder, if any.
@@ -1921,6 +1986,12 @@ pub struct GameState {
     /// Cards exiled via Foretell (can be cast from exile for their foretell cost).
     pub foretold_cards: HashSet<ObjectId>,
 
+    /// Cards exiled by resolving an Adventure spell.
+    pub adventure_exiled: HashSet<ObjectId>,
+
+    /// Snapshot of a card just before it moved to the stack for casting.
+    pub cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+
     /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
     pub plotted_cards: HashMap<ObjectId, (PlayerId, u32)>,
 
@@ -2010,9 +2081,12 @@ impl GameState {
             choice_store: ChoiceStore::default(),
             metadata: MetadataStateStore {
                 ui_battlefield_transitions: Vec::new(),
+                ui_zone_transitions: Vec::new(),
+                next_ui_zone_transition_id: 0,
                 provenance_graph: ProvenanceGraph::new(),
             },
             combat: None,
+            has_day_night: false,
             is_night: false,
             monarch: None,
             initiative: None,
@@ -2047,6 +2121,8 @@ impl GameState {
             phased_out: HashSet::new(),
             madness_exiled: HashSet::new(),
             foretold_cards: HashSet::new(),
+            adventure_exiled: HashSet::new(),
+            cast_origin_snapshots: HashMap::new(),
             plotted_cards: HashMap::new(),
             commanders: HashSet::new(),
             commander_casts_from_command_zone: HashMap::new(),
@@ -3120,6 +3196,7 @@ impl GameState {
             // Seed battlefield objects with an entry timestamp so layer timestamp
             // ordering is deterministic (replay setup, fixtures, etc.).
             self.effect_store.continuous_effects.record_entry(id);
+            self.handle_day_night_object_entered(id);
         }
         id
     }
@@ -3145,6 +3222,7 @@ impl GameState {
             // Seed battlefield objects with an entry timestamp so static ability
             // effects use proper timestamp order in layers.
             self.effect_store.continuous_effects.record_entry(id);
+            self.handle_day_night_object_entered(id);
         }
         id
     }
@@ -3457,10 +3535,16 @@ impl GameState {
             return Some(definition);
         }
 
-        if let Some(face_name) = name
-            && let Ok(definition) = crate::cards::CardRegistry::try_compile_card(face_name)
-        {
-            return Some(definition);
+        if let Some(face_name) = name {
+            if let Ok(definition) = crate::cards::CardRegistry::try_compile_card(face_name) {
+                return Some(definition);
+            }
+
+            let mut registry = crate::cards::CardRegistry::new();
+            registry.ensure_cards_loaded([face_name]);
+            if let Some(definition) = registry.get(face_name).cloned() {
+                return Some(definition);
+            }
         }
 
         let card_id = id?;
@@ -3488,14 +3572,14 @@ impl GameState {
         name: Option<&str>,
         id: Option<crate::ids::CardId>,
     ) -> Option<crate::cards::CardDefinition> {
-        if let Some(card_id) = id
-            && let Some(definition) = self.linked_face_definitions_by_id.get(&card_id)
+        if let Some(face_name) = name
+            && let Some(definition) = self.linked_face_definitions_by_name.get(face_name)
         {
             return Some(definition.clone());
         }
 
-        if let Some(face_name) = name
-            && let Some(definition) = self.linked_face_definitions_by_name.get(face_name)
+        if let Some(card_id) = id
+            && let Some(definition) = self.linked_face_definitions_by_id.get(&card_id)
         {
             return Some(definition.clone());
         }
@@ -3620,6 +3704,9 @@ impl GameState {
         if old_zone == Zone::Exile {
             self.clear_exile_state(old_id);
         }
+        if old_zone == Zone::Stack {
+            self.cast_origin_snapshots.remove(&old_id);
+        }
 
         if old_zone == Zone::Battlefield
             && new_zone != Zone::Battlefield
@@ -3651,6 +3738,11 @@ impl GameState {
                 TriggerEvent::new_with_provenance(event, event_provenance),
             );
             self.record_zone_change_results(old_id, result_object_ids.clone());
+            if old_zone != new_zone {
+                for result_object_id in &result_object_ids {
+                    self.record_ui_zone_transition(old_id, *result_object_id, old_zone, new_zone);
+                }
+            }
 
             #[cfg(debug_assertions)]
             self.debug_assert_zone_consistency();
@@ -3690,14 +3782,17 @@ impl GameState {
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_cast_tags = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         if !preserve_prototype_overlay {
             new_object.end_prototype_cast_overlay();
         }
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
-            new_object.x_value = None;
             new_object.bestow_cast_state = None;
             new_object.face_down_cast_state = None;
+        }
+        if !preserve_x_value {
+            new_object.x_value = None;
         }
         if !preserve_cast_tags {
             new_object.cast_tagged_objects.clear();
@@ -3710,15 +3805,21 @@ impl GameState {
         }
         new_object.cast_alternative_method = None;
 
-        if old_zone != Zone::Stack
-            && new_zone == Zone::Battlefield
-            && new_object.card_types.contains(&CardType::Land)
-            && new_object.card_types.len() == 1
+        if old_zone == Zone::Stack
+            && new_zone != Zone::Stack
+            && new_object.subtypes.contains(&Subtype::Adventure)
             && let Some(front_def) = self.linked_face_definition_by_name_or_id(
                 new_object.other_face_name.as_deref(),
                 new_object.other_face,
             )
-            && !front_def.card.card_types.contains(&CardType::Land)
+        {
+            new_object.apply_definition_face(&front_def);
+        }
+        if old_zone == Zone::Exile
+            && new_zone == Zone::Battlefield
+            && new_object.linked_face_layout == LinkedFaceLayout::TransformLike
+            && let Some(front_def) =
+                self.default_face_definition_for_transform_like_return(&new_object)
         {
             new_object.apply_definition_face(&front_def);
         }
@@ -3761,9 +3862,14 @@ impl GameState {
             }
         }
 
+        if old_zone != new_zone {
+            self.record_ui_zone_transition(old_id, new_id, old_zone, new_zone);
+        }
+
         // Record entry timestamp per Rule 613.7d when entering the battlefield
         if new_zone == Zone::Battlefield {
             self.effect_store.continuous_effects.record_entry(new_id);
+            self.handle_day_night_object_entered(new_id);
         }
 
         // Queue zone change event for triggers.
@@ -3816,6 +3922,26 @@ impl GameState {
         self.reconcile_ring_bearers();
 
         Some(new_id)
+    }
+
+    fn default_face_definition_for_transform_like_return(
+        &self,
+        object: &Object,
+    ) -> Option<crate::cards::CardDefinition> {
+        let other_def = self.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(),
+            object.other_face,
+        )?;
+        if other_def.card.linked_face_layout != LinkedFaceLayout::TransformLike {
+            return None;
+        }
+        let current_def =
+            self.linked_face_definition_by_name_or_id(Some(&object.name), object.card)?;
+        if current_def.card.linked_face_layout != LinkedFaceLayout::TransformLike {
+            return None;
+        }
+
+        (current_def.card.id.0 > other_def.card.id.0).then_some(other_def)
     }
 
     pub fn move_object_by_effect(&mut self, old_id: ObjectId, new_zone: Zone) -> Option<ObjectId> {
@@ -5699,6 +5825,12 @@ impl GameState {
 
         // Update "can't" effect tracking
         self.update_cant_effects();
+
+        if self.apply_day_nightbound_transformations_with_current_restrictions() {
+            self.update_static_ability_effects();
+            self.update_replacement_effects();
+            self.update_cant_effects();
+        }
     }
 
     /// Check if a player may spend mana as though it were mana of any color.
@@ -5710,6 +5842,43 @@ impl GameState {
             .permissions
             .iter()
             .any(|permission| permission.allows(self, payer, source))
+    }
+
+    pub fn can_spend_mana_as_any_color_from_mana_source(
+        &self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        mana_source: ObjectId,
+    ) -> bool {
+        self.effect_store
+            .mana_spend_effects
+            .permissions
+            .iter()
+            .any(|permission| {
+                permission.allows_for_mana_source(self, payer, payment_source, mana_source)
+            })
+    }
+
+    pub fn has_source_filtered_mana_spend_permission(
+        &self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+    ) -> bool {
+        self.effect_store
+            .mana_spend_effects
+            .permissions
+            .iter()
+            .any(|permission| {
+                permission.allows_with_source_filtered_mana(self, payer, payment_source)
+            })
+    }
+
+    pub fn cast_origin_snapshot(&self, stack_id: ObjectId) -> Option<&ObjectSnapshot> {
+        self.cast_origin_snapshots.get(&stack_id)
+    }
+
+    pub fn set_cast_origin_snapshot(&mut self, stack_id: ObjectId, snapshot: ObjectSnapshot) {
+        self.cast_origin_snapshots.insert(stack_id, snapshot);
     }
 
     fn with_active_battlefield_static_abilities<T>(
@@ -6567,6 +6736,14 @@ impl GameState {
             .entered_battlefield_snapshots_this_turn();
         self.turn_store.spells_cast_last_turn_total =
             self.turn_store.turn_history.clear_for_new_turn();
+        let spells_cast_last_turn = self.turn_store.spells_cast_last_turn_total;
+        if self.has_day_night && self.is_night {
+            if spells_cast_last_turn >= 2 {
+                self.set_daytime(true);
+            }
+        } else if self.has_day_night && spells_cast_last_turn == 0 {
+            self.set_daytime(false);
+        }
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
@@ -7698,6 +7875,139 @@ impl GameState {
         self.effect_store.continuous_effects.record_entry(id);
     }
 
+    /// Transform a transform-like permanent in place.
+    pub fn transform_permanent(&mut self, id: ObjectId) -> bool {
+        self.refresh_continuous_state();
+        self.transform_permanent_with_current_restrictions(id)
+    }
+
+    fn transform_permanent_with_current_restrictions(&mut self, id: ObjectId) -> bool {
+        if !self.can_transform(id) {
+            return false;
+        }
+        let Some(target) = self.object(id) else {
+            return false;
+        };
+        if target.zone != Zone::Battlefield
+            || target.linked_face_layout != LinkedFaceLayout::TransformLike
+        {
+            return false;
+        }
+        let Some(other_def) =
+            self.linked_face_definition_by_name_or_id(target.other_face_name.as_deref(), target.other_face)
+        else {
+            return false;
+        };
+        if other_def.card.card_types.contains(&CardType::Instant)
+            || other_def.card.card_types.contains(&CardType::Sorcery)
+        {
+            return false;
+        }
+        if let Some(obj) = self.object_mut(id) {
+            obj.apply_definition_face(&other_def);
+        }
+        self.mark_transformed(id);
+        true
+    }
+
+    fn object_has_daybound_keyword(object: &Object) -> bool {
+        object.has_static_ability_id(crate::static_abilities::StaticAbilityId::Daybound)
+    }
+
+    fn object_has_nightbound_keyword(object: &Object) -> bool {
+        object.has_static_ability_id(crate::static_abilities::StaticAbilityId::Nightbound)
+    }
+
+    fn object_has_day_or_nightbound_keyword(object: &Object) -> bool {
+        Self::object_has_daybound_keyword(object) || Self::object_has_nightbound_keyword(object)
+    }
+
+    fn object_starts_daytime_if_unset_as_enters(object: &Object) -> bool {
+        object.has_static_ability_id(
+            crate::static_abilities::StaticAbilityId::DayNightStartsDayAsEnters,
+        )
+    }
+
+    /// Apply day/nightbound transformations for the current day/night designation.
+    pub fn apply_day_nightbound_transformations(&mut self) {
+        if !self.has_day_night {
+            return;
+        }
+        self.refresh_continuous_state();
+        self.apply_day_nightbound_transformations_with_current_restrictions();
+    }
+
+    fn apply_day_nightbound_transformations_with_current_restrictions(&mut self) -> bool {
+        if !self.has_day_night {
+            return false;
+        }
+        let ids = self.battlefield.clone();
+        let mut transformed = false;
+        for id in ids {
+            let should_transform = self.object(id).is_some_and(|object| {
+                object.zone == Zone::Battlefield
+                    && object.linked_face_layout == LinkedFaceLayout::TransformLike
+                    && ((self.is_night && Self::object_has_daybound_keyword(object))
+                        || (!self.is_night && Self::object_has_nightbound_keyword(object)))
+            });
+            if should_transform {
+                transformed |= self.transform_permanent_with_current_restrictions(id);
+            }
+        }
+        transformed
+    }
+
+    /// Apply day/night setup rules for a permanent that just entered the battlefield.
+    pub fn handle_day_night_object_entered(&mut self, id: ObjectId) {
+        let Some((sets_day_if_unset, daybound_or_nightbound)) = self.object(id).and_then(|object| {
+            (object.zone == Zone::Battlefield).then(|| {
+                (
+                    Self::object_starts_daytime_if_unset_as_enters(object),
+                    Self::object_has_day_or_nightbound_keyword(object),
+                )
+            })
+        }) else {
+            return;
+        };
+
+        if !self.has_day_night && (sets_day_if_unset || daybound_or_nightbound) {
+            self.set_daytime(true);
+        }
+        if daybound_or_nightbound {
+            self.apply_day_nightbound_transformations();
+        }
+    }
+
+    /// Set the global day/night designation and transform daybound/nightbound permanents.
+    pub fn set_daytime(&mut self, daytime: bool) {
+        let night = !daytime;
+        let had_day_night = self.has_day_night;
+        let changed = self.is_night != night;
+        self.has_day_night = true;
+        self.is_night = night;
+        if !had_day_night || changed {
+            self.apply_day_nightbound_transformations();
+        }
+        if had_day_night && changed {
+            let provenance = self
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::DayNightChanged);
+            let event = crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DayNightChangedEvent::new(daytime),
+                provenance,
+            );
+            self.queue_trigger_event(provenance, event);
+        }
+    }
+
+    pub fn has_day_night(&self) -> bool {
+        self.has_day_night
+    }
+
+    pub fn is_daytime(&self) -> bool {
+        self.has_day_night && !self.is_night
+    }
+
     /// Check if a permanent is phased out.
     pub fn is_phased_out(&self, id: ObjectId) -> bool {
         self.phased_out.contains(&id)
@@ -7743,6 +8053,21 @@ impl GameState {
     /// Clear foretell exiled status.
     pub fn clear_foretold(&mut self, id: ObjectId) {
         self.foretold_cards.remove(&id);
+    }
+
+    /// Check if a card is exiled because its Adventure spell resolved.
+    pub fn is_adventure_exiled(&self, id: ObjectId) -> bool {
+        self.adventure_exiled.contains(&id)
+    }
+
+    /// Mark a card as exiled because its Adventure spell resolved.
+    pub fn set_adventure_exiled(&mut self, id: ObjectId) {
+        self.adventure_exiled.insert(id);
+    }
+
+    /// Clear adventure exiled status.
+    pub fn clear_adventure_exiled(&mut self, id: ObjectId) {
+        self.adventure_exiled.remove(&id);
     }
 
     /// Check if a card is exiled via plot by the given player.
@@ -7910,6 +8235,7 @@ impl GameState {
     pub fn clear_exile_state(&mut self, id: ObjectId) {
         self.madness_exiled.remove(&id);
         self.foretold_cards.remove(&id);
+        self.adventure_exiled.remove(&id);
         self.plotted_cards.remove(&id);
         self.face_down_exile_viewers.remove(&id);
         self.remove_exiled_with_source_link(id);
@@ -8141,6 +8467,35 @@ impl GameState {
             .get(&source_id)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+
+    pub fn transfer_exiled_with_source_links(
+        &mut self,
+        old_source_id: ObjectId,
+        new_source_id: ObjectId,
+    ) {
+        if old_source_id == new_source_id {
+            return;
+        }
+
+        let linked = self
+            .exiled_with_source
+            .remove(&old_source_id)
+            .unwrap_or_default();
+        for exiled_card_id in linked {
+            self.add_exiled_with_source_link(new_source_id, exiled_card_id);
+        }
+
+        if let Some(return_zones) = self.exiled_with_source_return_zones.remove(&old_source_id) {
+            self.exiled_with_source_return_zones
+                .entry(new_source_id)
+                .or_default()
+                .extend(return_zones);
+        }
+
+        if self.return_exiled_when_source_leaves.remove(&old_source_id) {
+            self.return_exiled_when_source_leaves.insert(new_source_id);
+        }
     }
 
     /// Remove an exiled card from all source-link lists.
@@ -8448,6 +8803,43 @@ impl GameState {
         std::mem::take(&mut self.metadata.ui_battlefield_transitions)
     }
 
+    pub fn ui_zone_transitions(&self) -> &[UiZoneTransition] {
+        &self.metadata.ui_zone_transitions
+    }
+
+    fn record_ui_zone_transition(
+        &mut self,
+        old_object_id: ObjectId,
+        new_object_id: ObjectId,
+        from: Zone,
+        to: Zone,
+    ) {
+        const MAX_UI_ZONE_TRANSITIONS: usize = 128;
+        if from == to {
+            return;
+        }
+        let Some(object) = self.object(new_object_id) else {
+            return;
+        };
+        let transition = UiZoneTransition {
+            id: self.metadata.next_ui_zone_transition_id,
+            old_object_id,
+            new_object_id,
+            stable_id: object.stable_id,
+            owner: object.owner,
+            controller: self.controller_of(object),
+            from,
+            to,
+        };
+        self.metadata.next_ui_zone_transition_id =
+            self.metadata.next_ui_zone_transition_id.saturating_add(1);
+        self.metadata.ui_zone_transitions.push(transition);
+        if self.metadata.ui_zone_transitions.len() > MAX_UI_ZONE_TRANSITIONS {
+            let excess = self.metadata.ui_zone_transitions.len() - MAX_UI_ZONE_TRANSITIONS;
+            self.metadata.ui_zone_transitions.drain(0..excess);
+        }
+    }
+
     pub fn provenance_graph(&self) -> &ProvenanceGraph {
         &self.metadata.provenance_graph
     }
@@ -8553,6 +8945,97 @@ mod tests {
     }
 
     #[test]
+    fn ui_zone_transition_feed_records_central_moves() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let spell = CardDefinitionBuilder::new(CardId::from_raw(42), "Stack Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let hand_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+
+        let stack_id = game
+            .move_object_by_effect(hand_id, Zone::Stack)
+            .expect("spell should move to stack");
+        let graveyard_id = game
+            .move_object_by_effect(stack_id, Zone::Graveyard)
+            .expect("spell should move to graveyard");
+
+        let transitions = game.ui_zone_transitions();
+        assert!(
+            transitions.iter().any(|transition| {
+                transition.old_object_id == hand_id
+                    && transition.new_object_id == stack_id
+                    && transition.from == Zone::Hand
+                    && transition.to == Zone::Stack
+            }),
+            "expected hand-to-stack transition, got {transitions:?}"
+        );
+        assert!(
+            transitions.iter().any(|transition| {
+                transition.old_object_id == stack_id
+                    && transition.new_object_id == graveyard_id
+                    && transition.from == Zone::Stack
+                    && transition.to == Zone::Graveyard
+            }),
+            "expected stack-to-graveyard transition, got {transitions:?}"
+        );
+    }
+
+    #[test]
+    fn ordinary_return_from_exile_uses_transform_like_default_face() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let front_id = CardId::from_raw(79_400);
+        let back_id = CardId::from_raw(79_401);
+
+        let mut front = CardDefinitionBuilder::new(front_id, "Default Face Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+        front.card.other_face = Some(back_id);
+        front.card.other_face_name = Some("Back Face Land".to_string());
+        front.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        let mut back = CardDefinitionBuilder::new(back_id, "Back Face Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        back.card.other_face = Some(front_id);
+        back.card.other_face_name = Some("Default Face Creature".to_string());
+        back.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        game.register_linked_face_definition(&front);
+        game.register_linked_face_definition(&back);
+
+        let back_permanent = game.create_object_from_definition(&back, alice, Zone::Battlefield);
+        let exiled_back = game
+            .move_object_by_effect(back_permanent, Zone::Exile)
+            .expect("back face should move to exile");
+        let returned_back = game
+            .move_object_by_effect(exiled_back, Zone::Battlefield)
+            .expect("back face should return to the battlefield");
+        let returned = game
+            .object(returned_back)
+            .expect("returned permanent should exist");
+        assert_eq!(returned.name, "Default Face Creature");
+        assert!(returned.card_types.contains(&CardType::Creature));
+        assert!(!returned.card_types.contains(&CardType::Land));
+
+        let front_permanent = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+        let exiled_front = game
+            .move_object_by_effect(front_permanent, Zone::Exile)
+            .expect("front face should move to exile");
+        let returned_front = game
+            .move_object_by_effect(exiled_front, Zone::Battlefield)
+            .expect("front face should return to the battlefield");
+        assert_eq!(
+            game.object(returned_front)
+                .expect("returned front face should exist")
+                .name,
+            "Default Face Creature"
+        );
+    }
+
+    #[test]
     fn crypto_audit_journal_records_library_shuffle() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -8583,6 +9066,33 @@ mod tests {
                     && *random_count_after == before_random + 1
             )
         }));
+    }
+
+    #[test]
+    fn stack_to_battlefield_preserves_cast_x_value_for_permanent() {
+        use crate::card::CardBuilder;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(99), "X Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let stack_id = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.object_mut(stack_id).expect("stack object").x_value = Some(3);
+
+        let battlefield_id = game
+            .move_object_by_effect(stack_id, Zone::Battlefield)
+            .expect("creature should enter");
+
+        assert_eq!(
+            game.object(battlefield_id).expect("permanent").x_value,
+            Some(3)
+        );
+
+        let graveyard_id = game
+            .move_object_by_effect(battlefield_id, Zone::Graveyard)
+            .expect("permanent should move to graveyard");
+        assert_eq!(game.object(graveyard_id).expect("card").x_value, None);
     }
 
     #[test]
@@ -8988,6 +9498,134 @@ mod tests {
         assert!(!game.can_spend_mana_as_any_color(alice, Some(alice_artifact)));
         assert!(!game.can_spend_mana_as_any_color(alice, Some(bob_creature)));
         assert!(!game.can_spend_mana_as_any_color(bob, Some(bob_creature)));
+    }
+
+    #[test]
+    fn source_filtered_mana_spend_permissions_match_mana_sources() {
+        use crate::card::CardBuilder;
+        use crate::effect::ManaSpendPermission;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(302), "Test Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let snow_land_card = CardBuilder::new(CardId::from_raw(303), "Snow Land")
+            .supertypes(vec![crate::types::Supertype::Snow])
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_card = CardBuilder::new(CardId::from_raw(304), "Regular Land")
+            .card_types(vec![CardType::Land])
+            .build();
+
+        let alice_creature = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        let alice_snow_land =
+            game.create_object_from_card(&snow_land_card, alice, Zone::Battlefield);
+        let alice_land = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
+
+        game.effect_store
+            .mana_spend_effects
+            .permissions
+            .push(ActiveManaSpendPermission {
+                permission: ManaSpendPermission::any_color_for_activation(
+                    crate::target::PlayerFilter::You,
+                    crate::target::ObjectFilter::creature().you_control(),
+                )
+                .with_mana_source_filter(
+                    crate::target::ObjectFilter::default()
+                        .with_supertype(crate::types::Supertype::Snow),
+                ),
+                controller: alice,
+                source: ManaSpendPermissionSource::StaticAbility,
+            });
+
+        assert!(!game.can_spend_mana_as_any_color(alice, Some(alice_creature)));
+        assert!(game.can_spend_mana_as_any_color_from_mana_source(
+            alice,
+            Some(alice_creature),
+            alice_snow_land
+        ));
+        assert!(!game.can_spend_mana_as_any_color_from_mana_source(
+            alice,
+            Some(alice_creature),
+            alice_land
+        ));
+        assert!(!game.can_spend_mana_as_any_color_from_mana_source(
+            alice,
+            Some(alice_land),
+            alice_snow_land
+        ));
+        assert!(!game.can_spend_mana_as_any_color_from_mana_source(
+            bob,
+            Some(alice_creature),
+            alice_snow_land
+        ));
+    }
+
+    #[test]
+    fn source_filtered_casting_permission_matches_stack_spell_origin_snapshot() {
+        use crate::card::CardBuilder;
+        use crate::effect::ManaSpendPermission;
+        use crate::object::CounterType;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let bear_card = CardBuilder::new(CardId::from_raw(305), "Grizzly Bears")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let snow_land_card = CardBuilder::new(CardId::from_raw(306), "Snow Land")
+            .supertypes(vec![crate::types::Supertype::Snow])
+            .card_types(vec![CardType::Land])
+            .build();
+
+        let exiled_bear = game.create_object_from_card(&bear_card, bob, Zone::Exile);
+        game.object_mut(exiled_bear)
+            .expect("exiled bear")
+            .add_counters(CounterType::Ice, 1);
+        let snow_land = game.create_object_from_card(&snow_land_card, alice, Zone::Battlefield);
+
+        let mut spell_filter = crate::target::ObjectFilter {
+            zone: Some(Zone::Exile),
+            owner: Some(crate::target::PlayerFilter::Opponent),
+            with_counter: Some(crate::filter::CounterConstraint::Typed(CounterType::Ice)),
+            ..crate::target::ObjectFilter::default()
+        };
+        spell_filter.excluded_card_types.push(CardType::Land);
+
+        game.effect_store
+            .mana_spend_effects
+            .permissions
+            .push(ActiveManaSpendPermission {
+                permission: ManaSpendPermission::any_color_from_sources_for_casting_matching(
+                    crate::target::PlayerFilter::You,
+                    spell_filter,
+                    crate::target::ObjectFilter::default()
+                        .with_supertype(crate::types::Supertype::Snow),
+                ),
+                controller: alice,
+                source: ManaSpendPermissionSource::StaticAbility,
+            });
+
+        let origin_snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_bear).expect("origin"), &game);
+        let stack_bear = game
+            .move_object_by_effect(exiled_bear, Zone::Stack)
+            .expect("spell should move to stack");
+        game.set_cast_origin_snapshot(stack_bear, origin_snapshot);
+
+        assert!(
+            game.has_source_filtered_mana_spend_permission(alice, Some(stack_bear)),
+            "stack spell should match its exiled origin snapshot"
+        );
+        assert!(game.can_spend_mana_as_any_color_from_mana_source(
+            alice,
+            Some(stack_bear),
+            snow_land
+        ));
     }
 
     #[test]

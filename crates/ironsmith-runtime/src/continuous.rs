@@ -18,7 +18,9 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object};
 use crate::object_query::candidate_ids_for_filter;
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
+use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
@@ -2972,7 +2974,7 @@ fn resolve_value_direct(
         )
         .div_euclid(2),
         Value::Count(filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             count_filter_matches_direct(
                 filter,
                 objects,
@@ -2984,7 +2986,7 @@ fn resolve_value_direct(
             )
         }
         Value::CountScaled(filter, multiplier) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             count_filter_matches_direct(
                 filter,
                 objects,
@@ -3850,9 +3852,23 @@ fn effect_applies_to_or_started(
 }
 
 fn continuous_filter_context(
+    game: &crate::game_state::GameState,
     controller: PlayerId,
     source: ObjectId,
 ) -> crate::target::FilterContext {
+    let source_exiled = game
+        .get_exiled_with_source_links(source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id)
+                .map(|obj| ObjectSnapshot::from_object(obj, game))
+        })
+        .collect::<Vec<_>>();
+    let mut tagged_objects = HashMap::new();
+    if !source_exiled.is_empty() {
+        tagged_objects.insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
+    }
+
     crate::target::FilterContext {
         you: Some(controller),
         source: Some(source),
@@ -3868,7 +3884,7 @@ fn continuous_filter_context(
         chosen_player: None,
         target_players: Vec::new(),
         target_objects: Vec::new(),
-        tagged_objects: std::collections::HashMap::new(),
+        tagged_objects,
         tagged_players: std::collections::HashMap::new(),
         effect_outcomes: std::collections::HashMap::new(),
     }
@@ -4016,18 +4032,18 @@ fn resolve_value_with_context(
         Value::VoteCount(_) => 0,
 
         Value::Count(filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             count_filter_matches(filter, ctx, &filter_ctx)
         }
         Value::CountScaled(filter, multiplier) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let count = count_filter_matches(filter, ctx, &filter_ctx);
             count * *multiplier
         }
         Value::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
 
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut seen = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
@@ -4051,7 +4067,7 @@ fn resolve_value_with_context(
         Value::CreatureTypesAmong(filter) => {
             use std::collections::HashSet;
 
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut seen = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
@@ -4068,7 +4084,7 @@ fn resolve_value_with_context(
         Value::CardTypesAmong(filter) => {
             use std::collections::HashSet;
 
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut seen = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
@@ -4081,7 +4097,7 @@ fn resolve_value_with_context(
             seen.len() as i32
         }
         Value::ColorsAmong(filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut has_white = false;
             let mut has_blue = false;
@@ -4109,7 +4125,7 @@ fn resolve_value_with_context(
         Value::DistinctNames(filter) => {
             use std::collections::HashSet;
 
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut seen: HashSet<String> = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
@@ -4122,7 +4138,7 @@ fn resolve_value_with_context(
         Value::DistinctPowers(filter) => {
             use std::collections::HashSet;
 
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
             let mut seen: HashSet<i32> = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
@@ -4140,7 +4156,7 @@ fn resolve_value_with_context(
             .turn_history
             .total_creatures_died_this_turn() as i32,
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut total = 0i32;
             for player in ctx.game.players.iter().filter(|p| p.is_in_game()) {
                 if !player_filter.matches_player(player.id, &filter_ctx) {
@@ -4155,7 +4171,7 @@ fn resolve_value_with_context(
             total
         }
         Value::LandsEnteredBattlefieldThisTurn(player_filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             ctx.game
                 .players
                 .iter()
@@ -4290,7 +4306,7 @@ fn resolve_value_with_context(
             let Some(chosen) = ctx.game.chosen_color(source) else {
                 return 0;
             };
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             ctx.game
                 .players
                 .iter()
@@ -4300,7 +4316,7 @@ fn resolve_value_with_context(
                 .sum()
         }
         Value::GreatestToughness(filter) => {
-            let filter_ctx = continuous_filter_context(controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut max_toughness = 0i32;
             for_each_filter_candidate(ctx, filter, |obj| {
                 if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {

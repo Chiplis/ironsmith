@@ -242,7 +242,8 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             _ => None,
         },
         EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. } => Some(filter),
+        | EffectAst::ChooseObjectsAcrossZones { filter, .. }
+        | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => Some(filter),
         _ => None,
     }
 }
@@ -593,6 +594,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PutSticker { .. }
         | SubjectVerbActionAst::SwitchPowerToughness { .. }
         | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+        | SubjectVerbActionAst::AddManaColorsAmong { .. }
         | SubjectVerbActionAst::AddManaImprintedColors
         | SubjectVerbActionAst::DoubleManaPool
         | SubjectVerbActionAst::EmptyManaPool
@@ -658,6 +660,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::GrantProtectionChoice { .. }
         | SubjectVerbActionAst::PreventAllCombatDamage { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+        | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
@@ -857,7 +860,8 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. } => {
+        | EffectAst::ChooseObjectsAcrossZones { player, .. }
+        | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
         EffectAst::MayByPlayer { player, effects } => {

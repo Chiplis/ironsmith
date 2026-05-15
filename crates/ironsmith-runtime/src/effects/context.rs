@@ -16,7 +16,7 @@ use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
-use crate::replacement::ReplacementEffect;
+use crate::replacement::{ReplacementEffect, ReplacementEffectId, ReplacementEffectKey};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::FilterContext;
@@ -166,6 +166,8 @@ pub struct ManaExecutionContext {
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementExecutionContext {
     pub additional_replacement_effects: Vec<ReplacementEffect>,
+    pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
+    pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,
 }
 
 /// Context for effect execution.

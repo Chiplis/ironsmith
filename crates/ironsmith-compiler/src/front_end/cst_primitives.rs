@@ -16,6 +16,7 @@ pub enum KeywordLineKindCst {
     Bargain,
     Buyback,
     Channel,
+    Craft,
     Cycling,
     Equip,
     Escape,

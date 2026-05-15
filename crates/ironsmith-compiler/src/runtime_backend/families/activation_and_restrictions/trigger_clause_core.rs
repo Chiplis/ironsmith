@@ -463,6 +463,52 @@ pub(crate) fn parse_trigger_clause_lexed(
         ));
     }
 
+    if matches!(
+        words.as_slice(),
+        [
+            "this",
+            "creature",
+            "is",
+            "exiled",
+            "from",
+            "the",
+            "battlefield",
+            "while",
+            "youre",
+            "activating",
+            "a",
+            "craft",
+            "ability"
+        ] | [
+            "this",
+            "creature",
+            "is",
+            "exiled",
+            "from",
+            "the",
+            "battlefield",
+            "while",
+            "you're",
+            "activating",
+            "a",
+            "craft",
+            "ability"
+        ]
+    ) {
+        return Ok(
+            TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
+                marker: "craft".to_string(),
+            },
+        );
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["day", "becomes", "night", "or", "night", "becomes", "day"]
+    ) {
+        return Ok(TriggerSpec::DayNightChanged);
+    }
+
     if let Some(enters_idx) = find_index(tokens, |token| {
         token.is_word("enters") || token.is_word("enter")
     }) {
@@ -1729,6 +1775,49 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(crew_word_idx) = find_index(&words, |word| {
+        matches!(
+            crate::events::KeywordActionKind::from_trigger_word(word),
+            Some(crate::events::KeywordActionKind::Crew)
+        )
+    }) {
+        let subject_words = &words[..crew_word_idx];
+        let source_filter = if is_source_reference_words(subject_words) {
+            Some(ObjectFilter::source())
+        } else {
+            let subject_end = word_view
+                .token_index_after_words(crew_word_idx)
+                .unwrap_or(crew_word_idx);
+            parse_trigger_subject_filter_lexed(&tokens[..subject_end])?
+        };
+        if let Some(source_filter) = source_filter {
+            let tail_start = word_view
+                .token_index_after_words(crew_word_idx + 1)
+                .unwrap_or(tokens.len());
+            let tail_words = &words[crew_word_idx + 1..];
+            let object_filter = if tail_words.is_empty()
+                || matches!(tail_words, ["a", "vehicle"] | ["vehicle"] | ["vehicles"])
+            {
+                ObjectFilter::default().with_subtype(Subtype::Vehicle)
+            } else {
+                let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
+                parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported crew object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
+            return Ok(TriggerSpec::KeywordActionTaggedObject {
+                action: crate::events::KeywordActionKind::Crew,
+                player: PlayerFilter::Any,
+                source_filter,
+                object_tag: TagKey::from(IT_TAG),
+                object_filter,
+            });
+        }
+    }
+
     if let Some(explore_word_idx) = find_index(&words, |word| {
         matches!(
             crate::events::KeywordActionKind::from_trigger_word(word),
@@ -1736,13 +1825,37 @@ pub(crate) fn parse_trigger_clause_lexed(
         )
     }) {
         let subject_tokens = &tokens[..explore_word_idx];
-        if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)?
-            && words[explore_word_idx + 1..].is_empty()
-        {
-            return Ok(TriggerSpec::KeywordAction {
-                action: crate::events::KeywordActionKind::Explore,
-                player: PlayerFilter::Any,
-                source_filter: Some(filter),
+        if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
+            let tail = &words[explore_word_idx + 1..];
+            let revealed_filter = match tail {
+                [] => None,
+                ["a", "land", "card"] | ["land", "card"] => {
+                    Some(ObjectFilter::default().with_type(crate::types::CardType::Land))
+                }
+                ["a", "nonland", "card"] | ["nonland", "card"] => {
+                    Some(ObjectFilter::default().without_type(crate::types::CardType::Land))
+                }
+                _ => None,
+            };
+            return Ok(match revealed_filter {
+                Some(object_filter) => TriggerSpec::KeywordActionTaggedObject {
+                    action: crate::events::KeywordActionKind::Explore,
+                    player: PlayerFilter::Any,
+                    source_filter: filter,
+                    object_tag: TagKey::from("__public_revealed"),
+                    object_filter,
+                },
+                None if tail.is_empty() => TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Explore,
+                    player: PlayerFilter::Any,
+                    source_filter: Some(filter),
+                },
+                None => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported explore trigger tail in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    )));
+                }
             });
         }
     }

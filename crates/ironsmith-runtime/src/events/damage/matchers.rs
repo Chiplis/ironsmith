@@ -249,6 +249,103 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
     }
 }
 
+/// Matches damage from a source filter to an object target filter.
+#[derive(Debug, Clone)]
+pub struct DamageFromSourceToObjectMatcher {
+    pub source_filter: ObjectFilter,
+    pub target_filter: ObjectFilter,
+    pub combat_only: Option<bool>,
+    pub preventable_only: bool,
+}
+
+impl DamageFromSourceToObjectMatcher {
+    pub fn new(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
+        Self {
+            source_filter,
+            target_filter,
+            combat_only: None,
+            preventable_only: false,
+        }
+    }
+
+    pub fn with_combat_only(mut self, combat_only: Option<bool>) -> Self {
+        self.combat_only = combat_only;
+        self
+    }
+
+    pub fn preventable_only(mut self) -> Self {
+        self.preventable_only = true;
+        self
+    }
+
+    fn source_matches(&self, damage: &DamageEvent, ctx: &EventContext) -> bool {
+        ctx.game
+            .object(damage.source)
+            .is_some_and(|obj| self.source_filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            || ctx
+                .event_source_snapshot
+                .filter(|snapshot| snapshot.object_id == damage.source)
+                .is_some_and(|snapshot| {
+                    self.source_filter
+                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                })
+    }
+
+    fn target_matches(
+        &self,
+        damage: &DamageEvent,
+        ctx: &EventContext,
+        target_id: ObjectId,
+    ) -> bool {
+        ctx.game
+            .object(target_id)
+            .is_some_and(|obj| self.target_filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            || damage
+                .target_snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == target_id)
+                .is_some_and(|snapshot| {
+                    self.target_filter
+                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                })
+    }
+}
+
+impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if self.preventable_only && damage.is_unpreventable {
+            return false;
+        }
+        if let Some(combat_only) = self.combat_only
+            && damage.is_combat != combat_only
+        {
+            return false;
+        }
+
+        let DamageTarget::Object(target_id) = damage.target else {
+            return false;
+        };
+
+        self.source_matches(damage, ctx) && self.target_matches(damage, ctx, target_id)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When matching damage would be dealt to a permanent".to_string()
+    }
+}
+
 /// Matches preventable damage events dealt by the source of the replacement effect.
 ///
 /// Used for abilities like "Prevent all damage that would be dealt by this creature."

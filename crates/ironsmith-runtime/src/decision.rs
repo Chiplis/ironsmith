@@ -3122,6 +3122,145 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() {
+        use crate::ability::{AbilityKind, ActivatedAbility};
+        use crate::card::LinkedFaceLayout;
+        use crate::color::{Color, ColorSet};
+        use crate::cost::TotalCost;
+        use crate::costs::Cost;
+        use crate::events::KeywordActionKind;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::NextMain;
+        game.turn.step = None;
+
+        let ore = CardBuilder::new(CardId::from_raw(40_001), "Ore-Rich Stalactite")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Artifact])
+            .other_face(CardId::from_raw(40_002))
+            .other_face_name("Cosmium Catalyst")
+            .linked_face_layout(LinkedFaceLayout::TransformLike)
+            .build();
+        let ore_id = game.create_object_from_card(&ore, alice, Zone::Battlefield);
+
+        let material_filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_colors(ColorSet::from_color(Color::Red))
+            .with_type(CardType::Instant)
+            .with_type(CardType::Sorcery);
+        let craft_cost = TotalCost::from_costs(vec![
+            Cost::mana(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Red],
+                vec![ManaSymbol::Red],
+            ])),
+            Cost::validated_effect(Effect::exile(
+                ChooseSpec::Object(material_filter)
+                    .with_count(crate::effect::ChoiceCount::at_least(4)),
+            )),
+            Cost::validated_effect(Effect::emit_keyword_action(KeywordActionKind::Craft, 1)),
+            Cost::exile_self(),
+        ]);
+        let craft_ability = Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: craft_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::new(
+                        crate::effects::MoveToZoneEffect::new(
+                            ChooseSpec::Source,
+                            Zone::Battlefield,
+                            false,
+                        )
+                        .under_owner_control()
+                        .transfer_exiled_with_source_links(),
+                    ),
+                    Effect::transform(ChooseSpec::Source),
+                ]),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        game.object_mut(ore_id)
+            .expect("Ore-Rich Stalactite should exist")
+            .abilities
+            .push(craft_ability);
+
+        for _ in 0..6 {
+            let mountain = CardBuilder::new(CardId::new(), "Mountain")
+                .card_types(vec![CardType::Land])
+                .build();
+            game.create_object_from_card(&mountain, alice, Zone::Battlefield);
+        }
+
+        let material_specs = [
+            (
+                "Opt",
+                ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]),
+                CardType::Instant,
+            ),
+            (
+                "Arc Lightning",
+                ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Red]]),
+                CardType::Sorcery,
+            ),
+            (
+                "Lightning Helix",
+                ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::White]]),
+                CardType::Instant,
+            ),
+            (
+                "Lightning Strike",
+                ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)], vec![ManaSymbol::Red]]),
+                CardType::Instant,
+            ),
+        ];
+        for (name, mana_cost, card_type) in material_specs {
+            let card = CardBuilder::new(CardId::new(), name)
+                .mana_cost(mana_cost)
+                .card_types(vec![card_type])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Graveyard);
+        }
+
+        let actions_before = compute_legal_actions(&game, alice);
+        assert!(
+            !actions_before
+                .iter()
+                .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == ore_id)),
+            "craft should not be available before the fourth red instant/sorcery card"
+        );
+
+        let bolt = CardBuilder::new(CardId::new(), "Lightning Bolt")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&bolt, alice, Zone::Graveyard);
+
+        let actions_after = compute_legal_actions(&game, alice);
+        assert!(
+            actions_after
+                .iter()
+                .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if *source == ore_id)),
+            "craft should be available after the fourth red instant/sorcery card"
+        );
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_wall_of_roots_activation_uses_mana_sequence_solver() {

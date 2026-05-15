@@ -119,3 +119,46 @@ impl EffectExecutor for EarthbendEffect {
         "target land you control"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::filter::ObjectFilter;
+    use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    #[test]
+    fn targeted_earthbend_puts_counters_on_selected_land() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(881_001), "Awaken Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
+        let effect = EarthbendEffect::new(target, 4);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(land)]);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("targeted earthbend should resolve");
+
+        assert_eq!(
+            game.counter_count(land, CounterType::PlusOnePlusOne),
+            4,
+            "earthbend should put counters on the chosen land"
+        );
+        assert_eq!(game.calculated_power(land), Some(4));
+        assert_eq!(game.calculated_toughness(land), Some(4));
+    }
+}

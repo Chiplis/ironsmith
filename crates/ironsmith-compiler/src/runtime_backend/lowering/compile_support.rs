@@ -1103,15 +1103,34 @@ pub(crate) fn hand_exile_filter_and_count(
         _ => return Ok(None),
     };
 
-    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-    let zones = hand_exile_choice_zones(&resolved_filter);
+    let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+    normalize_hand_or_graveyard_cross_zone_filter(&mut resolved_filter);
+    let zones = hand_or_graveyard_choice_zones(&resolved_filter);
     let Some(zones) = zones else {
         return Ok(None);
     };
     Ok(Some((resolved_filter, count, zones)))
 }
 
-fn hand_exile_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
+fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
+    if filter.zone != Some(Zone::Battlefield) || filter.any_of.is_empty() {
+        return;
+    }
+
+    let has_hand_or_graveyard_zone = filter.any_of.iter().any(|option| {
+        let mut bare = option.clone();
+        let Some(zone) = bare.zone.take() else {
+            return false;
+        };
+        bare == ObjectFilter::default() && matches!(zone, Zone::Hand | Zone::Graveyard)
+    });
+    if has_hand_or_graveyard_zone {
+        filter.zone = None;
+        filter.controller = None;
+    }
+}
+
+fn hand_or_graveyard_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
     if filter.zone == Some(Zone::Hand) {
         return Some(vec![Zone::Hand]);
     }

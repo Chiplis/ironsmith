@@ -7,6 +7,7 @@ use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_o
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::other::{ConvertedEvent, TransformedEvent};
 use crate::game_state::GameState;
+use crate::static_abilities::StaticAbilityId;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
@@ -45,9 +46,9 @@ impl TransformLikeAction {
 
 /// Effect that transforms a double-faced permanent.
 ///
-/// Toggles the face state of a DFC (double-faced card).
-/// When face_down is false, the card shows its front face.
-/// When face_down is true, the card shows its back face.
+/// Swaps a DFC (double-faced card) to its other visible face.
+/// This is separate from hidden face-down state used by morph, manifest, and
+/// similar mechanics.
 ///
 /// # Fields
 ///
@@ -115,11 +116,12 @@ fn execute_transform_like_action(
         resolve_single_object_for_effect(game, ctx, target)?
     };
 
-    if !game.can_transform(target_id) {
+    if source_transform_like_action_is_stale(game, ctx, target_id) {
         return Ok(EffectOutcome::resolved());
     }
 
-    if source_transform_like_action_is_stale(game, ctx, target_id) {
+    game.refresh_continuous_state();
+    if !game.can_transform(target_id) {
         return Ok(EffectOutcome::resolved());
     }
 
@@ -128,6 +130,12 @@ fn execute_transform_like_action(
     };
     if target.zone != Zone::Battlefield
         || target.linked_face_layout != LinkedFaceLayout::TransformLike
+    {
+        return Ok(EffectOutcome::resolved());
+    }
+    if matches!(action, TransformLikeAction::Transform)
+        && (target.has_static_ability_id(StaticAbilityId::Daybound)
+            || target.has_static_ability_id(StaticAbilityId::Nightbound))
     {
         return Ok(EffectOutcome::resolved());
     }
@@ -143,16 +151,8 @@ fn execute_transform_like_action(
         return Ok(EffectOutcome::resolved());
     }
 
-    let was_face_down = game.is_face_down(target_id);
     if let Some(obj) = game.object_mut(target_id) {
         obj.apply_definition_face(&other_def);
-    }
-
-    // The engine uses `face_down` to represent a transform-like permanent's back face.
-    if was_face_down {
-        game.set_face_up(target_id);
-    } else {
-        game.set_face_down(target_id);
     }
     game.mark_transformed(target_id);
 
@@ -347,7 +347,7 @@ mod tests {
             .expect("transform should execute");
 
         assert_eq!(outcome.events.len(), 1);
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
         let after_ts = game
             .effect_store
@@ -469,8 +469,8 @@ mod tests {
             "front face should leave the battlefield once the delayed trigger resolves"
         );
         assert!(
-            game.is_face_down(foothold_id),
-            "returned permanent should transform into the Foothold face"
+            !game.is_face_down(foothold_id),
+            "returned permanent should transform into the visible Foothold face"
         );
     }
 
@@ -518,8 +518,8 @@ mod tests {
             })
             .expect("Scrounged Scythe should return to the battlefield");
         assert!(
-            game.is_face_down(scythe_id),
-            "returned Harvest Hand should be on its back face"
+            !game.is_face_down(scythe_id),
+            "returned Harvest Hand should be on its visible back face"
         );
         assert!(
             !game.battlefield.iter().any(|&id| game
@@ -610,7 +610,7 @@ mod tests {
         TransformEffect::source()
             .execute(&mut game, &mut first_ctx)
             .expect("first transform should succeed");
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
 
         let mut stale_ctx =
             ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
@@ -619,7 +619,7 @@ mod tests {
             .expect("stale self-transform should resolve as a no-op");
 
         assert!(outcome.events.is_empty());
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
         assert_eq!(
             game.object(source).expect("source should still exist").name,
@@ -659,7 +659,7 @@ mod tests {
         assert_eq!(outcome.events[0].kind(), EventKind::Converted);
         assert!(outcome.events[0].downcast::<ConvertedEvent>().is_some());
         assert!(outcome.events[0].downcast::<TransformedEvent>().is_none());
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
         assert_eq!(
             game.object(source)
@@ -741,7 +741,7 @@ mod tests {
             .expect("transform should still resolve from the game-local linked-face cache");
 
         assert_eq!(outcome.events.len(), 1);
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
         assert_eq!(
             game.object(source).expect("source should still exist").name,
             "Cache Cruiser"
@@ -772,7 +772,7 @@ mod tests {
         TransformEffect::source()
             .execute(&mut game, &mut first_ctx)
             .expect("first transform should succeed");
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
 
         let mut stale_ctx =
             ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
@@ -781,7 +781,7 @@ mod tests {
             .expect("stale self-convert should resolve as a no-op");
 
         assert!(outcome.events.is_empty());
-        assert!(game.is_face_down(source));
+        assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
         assert_eq!(
             game.object(source).expect("source should still exist").name,

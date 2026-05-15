@@ -512,6 +512,7 @@ impl WasmGame {
         let step_checkpoint_started_at = PerfTimer::start();
         let step_checkpoint = self.capture_replay_checkpoint_tagged("live_response_dm_capture");
         dispatch_perf.checkpoint_capture_ms += step_checkpoint_started_at.elapsed_ms();
+        let carry_viewed_cards = self.active_viewed_cards.clone();
         let mut live_dm = WasmReplayDecisionMaker::new(&[]);
         let execute_started_at = PerfTimer::start();
         let result = apply_priority_response_with_dm(
@@ -550,7 +551,8 @@ impl WasmGame {
             Err(_) => "apply_priority_response_error".to_string(),
         };
         let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
-        self.active_viewed_cards = viewed_cards;
+        self.active_viewed_cards =
+            merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
 
         if let Some(next_ctx) = pending_context {
@@ -675,6 +677,7 @@ impl WasmGame {
         let live_pa_before = self.priority_state.pending_activation.is_some();
 
         let pending_crypto_audit_before = self.pending_crypto_audit_before.take();
+        let carry_viewed_cards = self.active_viewed_cards.clone();
         self.restore_replay_checkpoint(&continuation.checkpoint);
         self.pending_crypto_audit_before = pending_crypto_audit_before;
         self.priority_state.pending_continuation = None;
@@ -702,7 +705,8 @@ impl WasmGame {
             }
         };
         let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
-        self.active_viewed_cards = viewed_cards;
+        self.active_viewed_cards =
+            merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
 
         if let Some(next_ctx) = pending_context {
@@ -736,6 +740,74 @@ impl WasmGame {
                     "dispatch failed: {err} [diag: tag={checkpoint_diag_tag}, checkpoint_has_pa={checkpoint_has_pa}, \
                      checkpoint_pa={checkpoint_pa_debug:?}, \
                      live_pa_before={live_pa_before}, live_pa_after={live_pa_after}]"
+                )))
+            }
+        }
+    }
+
+    fn refresh_live_continuation_after_hidden_reveal(&mut self) -> Result<JsValue, JsValue> {
+        let mut continuation = self
+            .pending_live_continuation
+            .take()
+            .ok_or_else(|| JsValue::from_str("no live continuation checkpoint to refresh"))?;
+        continuation.speculative_progress = None;
+        let pending_ctx = self.pending_decision.clone();
+        let pending_crypto_audit_before = self.pending_crypto_audit_before.take();
+        let carry_viewed_cards = self.active_viewed_cards.clone();
+        self.restore_replay_checkpoint(&continuation.checkpoint);
+        self.pending_crypto_audit_before = pending_crypto_audit_before;
+        self.priority_state.pending_continuation = None;
+
+        let mut live_dm = WasmReplayDecisionMaker::new(&continuation.answers);
+        let result = match &continuation.root {
+            PendingPriorityContinuation::ApplyResponse(response) => apply_priority_response_with_dm(
+                &mut self.game,
+                &mut self.trigger_queue,
+                &mut self.priority_state,
+                response,
+                &mut live_dm,
+            ),
+            PendingPriorityContinuation::ApplyDecisionContext(ctx) => {
+                apply_decision_context_with_dm(
+                    &mut self.game,
+                    &mut self.trigger_queue,
+                    &mut self.priority_state,
+                    ctx,
+                    &mut live_dm,
+                )
+            }
+        };
+        let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
+        self.active_viewed_cards =
+            merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
+        self.active_audit_viewed_cards = audit_viewed_cards;
+
+        if let Some(next_ctx) = pending_context {
+            self.sync_active_resolving_stack_object_for_prompt(Some(&continuation.checkpoint));
+            self.priority_state.pending_continuation = None;
+            continuation.checkpoint.diag_tag = "continuation_hidden_reveal_refresh";
+            continuation.speculative_progress = match (&next_ctx, &result) {
+                (DecisionContext::Boolean(_), Ok(progress)) => Some(progress.clone()),
+                _ => None,
+            };
+            self.pending_live_continuation = Some(continuation);
+            self.pending_decision = Some(next_ctx);
+            return self.snapshot();
+        }
+
+        match result {
+            Ok(progress) => self.finish_live_priority_dispatch(
+                progress,
+                None,
+                Some(continuation.checkpoint.clone()),
+            ),
+            Err(err) => {
+                self.restore_replay_checkpoint(&continuation.checkpoint);
+                self.priority_state.pending_continuation = None;
+                self.pending_live_continuation = Some(continuation);
+                self.pending_decision = pending_ctx;
+                Err(JsValue::from_str(&format!(
+                    "hidden reveal continuation refresh failed: {err}"
                 )))
             }
         }
@@ -895,7 +967,8 @@ impl WasmGame {
         let finish_started_at = PerfTimer::start();
         let (pending_context, viewed_cards, audit_viewed_cards) = replay_dm.finish();
         perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
-        self.active_viewed_cards = viewed_cards.or(carry_viewed_cards);
+        self.active_viewed_cards =
+            merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = if audit_viewed_cards.is_empty() {
             carry_audit_viewed_cards
         } else {
@@ -1699,6 +1772,44 @@ mod live_action_rollback_tests {
         .expect("select option should dispatch");
     }
 
+    fn dispatch_select_options_until_priority(wasm: &mut WasmGame) {
+        for _ in 0..8 {
+            if matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))) {
+                return;
+            }
+            if matches!(wasm.pending_decision, Some(DecisionContext::SelectOptions(_))) {
+                dispatch_select_option(wasm, 0);
+                continue;
+            }
+            break;
+        }
+    }
+
+    fn dispatch_decision_select_option(wasm: &mut WasmGame, option_index: usize) {
+        let pending_ctx = wasm
+            .pending_decision
+            .take()
+            .expect("expected pending decision");
+        let command = UiCommand::SelectOptions {
+            option_indices: vec![option_index],
+        };
+        if wasm.pending_live_continuation.is_some() {
+            wasm.dispatch_live_priority_continuation(pending_ctx, command)
+                .expect("live continuation decision should dispatch");
+        } else if wasm.decision_uses_live_priority_response(&pending_ctx) {
+            wasm.dispatch_live_priority_response(pending_ctx, command)
+                .expect("live priority decision should dispatch");
+        } else {
+            panic!("pending decision is not dispatchable in live flow: {pending_ctx:?}");
+        }
+    }
+
+    fn object_names(game: &GameState, ids: &[ObjectId]) -> Vec<String> {
+        ids.iter()
+            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .collect()
+    }
+
     #[test]
     fn live_action_error_restore_returns_to_pre_cast_priority_state() {
         let _id_counter_guard = crate::test_id_counter_guard();
@@ -1793,6 +1904,216 @@ mod live_action_rollback_tests {
             matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
             "rollback should return to a normal priority decision"
         );
+    }
+
+    #[test]
+    fn tainted_pact_live_resolution_prompt_can_put_first_card_into_hand() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let tainted_pact = CardDefinitionBuilder::new(CardId::new(), "Tainted Pact")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Black],
+            ]))
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+            )
+            .expect("Tainted Pact should parse");
+        let spell = wasm
+            .game
+            .create_object_from_definition(&tainted_pact, alice, Zone::Hand);
+        if let Some(player) = wasm.game.player_mut(alice) {
+            player.mana_pool.add(ManaSymbol::Colorless, 1);
+            player.mana_pool.add(ManaSymbol::Black, 1);
+        }
+        let second = CardDefinitionBuilder::new(CardId::new(), "Second Card")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let first = CardDefinitionBuilder::new(CardId::new(), "First Card")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        wasm.game
+            .create_object_from_definition(&second, alice, Zone::Library);
+        wasm.game
+            .create_object_from_definition(&first, alice, Zone::Library);
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
+        });
+        dispatch_select_options_until_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("first card"),
+                    "expected first Tainted Pact prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected first Tainted Pact boolean prompt, got {other:?}"),
+        }
+
+        wasm.finish_hidden_card_reveal(false)
+            .expect("post-resolution hidden opening should preserve the Tainted Pact prompt");
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("first card"),
+                    "hidden opening should not clear the first Tainted Pact prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected Tainted Pact prompt after hidden reveal, got {other:?}"),
+        }
+        assert!(
+            wasm.pending_live_continuation.is_some(),
+            "hidden opening must preserve the live resolution continuation"
+        );
+
+        dispatch_decision_select_option(&mut wasm, 1);
+
+        let player = wasm.game.player(alice).expect("Alice should exist");
+        let hand_names = object_names(&wasm.game, &player.hand);
+        let graveyard_names = object_names(&wasm.game, &player.graveyard);
+        let exile_names = object_names(&wasm.game, &wasm.game.exile);
+
+        assert!(
+            hand_names.iter().any(|name| name == "First Card"),
+            "accepting the first Tainted Pact card should put it into hand; hand={hand_names:?}"
+        );
+        assert!(
+            graveyard_names.iter().any(|name| name == "Tainted Pact"),
+            "Tainted Pact should finish resolving into graveyard; graveyard={graveyard_names:?}"
+        );
+        assert!(
+            !exile_names.iter().any(|name| name == "Tainted Pact"),
+            "Tainted Pact itself should not be exiled; exile={exile_names:?}"
+        );
+        assert!(
+            !exile_names.iter().any(|name| name == "First Card"),
+            "accepted Tainted Pact card should leave exile; exile={exile_names:?}"
+        );
+    }
+
+    #[test]
+    fn tainted_pact_declining_revealed_unique_card_continues_to_next_prompt() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let tainted_pact = CardDefinitionBuilder::new(CardId::new(), "Tainted Pact")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Black],
+            ]))
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+            )
+            .expect("Tainted Pact should parse");
+        let spell = wasm
+            .game
+            .create_object_from_definition(&tainted_pact, alice, Zone::Hand);
+        if let Some(player) = wasm.game.player_mut(alice) {
+            player.mana_pool.add(ManaSymbol::Colorless, 1);
+            player.mana_pool.add(ManaSymbol::Black, 1);
+        }
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 0, "alice-slot-0".to_string());
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 1, "alice-slot-1".to_string());
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
+        });
+        dispatch_select_options_until_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 0,
+            slot: 1,
+            card_name: "Tainted Pact".to_string(),
+            commitment: Some("alice-slot-1".to_string()),
+            recompute_decision: false,
+        })
+        .expect("first exiled card should reveal as Tainted Pact");
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("hidden card")
+                        || ctx.description.to_ascii_lowercase().contains("tainted pact"),
+                    "expected first Tainted Pact prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected first Tainted Pact boolean prompt, got {other:?}"),
+        }
+
+        dispatch_decision_select_option(&mut wasm, 0);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("hidden card"),
+                    "declining a unique first card should continue to a second prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected second Tainted Pact prompt after declining, got {other:?}"),
+        }
+
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 0,
+            slot: 0,
+            card_name: "Swamp".to_string(),
+            commitment: Some("alice-slot-0".to_string()),
+            recompute_decision: false,
+        })
+        .expect("second exiled card should reveal as Swamp");
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("swamp"),
+                    "revealing the second unique card should preserve the choice prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected second Tainted Pact prompt after revealing, got {other:?}"),
+        }
     }
 
     #[test]

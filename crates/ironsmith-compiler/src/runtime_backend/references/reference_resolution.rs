@@ -980,6 +980,7 @@ fn advance_reference_frame_for_effect(
             }
             frame.last_object_tag = Some(chosen_tag);
         }
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
@@ -1067,6 +1068,9 @@ fn advance_reference_frame_for_effect(
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
         }
         EffectAst::RepeatProcess { effects, .. } => {
+            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+        }
+        EffectAst::RepeatEffects { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
         EffectAst::ManaRestricted { effects, .. } => {
@@ -1608,6 +1612,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealTop
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
+            | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -1673,6 +1678,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
@@ -1826,6 +1832,7 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count_value, state)?;
             }
         }
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         _ => {}
     }
     Ok(())
@@ -2077,6 +2084,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -2400,6 +2408,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::ExchangeLifeTotals { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::Meld { .. }
@@ -2675,6 +2684,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     .map(|value| bind_unresolved_it_in_value(value, seed_tag))
                     .unwrap_or(0)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
+        }
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
         }
         EffectAst::RepeatThisProcess
         | EffectAst::RepeatThisProcessMay

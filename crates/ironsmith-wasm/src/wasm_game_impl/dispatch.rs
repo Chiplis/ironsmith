@@ -38,6 +38,80 @@ impl WasmGame {
         None
     }
 
+    fn should_preserve_decision_after_hidden_reveal(&self) -> bool {
+        self.pending_live_continuation.is_some()
+            || self.pending_replay_action.is_some()
+            || self.runner_pending_decision
+            || self.active_viewed_cards.is_some()
+            || self
+                .pending_decision
+                .as_ref()
+                .is_some_and(|ctx| !matches!(ctx, DecisionContext::Priority(_)))
+    }
+
+    fn reveal_hidden_card_in_live_continuation_checkpoint(
+        &mut self,
+        owner: PlayerId,
+        slots: &[u16],
+        commitments: &[String],
+        definition: &CardDefinition,
+    ) {
+        let Some(continuation) = self.pending_live_continuation.as_mut() else {
+            return;
+        };
+        continuation.speculative_progress = None;
+        let target = continuation
+            .checkpoint
+            .game
+            .hidden_cards
+            .iter()
+            .find_map(|(object_id, info)| {
+                if info.owner != owner {
+                    return None;
+                }
+                let slot_matches = slots.iter().any(|slot| {
+                    info.slot == *slot || info.public_slot.is_some_and(|public_slot| public_slot == *slot)
+                });
+                if !slot_matches {
+                    return None;
+                }
+                let commitment_matches =
+                    commitments.iter().all(|commitment| commitment.is_empty())
+                        || commitments.iter().filter(|commitment| !commitment.is_empty()).any(
+                            |commitment| {
+                                info.commitment == *commitment
+                                    || info.public_commitment.as_deref() == Some(commitment.as_str())
+                            },
+                        );
+                commitment_matches.then_some(*object_id)
+            });
+        if let Some(object_id) = target {
+            continuation
+                .checkpoint
+                .game
+                .register_linked_face_family_from_catalog(definition, &self.registry);
+            let _ = continuation
+                .checkpoint
+                .game
+                .reveal_hidden_card_with_definition(object_id, definition);
+        }
+    }
+
+    fn finish_hidden_card_reveal(&mut self, recompute_decision: bool) -> Result<JsValue, JsValue> {
+        self.last_crypto_requirements.clear();
+        self.pending_crypto_audit_before = None;
+        let preserve_decision =
+            !recompute_decision && self.should_preserve_decision_after_hidden_reveal();
+        if preserve_decision {
+            if self.pending_live_continuation.is_some() {
+                return self.refresh_live_continuation_after_hidden_reveal();
+            }
+            return self.snapshot();
+        }
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
     fn pending_trigger_stack_objects(&self) -> Vec<StackObjectSnapshot> {
         if self.priority_state.pending_cast.is_some()
             || self.priority_state.pending_activation.is_some()
@@ -270,16 +344,23 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
-        self.last_crypto_requirements.clear();
-        self.pending_crypto_audit_before = None;
-        self.recompute_ui_decision()?;
-        self.snapshot()
+        self.reveal_hidden_card_in_live_continuation_checkpoint(
+            info.owner,
+            &[info.slot],
+            &[info.commitment],
+            &definition,
+        );
+        self.finish_hidden_card_reveal(input.recompute_decision)
     }
 
     #[wasm_bindgen(js_name = revealHiddenSlot)]
     pub fn reveal_hidden_slot(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
         let input: RevealHiddenSlotInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
+        self.reveal_hidden_slot_input(input)
+    }
+
+    fn reveal_hidden_slot_input(&mut self, input: RevealHiddenSlotInput) -> Result<JsValue, JsValue> {
         let owner = PlayerId::from_index(input.owner);
         let Some((&object_id, info)) = self
             .game
@@ -309,10 +390,13 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
-        self.last_crypto_requirements.clear();
-        self.pending_crypto_audit_before = None;
-        self.recompute_ui_decision()?;
-        self.snapshot()
+        self.reveal_hidden_card_in_live_continuation_checkpoint(
+            owner,
+            &[input.slot],
+            &[input.commitment.unwrap_or_default()],
+            &definition,
+        );
+        self.finish_hidden_card_reveal(input.recompute_decision)
     }
 
     #[wasm_bindgen(js_name = revealHiddenPosition)]
@@ -369,10 +453,16 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
-        self.last_crypto_requirements.clear();
-        self.pending_crypto_audit_before = None;
-        self.recompute_ui_decision()?;
-        self.snapshot()
+        self.reveal_hidden_card_in_live_continuation_checkpoint(
+            owner,
+            &[input.original_slot, input.position],
+            &[
+                input.commitment.unwrap_or_default(),
+                input.position_commitment.unwrap_or_default(),
+            ],
+            &definition,
+        );
+        self.finish_hidden_card_reveal(input.recompute_decision)
     }
 
     #[wasm_bindgen(js_name = exportHiddenCardOpening)]
@@ -886,6 +976,35 @@ impl WasmGame {
         if let Some(continuation) = self.pending_live_continuation.as_mut() {
             continuation.checkpoint.game.force_next_die_roll(result);
         }
+    }
+
+    #[wasm_bindgen(js_name = setDaytime)]
+    pub fn set_daytime(&mut self, daytime: bool) -> Result<JsValue, JsValue> {
+        self.game.set_daytime(daytime);
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() {
+            checkpoint.game.set_daytime(daytime);
+        }
+        if let Some(action) = self.pending_replay_action.as_mut() {
+            action.checkpoint.game.set_daytime(daytime);
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() {
+            checkpoint.game.set_daytime(daytime);
+        }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            continuation.checkpoint.game.set_daytime(daytime);
+        }
+        self.recompute_ui_decision()?;
+        self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = isDaytime)]
+    pub fn is_daytime(&self) -> bool {
+        self.game.is_daytime()
+    }
+
+    #[wasm_bindgen(js_name = hasDayNight)]
+    pub fn has_day_night(&self) -> bool {
+        self.game.has_day_night()
     }
 
     /// Draw one card for a player.
@@ -1743,6 +1862,7 @@ impl WasmGame {
                         return Err(err);
                     }
                 };
+                let carry_viewed_cards = self.active_viewed_cards.clone();
                 let mut live_dm = WasmReplayDecisionMaker::new(&[]);
                 let result = apply_priority_response_with_dm(
                     &mut self.game,
@@ -1752,7 +1872,8 @@ impl WasmGame {
                     &mut live_dm,
                 );
                 let (pending_context, viewed_cards, audit_viewed_cards) = live_dm.finish();
-                self.active_viewed_cards = viewed_cards;
+                self.active_viewed_cards =
+                    merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
                 self.active_audit_viewed_cards = audit_viewed_cards;
 
                 if let Some(next_ctx) = pending_context {

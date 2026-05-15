@@ -159,7 +159,9 @@ pub(crate) fn parse_activated_line_with_raw(
                 | (Some("that"), Some("player"), Some("add" | "adds"))
                 | (Some("target"), Some("player"), Some("add" | "adds"))
         );
-        if is_primary_add_clause {
+        let is_primary_color_among_add_clause =
+            is_for_each_color_among_add_mana_clause(primary_sentence);
+        if is_primary_add_clause || is_primary_color_among_add_clause {
             let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
                 cost.clone()
             } else {
@@ -185,9 +187,13 @@ pub(crate) fn parse_activated_line_with_raw(
                 token.is_word("add") || token.is_word("adds")
             })
             .unwrap_or(0);
-            let mana_tokens = &primary_sentence[add_token_idx + 1..];
-            let mana_subject =
-                (add_token_idx > 0).then(|| parse_subject(&primary_sentence[..add_token_idx]));
+            let mana_tokens = if is_primary_color_among_add_clause {
+                primary_sentence
+            } else {
+                &primary_sentence[add_token_idx + 1..]
+            };
+            let mana_subject = (add_token_idx > 0 && !is_primary_color_among_add_clause)
+                .then(|| parse_subject(&primary_sentence[..add_token_idx]));
             let mana_words_view = ActivationRestrictionCompatWords::new(mana_tokens);
             let mana_words = mana_words_view.to_word_refs();
             let has_for_each_tail = mana_words_view.has_phrase(&["for", "each"]);
@@ -236,7 +242,8 @@ pub(crate) fn parse_activated_line_with_raw(
                 restrictions.extend(additional_activation_restrictions.clone());
                 restrictions
             };
-            if has_imprinted_colors
+            if is_primary_color_among_add_clause
+                || has_imprinted_colors
                 || has_any_choice_mana
                 || has_or_choice_mana
                 || uses_commander_identity
@@ -496,6 +503,7 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
                 value_contains_unbound_x(amount)
             }
+            SubjectVerbActionAst::AddManaColorsAmong { .. } => false,
             _ => false,
         },
         _ => {
@@ -676,6 +684,12 @@ pub(crate) fn normalize_activate_only_restriction(
 
 pub(crate) fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
     find_word_sequence_start(words, sequence).is_some()
+}
+
+pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) -> bool {
+    let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
+    contains_word_sequence(&words, &["for", "each", "color", "among"])
+        && contains_word_sequence(&words, &["add", "one", "mana", "of", "that", "color"])
 }
 
 pub(crate) fn find_word_sequence_start(words: &[&str], sequence: &[&str]) -> Option<usize> {

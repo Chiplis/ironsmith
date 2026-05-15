@@ -347,6 +347,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::GainControl { .. }
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::SwitchPowerToughness { .. }
+            | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -413,6 +414,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }

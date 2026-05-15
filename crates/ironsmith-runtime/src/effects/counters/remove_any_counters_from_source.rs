@@ -121,6 +121,13 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
         };
         let to_remove = if self.remove_all {
             max_removable
+        } else if self.display_x && let Some(x_value) = ctx.x_value {
+            if x_value > max_removable {
+                return Err(ExecutionError::Impossible(format!(
+                    "cannot remove X counters: X is {x_value}, but only {max_removable} counter(s) are available"
+                )));
+            }
+            x_value
         } else {
             make_decision_with_fallback(
                 game,
@@ -295,5 +302,28 @@ mod tests {
         assert_eq!(result, Ok(CostPaymentResult::Paid));
         assert_eq!(ctx.x_value, Some(4));
         assert_eq!(game.counter_count(card_id, CounterType::Charge), 0);
+    }
+
+    #[test]
+    fn pay_x_uses_existing_cost_x() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = simple_card("Marath Stand-In", 1);
+        let card_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(card_id) {
+            obj.counters.insert(CounterType::PlusOnePlusOne, 4);
+        }
+
+        let cost = Cost::effect(RemoveAnyCountersFromSourceEffect::x(Some(
+            CounterType::PlusOnePlusOne,
+        )));
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(card_id, alice, &mut dm).with_x(3);
+
+        let result = cost.pay(&mut game, &mut ctx);
+        assert_eq!(result, Ok(CostPaymentResult::Paid));
+        assert_eq!(ctx.x_value, Some(3));
+        assert_eq!(game.counter_count(card_id, CounterType::PlusOnePlusOne), 1);
     }
 }

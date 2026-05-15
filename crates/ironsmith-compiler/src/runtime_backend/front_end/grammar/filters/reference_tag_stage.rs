@@ -203,6 +203,75 @@ pub(super) fn parse_object_filter_inner(
 
         base_tokens.drain(idx + 1..end);
     }
+
+    // "other than Werewolves and Wolves" is an exclusion on the described
+    // object class, not the source-relative "other" predicate.
+    let mut idx = 0usize;
+    while idx + 2 < base_tokens.len() {
+        if !(base_tokens[idx].is_word("other") && base_tokens[idx + 1].is_word("than")) {
+            idx += 1;
+            continue;
+        }
+
+        let base_words_view = GrammarFilterNormalizedWords::new(&base_tokens[..idx]);
+        let base_words = base_words_view.to_word_refs();
+        let mut base_card_types = Vec::new();
+        for word in &base_words {
+            if let Some(card_type) = parse_card_type(word) {
+                push_unique(&mut base_card_types, card_type);
+            }
+        }
+
+        let tail_words_view = GrammarFilterNormalizedWords::new(&base_tokens[idx + 2..]);
+        let tail_words = tail_words_view.to_word_refs();
+        let mut excluded_card_types = Vec::new();
+        let mut excluded_subtypes = Vec::new();
+        let mut excluded_supertypes = Vec::new();
+        let mut excluded_colors = ColorSet::new();
+        for word in tail_words {
+            if is_article(word) || matches!(word, "and" | "or") {
+                continue;
+            }
+            if let Some(card_type) = parse_card_type(word) {
+                push_unique(&mut excluded_card_types, card_type);
+            }
+            if let Some(subtype) = parse_subtype_flexible(word) {
+                push_unique(&mut excluded_subtypes, subtype);
+            }
+            if let Some(supertype) = parse_supertype_word(word) {
+                push_unique(&mut excluded_supertypes, supertype);
+            }
+            if let Some(color) = parse_color(word) {
+                excluded_colors = excluded_colors.union(color);
+            }
+        }
+
+        let has_specific_exclusion = !excluded_subtypes.is_empty()
+            || !excluded_supertypes.is_empty()
+            || !excluded_colors.is_empty();
+        let saw_exclusion = !excluded_card_types.is_empty() || has_specific_exclusion;
+        if !saw_exclusion {
+            idx += 1;
+            continue;
+        }
+
+        for card_type in excluded_card_types {
+            if has_specific_exclusion && base_card_types.contains(&card_type) {
+                continue;
+            }
+            push_unique(&mut filter.excluded_card_types, card_type);
+        }
+        for subtype in excluded_subtypes {
+            push_unique(&mut filter.excluded_subtypes, subtype);
+        }
+        for supertype in excluded_supertypes {
+            push_unique(&mut filter.excluded_supertypes, supertype);
+        }
+        filter.excluded_colors = filter.excluded_colors.union(excluded_colors);
+        base_tokens.truncate(idx);
+        break;
+    }
+
     if let Some(mut disjunction) = parse_attached_reference_or_another_disjunction(&base_tokens)? {
         if target_player.is_some() || target_object.is_some() {
             disjunction = if targets_only {

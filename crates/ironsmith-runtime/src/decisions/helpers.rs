@@ -208,7 +208,7 @@ pub fn ask_mana_color(
 /// ```
 pub fn ask_choose_one<T: Clone>(
     game: &GameState,
-    dm: &mut impl DecisionMaker,
+    dm: &mut (impl DecisionMaker + ?Sized),
     player: PlayerId,
     source: ObjectId,
     options: &[(String, T)],

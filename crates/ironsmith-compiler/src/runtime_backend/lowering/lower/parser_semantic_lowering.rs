@@ -182,11 +182,15 @@ fn lower_rewrite_statement_to_chunks_impl(
         }
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
-            if statement_group_should_parse_as_effects_first(group_tokens) {
+            if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
+                chunks.push(chunk);
+            } else if statement_group_should_parse_as_effects_first(group_tokens) {
                 let effects = parse_effect_sentences_lexed(group_tokens)?;
                 chunks.push(LineAst::Statement { effects });
             } else if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens)
             {
+                chunks.push(chunk);
+            } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
                 chunks.push(chunk);
             } else if let Some(abilities) = parse_static_ability_ast_line_lexed(group_tokens)? {
                 chunks.push(LineAst::StaticAbilities(abilities));
@@ -211,12 +215,15 @@ fn lower_rewrite_statement_to_chunks_impl(
             && !sentences_have_temporary_static_followup_after_first(&sentence_tokens)
             && sentence_tokens.iter().any(|sentence| {
                 parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
+                    || parse_day_night_starts_day_static_chunk(sentence).is_some()
                     || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
             })
         {
             let mut chunks = Vec::with_capacity(sentence_tokens.len());
             for sentence in sentence_tokens {
                 if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&sentence) {
+                    chunks.push(chunk);
+                } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&sentence) {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&sentence)? {
                     chunks.push(LineAst::StaticAbilities(abilities));
@@ -232,11 +239,16 @@ fn lower_rewrite_statement_to_chunks_impl(
         if !grouped_tokens.is_empty() {
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
-                if statement_group_should_parse_as_effects_first(&group_tokens) {
+                if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
+                    chunks.push(chunk);
+                } else if statement_group_should_parse_as_effects_first(&group_tokens) {
                     let effects = parse_effect_sentences_lexed(&group_tokens)?;
                     chunks.push(LineAst::Statement { effects });
                 } else if let Some(chunk) =
                     parse_self_enters_with_x_counters_static_chunk(&group_tokens)
+                {
+                    chunks.push(chunk);
+                } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens)
                 {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)?
@@ -420,6 +432,29 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
             ),
         ),
     ]))
+}
+
+fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
+    let rendered = render_token_slice(tokens);
+    let normalized = rendered
+        .to_ascii_lowercase()
+        .replace('\u{2019}', "'")
+        .replace("  ", " ")
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let starts_day = normalized.contains("neither day nor night")
+        && normalized.contains("becomes day")
+        && (normalized.contains("as this creature enters")
+            || normalized.contains("as this permanent enters")
+            || normalized.contains("as this object enters"));
+    starts_day.then(|| {
+        LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::rule_fallback_text(
+                rendered.trim().trim_end_matches('.').to_string(),
+            )),
+        ])
+    })
 }
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {

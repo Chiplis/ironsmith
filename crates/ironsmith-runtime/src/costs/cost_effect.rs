@@ -176,6 +176,36 @@ fn tagged_move_to_zone_cost_precheck(
     }
 }
 
+fn simple_exile_from_hand_filter(
+    filter: &crate::filter::ObjectFilter,
+) -> Option<Option<crate::color::ColorSet>> {
+    let mut expected = crate::filter::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Hand)
+        .owned_by(crate::target::PlayerFilter::You)
+        .other();
+    if let Some(colors) = filter.colors {
+        expected = expected.with_colors(colors);
+    }
+    (filter == &expected).then_some(filter.colors)
+}
+
+fn simple_exile_from_graveyard_filter(
+    filter: &crate::filter::ObjectFilter,
+) -> Option<Option<crate::types::CardType>> {
+    if filter.card_types.len() > 1 {
+        return None;
+    }
+
+    let card_type = filter.card_types.first().copied();
+    let mut expected = crate::filter::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Graveyard)
+        .owned_by(crate::target::PlayerFilter::You);
+    if let Some(card_type) = card_type {
+        expected = expected.with_type(card_type);
+    }
+    (filter == &expected).then_some(card_type)
+}
+
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
         self.effect
@@ -461,25 +491,35 @@ impl CostPayer for CostEffect {
                 return CostProcessingMode::Immediate;
             }
 
-            if let ChooseSpec::Object(filter) = effect.spec.base()
-                && let crate::effect::ChoiceCount {
-                    min,
-                    max: Some(max),
-                    dynamic_x: false,
-                    ..
-                } = effect.spec.count()
-                && min == max
-            {
-                if filter.zone == Some(crate::zone::Zone::Hand) {
+            if let ChooseSpec::Object(filter) = effect.spec.base() {
+                let count = effect.spec.count();
+                if count.min == 0 || count.dynamic_x {
+                    return CostProcessingMode::Immediate;
+                }
+
+                if count.max == Some(count.min)
+                    && let Some(color_filter) = simple_exile_from_hand_filter(filter)
+                {
                     return CostProcessingMode::ExileFromHand {
-                        count: min as u32,
-                        color_filter: filter.colors,
+                        count: count.min as u32,
+                        color_filter,
                     };
                 }
-                if filter.zone == Some(crate::zone::Zone::Graveyard) {
+
+                if count.max == Some(count.min)
+                    && let Some(card_type) = simple_exile_from_graveyard_filter(filter)
+                {
                     return CostProcessingMode::ExileFromGraveyard {
-                        count: min as u32,
-                        card_type: filter.card_types.first().copied(),
+                        count: count.min as u32,
+                        card_type,
+                    };
+                }
+
+                if let Some(zone) = filter.zone {
+                    return CostProcessingMode::ExileObjects {
+                        count: count.min as u32,
+                        filter: filter.clone(),
+                        zone,
                     };
                 }
             }
@@ -596,6 +636,82 @@ mod tests {
                 .filter_map(|id| game.object(*id))
                 .any(|obj| obj.name == "Skarrgan Firebird")
         );
+    }
+
+    #[test]
+    fn counted_exile_object_cost_honors_preselected_cost_choices() {
+        use crate::color::{Color, ColorSet};
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::target::ChooseSpec;
+
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(10), "Craft Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        let mut add_material = |name: &str, mana_cost: ManaCost, card_type: CardType| {
+            let card = CardBuilder::new(CardId::new(), name)
+                .mana_cost(mana_cost)
+                .card_types(vec![card_type])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Graveyard)
+        };
+
+        let first_red = add_material(
+            "Arc Lightning",
+            ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Red]]),
+            CardType::Sorcery,
+        );
+        let chosen_red_one = add_material(
+            "Lightning Helix",
+            ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::White]]),
+            CardType::Instant,
+        );
+        let chosen_red_two = add_material(
+            "Lightning Bolt",
+            ManaCost::from_pips(vec![vec![ManaSymbol::Red]]),
+            CardType::Instant,
+        );
+        let blue_instant = add_material(
+            "Opt",
+            ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]),
+            CardType::Instant,
+        );
+
+        let material_filter = crate::filter::ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_colors(ColorSet::from_color(Color::Red))
+            .with_type(CardType::Instant)
+            .with_type(CardType::Sorcery);
+        let cost = crate::costs::Cost::validated_effect(crate::effect::Effect::exile(
+            ChooseSpec::Object(material_filter).with_count(crate::effect::ChoiceCount::at_least(2)),
+        ));
+        assert!(matches!(
+            cost.processing_mode(),
+            crate::costs::CostProcessingMode::ExileObjects { count: 2, .. }
+        ));
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm)
+            .with_pre_chosen_cards(vec![chosen_red_one, chosen_red_two]);
+
+        cost.pay(&mut game, &mut ctx)
+            .expect("preselected red material cost should be payable");
+
+        let exiled_names = game
+            .exile
+            .iter()
+            .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+            .collect::<Vec<_>>();
+        assert!(exiled_names.contains(&"Lightning Helix"));
+        assert!(exiled_names.contains(&"Lightning Bolt"));
+
+        assert_eq!(game.object(first_red).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.object(blue_instant).unwrap().zone, Zone::Graveyard);
     }
 
     #[test]

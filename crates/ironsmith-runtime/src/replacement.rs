@@ -53,6 +53,31 @@ impl ReplacementEffectId {
     }
 }
 
+/// Stable identity for a replacement effect across static-effect regeneration.
+///
+/// Static ability replacement effects are cleared and re-added during game-state
+/// refreshes, which gives them fresh transient IDs. Event processing still needs
+/// to recognize the same replacement effect for CR 614.5, especially when a
+/// replacement creates nested events that move objects and refresh state.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReplacementEffectKey {
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub matcher: Option<String>,
+    pub replacement: String,
+}
+
+impl ReplacementEffect {
+    pub fn application_key(&self) -> ReplacementEffectKey {
+        ReplacementEffectKey {
+            source: self.source,
+            controller: self.controller,
+            matcher: self.matcher.as_ref().map(|matcher| matcher.display()),
+            replacement: format!("{:?}", self.replacement),
+        }
+    }
+}
+
 /// What happens instead when a replacement triggers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReplacementAction {
@@ -93,6 +118,17 @@ pub enum ReplacementAction {
 
     /// Exile the object and record it as exiled with the replacement source.
     ExileWithSourceLink,
+
+    /// Exile the object, record it as exiled with the replacement source, then
+    /// execute follow-up effects from that source.
+    ExileWithSourceLinkThen(Vec<Effect>),
+
+    /// Exile the object with counters, record it as exiled with the replacement
+    /// source, then execute follow-up effects from that source.
+    ExileWithSourceLinkCountersThen {
+        counters: Vec<(CounterType, u32)>,
+        effects: Vec<Effect>,
+    },
 
     /// Enter with additional counters
     EnterWithCounters {

@@ -8,6 +8,7 @@ use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::types::CardType;
 
 fn is_plain_other_card_filter(filter: &ObjectFilter) -> bool {
     filter.other
@@ -36,6 +37,25 @@ fn ensure_singular_noun_phrase_article(description: String) -> String {
         description
     } else {
         format!("a {description}")
+    }
+}
+
+fn explore_revealed_card_phrase(filter: &ObjectFilter) -> String {
+    let land_only = filter.card_types == [CardType::Land]
+        && filter.excluded_card_types.is_empty()
+        && filter.zone.is_none();
+    let nonland_only = filter.card_types.is_empty()
+        && filter.excluded_card_types == [CardType::Land]
+        && filter.zone.is_none();
+    if land_only {
+        "a land card".to_string()
+    } else if nonland_only {
+        "a nonland card".to_string()
+    } else {
+        format!(
+            "{} card",
+            ensure_singular_noun_phrase_article(filter.description())
+        )
     }
 }
 
@@ -218,9 +238,31 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => format!("Whenever a player exerts {}", source_filter.description()),
             };
         }
+        if self.action == KeywordActionKind::Crew
+            && let Some(source_filter) = &self.source_filter
+        {
+            let object = self
+                .tagged_object_filter
+                .as_ref()
+                .map(|(_, object_filter)| {
+                    ensure_singular_noun_phrase_article(object_filter.description())
+                })
+                .unwrap_or_else(|| "a Vehicle".to_string());
+            return format!("Whenever {} crews {object}", source_filter.description());
+        }
         if self.action == KeywordActionKind::Explore
             && let Some(source_filter) = &self.source_filter
         {
+            if let Some((tag, object_filter)) = &self.tagged_object_filter
+                && tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
+            {
+                return format!(
+                    "Whenever {} {} {}",
+                    source_filter.description(),
+                    self.action.third_person(),
+                    explore_revealed_card_phrase(object_filter)
+                );
+            }
             return format!(
                 "Whenever {} {}",
                 source_filter.description(),
@@ -420,6 +462,59 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever a creature you control explores"
+        );
+    }
+
+    #[test]
+    fn keyword_action_explore_matching_revealed_card_filter_distinguishes_empty_library() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let explorer_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(10), "Explorer")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let explorer_id =
+            game.create_object_from_card(&explorer_card, alice, crate::zone::Zone::Battlefield);
+        let land_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(11), "Forest")
+            .card_types(vec![crate::types::CardType::Land])
+            .build();
+        let land_id = game.create_object_from_card(&land_card, alice, crate::zone::Zone::Library);
+        let land_snapshot = ObjectSnapshot::from_object(game.object(land_id).expect("land"), &game);
+
+        let trigger = KeywordActionTrigger::matching_source_and_tagged_object(
+            KeywordActionKind::Explore,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+            TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+            ObjectFilter::default().with_type(crate::types::CardType::Land),
+        );
+        let ctx = TriggerContext::for_source(explorer_id, alice, &game);
+        let land_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Explore, alice, explorer_id, 1)
+                .with_snapshot(Some(ObjectSnapshot::from_object(
+                    game.object(explorer_id).expect("explorer"),
+                    &game,
+                )))
+                .with_object_tags(std::collections::HashMap::from([(
+                    TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+                    vec![land_snapshot],
+                )])),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&land_event, &ctx));
+
+        let empty_library_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Explore, alice, explorer_id, 1)
+                .with_snapshot(Some(ObjectSnapshot::from_object(
+                    game.object(explorer_id).expect("explorer"),
+                    &game,
+                ))),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            !trigger.matches(&empty_library_event, &ctx),
+            "exploring with no revealed card should not satisfy land-card explore triggers"
         );
     }
 

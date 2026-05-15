@@ -45,6 +45,11 @@ impl StaticAbility {
             Some(StaticAbilityId::Wither) => Self::wither(),
             Some(StaticAbilityId::Infect) => Self::infect(),
             Some(StaticAbilityId::Changeling) => Self::changeling(),
+            Some(StaticAbilityId::Daybound) => Self::daybound(),
+            Some(StaticAbilityId::Nightbound) => Self::nightbound(),
+            Some(StaticAbilityId::DayNightStartsDayAsEnters) => {
+                Self::day_night_starts_day_as_enters()
+            }
             Some(StaticAbilityId::Partner) => Self::partner(),
             Some(StaticAbilityId::PartnerWith) => Self::partner_with(label),
             Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),

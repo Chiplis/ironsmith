@@ -1928,8 +1928,19 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
-    if matches!(clause_words.last().copied(), Some("explore" | "explores")) {
-        let subject_tokens = &clause_tokens[..clause_tokens.len().saturating_sub(1)];
+    if let Some(explore_idx) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "explore" | "explores"))
+    {
+        let tail_words = &clause_words[explore_idx + 1..];
+        if !tail_words.is_empty()
+            && tail_words != ["again"]
+            && !matches!(tail_words.last(), Some(&"times"))
+        {
+            return Ok(None);
+        }
+
+        let subject_tokens = &clause_tokens[..explore_idx];
         let subject_word_view = ClausePatternCompatWords::new(subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         let target = if subject_words.is_empty()
@@ -1942,7 +1953,27 @@ pub(crate) fn parse_keyword_mechanic_clause(
         } else {
             parse_target_phrase(subject_tokens)?
         };
-        return Ok(Some(EffectAst::subject_verb_explore(target)));
+        let explore = EffectAst::subject_verb_explore(target);
+        if matches!(tail_words.last(), Some(&"times")) {
+            let value_tokens = &clause_tokens[explore_idx + 1..clause_tokens.len() - 1];
+            let (count, used) = parse_value(value_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing explore count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            if used != value_tokens.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported explore count tail (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            return Ok(Some(EffectAst::RepeatEffects {
+                count,
+                effects: vec![explore],
+            }));
+        }
+        return Ok(Some(explore));
     }
 
     Ok(None)

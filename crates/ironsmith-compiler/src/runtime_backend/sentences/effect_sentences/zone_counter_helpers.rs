@@ -1095,6 +1095,17 @@ fn parse_transform_like(
     }
     let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
+    if matches!(target_words.first().copied(), Some("all" | "each")) {
+        let filter_tokens = &tokens[1..];
+        let filter = parse_object_filter(filter_tokens, false)?;
+        return Ok(EffectAst::ForEachObject {
+            filter,
+            effects: vec![action(TargetAst::Tagged(
+                TagKey::from(IT_TAG),
+                span_from_tokens(tokens),
+            ))],
+        });
+    }
     if target_words == ["it"]
         || target_words == ["this"]
         || target_words == ["this", "creature"]

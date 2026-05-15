@@ -579,7 +579,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     ctx.next_tag("targeted")
                 };
                 prelude.push(
-                    Effect::new(crate::effects::SequenceEffect::new(Vec::new())).tag(tag.clone()),
+                    Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
                 );
                 condition_reference_tag = Some(tag);
             }

@@ -11,7 +11,8 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
 use super::lifecycle::{
-    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry, schedule_token_cleanup,
+    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry, remaining_token_slots,
+    schedule_token_cleanup,
 };
 
 /// Effect that creates token creatures or other token permanents.
@@ -68,7 +69,15 @@ impl EffectExecutor for CreateTokenEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id =
             crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+        let replaced_count = crate::events::processing::process_token_creation_with_event(
+            game,
+            controller_id,
+            base_count,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+        ) as usize;
+        let count = replaced_count.min(remaining_token_slots(game, controller_id));
         let cleanup_options = TokenCleanupOptions::new(
             self.exile_at_end_of_combat,
             self.sacrifice_at_end_of_combat,
@@ -191,12 +200,14 @@ impl EffectExecutor for CreateTokenEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::tayam_luminous_enigma;
     use crate::color::{Color, ColorSet};
     use crate::ids::{CardId, PlayerId};
     use crate::object::{CounterType, ObjectKind};
+    use crate::static_abilities::StaticAbility;
     use crate::test_prelude::*;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
@@ -318,6 +329,94 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn create_token_replacement_doubles_tokens_created_under_your_control() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let doubler = CardDefinitionBuilder::new(CardId::new(), "Token Doubler")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(
+                StaticAbility::double_token_creation_replacement(
+                    PlayerFilter::You,
+                    "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.".to_string(),
+                ),
+            ))
+            .build();
+        game.create_object_from_definition(&doubler, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::one(soldier_token())
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().all(|id| {
+            game.object(*id)
+                .is_some_and(|token| token.name == "Soldier" && token.kind == ObjectKind::Token)
+        }));
+    }
+
+    #[test]
+    fn create_token_replacement_does_not_double_other_players_tokens() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let doubler = CardDefinitionBuilder::new(CardId::new(), "Token Doubler")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(
+                StaticAbility::double_token_creation_replacement(
+                    PlayerFilter::You,
+                    "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.".to_string(),
+                ),
+            ))
+            .build();
+        game.create_object_from_definition(&doubler, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::new(soldier_token(), 1, PlayerFilter::Specific(bob))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 1);
+        let token = game.object(ids[0]).expect("token should exist");
+        assert_eq!(game.controller_of(token), bob);
+    }
+
+    #[test]
+    fn create_token_caps_tokens_per_controller_at_500() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let result = CreateTokenEffect::you(soldier_token(), 501)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 500);
+
+        let result = CreateTokenEffect::you(soldier_token(), 2)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert!(ids.is_empty());
     }
 
     #[test]

@@ -927,6 +927,14 @@ impl Trigger {
         Self::keyword_action(crate::events::KeywordActionKind::Vote, PlayerFilter::Any)
     }
 
+    /// Create a "whenever day becomes night or night becomes day" trigger.
+    pub fn day_night_changed() -> Self {
+        Self::new(EventKindTrigger::new(
+            EventKind::DayNightChanged,
+            "Whenever day becomes night or night becomes day",
+        ))
+    }
+
     /// Create a "whenever [player] [keyword action]" trigger.
     pub fn keyword_action(action: crate::events::KeywordActionKind, player: PlayerFilter) -> Self {
         Self::new(KeywordActionTrigger::new(action, player))

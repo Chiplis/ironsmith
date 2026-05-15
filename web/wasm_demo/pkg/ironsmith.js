@@ -292,6 +292,13 @@ export class WasmGame {
         return ret;
     }
     /**
+     * @returns {boolean}
+     */
+    hasDayNight() {
+        const ret = wasm.wasmgame_hasDayNight(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * Replace this WASM engine with a checkpoint from the current authoritative host.
      * @param {any} checkpoint
      * @param {number} perspective_index
@@ -312,6 +319,13 @@ export class WasmGame {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @returns {boolean}
+     */
+    isDaytime() {
+        const ret = wasm.wasmgame_isDaytime(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * Return whether the query resolves to a locally known card name.
@@ -567,6 +581,17 @@ export class WasmGame {
      */
     setCombatDamageAssignment(attacker_id, recipient_id, amount) {
         wasm.wasmgame_setCombatDamageAssignment(this.__wbg_ptr, attacker_id, recipient_id, amount);
+    }
+    /**
+     * @param {boolean} daytime
+     * @returns {any}
+     */
+    setDaytime(daytime) {
+        const ret = wasm.wasmgame_setDaytime(this.__wbg_ptr, daytime);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * Set a player's life total.

@@ -346,6 +346,11 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                     continue;
                 }
 
+                if let Some(replacement) = &reduction.replacement_mana_cost {
+                    adjusted = replacement.clone();
+                    continue;
+                }
+
                 let before = adjusted.clone();
                 adjusted = adjusted.reduce_generic(reduction.reduction.saturating_mul(multiplier));
                 if let Some(minimum_total_mana) = reduction.minimum_total_mana
@@ -389,7 +394,18 @@ pub fn resolve_play_from_alternative_method(
         .grant_registry
         .granted_alternative_casts_for_card(game, spell.id, zone, player);
     let granted_idx = idx.checked_sub(spell.alternative_casts.len())?;
-    granted.get(granted_idx).map(|entry| entry.method.clone())
+    if let Some(entry) = granted.get(granted_idx) {
+        return Some(entry.method.clone());
+    }
+
+    let adventure_idx = granted_idx.checked_sub(granted.len())?;
+    let adventure_view = spell_view_for_split_other_half_cast(game, spell)?;
+    let view = DerivedGameView::new(game);
+    let adventure_granted =
+        view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player);
+    adventure_granted
+        .get(adventure_idx)
+        .map(|entry| entry.method.clone())
 }
 
 pub(crate) fn alternative_cast_method_matches_kind(
@@ -429,6 +445,11 @@ pub(crate) fn casting_method_matches_alternative_kind(
             use_alternative: Some(idx),
             zone,
             ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
             .or_else(|| spell.cast_alternative_method.clone())
             .as_ref()
@@ -462,6 +483,11 @@ fn casting_method_is_bestow(
             use_alternative: Some(idx),
             zone,
             ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
             .or_else(|| spell.cast_alternative_method.clone())
             .as_ref()
@@ -490,6 +516,11 @@ fn spell_view_for_cost_filter_match(
             .or_else(|| spell.cast_alternative_method.clone()),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
@@ -936,6 +967,11 @@ fn casting_method_grants_flash_timing(
             zone,
             use_alternative: Some(idx),
             ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            zone,
+            use_alternative: idx,
+            ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
                 .or_else(|| spell.cast_alternative_method.clone())
@@ -1009,10 +1045,18 @@ pub fn spell_mana_cost_for_cast(
         CastingMethod::Normal => spell.mana_cost.clone(),
         CastingMethod::FaceDown => Some(face_down_cast_mana_cost()),
         CastingMethod::SplitOtherHalf => {
-            linked_face_definition(game, spell).and_then(|def| def.card.mana_cost)
+            if spell.zone == Zone::Stack {
+                spell.mana_cost.clone()
+            } else {
+                linked_face_definition(game, spell).and_then(|def| def.card.mana_cost)
+            }
         }
         CastingMethod::Fuse => {
-            spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost)
+            if spell.zone == Zone::Stack {
+                spell.mana_cost.clone()
+            } else {
+                spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost)
+            }
         }
         CastingMethod::Alternative(idx) => {
             if let Some(method) = spell
@@ -1045,6 +1089,11 @@ pub fn spell_mana_cost_for_cast(
         } => spell.mana_cost.clone(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
             zone,
             ..
         } => {
@@ -1109,6 +1158,11 @@ fn alternative_method_for_casting_method(
             use_alternative: Some(idx),
             zone,
             ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
             .or_else(|| spell.cast_alternative_method.clone()),
         CastingMethod::Normal => spell.cast_alternative_method.clone(),
@@ -1154,6 +1208,11 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
             .is_some_and(alternative_method_uses_printed_mana_cost),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
@@ -1240,20 +1299,26 @@ fn mana_cost_can_be_paid_with_view(
 ) -> bool {
     let potential = view.potential_mana(player);
     let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
+    let allow_any_color_for_obvious =
+        allow_any_color || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
     let allow_black_life = view
         .player_can_pay_black_with_life_for_reason(player, crate::costs::PaymentReason::CastSpell);
-    !mana_cost_is_obviously_unpayable(&potential, cost, allow_any_color, allow_black_life)
-        && can_pay_mana_cost_with_available_sources(
-            game,
-            player,
-            Some(spell_id),
-            cost,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-            allow_any_color,
-            allow_black_life,
-            view,
-        )
+    !mana_cost_is_obviously_unpayable(
+        &potential,
+        cost,
+        allow_any_color_for_obvious,
+        allow_black_life,
+    ) && can_pay_mana_cost_with_available_sources(
+        game,
+        player,
+        Some(spell_id),
+        cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+        allow_any_color,
+        allow_black_life,
+        view,
+    )
 }
 
 fn effective_cost_with_affordable_non_mana_optional_cost(
@@ -1316,10 +1381,12 @@ pub(crate) fn can_cast_spell_with_context(
             }
             Some(spell_view_for_face_down_cast(spell))
         }
-        CastingMethod::SplitOtherHalf => match spell_view_for_split_other_half_cast(game, spell) {
-            Some(view) => Some(view),
-            None => return false,
-        },
+        CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
+            match spell_view_for_split_other_half_cast(game, spell) {
+                Some(view) => Some(view),
+                None => return false,
+            }
+        }
         CastingMethod::Fuse => match spell_view_for_fused_split_cast(game, spell) {
             Some(view) => Some(view),
             None => return false,
@@ -1662,6 +1729,8 @@ pub(crate) fn can_cast_with_cost_with_context(
         let affordability_started_at = PerfTimer::start();
         let potential = view.potential_mana(player);
         let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
+        let allow_any_color_for_obvious = allow_any_color
+            || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
         let allow_black_life = view.player_can_pay_black_with_life_for_reason(
             player,
             crate::costs::PaymentReason::CastSpell,
@@ -1669,7 +1738,7 @@ pub(crate) fn can_cast_with_cost_with_context(
         if mana_cost_is_obviously_unpayable(
             &potential,
             &adjusted,
-            allow_any_color,
+            allow_any_color_for_obvious,
             allow_black_life,
         ) {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
@@ -1801,11 +1870,41 @@ pub(crate) fn linked_face_definition(
     game.linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)
 }
 
+pub(crate) fn spell_has_adventure_half(game: &GameState, spell: &crate::object::Object) -> bool {
+    linked_face_definition(game, spell).is_some_and(|def| {
+        def.card
+            .subtypes
+            .contains(&crate::types::Subtype::Adventure)
+            && (def
+                .card
+                .card_types
+                .contains(&crate::types::CardType::Instant)
+                || def
+                    .card
+                    .card_types
+                    .contains(&crate::types::CardType::Sorcery))
+    })
+}
+
+pub(crate) fn spell_has_castable_linked_other_half(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> bool {
+    if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
+        || spell_has_adventure_half(game, spell)
+    {
+        return true;
+    }
+
+    spell.linked_face_layout == crate::card::LinkedFaceLayout::TransformLike
+        && linked_face_definition(game, spell).is_some_and(|def| def.card.mana_cost.is_some())
+}
+
 pub(crate) fn spell_view_for_split_other_half_cast(
     game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
-    if spell.linked_face_layout != crate::card::LinkedFaceLayout::Split {
+    if !spell_has_castable_linked_other_half(game, spell) {
         return None;
     }
     let other_def = linked_face_definition(game, spell)?;
@@ -2223,6 +2322,7 @@ pub(crate) fn can_pay_cost_with_spell_exclusion(
         | CostProcessingMode::DiscardCards { .. }
         | CostProcessingMode::ExileFromHand { .. }
         | CostProcessingMode::ExileFromGraveyard { .. }
+        | CostProcessingMode::ExileObjects { .. }
         | CostProcessingMode::RevealFromHand { .. }
         | CostProcessingMode::ReturnToHandTarget { .. } => cost.can_pay(game, &ctx).is_ok(),
     }
@@ -3234,6 +3334,7 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
 
 #[derive(Clone)]
 struct AvailableManaSource {
+    source_id: ObjectId,
     outputs: Vec<Vec<ManaSymbol>>,
 }
 
@@ -3438,6 +3539,7 @@ fn available_mana_sources_for_payment(
         }
         if !outputs_for_permanent.is_empty() {
             sources.push(AvailableManaSource {
+                source_id: perm_id,
                 outputs: outputs_for_permanent,
             });
         }
@@ -3664,9 +3766,15 @@ fn can_pay_expanded_pips(
             if used_sources_mask & source_mask != 0 {
                 continue;
             }
+            let allow_source_any_color = allow_any_color
+                || game.can_spend_mana_as_any_color_from_mana_source(
+                    player,
+                    payment_source,
+                    source.source_id,
+                );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, allow_any_color)
+                    consume_output_for_pip(output, symbol, allow_source_any_color)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
@@ -3692,7 +3800,6 @@ fn can_pay_expanded_pips(
         }
     }
 
-    let _ = payment_source;
     failed_states.insert(key);
     false
 }
@@ -3762,9 +3869,15 @@ fn can_pay_expanded_pips_large_source_count(
             if used_sources[source_index] {
                 continue;
             }
+            let allow_source_any_color = allow_any_color
+                || game.can_spend_mana_as_any_color_from_mana_source(
+                    player,
+                    payment_source,
+                    source.source_id,
+                );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, allow_any_color)
+                    consume_output_for_pip(output, symbol, allow_source_any_color)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
@@ -3791,7 +3904,6 @@ fn can_pay_expanded_pips_large_source_count(
         }
     }
 
-    let _ = payment_source;
     false
 }
 

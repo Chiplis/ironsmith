@@ -543,15 +543,26 @@ pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
     effect.target_selection_profile()
 }
 
-fn exchange_control_target_specs(effect: &Effect) -> Option<(&ChooseSpec, &ChooseSpec)> {
+fn exchange_control_target_specs(effect: &Effect) -> Option<(ChooseSpec, ChooseSpec)> {
     if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeControlEffect>() {
         if exchange.permanent1 != exchange.permanent2 {
-            return Some((&exchange.permanent1, &exchange.permanent2));
+            return Some((exchange.permanent1.clone(), exchange.permanent2.clone()));
         }
     }
-    effect
-        .downcast_ref::<crate::effects::TaggedEffect>()
-        .and_then(|tagged| exchange_control_target_specs(&tagged.effect))
+
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(specs) = exchange_control_target_specs(&tagged.effect)
+    {
+        return Some(specs);
+    }
+
+    let mut found = None;
+    effect.visit_child_effects(&mut |child| {
+        if found.is_none() {
+            found = exchange_control_target_specs(child);
+        }
+    });
+    found
 }
 
 fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
@@ -972,7 +983,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     }
 
     if let Some((first, second)) = exchange_control_target_specs(effect) {
-        for spec in [first.clone(), relaxed_exchange_later_target_spec(second)] {
+        for spec in [first, relaxed_exchange_later_target_spec(&second)] {
             if !requires_target_selection(&spec) {
                 continue;
             }
@@ -1281,11 +1292,11 @@ fn count_target_selection_slots_from_effect_internal(
     if let Some((first, second)) = exchange_control_target_specs(effect) {
         let mut count = 0;
         for spec in [first, second] {
-            if !requires_target_selection(spec) {
+            if !requires_target_selection(&spec) {
                 continue;
             }
             let profile = crate::effects::TargetSelectionProfile {
-                spec,
+                spec: &spec,
                 description: "target",
                 min_targets: 1,
                 max_targets: Some(1),

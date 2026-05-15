@@ -7,6 +7,7 @@ use crate::color::ColorSet;
 use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::types::CardType;
+use crate::zone::Zone;
 
 /// How a cost should be processed during cost payment.
 ///
@@ -55,6 +56,16 @@ pub enum CostProcessingMode {
         count: u32,
         /// Optional card type restriction.
         card_type: Option<CardType>,
+    },
+
+    /// Cost requires selecting objects matching a full filter and exiling them.
+    ExileObjects {
+        /// Number of objects to exile.
+        count: u32,
+        /// Full filter for legal choices.
+        filter: ObjectFilter,
+        /// Zone to enumerate choices from.
+        zone: Zone,
     },
 
     /// Cost requires selecting cards to reveal from hand.
@@ -126,6 +137,29 @@ impl CostProcessingMode {
                 }
             }
 
+            CostProcessingMode::ExileObjects {
+                count,
+                filter,
+                zone,
+            } => {
+                let zone_phrase = match zone {
+                    Zone::Battlefield => "the battlefield",
+                    Zone::Hand => "your hand",
+                    Zone::Graveyard => "your graveyard",
+                    Zone::Exile => "exile",
+                    Zone::Library => "your library",
+                    Zone::Stack => "the stack",
+                    Zone::Command => "the command zone",
+                    Zone::OutsideGame => "outside the game",
+                };
+                let object_desc = filter.description();
+                if *count == 1 {
+                    format!("Exile a {} from {}", object_desc, zone_phrase)
+                } else {
+                    format!("Exile {} {}s from {}", count, object_desc, zone_phrase)
+                }
+            }
+
             CostProcessingMode::RevealFromHand { count, card_type } => {
                 let type_str = card_type
                     .map(|ct| ct.card_phrase().to_string())
@@ -158,6 +192,7 @@ impl CostProcessingMode {
             CostProcessingMode::DiscardCards { .. } => true,
             CostProcessingMode::ExileFromHand { .. } => true,
             CostProcessingMode::ExileFromGraveyard { .. } => true,
+            CostProcessingMode::ExileObjects { .. } => true,
             CostProcessingMode::RevealFromHand { .. } => true,
             CostProcessingMode::ReturnToHandTarget { .. } => true,
         }

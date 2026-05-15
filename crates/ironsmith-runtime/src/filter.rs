@@ -302,6 +302,35 @@ fn subject_has_attached_subtype(
     })
 }
 
+fn linked_face_has_adventure(
+    game: &GameState,
+    name: Option<&str>,
+    id: Option<crate::ids::CardId>,
+) -> bool {
+    game.linked_face_definition_by_name_or_id(name, id)
+        .is_some_and(|def| def.card.subtypes.contains(&Subtype::Adventure))
+}
+
+fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -> bool {
+    object.subtypes.contains(&subtype)
+        || (subtype == Subtype::Adventure
+            && linked_face_has_adventure(
+                game,
+                object.other_face_name.as_deref(),
+                object.other_face,
+            ))
+}
+
+fn snapshot_matches_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, game: &GameState) -> bool {
+    snapshot.subtypes.contains(&subtype)
+        || (subtype == Subtype::Adventure
+            && linked_face_has_adventure(
+                game,
+                snapshot.other_face_name.as_deref(),
+                snapshot.other_face,
+            ))
+}
+
 fn intrinsic_attachment_tag_constraint_matches_subject(
     subject: &impl TaggedConstraintSubject,
     tag: &TagKey,
@@ -1692,6 +1721,9 @@ impl ObjectFilterExt for ObjectFilter {
                     crate::alternative_cast::CastingMethod::GrantedEscape { .. }
                     | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
                     crate::alternative_cast::CastingMethod::PlayFrom { zone, .. } => *zone,
+                    crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
+                        zone, ..
+                    } => *zone,
                 };
                 if cast_from_zone != *zone {
                     return false;
@@ -1846,7 +1878,10 @@ impl ObjectFilterExt for ObjectFilter {
                     .iter()
                     .any(|t| object.card_types.contains(t));
             let subtype_match = !self.subtypes.is_empty()
-                && self.subtypes.iter().any(|t| object.subtypes.contains(t));
+                && self
+                    .subtypes
+                    .iter()
+                    .any(|t| object_matches_subtype(object, *t, game));
             if (!self.card_types.is_empty() || !self.subtypes.is_empty())
                 && !(type_match || subtype_match)
             {
@@ -1883,7 +1918,10 @@ impl ObjectFilterExt for ObjectFilter {
         // Subtypes (must have at least one if specified)
         if !self.type_or_subtype_union
             && !self.subtypes.is_empty()
-            && !self.subtypes.iter().any(|t| object.subtypes.contains(t))
+            && !self
+                .subtypes
+                .iter()
+                .any(|t| object_matches_subtype(object, *t, game))
         {
             return false;
         }
@@ -1892,7 +1930,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_subtypes
             .iter()
-            .any(|t| object.subtypes.contains(t))
+            .any(|t| object_matches_subtype(object, *t, game))
         {
             return false;
         }
@@ -2479,7 +2517,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Subtypes (must have at least one if specified)
-        if !self.subtypes.is_empty() && !self.subtypes.iter().any(|t| snapshot.subtypes.contains(t))
+        if !self.subtypes.is_empty()
+            && !self
+                .subtypes
+                .iter()
+                .any(|t| snapshot_matches_subtype(snapshot, *t, game))
         {
             return false;
         }
@@ -2488,7 +2530,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_subtypes
             .iter()
-            .any(|t| snapshot.subtypes.contains(t))
+            .any(|t| snapshot_matches_subtype(snapshot, *t, game))
         {
             return false;
         }
@@ -4265,6 +4307,9 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     {
         return true;
     }
+    if normalized_marker == "craft" && object.abilities.iter().any(ability_is_structural_craft) {
+        return true;
+    }
 
     let has_regular = object.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind {
@@ -4333,6 +4378,9 @@ fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marke
     {
         return true;
     }
+    if normalized_marker == "craft" && snapshot.abilities.iter().any(ability_is_structural_craft) {
+        return true;
+    }
 
     snapshot.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind
@@ -4361,6 +4409,22 @@ fn ability_is_structural_cycling(ability: &crate::ability::Ability) -> bool {
     costs.iter().any(cost_is_discard_this_card) && costs.iter().any(cost_is_cycle_keyword_action)
 }
 
+fn ability_is_structural_craft(ability: &crate::ability::Ability) -> bool {
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    if !ability.functional_zones.contains(&Zone::Battlefield)
+        || !matches!(
+            activated.timing,
+            crate::ability::ActivationTiming::SorcerySpeed
+        )
+    {
+        return false;
+    }
+    let costs = activated.mana_cost.costs();
+    costs.iter().any(cost_is_exile_this_source) && costs.iter().any(cost_is_craft_keyword_action)
+}
+
 fn cost_is_discard_this_card(cost: &crate::costs::Cost) -> bool {
     let Some(discard) = cost
         .effect_ref()
@@ -4377,11 +4441,25 @@ fn cost_is_discard_this_card(cost: &crate::costs::Cost) -> bool {
             .is_some_and(|filter| filter.source && filter.zone == Some(Zone::Hand))
 }
 
+fn cost_is_exile_this_source(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
+        .is_some_and(|exile| matches!(exile.spec, ChooseSpec::Source) && !exile.face_down)
+}
+
 fn cost_is_cycle_keyword_action(cost: &crate::costs::Cost) -> bool {
     cost.effect_ref()
         .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
         .is_some_and(|emit| {
             emit.action == crate::events::KeywordActionKind::Cycle && emit.amount == 1
+        })
+}
+
+fn cost_is_craft_keyword_action(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
+        .is_some_and(|emit| {
+            emit.action == crate::events::KeywordActionKind::Craft && emit.amount == 1
         })
 }
 
@@ -4716,6 +4794,55 @@ mod tests {
             .with_subtype(crate::types::Subtype::Warrior);
 
         assert_eq!(filter.subtypes.len(), 2);
+    }
+
+    #[test]
+    fn test_adventure_subtype_filter_matches_front_face_linked_to_adventure() {
+        use crate::card::{LinkedFaceLayout, PowerToughness};
+        use crate::cards::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        use crate::snapshot::ObjectSnapshot;
+        use crate::zone::Zone;
+
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let front_id = CardId::from_raw(47_100);
+        let adventure_id = CardId::from_raw(47_101);
+        let front = CardDefinitionBuilder::new(front_id, "Linked Adventure Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Human])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .other_face(adventure_id)
+            .other_face_name("Linked Adventure Spell")
+            .linked_face_layout(LinkedFaceLayout::TransformLike)
+            .build();
+        let adventure = CardDefinitionBuilder::new(adventure_id, "Linked Adventure Spell")
+            .card_types(vec![CardType::Sorcery])
+            .subtypes(vec![Subtype::Adventure])
+            .other_face(front_id)
+            .other_face_name("Linked Adventure Creature")
+            .linked_face_layout(LinkedFaceLayout::TransformLike)
+            .build();
+        game.register_linked_face_definition(&front);
+        game.register_linked_face_definition(&adventure);
+
+        let object_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+        let object = game
+            .object(object_id)
+            .expect("linked adventure creature should exist");
+        let ctx = FilterContext::new(alice);
+        let adventure_filter = ObjectFilter::default().with_subtype(Subtype::Adventure);
+
+        assert!(adventure_filter.matches(object, &ctx, &game));
+
+        let snapshot = ObjectSnapshot::from_object(object, &game);
+        assert!(adventure_filter.matches_snapshot(&snapshot, &ctx, &game));
+        assert!(
+            !ObjectFilter::default()
+                .without_subtype(Subtype::Adventure)
+                .matches(object, &ctx, &game)
+        );
     }
 
     #[test]

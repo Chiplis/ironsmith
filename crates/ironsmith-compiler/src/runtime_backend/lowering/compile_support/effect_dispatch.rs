@@ -113,6 +113,38 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::RepeatEffects { count, effects } = effect {
+        let mut compiled_effects = Vec::new();
+        let mut choices = Vec::new();
+        for child in effects {
+            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
+            compiled_effects.append(&mut child_effects);
+            choices.append(&mut child_choices);
+        }
+        return Ok((
+            vec![Effect::repeat_effects(count.clone(), compiled_effects)],
+            choices,
+        ));
+    }
+    if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        player,
+        filter,
+        zone,
+    } = effect
+    {
+        let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+        let player = resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
+        return Ok((
+            vec![Effect::new(
+                crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::new(
+                    player,
+                    resolved_filter,
+                    *zone,
+                ),
+            )],
+            Vec::new(),
+        ));
+    }
     if matches!(
         effect,
         EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce
@@ -793,6 +825,25 @@ fn compile_subject_verb_effect(
                 },
             )
         }
+        SubjectVerbActionAst::AddManaColorsAmong { filter } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            compile_player_effect_from_resolved_filter(
+                subject.clone_player_filter(),
+                subject.into_choices(),
+                || {
+                    Effect::new(crate::effects::mana::AddManaOfColorsAmongEffect::new(
+                        filter.clone(),
+                        PlayerFilter::You,
+                    ))
+                },
+                |player_filter| {
+                    Effect::new(crate::effects::mana::AddManaOfColorsAmongEffect::new(
+                        filter.clone(),
+                        player_filter,
+                    ))
+                },
+            )
+        }
         SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
             let (amount, player_filter, choices) =
                 resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
@@ -1331,6 +1382,16 @@ fn compile_subject_verb_effect(
                 Effect::prevent_all_combat_damage_from(spec, duration.clone())
             })
         }
+        SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
+            duration,
+            source_filter,
+        } => Ok((
+            vec![Effect::prevent_all_combat_damage_from_filter(
+                source_filter.clone(),
+                duration.clone(),
+            )],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::PreventAllCombatDamageToPlayers { duration } => Ok((
             vec![Effect::prevent_all_combat_damage_to_players(
                 duration.clone(),

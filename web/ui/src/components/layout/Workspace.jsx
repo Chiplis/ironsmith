@@ -36,9 +36,12 @@ const INSPECTOR_SHADER_REVEAL_CONSUME_MS = 2500;
 const ZONE_TRANSITION_LABELS = {
   battlefield: "Battlefield",
   hand: "Hand",
+  library: "Deck",
   graveyard: "Graveyard",
+  stack: "Stack",
   exile: "Exile",
   command: "Command",
+  outside_game: "Outside",
   hidden: "Hidden",
 };
 
@@ -197,7 +200,13 @@ function collectCardTrackingKeys(card) {
 }
 
 function zoneTransitionLabel(zone) {
-  return ZONE_TRANSITION_LABELS[String(zone || "").toLowerCase()] || "Hidden";
+  return ZONE_TRANSITION_LABELS[normalizeTransitionZone(zone)] || "Hidden";
+}
+
+function normalizeTransitionZone(zone) {
+  const normalized = String(zone || "").trim().toLowerCase();
+  if (normalized === "outside the game") return "outside_game";
+  return normalized;
 }
 
 function shouldShowTransitionPreviewForZones(fromZone, toZone) {
@@ -503,6 +512,203 @@ function buildZoneTransitionPreviews(previousSnapshot, currentSnapshot, playerKe
   return previews;
 }
 
+function transitionPreviewKeySet(preview) {
+  const keys = new Set(preview?.trackingKeys || []);
+  const add = (prefix, value) => {
+    const normalized = Number(value);
+    if (Number.isFinite(normalized)) keys.add(`${prefix}:${normalized}`);
+  };
+  add("object", preview?.objectId);
+  add("object", preview?.fromObjectId);
+  add("object", preview?.toObjectId);
+  add("object", preview?.card?.id);
+  add("stable", preview?.card?.stable_id);
+  return keys;
+}
+
+function transitionPreviewMatchesCard(preview, card, toZone) {
+  if (normalizeTransitionZone(preview?.toZone) !== toZone) return false;
+  const previewKeys = transitionPreviewKeySet(preview);
+  return collectCardTrackingKeys(card).some((key) => previewKeys.has(key));
+}
+
+function transitionPreviewMatchesPreview(left, right) {
+  if (normalizeTransitionZone(left?.fromZone) !== normalizeTransitionZone(right?.fromZone)) {
+    return false;
+  }
+  if (normalizeTransitionZone(left?.toZone) !== normalizeTransitionZone(right?.toZone)) {
+    return false;
+  }
+  const leftKeys = transitionPreviewKeySet(left);
+  for (const key of transitionPreviewKeySet(right)) {
+    if (leftKeys.has(key)) return true;
+  }
+  return false;
+}
+
+function stableTrackingKeysForPreview(preview) {
+  return Array.from(transitionPreviewKeySet(preview))
+    .filter((key) => String(key).startsWith("stable:"))
+    .sort();
+}
+
+function originConsolidationKeys(preview) {
+  const playerKey = String(preview?.playerKey ?? "");
+  const toZone = normalizeTransitionZone(preview?.toZone);
+  return stableTrackingKeysForPreview(preview).map((stableKey) =>
+    `${playerKey}|${toZone}|${stableKey}`
+  );
+}
+
+function hasHiddenTransitionOrigin(preview) {
+  return normalizeTransitionZone(preview?.fromZone) === "hidden";
+}
+
+function chooseKnownOriginPreview(current, candidate) {
+  if (!current) return candidate;
+  const currentRuntime = current.runtimeTransitionId != null;
+  const candidateRuntime = candidate.runtimeTransitionId != null;
+  if (candidateRuntime && !currentRuntime) return candidate;
+  return current;
+}
+
+function mergeTransitionPreviewTracking(preview, mergedPreviews = []) {
+  if (!Array.isArray(mergedPreviews) || mergedPreviews.length === 0) return preview;
+  const trackingKeys = new Set(preview?.trackingKeys || []);
+  for (const merged of mergedPreviews) {
+    for (const key of transitionPreviewKeySet(merged)) {
+      trackingKeys.add(key);
+    }
+  }
+  return {
+    ...preview,
+    trackingKeys: Array.from(trackingKeys),
+  };
+}
+
+function consolidateHiddenOriginTransitionPreviews(previews) {
+  if (!Array.isArray(previews) || previews.length === 0) return [];
+
+  const knownOriginByKey = new Map();
+  for (const preview of previews) {
+    if (!preview || hasHiddenTransitionOrigin(preview)) continue;
+    for (const key of originConsolidationKeys(preview)) {
+      knownOriginByKey.set(key, chooseKnownOriginPreview(knownOriginByKey.get(key), preview));
+    }
+  }
+
+  const hiddenIndexesToDrop = new Set();
+  const hiddenPreviewsByKnownToken = new Map();
+  previews.forEach((preview, index) => {
+    if (!preview || !hasHiddenTransitionOrigin(preview)) return;
+    const replacement = originConsolidationKeys(preview)
+      .map((key) => knownOriginByKey.get(key))
+      .find(Boolean);
+    if (!replacement) return;
+    hiddenIndexesToDrop.add(index);
+    const token = replacement.token;
+    if (!hiddenPreviewsByKnownToken.has(token)) {
+      hiddenPreviewsByKnownToken.set(token, []);
+    }
+    hiddenPreviewsByKnownToken.get(token).push(preview);
+  });
+
+  return previews
+    .filter((preview, index) => preview && !hiddenIndexesToDrop.has(index))
+    .map((preview) =>
+      mergeTransitionPreviewTracking(preview, hiddenPreviewsByKnownToken.get(preview.token))
+    );
+}
+
+function isHiddenCardName(name) {
+  return /^hidden\s+card$/i.test(String(name || "").trim());
+}
+
+function buildRuntimeZoneTransitionPreviews(state, processedTransitionIds = new Set()) {
+  const transitions = Array.isArray(state?.zone_transitions) ? state.zone_transitions : [];
+  return transitions
+    .filter((transition) => {
+      const transitionId = transition?.id;
+      return transitionId != null && !processedTransitionIds.has(String(transitionId));
+    })
+    .map((transition) => {
+      const card = transition?.card && typeof transition.card === "object"
+        ? cloneZoneCardSnapshot({
+          ...transition.card,
+          owner: transition.owner,
+          controller: transition.controller,
+          zone: normalizeTransitionZone(transition.to_zone ?? transition.toZone),
+        })
+        : null;
+      if (!card || isHiddenCardName(card.name)) return null;
+      const fromZone = normalizeTransitionZone(transition.from_zone ?? transition.fromZone);
+      const toZone = normalizeTransitionZone(transition.to_zone ?? transition.toZone);
+      if (!shouldShowTransitionPreviewForZones(fromZone, toZone)) return null;
+      const playerKey = String(transition.owner ?? transition.controller ?? "");
+      const transitionId = String(transition.id);
+      const stableId = Number(transition.stable_id ?? transition.stableId ?? card.stable_id);
+      const oldObjectId = Number(transition.old_object_id ?? transition.oldObjectId);
+      const newObjectId = Number(transition.new_object_id ?? transition.newObjectId ?? card.id);
+      const trackingKeys = collectCardTrackingKeys(card);
+      if (Number.isFinite(stableId)) trackingKeys.push(`stable:${stableId}`);
+      if (Number.isFinite(oldObjectId)) trackingKeys.push(`object:${oldObjectId}`);
+      if (Number.isFinite(newObjectId)) trackingKeys.push(`object:${newObjectId}`);
+      return {
+        token: `${playerKey}:zone:${transitionId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+        runtimeTransitionId: transitionId,
+        objectId: Number.isFinite(newObjectId) ? newObjectId : (card.id ?? null),
+        fromObjectId: Number.isFinite(oldObjectId) ? oldObjectId : null,
+        toObjectId: Number.isFinite(newObjectId) ? newObjectId : null,
+        fromZone,
+        toZone,
+        playerKey,
+        fromTransitionOrigin: fromZone,
+        card,
+        trackingKeys: Array.from(new Set(trackingKeys)),
+        title: `${zoneTransitionLabel(fromZone)} -> ${zoneTransitionLabel(toZone)}`,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildViewedCardsTransitionPreviews(state, existingPreviews = []) {
+  const viewedCards = state?.viewed_cards || null;
+  if (viewedCards?.visibility !== "public") return [];
+  const cards = Array.isArray(viewedCards.cards) ? viewedCards.cards : [];
+  if (cards.length === 0) return [];
+
+  const toZone = normalizeTransitionZone(viewedCards.zone);
+  if (!TRANSITION_TRACKED_ZONE_IDS.includes(toZone)) return [];
+  if (!shouldShowTransitionPreviewForZones("hidden", toZone)) return [];
+
+  const playerKey = String(viewedCards.subject ?? "");
+  return cards
+    .filter((card) => card && !existingPreviews.some((preview) =>
+      transitionPreviewMatchesCard(preview, card, toZone)
+    ))
+    .map((card, index) => {
+      const previewCard = cloneZoneCardSnapshot({
+        ...card,
+        owner: viewedCards.subject,
+        controller: viewedCards.subject,
+        zone: toZone,
+      });
+      return {
+        token: `${playerKey}:viewed:${card.id ?? card.stable_id ?? index}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+        objectId: card.id ?? null,
+        fromObjectId: null,
+        toObjectId: card.id ?? null,
+        fromZone: "hidden",
+        toZone,
+        playerKey,
+        fromTransitionOrigin: null,
+        card: previewCard,
+        trackingKeys: collectCardTrackingKeys(previewCard),
+        title: `${zoneTransitionLabel("hidden")} -> ${zoneTransitionLabel(toZone)}`,
+      };
+    });
+}
+
 export default function Workspace({
   zoneViews,
   deckLoadingMode,
@@ -537,6 +743,7 @@ export default function Workspace({
   const previousStackIdsRef = useRef([]);
   const previousZoneTransitionSnapshotRef = useRef(null);
   const previousCardRectsRef = useRef(new Map());
+  const processedRuntimeZoneTransitionIdsRef = useRef(new Set());
   const transitionInspectorRestoreRef = useRef(null);
   const transitionInspectorRevealTimerRef = useRef(null);
   const handRevealShellRef = useRef(null);
@@ -776,12 +983,26 @@ export default function Workspace({
     const currentSnapshot = buildZoneTransitionSnapshot(players, state?.stack_objects || []);
     const previousSnapshot = previousZoneTransitionSnapshotRef.current;
     previousZoneTransitionSnapshotRef.current = currentSnapshot;
+    const runtimePreviews = buildRuntimeZoneTransitionPreviews(
+      state,
+      processedRuntimeZoneTransitionIdsRef.current
+    );
 
     if (deckLoadingMode || puzzleSetupMode || players.length === 0 || !previousSnapshot) {
+      for (const preview of runtimePreviews) {
+        if (preview.runtimeTransitionId != null) {
+          processedRuntimeZoneTransitionIdsRef.current.add(String(preview.runtimeTransitionId));
+        }
+      }
       return;
     }
 
     if (Object.keys(previousSnapshot).length !== players.length) {
+      for (const preview of runtimePreviews) {
+        if (preview.runtimeTransitionId != null) {
+          processedRuntimeZoneTransitionIdsRef.current.add(String(preview.runtimeTransitionId));
+        }
+      }
       return;
     }
 
@@ -799,7 +1020,23 @@ export default function Workspace({
       ));
     }
 
-    const orderedPreviews = orderZoneTransitionPreviews(nextPreviews);
+    const dedupedDiffPreviews = nextPreviews.filter((preview) =>
+      !runtimePreviews.some((runtimePreview) =>
+        transitionPreviewMatchesPreview(runtimePreview, preview)
+      )
+    );
+    const orderedRuntimeAndDiffPreviews = [
+      ...runtimePreviews,
+      ...dedupedDiffPreviews,
+    ];
+    orderedRuntimeAndDiffPreviews.push(
+      ...buildViewedCardsTransitionPreviews(state, orderedRuntimeAndDiffPreviews)
+    );
+
+    const consolidatedPreviews = consolidateHiddenOriginTransitionPreviews(
+      orderedRuntimeAndDiffPreviews
+    );
+    const orderedPreviews = orderZoneTransitionPreviews(consolidatedPreviews);
     const animationFrame = resolveGameAnimations({
       previews: orderedPreviews,
       state,
@@ -808,6 +1045,11 @@ export default function Workspace({
 
     if (animationFrame.previews.length === 0) {
       return;
+    }
+    for (const preview of animationFrame.previews) {
+      if (preview.runtimeTransitionId != null) {
+        processedRuntimeZoneTransitionIdsRef.current.add(String(preview.runtimeTransitionId));
+      }
     }
 
     const visualEffects = animationFrame.visualEffects.map((effect) => {

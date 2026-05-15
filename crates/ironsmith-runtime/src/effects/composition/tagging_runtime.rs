@@ -13,14 +13,14 @@ use std::collections::HashSet;
 /// Runtime state captured before tagged effect execution.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TaggedRuntimeState {
-    pre_snapshot: Option<ObjectSnapshot>,
+    pre_snapshots: Vec<ObjectSnapshot>,
     stable_id_fallback: Option<StableIdFallback>,
 }
 
 impl TaggedRuntimeState {
     pub(crate) fn from_pre_snapshot(pre_snapshot: Option<ObjectSnapshot>) -> Self {
         Self {
-            pre_snapshot,
+            pre_snapshots: pre_snapshot.into_iter().collect(),
             stable_id_fallback: None,
         }
     }
@@ -61,6 +61,9 @@ pub(crate) fn capture_all_effect_target_snapshots(
     let Some(spec) = effect.0.get_target_spec() else {
         return snapshots;
     };
+    if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
+        return ctx.get_tagged_all(tag).cloned().unwrap_or_default();
+    }
     let Ok(object_ids) = resolve_objects_from_spec(game, spec, ctx) else {
         return snapshots;
     };
@@ -83,23 +86,21 @@ pub(crate) fn capture_tagged_runtime_state(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> TaggedRuntimeState {
-    let mut pre_snapshot = capture_effect_target_snapshot(game, effect, ctx).or_else(|| {
-        capture_target_object_snapshots(game, ctx)
-            .into_iter()
-            .next()
-    });
-    if pre_snapshot.is_none()
+    let mut pre_snapshots = capture_all_effect_target_snapshots(game, effect, ctx);
+    if pre_snapshots.is_empty()
         && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)
     {
-        pre_snapshot = Some(ObjectSnapshot::from_object(obj, game));
+        pre_snapshots.push(ObjectSnapshot::from_object(obj, game));
     }
-    if pre_snapshot.is_none() {
-        pre_snapshot = capture_effect_target_snapshot(game, effect, ctx);
+    if pre_snapshots.is_empty()
+        && let Some(snapshot) = capture_effect_target_snapshot(game, effect, ctx)
+    {
+        pre_snapshots.push(snapshot);
     }
 
     TaggedRuntimeState {
-        pre_snapshot,
+        pre_snapshots,
         stable_id_fallback: capture_stable_id_fallback(game, effect, ctx),
     }
 }
@@ -155,9 +156,9 @@ pub(crate) fn apply_tagged_runtime_state(
         }
     }
 
-    // Generic fallback: preserve the pre-effect target snapshot.
-    if let Some(snapshot) = state.pre_snapshot {
-        ctx.tag_object(tag, snapshot);
+    // Generic fallback: preserve the pre-effect target snapshots.
+    if !state.pre_snapshots.is_empty() {
+        ctx.tag_objects(tag, state.pre_snapshots);
     }
 }
 
@@ -303,6 +304,26 @@ mod tests {
         let snapshots = capture_target_object_snapshots(&game, &ctx);
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].object_id, creature);
+    }
+
+    #[test]
+    fn test_capture_tagged_target_snapshot_preserves_lki_object_id() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice);
+        let source = game.new_object_id();
+        let snapshot = ObjectSnapshot::from_object(game.object(creature).expect("creature"), &game);
+        game.move_object_by_effect(creature, Zone::Graveyard)
+            .expect("creature should move");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("subject", vec![snapshot.clone()]);
+
+        let effect = Effect::tap(crate::target::ChooseSpec::Tagged(TagKey::from("subject")));
+        let snapshots = capture_all_effect_target_snapshots(&game, &effect, &ctx);
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].object_id, creature);
+        assert_eq!(snapshots[0].stable_id, snapshot.stable_id);
     }
 
     #[test]

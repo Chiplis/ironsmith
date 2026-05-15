@@ -21,9 +21,9 @@ use crate::events::cause::CauseType;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
-    DamageFromSelfMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
-    DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
-    DamageToSelfFromSourceFilterMatcher,
+    DamageFromSelfMatcher, DamageFromSourceToObjectMatcher, DamageToObjectMatcher,
+    DamageToOtherCreatureYouControlMatcher, DamageToPlayerOrObjectMatcher,
+    DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher, DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -132,6 +132,56 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Command => "the command zone",
         Zone::OutsideGame => "outside the game",
+    }
+}
+
+/// Daybound keyword static ability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Daybound;
+
+impl StaticAbilityKind for Daybound {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Daybound
+    }
+
+    fn display(&self) -> String {
+        "Daybound".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
+/// Nightbound keyword static ability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Nightbound;
+
+impl StaticAbilityKind for Nightbound {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Nightbound
+    }
+
+    fn display(&self) -> String {
+        "Nightbound".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
+/// Starts the day/night designation as day if it is unset as this enters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DayNightStartsDayAsEnters;
+
+impl StaticAbilityKind for DayNightStartsDayAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DayNightStartsDayAsEnters
+    }
+
+    fn display(&self) -> String {
+        "If it's neither day nor night, it becomes day as this creature enters".to_string()
     }
 }
 
@@ -1838,6 +1888,65 @@ impl StaticAbilityKind for PreventConstrainedDamageToSelfPutCountersInstead {
     }
 }
 
+/// "If matching damage would be dealt to a matching creature, put counters on it instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplaceDamageWithCountersInstead {
+    pub counter_type: CounterType,
+    pub display: String,
+    pub source_filter: ObjectFilter,
+    pub target_filter: ObjectFilter,
+    pub combat_only: Option<bool>,
+}
+
+impl ReplaceDamageWithCountersInstead {
+    pub fn new(
+        counter_type: CounterType,
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        combat_only: Option<bool>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            counter_type,
+            display: display.into(),
+            source_filter,
+            target_filter,
+            combat_only,
+        }
+    }
+}
+
+impl StaticAbilityKind for ReplaceDamageWithCountersInstead {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ReplaceDamageWithCountersInstead
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSourceToObjectMatcher::new(
+                self.source_filter.clone(),
+                self.target_filter.clone(),
+            )
+            .with_combat_only(self.combat_only),
+            ReplacementAction::Instead(vec![Effect::put_counters(
+                self.counter_type,
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::AnyTarget,
+            )]),
+        ))
+    }
+}
+
 /// "If damage would be dealt to another creature you control, prevent that damage..."
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventDamageToOtherCreatureYouControlPutCountersInstead {
@@ -2980,6 +3089,46 @@ impl StaticAbilityKind for DoubleCountersReplacement {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleTokenCreationReplacement {
+    pub controller: PlayerFilter,
+    pub display: String,
+}
+
+impl DoubleTokenCreationReplacement {
+    pub fn new(controller: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            controller,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DoubleTokenCreationReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DoubleTokenCreationReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+                self.controller.clone(),
+            ),
+            ReplacementAction::Double,
+        ))
+    }
+}
+
 /// Can be your commander.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CanBeCommander;
@@ -3517,7 +3666,58 @@ impl StaticAbilityKind for DrawReplacementDouble {
             source,
             controller,
             WouldDrawCardMatcher::you(),
-            ReplacementAction::Modify(EventModification::Multiply(2)),
+            ReplacementAction::Instead(vec![Effect::new(crate::effects::DrawCardsEffect::you(2))]),
+        ))
+    }
+}
+
+/// "If [object] would [keyword action], instead [effects]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeywordActionReplacement {
+    pub action: crate::events::KeywordActionKind,
+    pub source_filter: ObjectFilter,
+    pub replacement_effects: Vec<Effect>,
+    pub display: String,
+}
+
+impl KeywordActionReplacement {
+    pub fn new(
+        action: crate::events::KeywordActionKind,
+        source_filter: ObjectFilter,
+        replacement_effects: Vec<Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            action,
+            source_filter,
+            replacement_effects,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for KeywordActionReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::KeywordActionReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::other::WouldKeywordActionMatcher::new(
+                self.action,
+                self.source_filter.clone(),
+            ),
+            ReplacementAction::Instead(self.replacement_effects.clone()),
         ))
     }
 }
@@ -3749,6 +3949,8 @@ impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
 pub struct ExileWouldDieInstead {
     pub filter: ObjectFilter,
     pub damaged_by: Option<DamagedBySource>,
+    pub exile_with_counters: Vec<(CounterType, u32)>,
+    pub follow_up_effects: Vec<Effect>,
 }
 
 impl ExileWouldDieInstead {
@@ -3756,6 +3958,8 @@ impl ExileWouldDieInstead {
         Self {
             filter,
             damaged_by: None,
+            exile_with_counters: Vec::new(),
+            follow_up_effects: Vec::new(),
         }
     }
 
@@ -3763,6 +3967,30 @@ impl ExileWouldDieInstead {
         Self {
             filter,
             damaged_by: Some(damaged_by),
+            exile_with_counters: Vec::new(),
+            follow_up_effects: Vec::new(),
+        }
+    }
+
+    pub fn with_follow_up(
+        filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
+        follow_up_effects: Vec<Effect>,
+    ) -> Self {
+        Self::with_counters_and_follow_up(filter, damaged_by, Vec::new(), follow_up_effects)
+    }
+
+    pub fn with_counters_and_follow_up(
+        filter: ObjectFilter,
+        damaged_by: Option<DamagedBySource>,
+        exile_with_counters: Vec<(CounterType, u32)>,
+        follow_up_effects: Vec<Effect>,
+    ) -> Self {
+        Self {
+            filter,
+            damaged_by,
+            exile_with_counters,
+            follow_up_effects,
         }
     }
 }
@@ -3802,7 +4030,10 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                 source,
                 controller,
                 WouldDieDamagedBySourceThisTurnMatcher::new(self.filter.clone(), damaged_by),
-                ReplacementAction::ExileWithSourceLink,
+                ReplacementAction::ExileWithSourceLinkCountersThen {
+                    counters: self.exile_with_counters.clone(),
+                    effects: self.follow_up_effects.clone(),
+                },
             ));
         }
 
@@ -3814,7 +4045,10 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                 Some(Zone::Battlefield),
                 Some(Zone::Graveyard),
             ),
-            ReplacementAction::ExileWithSourceLink,
+            ReplacementAction::ExileWithSourceLinkCountersThen {
+                counters: self.exile_with_counters.clone(),
+                effects: self.follow_up_effects.clone(),
+            },
         ))
     }
 }
@@ -4459,10 +4693,15 @@ mod tests {
         let replacement = ability
             .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
             .expect("draw replacement should create replacement effect");
-        assert!(matches!(
-            replacement.replacement,
-            ReplacementAction::Modify(EventModification::Multiply(2))
-        ));
+        let ReplacementAction::Instead(effects) = replacement.replacement else {
+            panic!("expected draw replacement to execute nested draw effects");
+        };
+        assert_eq!(effects.len(), 1);
+        assert!(
+            format!("{:?}", effects[0]).contains("DrawCardsEffect"),
+            "expected nested draw effect, got {:?}",
+            effects[0]
+        );
     }
 
     #[test]

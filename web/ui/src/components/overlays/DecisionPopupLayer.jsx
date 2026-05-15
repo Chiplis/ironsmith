@@ -1538,8 +1538,10 @@ function MobileBattleDecisionLayer({
     [viewedCards]
   );
   const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
-  const showViewedCardsStep = Boolean(viewedCardsToken)
+  const showViewedCardsStep = decision?.kind === "priority"
+    && Boolean(viewedCardsToken)
     && acknowledgedViewedCardsToken !== viewedCardsToken;
+  const showInlineViewedCards = Boolean(viewedCardsToken) && !showViewedCardsStep;
   const actionsSheetOpen = actionsSheetState.key === decisionIdentity
     ? actionsSheetState.open
     : false;
@@ -1923,6 +1925,22 @@ function MobileBattleDecisionLayer({
         inline={false}
         onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
       >
+        {showInlineViewedCards ? (
+          <ViewedCardsStrip
+            label={viewedCardsLabel}
+            description={viewedCards?.description || ""}
+            sourceName={viewedCardsSourceName}
+            cards={viewedCardEntries}
+            players={state?.players || []}
+            perspective={state?.perspective}
+            objectControllerById={objectControllerById}
+            hoveredObjectId={hoveredObjectId}
+            selectedObjectId={selectedObjectId}
+            onCardHoverStart={handleViewedCardHoverStart}
+            onCardHoverEnd={handleViewedCardHoverEnd}
+            compact
+          />
+        ) : null}
         <DecisionRouter
           decision={decision}
           canAct={canAct}
@@ -2245,8 +2263,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   );
   const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
   const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
-  const showViewedCardsStep = Boolean(viewedCardsToken)
+  const showViewedCardsStep = isPriorityDecision
+    && Boolean(viewedCardsToken)
     && acknowledgedViewedCardsToken !== viewedCardsToken;
+  const showInlineViewedCards = Boolean(viewedCardsToken) && !showViewedCardsStep;
   const triggerOrderingDecision = isTriggerOrderingDecision(decision);
   const showStripDecisionSummary = (
     decision?.kind === "targets"
@@ -2680,16 +2700,34 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       compact
                     />
                   ) : (!triggerOrderingDecision && (
-                    <DecisionRouter
-                      decision={decision}
-                      canAct={canAct}
-                      selectedObjectId={selectedObjectId}
-                      inlineSubmit={false}
-                      onSubmitActionChange={handleSubmitActionChange}
-                      hideDescription
-                      layout="strip"
-                      showStripSummary={false}
-                    />
+                    <>
+                      {showInlineViewedCards ? (
+                        <ViewedCardsStrip
+                          label={viewedCardsLabel}
+                          description={viewedCards?.description || ""}
+                          sourceName={viewedCardsSourceName}
+                          cards={viewedCardEntries}
+                          players={state?.players || []}
+                          perspective={state?.perspective}
+                          objectControllerById={objectControllerById}
+                          hoveredObjectId={hoveredObjectId}
+                          selectedObjectId={selectedObjectId}
+                          onCardHoverStart={handleViewedCardHoverStart}
+                          onCardHoverEnd={handleViewedCardHoverEnd}
+                          compact
+                        />
+                      ) : null}
+                      <DecisionRouter
+                        decision={decision}
+                        canAct={canAct}
+                        selectedObjectId={selectedObjectId}
+                        inlineSubmit={false}
+                        onSubmitActionChange={handleSubmitActionChange}
+                        hideDescription
+                        layout="strip"
+                        showStripSummary={false}
+                      />
+                    </>
                   ))
                 ) : (
                   <span className="action-strip-waiting text-[12px] whitespace-nowrap">
@@ -2926,16 +2964,34 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 compact
               />
             ) : (!triggerOrderingDecision && (
-              <DecisionRouter
-                decision={decision}
-                canAct={canAct}
-                selectedObjectId={selectedObjectId}
-                inlineSubmit={false}
-                onSubmitActionChange={handleSubmitActionChange}
-                hideDescription={false}
-                layout="strip"
-                showStripSummary={!showStripDecisionSummary}
-              />
+              <>
+                {showInlineViewedCards ? (
+                  <ViewedCardsStrip
+                    label={viewedCardsLabel}
+                    description={viewedCards?.description || ""}
+                    sourceName={viewedCardsSourceName}
+                    cards={viewedCardEntries}
+                    players={state?.players || []}
+                    perspective={state?.perspective}
+                    objectControllerById={objectControllerById}
+                    hoveredObjectId={hoveredObjectId}
+                    selectedObjectId={selectedObjectId}
+                    onCardHoverStart={handleViewedCardHoverStart}
+                    onCardHoverEnd={handleViewedCardHoverEnd}
+                    compact
+                  />
+                ) : null}
+                <DecisionRouter
+                  decision={decision}
+                  canAct={canAct}
+                  selectedObjectId={selectedObjectId}
+                  inlineSubmit={false}
+                  onSubmitActionChange={handleSubmitActionChange}
+                  hideDescription={false}
+                  layout="strip"
+                  showStripSummary={!showStripDecisionSummary}
+                />
+              </>
             ))}
           </div>
         )}

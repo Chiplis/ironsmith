@@ -790,6 +790,7 @@ test("PeerJS remote public openings can prove ziffle positions against original 
       "guest owns the next action before ziffle public open",
     );
 
+    const revealStartedAt = Date.now();
     await guestPage.evaluate(() => {
       const snap = window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
@@ -814,6 +815,7 @@ test("PeerJS remote public openings can prove ziffle positions against original 
       (snap) => snap.multiplayer.lastAppliedSequence === 2,
       "guest applies its ziffle public-open action",
     );
+    const revealElapsedMs = Date.now() - revealStartedAt;
 
     const statusText = [
       ...hostAfterOpen.statusEvents,
@@ -827,6 +829,10 @@ test("PeerJS remote public openings can prove ziffle positions against original 
     assert.doesNotMatch(
       statusText,
       /does not match slot|hidden card commitment does not match reveal|Sync failed|Timed out waiting for ziffle reveal|Missing ziffle ceremony/i,
+    );
+    assert.ok(
+      revealElapsedMs < 9000,
+      `pending action ziffle reveal should not wait for the 10s visible-state timeout; elapsed=${revealElapsedMs}ms`,
     );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
@@ -1236,6 +1242,224 @@ test("PeerJS post-timed remote openings are revealed after dispatch", { timeout:
     assert.doesNotMatch(
       noticeText,
       /hidden card commitment does not match reveal|Resync checkpoint hash mismatch|Sync failed/i,
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS local post-timed public openings are revealed before signing", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for local post-timed opening test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for local post-timed opening test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts local post-timed opening match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives local post-timed opening match");
+
+    await hostPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        entry.action_ref?.kind === "post_public_open_action"
+      );
+      if (!action?.action_ref) {
+        throw new Error("host has no post-timed public-open action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "host local post-timed public-open action");
+    });
+
+    const hostAfterOpen = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "host applies its local post-timed public-open action",
+    );
+    const guestAfterOpen = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "guest applies host local post-timed public-open action",
+    );
+
+    assert.equal(
+      hostAfterOpen.instrumentation.postPublicOpenRevealSlot,
+      1,
+      "submitting peer should apply its own post-timed public opening before signing",
+    );
+    assert.equal(
+      guestAfterOpen.instrumentation.postPublicOpenRevealSlot,
+      1,
+      "receiving peer should apply the post-timed public opening from the audit",
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await hostPage?.close().catch(() => {});
+    await guestPage?.close().catch(() => {});
+    await hostContext.close().catch(() => {});
+    await guestContext.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("PeerJS post-apply public openings are requested before signing", { timeout: 60000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "host");
+    guestPage = await openHarness(guestContext, baseUrl, "guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        deckText,
+      });
+    }, HOST_ZIFFLE_OPENED_LAND_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
+      "host creates a lobby for post-apply public-open test",
+    );
+
+    await guestPage.evaluate(({ lobbyId, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId,
+        deckText,
+      });
+    }, { lobbyId: hostLobby.multiplayer.lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "both peers join and are ready for post-apply public-open test",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts post-apply public-open match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives post-apply public-open match");
+
+    await hostPage.evaluate(() => window.__peerHarness.submitMultiplayerCommand({
+      type: "priority_action",
+      action_ref: {
+        kind: "test_priority_action",
+        actor: 0,
+        sequence: 0,
+      },
+    }, "host action before guest post-apply opening"));
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1
+        && Number(snap.visibleState?.decision?.player) === Number(snap.multiplayer.localPlayerIndex),
+      "guest owns the next action before post-apply public opening",
+    );
+
+    await guestPage.evaluate(() => {
+      const snap = window.__peerHarness.snapshot();
+      const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
+        entry.action_ref?.kind === "late_public_open_action"
+      );
+      if (!action?.action_ref) {
+        throw new Error("guest has no late public-open action to submit");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "guest late public-open action");
+    });
+
+    const hostAfterOpen = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "host applies guest post-apply public-open action",
+    );
+    const guestAfterOpen = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 2,
+      "guest applies its post-apply public-open action",
+    );
+
+    assert.equal(
+      guestAfterOpen.instrumentation.latePublicOpenRevealSlot,
+      1,
+      "submitting peer should fetch and reveal remote post-apply public opening before signing",
+    );
+    assert.equal(
+      hostAfterOpen.instrumentation.latePublicOpenRevealSlot,
+      1,
+      "receiving peer should verify the signed audit contains the post-apply public opening",
+    );
+    const noticeText = [
+      ...hostAfterOpen.statusEvents,
+      ...guestAfterOpen.statusEvents,
+      ...hostAfterOpen.noticeEvents,
+      ...guestAfterOpen.noticeEvents,
+    ].map((event) => `${event?.title || ""} ${event?.body || event?.message || ""}`).join("\n");
+    assert.doesNotMatch(
+      noticeText,
+      /Missing public_open audit opening|Sync failed|hidden card commitment does not match reveal/i,
     );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
@@ -2374,6 +2598,339 @@ guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-12
     assert.equal(targetedGuest, true, `expected host to target the other player with Gitaxian Probe\n${lastCombinedText}`);
     assert.equal(paidProbe, true, `expected host to pay for Gitaxian Probe\n${lastCombinedText}`);
     assert.equal(guestResolved, true, `expected guest to resolve Gitaxian Probe\n${lastCombinedText}`);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Tainted Pact resolution reveals choices and stays synced", { timeout: 240000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const hostDeck = deckUrlParam("30 Black Lotus\n30 Tainted Pact");
+    const guestDeck = deckUrlParam("60 Lightning Bolt");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${hostDeck}`, "host-tainted-pact-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a Tainted Pact lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${guestDeck}`,
+      "guest-tainted-pact-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    let castLotus = false;
+    let lotusResolved = false;
+    let activatedLotus = false;
+    let choseBlack = false;
+    let castPact = false;
+    let pactOnStack = false;
+    let lastDebug = "";
+
+    for (let step = 0; step < 100 && !pactOnStack; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastDebug = combinedText;
+      assertNoSyncFailureText(combinedText, "Tainted Pact cast/payment should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Tainted Pact cast/payment should not trip cheat detection
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).filter((line) => /Cheat detected|invalid priority/i.test(line)).slice(-20), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).filter((line) => /Cheat detected|invalid priority/i.test(line)).slice(-20), null, 2)}`
+      );
+
+      if (!castLotus) {
+        const result = await clickLocalButton(hostPage, "host-cast-lotus", /BLACK LOTUS/i);
+        if (result) {
+          castLotus = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (castLotus && !lotusResolved) {
+        if (/BF\s*1/i.test(hostText) && /Black Lotus[\s\S]*Battlefield/i.test(hostText)) {
+          lotusResolved = true;
+          continue;
+        }
+        const hostPass = await clickLocalButton(hostPage, "host-pass-lotus", /PASS PRIORITY|RESOLVE/i);
+        if (hostPass) {
+          await sleep(2500);
+          continue;
+        }
+        const guestPass = await clickLocalButton(guestPage, "guest-resolve-lotus", /PASS PRIORITY|RESOLVE/i);
+        if (guestPass) {
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (lotusResolved && !activatedLotus) {
+        const result = await clickLocalButton(hostPage, "host-activate-lotus", /ADD|SACRIFICE/i);
+        if (result) {
+          activatedLotus = true;
+          await sleep(2500);
+          continue;
+        }
+        await sleep(1000);
+        continue;
+      }
+
+      if (activatedLotus && !choseBlack) {
+        const result = await clickEnabledButton(hostPage, "host-choose-black", /BLACK|\{B\}/i);
+        if (result) {
+          choseBlack = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (choseBlack && !castPact) {
+        const result = await clickLocalButton(hostPage, "host-cast-pact", /TAINTED PACT/i);
+        if (result) {
+          castPact = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (castPact) {
+        if (/Pay [\s\S]*Tainted Pact/i.test(hostText)) {
+          const selectedPayment = await clickEnabledButton(
+            hostPage,
+            "host-pay-pact",
+            /BLACK|GENERIC|MANA|\{B\}|\{1\}|SUBMIT|PAY/i,
+          );
+          if (selectedPayment) {
+            await sleep(2500);
+            continue;
+          }
+        } else if (
+          /STACK[\s\S]*Tainted Pact/i.test(hostText)
+          || /STACK[\s\S]*Tainted Pact/i.test(guestText)
+        ) {
+          pactOnStack = true;
+          break;
+        }
+      }
+
+      const hostProgress = await clickLocalButton(hostPage, "host-setup-pact", /KEEP HAND|PREGAME|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i);
+      if (hostProgress) {
+        await sleep(2500);
+        continue;
+      }
+
+      const guestProgress = await clickLocalButton(guestPage, "guest-setup-pact", /KEEP HAND|PREGAME|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i);
+      if (guestProgress) {
+        await sleep(2500);
+        continue;
+      }
+
+      await sleep(1000);
+    }
+
+    assert.equal(castLotus, true, `expected to cast Black Lotus\n${lastDebug}`);
+    assert.equal(lotusResolved, true, `expected Black Lotus to resolve\n${lastDebug}`);
+    assert.equal(activatedLotus, true, `expected to activate Black Lotus\n${lastDebug}`);
+    assert.equal(choseBlack, true, `expected to choose black mana\n${lastDebug}`);
+    assert.equal(castPact, true, `expected to cast Tainted Pact\n${lastDebug}`);
+    assert.equal(pactOnStack, true, `expected Tainted Pact to reach the stack\n${lastDebug}`);
+    assertNoSyncFailureText(await visibleBodyText(hostPage), "host should remain synced after Tainted Pact payment");
+    assertNoSyncFailureText(await visibleBodyText(guestPage), "guest should remain synced after Tainted Pact payment");
+
+    let sawTaintedPactPrompt = false;
+    for (let step = 0; step < 40 && !sawTaintedPactPrompt; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      assertNoSyncFailureText(combinedText, "Tainted Pact resolution should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Tainted Pact resolution should not trip cheat detection
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`
+      );
+      assert.doesNotMatch(hostText, /put Hidden Card into your hand/i);
+      if (/put (Black Lotus|Island|Swamp|Tainted Pact) into your hand/i.test(hostText)) {
+        sawTaintedPactPrompt = true;
+        break;
+      }
+      const hostPass = await clickLocalButton(hostPage, "host-pass-pact", /PASS PRIORITY|RESOLVE/i);
+      if (hostPass) {
+        await sleep(2500);
+        continue;
+      }
+      const guestResolve = await clickLocalButton(guestPage, "guest-resolve-pact", /RESOLVE|PASS PRIORITY/i);
+      if (guestResolve) {
+        await sleep(2500);
+        continue;
+      }
+      await sleep(1000);
+    }
+    assert.equal(sawTaintedPactPrompt, true, `expected Tainted Pact to reveal a named card choice\n${await visibleBodyText(hostPage)}`);
+    await sleep(4000);
+    {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      assertNoSyncFailureText(combinedText, "Tainted Pact first choice should not fail while waiting for input");
+      assert.doesNotMatch(hostText, /put Hidden Card into your hand/i);
+      assert.doesNotMatch(
+        combinedText,
+        /Missing audit material for public_view_window|Missing public_open audit opening|Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Tainted Pact first choice should include public-view audit material
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`,
+      );
+    }
+
+    let sawDuplicateStopReveal = false;
+    let declinedPactCards = 0;
+    let lastDuplicateStopText = "";
+    for (let step = 0; step < 50 && !sawDuplicateStopReveal; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastDuplicateStopText = hostText;
+      assertNoSyncFailureText(combinedText, "Tainted Pact duplicate-stop reveal should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Missing public_open audit opening|Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Tainted Pact duplicate-stop reveal should not trip audit verification
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`
+      );
+      if (
+        /Reveal exiled library cards/i.test(hostText)
+        && /(Island|Swamp|Black Lotus|Tainted Pact)/i.test(hostText)
+        && !/Card #\d+/i.test(hostText)
+        && !/Reveal exiled library cards[\s\S]{0,240}Hidden Card/i.test(hostText)
+      ) {
+        sawDuplicateStopReveal = true;
+        break;
+      }
+      if (/Put .* into your hand\?/i.test(hostText) && /(?:^|\n)NO(?:\n|$)/i.test(hostText)) {
+        const declinedCard = await clickEnabledButton(
+          hostPage,
+          `host-decline-pact-card-${declinedPactCards + 1}`,
+          /^NO$/i,
+        );
+        if (declinedCard) {
+          declinedPactCards += 1;
+          await sleep(2500);
+          continue;
+        }
+      }
+      await sleep(1000);
+    }
+    assert.ok(
+      declinedPactCards > 0,
+      `expected to decline at least one Tainted Pact card before duplicate stop
+${lastDuplicateStopText}`,
+    );
+    assert.equal(
+      sawDuplicateStopReveal,
+      true,
+      `expected Tainted Pact duplicate-stop card to be revealed instead of Hidden Card
+${lastDuplicateStopText}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-20), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-20), null, 2)}`,
+    );
+    await hostPage.waitForFunction(
+      () => /1\s*\/\s*[3-9]/.test(document.body.innerText || ""),
+      null,
+      { timeout: 5000 },
+    );
+    assert.match(
+      await visibleBodyText(hostPage),
+      /1\s*\/\s*[3-9]/i,
+      "Tainted Pact reveal inspector should include exiled cards plus the resolving spell",
+    );
+    assert.match(
+      await visibleBodyText(hostPage),
+      /Deck\s*->\s*Exile/i,
+      "Tainted Pact reveal inspector should use the runtime library-to-exile zone label",
+    );
+    assert.doesNotMatch(
+      await visibleBodyText(hostPage),
+      /Hidden\s*->\s*Exile/i,
+      "Tainted Pact reveal inspector should not fall back to hidden-to-exile labels",
+    );
+
+    const completedDuplicateRevealStep =
+      await clickLocalButton(hostPage, "host-complete-duplicate-pact-reveal", /^DONE$/i)
+      || await clickEnabledButton(hostPage, "host-complete-duplicate-pact-reveal", /^DONE$/i);
+    assert.ok(
+      completedDuplicateRevealStep,
+      `expected to acknowledge the duplicate-stop Tainted Pact reveal\n${await visibleBodyText(hostPage)}`,
+    );
+
+    let sawFinalPactState = false;
+    let finalPactText = "";
+    for (let step = 0; step < 20 && !sawFinalPactState; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      finalPactText = hostText;
+      assertNoSyncFailureText(combinedText, "Tainted Pact final state should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Missing public_open audit opening|Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Tainted Pact final state should not trip audit verification
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`
+      );
+      assert.doesNotMatch(hostText, /Card #\d+/i, `Tainted Pact should not leave stale viewed-card labels\n${hostText}`);
+      if (/EXL\s*[2-9]/i.test(hostText) && /GY\s*[1-9]/i.test(hostText)) {
+        sawFinalPactState = true;
+        break;
+      }
+      await sleep(1000);
+    }
+    assert.equal(
+      sawFinalPactState,
+      true,
+      `expected declined duplicate-stop Tainted Pact flow to leave two cards in exile and Tainted Pact in graveyard\n${finalPactText}`,
+    );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([

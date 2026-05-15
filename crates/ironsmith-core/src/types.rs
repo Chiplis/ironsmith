@@ -153,6 +153,7 @@ pub enum Subtype {
     Cave,
     Gate,
     Locus,
+    Town,
 
     // Creature types (alphabetical, common ones)
     Advisor,
@@ -227,6 +228,7 @@ pub enum Subtype {
     Hag,
     Halfling,
     Harpy,
+    Hero,
     Hippo,
     Horror,
     Homunculus,
@@ -427,6 +429,7 @@ impl Subtype {
             Subtype::Cave,
             Subtype::Gate,
             Subtype::Locus,
+            Subtype::Town,
         ]
     }
 
@@ -501,6 +504,7 @@ impl Subtype {
             Subtype::Hag,
             Subtype::Halfling,
             Subtype::Harpy,
+            Subtype::Hero,
             Subtype::Hippo,
             Subtype::Horror,
             Subtype::Homunculus,
@@ -738,6 +742,7 @@ impl Subtype {
                 | Subtype::Cave
                 | Subtype::Gate
                 | Subtype::Locus
+                | Subtype::Town
         )
     }
 
@@ -814,6 +819,7 @@ impl Subtype {
                 | Subtype::Hag
                 | Subtype::Halfling
                 | Subtype::Harpy
+                | Subtype::Hero
                 | Subtype::Hippo
                 | Subtype::Horror
                 | Subtype::Homunculus

@@ -231,6 +231,9 @@ impl EffectExecutor for CumulativeUpkeepEffect {
             );
 
         if !wants_to_pay {
+            if game.controller_of_id(ctx.source) != Some(player) {
+                return Ok(EffectOutcome::count(0));
+            }
             return execute_failure(game, ctx, &self.failure);
         }
 
@@ -396,6 +399,30 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("alice").life, 20);
         assert!(!game.battlefield.contains(&source));
+    }
+
+    #[test]
+    fn cumulative_upkeep_declined_after_control_change_does_not_sacrifice_source() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = source_with_age_counters(&mut game, alice, 1);
+        game.set_current_controller(source, bob);
+        let mut dm = BooleanDecisionMaker { response: false };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let effect = CumulativeUpkeepEffect::new(
+            PlayerFilter::You,
+            vec![Effect::lose_life_player(1, PlayerFilter::You)],
+            vec![Effect::sacrifice_source()],
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect resolves");
+
+        assert!(game.battlefield.contains(&source));
+        assert_eq!(game.controller_of_id(source), Some(bob));
     }
 
     #[test]

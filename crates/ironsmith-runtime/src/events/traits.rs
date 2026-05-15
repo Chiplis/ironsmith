@@ -41,6 +41,8 @@ pub enum EventKind {
     Sacrifice,
     /// A player gave a gift as a Gift ability resolved
     GiftGiven,
+    /// One effect would create one or more tokens
+    CreateTokens,
     /// Player searching their library
     SearchLibrary,
     /// Player shuffling their library
@@ -101,6 +103,8 @@ pub enum EventKind {
     PermanentUntapped,
     /// A player performed a keyword action (investigate, scry, earthbend, etc.)
     KeywordAction,
+    /// The day/night designation changed from day to night or night to day.
+    DayNightChanged,
     /// Players finished voting (for council's dilemma, etc.)
     PlayersFinishedVoting,
     /// A permanent transformed

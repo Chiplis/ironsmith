@@ -37,9 +37,10 @@ pub use ironsmith_core::{
     InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode,
     LocalRewriteEffect as CoreLocalRewriteEffect, LookAtHandEffect, LookAtTopCardsEffect,
     LoseLifeEffect, LoseTheGameEffect, ManaRestrictedEffect as CoreManaRestrictedEffect,
-    ManifestDreadEffect, ManifestTopCardOfLibraryEffect, MayEffect, MayMoveToZoneEffect,
-    MeldEffect, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
-    MonstrosityEffect, MoveAllCountersEffect, MoveCountersEffect, MoveToLibraryNthFromTopEffect,
+    ManifestDreadEffect, ManifestTopCardOfLibraryEffect,
+    MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
+    MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
+    MoveAllCountersEffect, MoveCountersEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneEffect, NewTargetRestriction,
     NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect, PayAnyEnergyEffect, PayEnergyEffect,
     PayManaEffect, PhaseInEffect, PhaseOutEffect, PoisonCountersEffect, PopulateEffect,
@@ -169,6 +170,7 @@ pub mod consult_helpers {
 
 pub mod mana {
     pub use ironsmith_core::{
-        AddManaOfChosenColorEffect, AddManaOfImprintedColorsEffect, AddScaledManaEffect,
+        AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect, AddManaOfImprintedColorsEffect,
+        AddScaledManaEffect,
     };
 }

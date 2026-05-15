@@ -26,6 +26,11 @@ pub enum CastingMethod {
         zone: Zone,
         use_alternative: Option<usize>,
     },
+    SplitOtherHalfPlayFrom {
+        source: crate::ids::ObjectId,
+        zone: Zone,
+        use_alternative: usize,
+    },
 }
 
 impl CastingMethod {
@@ -34,7 +39,12 @@ impl CastingMethod {
     }
 
     pub fn exiles_after_resolution(&self) -> bool {
-        matches!(self, Self::GrantedFlashback | Self::GrantedEscape { .. })
+        matches!(
+            self,
+            Self::GrantedFlashback
+                | Self::GrantedEscape { .. }
+                | Self::SplitOtherHalfPlayFrom { .. }
+        )
     }
 }
 

@@ -10,8 +10,98 @@
 //! comes only from battlefield permanents.
 
 use crate::ability::AbilityKind;
+use crate::continuous::{EffectTarget, Modification};
+use crate::events::context::EventContext;
+use crate::events::traits::{GameEventType, ReplacementMatcher, ReplacementPriority};
+use crate::events::zones::matchers::{
+    ThisWouldEnterBattlefieldMatcher, WouldEnterBattlefieldMatcher,
+};
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
+
+#[derive(Debug)]
+struct GrantedReplacementMatcher {
+    grant_target: Box<dyn ReplacementMatcher>,
+    granted_ability: Box<dyn ReplacementMatcher>,
+}
+
+impl Clone for GrantedReplacementMatcher {
+    fn clone(&self) -> Self {
+        Self {
+            grant_target: self.grant_target.clone_box(),
+            granted_ability: self.granted_ability.clone_box(),
+        }
+    }
+}
+
+impl ReplacementMatcher for GrantedReplacementMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.grant_target.matches_event(event, ctx)
+            && self.granted_ability.matches_event(event, ctx)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        self.granted_ability.priority()
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "{} and {}",
+            self.grant_target.display(),
+            self.granted_ability.display()
+        )
+    }
+}
+
+fn replacement_matcher_for_effect_target(
+    target: &EffectTarget,
+) -> Option<Box<dyn ReplacementMatcher>> {
+    match target {
+        EffectTarget::Filter(filter) => {
+            Some(Box::new(WouldEnterBattlefieldMatcher::new(filter.clone())))
+        }
+        EffectTarget::AllPermanents => Some(Box::new(WouldEnterBattlefieldMatcher::any())),
+        EffectTarget::AllCreatures => Some(Box::new(WouldEnterBattlefieldMatcher::creature())),
+        EffectTarget::Source => Some(Box::new(ThisWouldEnterBattlefieldMatcher)),
+        EffectTarget::Specific(object_id) => {
+            let filter = crate::target::ObjectFilter {
+                specific: Some(*object_id),
+                ..crate::target::ObjectFilter::permanent()
+            };
+            Some(Box::new(WouldEnterBattlefieldMatcher::new(filter)))
+        }
+        EffectTarget::AttachedTo(_) => None,
+    }
+}
+
+fn replacement_effects_from_granted_abilities(
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> Vec<ReplacementEffect> {
+    static_ability
+        .generate_effects(source, controller, game)
+        .into_iter()
+        .filter(|effect| {
+            crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
+        })
+        .filter_map(|effect| {
+            let Modification::AddAbility(granted_ability) = effect.modification else {
+                return None;
+            };
+            let mut replacement =
+                granted_ability.generate_replacement_effect(source, controller)?;
+            let grant_target = replacement_matcher_for_effect_target(&effect.applies_to)?;
+            let granted_ability = replacement.matcher.take()?;
+            replacement.matcher = Some(Box::new(GrantedReplacementMatcher {
+                grant_target,
+                granted_ability,
+            }));
+            Some(replacement)
+        })
+        .collect()
+}
 
 /// Generate all replacement effects from static abilities in zones where they function.
 ///
@@ -42,6 +132,12 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                     {
                         effects.push(effect);
                     }
+                    effects.extend(replacement_effects_from_granted_abilities(
+                        game,
+                        object_id,
+                        controller,
+                        static_ability,
+                    ));
                 }
             }
         }

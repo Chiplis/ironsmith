@@ -347,6 +347,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::BeginningOfPostcombatMainPhase { player } => {
             crate::triggers::Trigger::beginning_of_postcombat_main_phase(player)
         }
+        TriggerKind::DayNightChanged => crate::triggers::Trigger::day_night_changed(),
         TriggerKind::ThisEntersBattlefield => crate::triggers::Trigger::this_enters_battlefield(),
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {

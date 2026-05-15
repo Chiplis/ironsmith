@@ -1154,6 +1154,18 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_all_combat_damage_from_filter(
+        source_filter: crate::target::ObjectFilter,
+        until: Until,
+    ) -> Self {
+        let mut damage_filter = ironsmith_core::DamageFilter::combat();
+        damage_filter.from_source = Some(source_filter);
+        Self::new(crate::effects::PreventAllDamageEffect::all_with_filter(
+            damage_filter,
+            until,
+        ))
+    }
+
     pub fn prevent_all_damage_to(target: crate::target::ObjectFilter, until: Until) -> Self {
         Self::new(crate::effects::PreventAllDamageEffect::matching(
             target, until,

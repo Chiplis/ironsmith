@@ -239,6 +239,14 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     qualifiers.push("face down".to_string());
                 }
                 ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
+                    if let Some(obj) = game.object(*spell_id)
+                        && let Some(other_def) = game.linked_face_definition_by_name_or_id(
+                            obj.other_face_name.as_deref(),
+                            obj.other_face,
+                        )
+                    {
+                        name = other_def.card.name.clone();
+                    }
                     qualifiers.push("other half".to_string());
                 }
                 ironsmith::alternative_cast::CastingMethod::Fuse => {
@@ -295,6 +303,35 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     }
                     qualifiers.push(format!("from {}", zone_display_name(*zone)));
                 }
+                ironsmith::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
+                    zone,
+                    use_alternative,
+                    ..
+                } => {
+                    if let Some(other_def) = game.object(*spell_id).and_then(|obj| {
+                        game.linked_face_definition_by_name_or_id(
+                            obj.other_face_name.as_deref(),
+                            obj.other_face,
+                        )
+                    }) {
+                        name = other_def.card.name.clone();
+                    }
+                    let alt = game
+                        .object(*spell_id)
+                        .and_then(|obj| {
+                            ironsmith::decision::resolve_play_from_alternative_method(
+                                game,
+                                game.turn.priority_player.unwrap_or(obj.owner),
+                                obj,
+                                *zone,
+                                *use_alternative,
+                            )
+                        })
+                        .map(|m| m.name().to_ascii_lowercase())
+                        .unwrap_or_else(|| format!("alternative #{use_alternative}"));
+                    qualifiers.push(alt);
+                    qualifiers.push(format!("from {}", zone_display_name(*zone)));
+                }
             }
 
             if qualifiers.is_empty() {
@@ -347,10 +384,13 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             creature_id,
             method,
         } => {
+            let cost_prefix =
+                ironsmith::special_actions::turn_face_up_cost_display(game, *creature_id, *method)
+                    .map(|cost| format!("{cost}: "))
+                    .unwrap_or_default();
             format!(
-                "Turn face up {} for its {}",
-                object_name(game, *creature_id),
-                method.description()
+                "{cost_prefix}Turn this face-down permanent face up. ({})",
+                object_name(game, *creature_id)
             )
         }
         LegalAction::SpecialAction(action) => match action {
@@ -361,10 +401,16 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                 permanent_id,
                 method,
             } => {
+                let cost_prefix = ironsmith::special_actions::turn_face_up_cost_display(
+                    game,
+                    *permanent_id,
+                    *method,
+                )
+                .map(|cost| format!("{cost}: "))
+                .unwrap_or_default();
                 format!(
-                    "Turn face up {} for its {}",
-                    object_name(game, *permanent_id),
-                    method.description()
+                    "{cost_prefix}Turn this face-down permanent face up. ({})",
+                    object_name(game, *permanent_id)
                 )
             }
             ironsmith::special_actions::SpecialAction::Suspend { card_id } => {
@@ -493,7 +539,7 @@ pub(super) fn object_visible_to_perspective(
     };
 
     let visible_via_view_effect = viewed_cards.is_some_and(|view| {
-        (view.public || view.viewer == perspective) && view.cards.contains(&id)
+        (view.public || view.viewer == perspective) && view.contains_object(game, id)
     });
     if obj.zone == Zone::Exile && game.is_face_down(id) {
         return game.can_player_look_at_face_down_exiled_card(id, perspective)
@@ -650,6 +696,15 @@ pub(super) fn casting_method_ref(
             zone,
             use_alternative,
         } => CastingMethodRef::PlayFrom {
+            source: source.0,
+            zone: zone_name(*zone),
+            use_alternative: *use_alternative,
+        },
+        ironsmith::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
+            source,
+            zone,
+            use_alternative,
+        } => CastingMethodRef::SplitOtherHalfPlayFrom {
             source: source.0,
             zone: zone_name(*zone),
             use_alternative: *use_alternative,

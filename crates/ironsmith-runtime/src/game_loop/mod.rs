@@ -116,6 +116,7 @@ pub use self::targeting::{
 pub use self::turn_execution::*;
 pub use self::types::*;
 
+pub(crate) use self::priority_mana::propose_spell_cast;
 pub use self::priority_mana::{
     apply_decision_context_with_dm, expand_mana_cost_to_display_pips, mana_ability_is_undo_safe,
 };

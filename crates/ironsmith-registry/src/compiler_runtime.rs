@@ -190,11 +190,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 Ok(ironsmith::grant::GrantDuration::UntilEndOfTurn)
             }
             compiler::grant::GrantDuration::UntilYourNextTurnEnd => {
-                Err(CompilerIntegrationError::UnsupportedEffect {
-                    detail:
-                        "grant duration UntilYourNextTurnEnd has no runtime one-shot grant model"
-                            .to_string(),
-                })
+                Ok(ironsmith::grant::GrantDuration::UntilYourNextTurnEnd)
             }
         }
     }
@@ -329,6 +325,9 @@ fn convert_derived_alternative_cast(
         }
         compiler::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
             ironsmith::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
+        }
+        compiler::grant::DerivedAlternativeCast::RetraceFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::RetraceFromCardManaCost
         }
         compiler::grant::DerivedAlternativeCast::BlitzFromCardManaCost => {
             ironsmith::grant::DerivedAlternativeCast::BlitzFromCardManaCost

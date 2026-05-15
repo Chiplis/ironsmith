@@ -24,7 +24,9 @@ use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::replacement::{ReplacementAction, ReplacementEffect, ReplacementEffectId};
+use crate::replacement::{
+    ReplacementAction, ReplacementEffect, ReplacementEffectId, ReplacementEffectKey,
+};
 use crate::types::CardType;
 use crate::zone::Zone;
 use application::{apply_trait_enter_tapped, apply_trait_replacement, find_matching_cards_in_hand};
@@ -181,11 +183,36 @@ pub fn process_trait_event_with_additional_effects(
     process_event_direct(game, event, &mut state, &additional_effects, None)
 }
 
+/// Process an event while treating selected replacement effects as already applied.
+///
+/// This is for nested events created by replacement effects. CR 614.5 prevents a
+/// replacement effect from applying again to the event it replaced or any event
+/// created by that replacement path, while unrelated replacement effects must
+/// still be considered normally.
+pub fn process_trait_event_with_dm_and_applied_effects(
+    game: &mut GameState,
+    event: Event,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    applied_effects: &std::collections::HashSet<ReplacementEffectId>,
+    applied_effect_keys: &std::collections::HashSet<ReplacementEffectKey>,
+) -> TraitEventResult {
+    process_with_dm_and_additional_effects_and_applied(
+        game,
+        event,
+        dm,
+        &[],
+        applied_effects,
+        applied_effect_keys,
+    )
+}
+
 /// State for tracking trait-based event processing.
 #[derive(Debug, Clone, Default)]
 pub struct TraitEventProcessingState {
     /// Replacement effects that have already been applied to this event.
     pub applied_effects: std::collections::HashSet<ReplacementEffectId>,
+    /// Stable replacement identities already applied to this event.
+    pub applied_effect_keys: std::collections::HashSet<ReplacementEffectKey>,
     /// Iteration count to detect infinite loops.
     pub iteration_count: u32,
 }
@@ -204,9 +231,20 @@ impl TraitEventProcessingState {
         self.applied_effects.insert(id);
     }
 
+    /// Mark an effect as applied by both transient ID and stable key.
+    pub fn mark_applied_effect(&mut self, effect: &ReplacementEffect) {
+        self.mark_applied(effect.id);
+        self.applied_effect_keys.insert(effect.application_key());
+    }
+
     /// Check if an effect was already applied.
     pub fn was_applied(&self, id: ReplacementEffectId) -> bool {
         self.applied_effects.contains(&id)
+    }
+
+    /// Check if an effect was already applied, including regenerated static effects.
+    pub fn was_applied_effect(&self, effect: &ReplacementEffect) -> bool {
+        self.was_applied(effect.id) || self.applied_effect_keys.contains(&effect.application_key())
     }
 
     /// Increment iteration count.
@@ -263,7 +301,7 @@ fn process_event_direct(
         let chosen_effect = at_highest[0].clone();
         let effect_id = chosen_effect.id;
         let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
-        state.mark_applied(effect_id);
+        state.mark_applied_effect(&chosen_effect);
         consume_one_shot_if_applied(game, effect_id, &result);
         return match result {
             TraitApplyResult::Modified(modified_event) => process_event_direct(
@@ -330,7 +368,7 @@ fn process_event_direct(
     };
 
     let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
-    state.mark_applied(effect_id);
+    state.mark_applied_effect(&chosen_effect);
     consume_one_shot_if_applied(game, effect_id, &result);
 
     match result {
@@ -1034,7 +1072,7 @@ fn find_applicable_trait_replacements(
     // Check registered replacement effects in the game
     for effect in game.effect_store.replacement_effects.effects() {
         // Skip if already applied (Rule 614.5)
-        if state.was_applied(effect.id) {
+        if state.was_applied_effect(effect) {
             continue;
         }
 
@@ -1049,7 +1087,7 @@ fn find_applicable_trait_replacements(
     // Check additional ephemeral effects for this event.
     for effect in additional_effects {
         // Skip if already applied (Rule 614.5)
-        if state.was_applied(effect.id) {
+        if state.was_applied_effect(effect) {
             continue;
         }
 
@@ -1581,11 +1619,43 @@ fn process_zone_change_inner(
                 && matches!(
                     effect.replacement,
                     crate::replacement::ReplacementAction::ExileWithSourceLink
+                        | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+                        | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
                 )
             {
+                let exile_with_counters = match &effect.replacement {
+                    crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
+                        counters,
+                        ..
+                    } => counters.as_slice(),
+                    _ => &[],
+                };
                 if let Some(new_id) = game.move_object(object, Zone::Exile, cause.clone()) {
+                    for (counter_type, count) in exile_with_counters {
+                        if let Some(event) = game.add_counters_with_source(
+                            new_id,
+                            *counter_type,
+                            *count,
+                            Some(effect.source),
+                            Some(effect.controller),
+                        ) {
+                            game.queue_trigger_event(event.provenance(), event);
+                        }
+                    }
                     game.add_exiled_with_source_link(effect.source, new_id);
                     game.record_zone_change_results(object, vec![new_id]);
+                }
+                if !effects.is_empty() {
+                    let mut ctx =
+                        crate::effects::ExecutionContext::new(effect.source, effect.controller, dm);
+                    for effect in effects {
+                        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
+                        {
+                            for trigger_event in outcome.events {
+                                game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                            }
+                        }
+                    }
                 }
                 return EventOutcome::Replaced;
             }
@@ -1706,6 +1776,24 @@ fn process_with_dm_and_additional_effects(
     dm: &mut (impl DecisionMaker + ?Sized),
     additional_effects: &[ReplacementEffect],
 ) -> TraitEventResult {
+    process_with_dm_and_additional_effects_and_applied(
+        game,
+        event,
+        dm,
+        additional_effects,
+        &std::collections::HashSet::new(),
+        &std::collections::HashSet::new(),
+    )
+}
+
+fn process_with_dm_and_additional_effects_and_applied(
+    game: &mut GameState,
+    event: Event,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    additional_effects: &[ReplacementEffect],
+    applied_effects: &std::collections::HashSet<ReplacementEffectId>,
+    applied_effect_keys: &std::collections::HashSet<ReplacementEffectKey>,
+) -> TraitEventResult {
     use crate::decisions::{
         make_decision,
         specs::{ReplacementOption, ReplacementSpec},
@@ -1713,6 +1801,12 @@ fn process_with_dm_and_additional_effects(
 
     let mut current_event = game.ensure_event_provenance(event);
     let mut state = TraitEventProcessingState::default();
+    state
+        .applied_effects
+        .extend(applied_effects.iter().copied());
+    state
+        .applied_effect_keys
+        .extend(applied_effect_keys.iter().cloned());
 
     loop {
         let result = process_event_direct(
@@ -1783,7 +1877,7 @@ fn process_with_dm_and_additional_effects(
                     continue;
                 };
 
-                state.mark_applied(effect_id);
+                state.mark_applied_effect(&chosen_effect);
 
                 let apply_result = apply_trait_replacement(game, *boxed_event, &chosen_effect);
                 consume_one_shot_if_applied(game, effect_id, &apply_result);
@@ -2000,6 +2094,9 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
 ) -> ProcessedDamageResult {
     use crate::events::{DamageEvent, downcast_event};
 
+    game.update_cant_effects();
+    game.update_replacement_effects();
+
     // Check if damage can be prevented
     let can_prevent = game.can_prevent_damage();
 
@@ -2188,6 +2285,26 @@ fn apply_prevention_for_damage_assignment(
         (crate::color::ColorSet::COLORLESS, Vec::new())
     };
 
+    let source_filter_matches: std::collections::HashMap<_, _> = game
+        .effect_store
+        .prevention_effects
+        .shields()
+        .iter()
+        .filter_map(|shield| {
+            let source_filter = shield.damage_filter.from_source.as_ref()?;
+            let filter_ctx = game.filter_context_for(shield.controller, Some(shield.source));
+            let matches_current = game.object(source).is_some_and(|source_obj| {
+                source_filter.matches(source_obj, &filter_ctx, game)
+            });
+            let matches_lki = source_snapshot
+                .filter(|snapshot| snapshot.object_id == source)
+                .is_some_and(|snapshot| {
+                    source_filter.matches_snapshot(snapshot, &filter_ctx, game)
+                });
+            Some((shield.id, matches_current || matches_lki))
+        })
+        .collect();
+
     let result = match target {
         DamageTarget::Player(player_id) => game
             .effect_store
@@ -2200,6 +2317,7 @@ fn apply_prevention_for_damage_assignment(
                 &source_colors,
                 &source_card_types,
                 can_prevent,
+                &source_filter_matches,
             ),
         DamageTarget::Object(object_id) => {
             let controller = game
@@ -2217,6 +2335,7 @@ fn apply_prevention_for_damage_assignment(
                     &source_colors,
                     &source_card_types,
                     can_prevent,
+                    &source_filter_matches,
                 )
         }
     };
@@ -2392,6 +2511,38 @@ pub fn process_put_counters_with_event(
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
             if let Some(put_counters) = downcast_event::<PutCountersEvent>(e.inner()) {
                 put_counters.count
+            } else {
+                count
+            }
+        }
+        _ => count,
+    }
+}
+
+/// Process a token creation event through replacement effects.
+///
+/// Returns the final number of tokens to create.
+pub fn process_token_creation_with_event(
+    game: &mut GameState,
+    controller: PlayerId,
+    count: u32,
+    cause: crate::events::cause::EventCause,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> u32 {
+    use crate::events::{CreateTokensEvent, downcast_event};
+
+    if count == 0 {
+        return 0;
+    }
+
+    let event = Event::create_tokens(controller, count, cause);
+    let result = process_with_dm(game, event, dm);
+
+    match result {
+        TraitEventResult::Prevented => 0,
+        TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
+            if let Some(create_tokens) = downcast_event::<CreateTokensEvent>(e.inner()) {
+                create_tokens.count
             } else {
                 count
             }
@@ -2700,13 +2851,13 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     continue;
                 };
 
-                state.mark_applied(chosen_id);
+                state.mark_applied_effect(&chosen_effect);
                 if matches!(
                     chosen_effect.priority_override,
                     Some(crate::events::ReplacementPriority::CopyEffect)
                 ) {
                     for effect in &copy_choice_effects {
-                        state.mark_applied(effect.id);
+                        state.mark_applied_effect(effect);
                     }
                 }
                 let apply_result = apply_trait_replacement(game, *event, &chosen_effect);
@@ -3130,7 +3281,7 @@ pub fn process_event_with_chosen_replacement_trait(
 
     // Create state with the chosen effect marked as applied
     let mut state = TraitEventProcessingState::default();
-    state.mark_applied(chosen_effect_id);
+    state.mark_applied_effect(&effect);
 
     match apply_result {
         TraitApplyResult::Modified(modified) => {
@@ -3254,6 +3405,48 @@ mod tests {
     }
 
     #[test]
+    fn exile_with_source_link_counters_replacement_adds_counters_to_exiled_object() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let source = create_creature(&mut game, "Ice Necromancer", alice);
+        let creature = create_creature(&mut game, "Doomed Bear", alice);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::zones::matchers::WouldGoToGraveyardMatcher::new(
+                    crate::target::ObjectFilter::specific(creature),
+                ),
+                ReplacementAction::ExileWithSourceLinkCountersThen {
+                    counters: vec![(CounterType::Ice, 1)],
+                    effects: Vec::new(),
+                },
+            ),
+        );
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let outcome = process_zone_change(
+            &mut game,
+            creature,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            EventCause::effect(),
+            &mut dm,
+        );
+
+        assert!(
+            outcome.is_replaced(),
+            "expected replacement, got {outcome:?}"
+        );
+        let [exiled] = game.exile.as_slice() else {
+            panic!("expected one exiled object, got {:?}", game.exile);
+        };
+        assert_eq!(game.counter_count(*exiled, CounterType::Ice), 1);
+        assert_eq!(game.get_exiled_with_source_links(source), &[*exiled]);
+    }
+
+    #[test]
     fn prevention_follow_up_executes_with_prevented_amount_on_damaged_target() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
@@ -3292,6 +3485,46 @@ mod tests {
             game.counter_count(protected, CounterType::PlusOnePlusOne),
             3,
             "follow-up should use the prevented amount on the damaged creature"
+        );
+    }
+
+    #[test]
+    fn static_damage_prevention_replacements_are_refreshed_before_damage() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let protected = create_creature(&mut game, "Stormwild Stand-In", alice);
+        game.object_mut(protected)
+            .expect("creature exists")
+            .abilities
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
+                    CounterType::PlusOnePlusOne,
+                    "If noncombat damage would be dealt to this creature, prevent that damage. Put a +1/+1 counter on it for each 1 damage prevented this way.",
+                    None,
+                    Some(false),
+                ),
+            ));
+        let source = create_creature(&mut game, "Shock Bear", bob);
+
+        let processed = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+
+        assert!(
+            processed.assignments.is_empty(),
+            "static prevention replacement should fully replace the damage: {processed:?}"
+        );
+        assert_eq!(
+            game.counter_count(protected, CounterType::PlusOnePlusOne),
+            3,
+            "replacement follow-up should put counters equal to the prevented damage"
         );
     }
 

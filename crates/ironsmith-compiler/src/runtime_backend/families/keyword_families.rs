@@ -32,6 +32,7 @@ pub(super) enum KeywordDispatchHint {
     Bargain,
     Buyback,
     Channel,
+    Craft,
     Cycling,
     Reinforce,
     Equip,
@@ -105,6 +106,12 @@ mod activated_keywords {
             hints: &[KeywordDispatchHint::Cycling],
             matches: registry::matches_cycling,
             lower: registry::lower_cycling,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Craft,
+            hints: &[KeywordDispatchHint::Craft],
+            matches: registry::matches_craft,
+            lower: registry::lower_craft,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Reinforce,
@@ -350,6 +357,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("escalate").value(KeywordDispatchHint::Escalate),
                 grammar::kw("evoke").value(KeywordDispatchHint::Evoke),
                 grammar::kw("epic").value(KeywordDispatchHint::Epic),
+                grammar::kw("craft").value(KeywordDispatchHint::Craft),
                 grammar::kw("exploit").value(KeywordDispatchHint::Exploit),
             )),
         )),

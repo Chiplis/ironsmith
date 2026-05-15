@@ -13,7 +13,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::grant::{
     DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, GrantUsageLimit, Grantable,
 };
-use crate::ids::{ObjectId, PlayerId};
+use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
@@ -146,6 +146,8 @@ pub struct Grant {
     /// The specific card that receives this grant (for targeted grants like Snapcaster).
     /// If None, uses the filter instead.
     pub target_id: Option<ObjectId>,
+    /// Stable card identity for targeted grants that track "that card" across zone changes.
+    pub target_stable_id: Option<StableId>,
     /// Filter for cards that receive this grant (for blanket grants like Underworld Breach).
     /// Only used if target_id is None.
     pub filter: Option<ObjectFilter>,
@@ -188,6 +190,28 @@ impl GrantRegistry {
     ) {
         self.grants.push(Grant {
             target_id: Some(target_id),
+            target_stable_id: None,
+            filter: None,
+            zone,
+            player,
+            grantable,
+            source,
+        });
+    }
+
+    /// Add a grant for a specific physical card that should survive object-id changes.
+    pub fn grant_to_stable_card(
+        &mut self,
+        target_id: ObjectId,
+        target_stable_id: StableId,
+        zone: Zone,
+        player: PlayerId,
+        grantable: Grantable,
+        source: GrantSource,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id: Some(target_stable_id),
             filter: None,
             zone,
             player,
@@ -208,6 +232,7 @@ impl GrantRegistry {
         let filter = normalize_grant_filter(filter);
         self.grants.push(Grant {
             target_id: None,
+            target_stable_id: None,
             filter: Some(filter),
             zone,
             player,
@@ -314,6 +339,8 @@ impl GrantRegistry {
 
         // Build filter context once
         let ctx = game.filter_context_for(player, None);
+        let card = game.object(card_id);
+        let card_stable_id = card.map(|card| card.stable_id);
 
         // 1. Collect stored grants
         for grant in &self.grants {
@@ -338,11 +365,15 @@ impl GrantRegistry {
 
             // Check if this grant applies to this card
             let matches = if let Some(target_id) = grant.target_id {
-                // Targeted grant - must match exactly
+                // Targeted grant - match the current object id, or the stable card
+                // identity when the permission explicitly tracks "that card".
                 target_id == card_id
+                    || grant.target_stable_id.zip(card_stable_id).is_some_and(
+                        |(target_stable_id, card_stable_id)| target_stable_id == card_stable_id,
+                    )
             } else if let Some(ref filter) = grant.filter {
                 // Filter-based grant - check if card matches filter
-                if let Some(card) = game.object(card_id) {
+                if let Some(card) = card {
                     filter.matches(card, &ctx, game)
                 } else {
                     false
@@ -358,7 +389,7 @@ impl GrantRegistry {
 
         // 2. Compute grants from static abilities on demand so static and
         // effect-based grants don't drift apart.
-        let card = match game.object(card_id) {
+        let card = match card {
             Some(c) => c,
             None => return result,
         };
@@ -504,7 +535,10 @@ impl GrantRegistry {
                 };
 
                 let is_source_self_grant = spec.filter == ObjectFilter::source();
-                if !source_is_battlefield && (!is_source_self_grant || spec.zone != source.zone) {
+                if !source_is_battlefield
+                    && source.zone != Zone::Command
+                    && (!is_source_self_grant || spec.zone != source.zone)
+                {
                     continue;
                 }
 
@@ -521,6 +555,7 @@ impl GrantRegistry {
                 }) {
                     grants.push(Grant {
                         target_id: is_source_self_grant.then_some(source_id),
+                        target_stable_id: None,
                         filter: (!is_source_self_grant)
                             .then(|| normalize_grant_filter(spec.filter.clone())),
                         zone: spec.zone,

@@ -254,6 +254,7 @@ pub enum TriggerKind {
     BeginningOfPostcombatMainPhase {
         player: PlayerFilter,
     },
+    DayNightChanged,
     ThisEntersBattlefield,
     YouCastThisSpell,
     KeywordActionMatchingObject {
@@ -879,6 +880,9 @@ impl Trigger {
             "beginning_of_postcombat_main_phase",
             TriggerKind::BeginningOfPostcombatMainPhase { player },
         )
+    }
+    pub fn day_night_changed() -> Self {
+        Self::typed("day_night_changed", TriggerKind::DayNightChanged)
     }
     pub fn this_enters_battlefield() -> Self {
         Self::typed(

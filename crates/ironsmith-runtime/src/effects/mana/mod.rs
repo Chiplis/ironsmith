@@ -8,6 +8,7 @@ mod add_mana_from_commander_color_identity;
 mod add_mana_of_any_color;
 mod add_mana_of_any_one_color;
 mod add_mana_of_chosen_color;
+mod add_mana_of_colors_among;
 mod add_mana_of_imprinted_colors;
 mod add_mana_of_land_produced_types;
 mod add_scaled_mana;
@@ -24,6 +25,7 @@ pub use add_mana_from_commander_color_identity::AddManaFromCommanderColorIdentit
 pub use add_mana_of_any_color::AddManaOfAnyColorEffect;
 pub use add_mana_of_any_one_color::AddManaOfAnyOneColorEffect;
 pub use add_mana_of_chosen_color::AddManaOfChosenColorEffect;
+pub use add_mana_of_colors_among::AddManaOfColorsAmongEffect;
 pub use add_mana_of_imprinted_colors::AddManaOfImprintedColorsEffect;
 pub use add_mana_of_land_produced_types::AddManaOfLandProducedTypesEffect;
 pub use add_scaled_mana::AddScaledManaEffect;

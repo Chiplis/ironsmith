@@ -176,6 +176,8 @@ async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) 
       castingMethods: [],
       distributionChoices: [],
       targets: [],
+      objectAliases: new Map(),
+      aliasGroupCounts: new Map(),
       modes: [],
       lastBooleanChoice: null,
       attackingBands: [],
@@ -398,8 +400,9 @@ function addCard(context, operation) {
   const zone = zoneName(operation.zone);
   const name = cardName(operation.name);
   for (let index = 0; index < count; index += 1) {
+    let objectId = null;
     if (operation.custom) {
-      addCustomCardWithAbility(context.game, {
+      objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
@@ -409,31 +412,32 @@ function addCard(context, operation) {
         toughness: operation.toughness ?? "1",
       });
     } else if (craftFrontFixtureForName(name)) {
-      addCustomCardWithAbility(context.game, {
+      objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
         ...craftFrontFixtureForName(name),
       });
     } else if (craftExileTriggerFixtureForName(name)) {
-      addCustomCardWithAbility(context.game, {
+      objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
         ...craftExileTriggerFixtureForName(name),
       });
     } else if (CARD_FIXTURES.has(name)) {
-      addCustomCardWithAbility(context.game, {
+      objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
         ...CARD_FIXTURES.get(name),
       });
     } else if (zone === "hand") {
-      context.game.addCardToHand(player, engineCardNameForFixture(name));
+      objectId = Number(context.game.addCardToHand(player, engineCardNameForFixture(name)));
     } else {
-      context.game.addCardToZone(player, engineCardNameForFixture(name), zone, true);
+      objectId = Number(context.game.addCardToZone(player, engineCardNameForFixture(name), zone, true));
     }
+    recordMageObjectAlias(context, operation.name, objectId);
     if (
       String(context.sourcePath || "").endsWith("DayNightTest.java") &&
       zone === "battlefield" &&
@@ -770,6 +774,20 @@ async function applySupportedJavaHelper(context, operation) {
     });
   }
 
+  const addCounters = source.match(
+    /^addCounters\((\d+),\s*PhaseStep\.([A-Z_]+),\s*([^,]+),\s*((?:"[^"]*"|[^,]+)),\s*CounterType\.([A-Z0-9_]+),\s*([^)]+)\)$/,
+  );
+  if (addCounters) {
+    return addCountersToPermanent(context, {
+      turn: Number(addCounters[1]),
+      phase: addCounters[2],
+      player: addCounters[3],
+      name: addCounters[4],
+      counter: addCounters[5],
+      count: addCounters[6],
+    });
+  }
+
   const counters = source.match(
     /^checkPermanentCounters\((?:"[^"]*"|[^,]+),\s*(\d+),\s*([^,]+),\s*([^,]+),\s*(.+),\s*CounterType\.([A-Z0-9_]+),\s*([^)]+)\)$/,
   );
@@ -781,6 +799,17 @@ async function applySupportedJavaHelper(context, operation) {
       name: counters[4],
       counter: counters[5],
       count: counters[6],
+    });
+  }
+
+  const exileCounterCount = source.match(
+    /^assertCounterOnExiledCardCount\(([^,]+),\s*CounterType\.([A-Z0-9_]+),\s*([^)]+)\)$/,
+  );
+  if (exileCounterCount) {
+    return assertCounterOnExiledCardCount(context, {
+      name: resolveMageVariable(context, exileCounterCount[1]),
+      counter: exileCounterCount[2],
+      count: exileCounterCount[3],
     });
   }
 
@@ -893,6 +922,14 @@ async function applySupportedJavaHelper(context, operation) {
     });
   }
 
+  const emblemCount = source.match(/^assertEmblemCount\(([^,]+),\s*([^)]+)\)$/);
+  if (emblemCount) {
+    return assertEmblemCount(context, {
+      player: emblemCount[1],
+      count: emblemCount[2],
+    });
+  }
+
   const blitzAutomatonCheck = source.match(/^checkAutomaton\((true|false)(?:,\s*([^)]+))?\)$/);
   if (blitzAutomatonCheck) {
     return assertBlitzAutomatonPrototypeState(context, {
@@ -903,6 +940,34 @@ async function applySupportedJavaHelper(context, operation) {
 
   if (/^for \(Permanent p : eidolons\)/.test(source)) {
     return assertBestowEidolonsAreCreatures(context, { player: "playerA" });
+  }
+
+  const expectedExecuteFailure = source.match(
+    /^try \{ execute\(\); Assert\.fail\("[\s\S]*?"\); \} catch \(Throwable e\) \{ if \(!e\.getMessage\(\)\.contains\("([^"]+)"\)\) \{ Assert\.fail\("[\s\S]*?" \+ e\.getMessage\(\)\); \} \} assertExileCount\(([^,]+),\s*([^,]+),\s*([^)]+)\)$/,
+  );
+  if (expectedExecuteFailure) {
+    const expectedMessage = expectedExecuteFailure[1];
+    let error = null;
+    try {
+      await executeScheduled(context);
+    } catch (caught) {
+      error = caught;
+    }
+    assert(error, `expected execute() to fail with ${expectedMessage}`);
+    const actualMessage = String(error?.message ?? error);
+    const normalizedActual = actualMessage.toLowerCase();
+    const normalizedExpected = expectedMessage.toLowerCase();
+    const expectedCard = normalizedExpected.replace(/^cast\s+/, "");
+    assert(
+      normalizedActual.includes(normalizedExpected) ||
+        (expectedCard && normalizedActual.includes("cast action") && normalizedActual.includes(expectedCard)),
+      `expected execute() failure mentioning ${expectedMessage}, got ${actualMessage}`,
+    );
+    return assertExileCount(context, {
+      player: expectedExecuteFailure[2],
+      name: resolveMageVariable(context, expectedExecuteFailure[3]),
+      count: expectedExecuteFailure[4],
+    });
   }
 
   throw new Error(`unsupported Java statement: ${operation.source}`);
@@ -983,10 +1048,7 @@ async function executeScheduledActions(context, until = null, options = {}) {
         (!until || compareScheduled(context.scheduled[index + 1], until) <= 0) &&
         context.scheduled[index + 1].op === "attack" &&
         compareScheduled(operation, context.scheduled[index + 1]) === 0 &&
-        playerIndex(context.scheduled[index + 1].player) === playerIndex(operation.player) &&
-        !attackOperations.some((attackOperation) =>
-          cardName(attackOperation.attacker) === cardName(context.scheduled[index + 1].attacker)
-        )
+        playerIndex(context.scheduled[index + 1].player) === playerIndex(operation.player)
       ) {
         attackOperations.push(context.scheduled[index + 1]);
         index += 1;
@@ -1335,18 +1397,27 @@ async function playLand(context, operation) {
     state = context.game.uiState();
   }
   let cardId = findCardIdInHand(context, player, name, { optional: true });
-  if (cardId === null) {
+  const matchesPlayLand = (candidate) => {
+    if (
+      candidate.kind !== "play_land" &&
+      candidate.action_ref?.kind !== "play_land" &&
+      !String(candidate.label || "").startsWith("Play ")
+    ) {
+      return false;
+    }
+    const actionObjectId =
+      candidate.object_id ?? candidate.action_ref?.land_id ?? candidate.action_ref?.object_id;
+    if (cardId !== null && Number(actionObjectId) === Number(cardId)) return true;
+    return actionLabelMatches(candidate, name) || actionLabelMatches(candidate, `Play ${name}`);
+  };
+  let action = (state.decision?.actions || []).find(matchesPlayLand);
+  if (!action && cardId === null) {
     context.game.addCardToHand(player, name);
     cardId = findCardIdInHand(context, player, name);
     state = context.game.uiState();
+    action = (state.decision?.actions || []).find(matchesPlayLand);
   }
-  const action = actionByPredicate(
-    state,
-    (candidate) =>
-      (candidate.kind === "play_land" || candidate.action_ref?.kind === "play_land" || String(candidate.label || "").startsWith("Play ")) &&
-      Number(candidate.object_id ?? candidate.action_ref?.land_id ?? candidate.action_ref?.object_id) === Number(cardId),
-    `play land action for ${name}`,
-  );
+  action = action ?? actionByPredicate(state, matchesPlayLand, `play land action for ${name}`);
   makeCurrentScheduledChoicesAvailable(context);
   context.game.dispatch({ type: "priority_action", action_index: action.index });
 }
@@ -2200,7 +2271,10 @@ async function declareAttack(context, operation) {
 async function declareAttacks(context, operations) {
   const operation = operations[0];
   maybeEnterPendingAdditionalCombat(context, operation);
-  await advanceTo(context, operation.turn, "DECLARE_ATTACKERS", operation.player, { allowRepeatedPhase: true });
+  await advanceTo(context, operation.turn, "DECLARE_ATTACKERS", operation.player, {
+    allowRepeatedPhase: true,
+    requireAttackersDecision: true,
+  });
   let state = context.game.uiState();
   for (
     let safety = 0;
@@ -2446,6 +2520,7 @@ function applyQueuedCombatDamageAssignments(context, blockData) {
 async function advanceTo(context, turn, phase, player, options = {}) {
   const targetTurn = Number(turn || 1);
   const targetPhase = phaseLabel(phase);
+  const requireAttackersDecision = options.requireAttackersDecision === true;
   for (let step = 0; step < MAX_ADVANCE_STEPS; step += 1) {
     const state = context.game.uiState();
     if (
@@ -2463,7 +2538,7 @@ async function advanceTo(context, turn, phase, player, options = {}) {
     if (
       Number(state.turn_number) === targetTurn &&
       normalizePhase(state.phase, state.step) === targetPhase &&
-      (targetPhase !== "DECLARE_ATTACKERS" || state.decision?.kind === "attackers") &&
+      (targetPhase !== "DECLARE_ATTACKERS" || !requireAttackersDecision || state.decision?.kind === "attackers") &&
       (player === null || player === undefined || state.priority_player === playerIndex(player) || state.decision?.player === playerIndex(player))
     ) {
       return state;
@@ -2709,6 +2784,9 @@ function nextSelectObjectsChoice(context, decision) {
     if (shouldConsumeBooleanAfterTargetedObjectSelection(decision, queuedChoice)) {
       context.choices.shift();
     }
+    return nextQueuedTarget(context, decision.player);
+  }
+  if (queuedTarget !== undefined && isOptionalBottomPlacementDecision(decision)) {
     return nextQueuedTarget(context, decision.player);
   }
   const optionalBottomChoiceIndex = optionalBottomPlacementChoiceIndex(context, decision);
@@ -3110,6 +3188,12 @@ function sameTargetChoice(left, right) {
 
 function chooseLegalTarget(context, legalTargets, wanted, decisionPlayer = undefined) {
   assert(legalTargets.length > 0, "target decision has no legal targets");
+  const aliasEntry = resolveMageObjectAlias(context, wanted);
+  if (aliasEntry) {
+    const checkpoint = getCheckpoint(context.game);
+    const matched = legalTargets.find((target) => targetMatchesAliasEntry(target, aliasEntry, checkpoint));
+    if (matched) return matched;
+  }
   if (wanted === undefined || wanted === null) {
     const chooser = Number(decisionPlayer);
     if (Number.isFinite(chooser)) {
@@ -3751,6 +3835,13 @@ async function assertPermanentCount(context, operation) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
   const permanents = getBattlefield(checkpoint, operation.player);
+  const aliasEntry = resolveMageObjectAlias(context, operation.name);
+  if (aliasEntry) {
+    const actual = permanents.filter((object) => objectMatchesAliasEntry(object, aliasEntry)).length;
+    const expected = numericValue(operation.count);
+    assert(actual === expected, `expected ${operation.count} ${operation.name} permanents, got ${actual}`);
+    return;
+  }
   const name = operation.name === undefined ? null : cardName(operation.name);
   const actual = name === null ? permanents.length : countByMagePermanentName(context, permanents, name);
   const label = name === null ? "total" : name;
@@ -3864,6 +3955,12 @@ async function assertZoneCount(context, operation, zone) {
       : zone === "graveyard"
         ? getGraveyard(checkpoint, operation.player)
         : getLibrary(checkpoint, operation.player);
+  const aliasEntry = resolveMageObjectAlias(context, operation.name);
+  if (aliasEntry) {
+    const actual = cards.filter((object) => objectMatchesAliasEntry(object, aliasEntry)).length;
+    assert(actual === numericValue(operation.count), `expected ${operation.count} ${operation.name} cards in ${zone}, got ${actual}`);
+    return;
+  }
   const name = operation.name ? cardName(operation.name) : null;
   const actual = name ? countByName(cards, name) : cards.length;
   assert(actual === numericValue(operation.count), `expected ${operation.count} ${name || zone} cards in ${zone}, got ${actual}`);
@@ -3890,6 +3987,31 @@ async function assertExileCount(context, operation) {
       (context.syntheticExileCounts.get(name) || 0)
     : cards.length + [...context.syntheticExileCounts.values()].reduce((sum, count) => sum + count, 0);
   assert(actual === numericValue(operation.count), `expected ${operation.count} ${name || "exile"} cards in exile, got ${actual}`);
+}
+
+async function assertCounterOnExiledCardCount(context, operation) {
+  await prepareAssertion(context, operation);
+  const checkpoint = getCheckpoint(context.game);
+  const name = cardName(operation.name);
+  const expectedCounter = normalizeMageCounterKind(operation.counter);
+  const candidates = getExile(checkpoint, null).filter(
+    (object) => normalizeLooseName(cardName(object.name)) === normalizeLooseName(name),
+  );
+  assert(candidates.length > 0, `expected exiled card ${name}`, getExile(checkpoint, null).map((object) => object.name));
+
+  const actual = candidates.reduce(
+    (sum, object) => sum + counterAmountOnObject(context, object, expectedCounter),
+    0,
+  );
+  const expected = numericValue(operation.count);
+  assert(
+    actual === expected,
+    `expected ${expected} ${operation.counter} counters on exiled ${name}, got ${actual}`,
+    candidates.map((object) => ({
+      object,
+      details: getObjectDetails(context.game, object.id),
+    })),
+  );
 }
 
 async function assertPowerToughness(context, operation) {
@@ -4054,6 +4176,42 @@ async function assertCounterCount(context, operation) {
   assert(actual === numericValue(operation.count), `expected ${operation.count} ${operation.counter} counters on ${name}, got ${actual}`);
 }
 
+async function assertEmblemCount(context, operation) {
+  await prepareAssertion(context, operation);
+  const player = playerIndex(operation.player);
+  const checkpoint = getCheckpoint(context.game);
+  const emblems = getObjectsInZone(checkpoint, "command").filter((object) => {
+    const controller = Number(object.controller ?? object.owner);
+    return controller === player && cardName(object.name).toLowerCase().includes("emblem");
+  });
+  const actual = emblems.length;
+  const expected = numericValue(operation.count);
+  assert(actual === expected, `expected ${expected} emblems for ${operation.player}, got ${actual}`);
+}
+
+async function addCountersToPermanent(context, operation) {
+  await prepareAssertion(context, operation);
+  const player = playerIndex(operation.player);
+  const target = findPermanentForMageArg(context, operation.player, operation.name);
+  const kind = checkpointCounterKind(operation.counter);
+  const amount = numericValue(resolveMageVariable(context, operation.count));
+  runCode(context.game, (checkpoint) => {
+    const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(target.id));
+    assert(object, `permanent not found for counters: ${operation.name}`);
+    const counters = object.counters || [];
+    const normalizedKind = normalizeMageCounterKind(kind);
+    const counter = counters.find((candidate) =>
+      normalizeMageCounterKind(candidate.kind ?? candidate.type) === normalizedKind,
+    );
+    if (counter) {
+      counter.amount = Number(counter.amount ?? counter.count ?? 0) + amount;
+    } else {
+      counters.push({ kind, amount });
+    }
+    object.counters = counters;
+  }, { perspective: player });
+}
+
 function ensurePucasMischiefControlState(context) {
   runCode(context.game, (checkpoint) => {
     const illusions = (checkpoint.objects || []).find((object) => cardName(object.name) === "Illusions of Grandeur");
@@ -4088,6 +4246,25 @@ function normalizeMageCounterKind(counter) {
     return "-1/-1";
   }
   return normalized;
+}
+
+function counterAmountOnObject(context, object, normalizedKind) {
+  const details = getObjectDetails(context.game, object.id);
+  const counters = [
+    ...(object.counters || []),
+    ...(details.counters || []),
+  ];
+  const counter = counters.find((candidate) =>
+    normalizeMageCounterKind(candidate.kind ?? candidate.type ?? candidate.name) === normalizedKind,
+  );
+  return Number(counter?.amount ?? counter?.count ?? counter?.value ?? 0);
+}
+
+function checkpointCounterKind(counter) {
+  const normalized = String(counter || "").trim().toUpperCase();
+  if (normalized === "P1P1" || normalized === "PLUS_ONE_PLUS_ONE") return "+1/+1";
+  if (normalized === "M1M1" || normalized === "MINUS_ONE_MINUS_ONE") return "-1/-1";
+  return titleCaseType(normalized);
 }
 
 async function assertType(context, operation) {
@@ -4238,6 +4415,13 @@ async function assertAbilities(context, operation) {
 
 function findPermanentForMageArg(context, player, raw, { predicate = null } = {}) {
   const checkpoint = getCheckpoint(context.game);
+  const aliasEntry = resolveMageObjectAlias(context, raw);
+  if (aliasEntry) {
+    const candidates = getBattlefield(checkpoint, player ?? null);
+    const match = candidates.find((object) => objectMatchesAliasEntry(object, aliasEntry));
+    assert(match, `permanent not found: ${raw}`, candidates.map((object) => effectivePermanentName(context, object)));
+    return match;
+  }
   const parsed = mageArgName(raw);
   if (parsed.quoted) {
     return getPermanent(checkpoint, player, parsed.name);
@@ -4410,10 +4594,12 @@ function cardName(raw) {
   if (/EmptyNames\.FULLY_LOCKED_ROOM\.getTestCommand\(\)/.test(text)) {
     return "Fully Locked Room";
   }
-  return text
+  const unquoted = text
     .replace(/^"(.+)"$/, "$1")
-    .replace(/^'(.+)'$/, "$1")
-    .split("@", 1)[0]
+    .replace(/^'(.+)'$/, "$1");
+  const aliasIndex = unquoted.indexOf("@");
+  const withoutAlias = aliasIndex > 0 ? unquoted.slice(0, aliasIndex) : unquoted;
+  return withoutAlias
     .replace(/\s+using\s+.+$/i, "")
     .replace(
       /\s+with\s+(?:alternative cost.*|awaken|blitz|emerge|escape|freerunning.*|jump-start|kicker|mayhem|no alternative cost|overload|prowl.*|prototype|retrace|spectacle|surge|warp|web-slinging)$/i,
@@ -4576,4 +4762,71 @@ function normalizeActionSearch(raw) {
     .replace(/[^\p{L}\p{N}+\-/ ]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function mageObjectAliasSpec(raw) {
+  const text = String(raw ?? "")
+    .trim()
+    .replace(/^"(.+)"$/, "$1")
+    .replace(/^'(.+)'$/, "$1");
+  const match = text.match(/@([^\s]+)$/);
+  if (!match) return null;
+  const indexed = match[1].match(/^(.+)\.(\d+)$/);
+  const group = (indexed ? indexed[1] : match[1]).trim().toLowerCase();
+  if (!group) return null;
+  return {
+    group,
+    index: indexed ? Number(indexed[2]) : null,
+  };
+}
+
+function mageObjectAliasKey(group, index = null) {
+  return `@${String(group).toLowerCase()}${index === null ? "" : `.${Number(index)}`}`;
+}
+
+function recordMageObjectAlias(context, rawName, objectId) {
+  const spec = mageObjectAliasSpec(rawName);
+  const numericId = Number(objectId);
+  if (!spec || !Number.isFinite(numericId) || numericId <= 0) return;
+
+  const nextIndex = (context.aliasGroupCounts.get(spec.group) || 0) + 1;
+  const index = spec.index ?? nextIndex;
+  context.aliasGroupCounts.set(spec.group, Math.max(nextIndex, index));
+
+  const checkpoint = getCheckpoint(context.game);
+  const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === numericId);
+  const entry = {
+    objectId: numericId,
+    stableId: Number(object?.stableId ?? object?.stable_id ?? numericId),
+    name: cardName(rawName),
+  };
+  context.objectAliases.set(mageObjectAliasKey(spec.group, index), entry);
+  if (spec.index === null && index === 1) {
+    context.objectAliases.set(mageObjectAliasKey(spec.group), entry);
+  }
+}
+
+function resolveMageObjectAlias(context, rawName) {
+  const spec = mageObjectAliasSpec(rawName);
+  if (!spec) return null;
+  return (
+    context.objectAliases.get(mageObjectAliasKey(spec.group, spec.index)) ??
+    (spec.index === null ? context.objectAliases.get(mageObjectAliasKey(spec.group, 1)) : null) ??
+    null
+  );
+}
+
+function objectMatchesAliasEntry(object, entry) {
+  if (!object || !entry) return false;
+  return (
+    Number(object.id) === Number(entry.objectId) ||
+    Number(object.stableId ?? object.stable_id ?? object.id) === Number(entry.stableId)
+  );
+}
+
+function targetMatchesAliasEntry(target, entry, checkpoint) {
+  const objectId = target?.object ?? target?.id;
+  if (objectId === undefined || objectId === null) return false;
+  const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(objectId));
+  return objectMatchesAliasEntry(object ?? { id: objectId }, entry);
 }

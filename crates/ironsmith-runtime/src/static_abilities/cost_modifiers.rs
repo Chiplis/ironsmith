@@ -383,6 +383,34 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
         crate::ConditionExpr::SourceIsMonstrous => {
             "As long as this permanent is monstrous".to_string()
         }
+        crate::ConditionExpr::PlayerCardsInHandOrMore { player, count } => {
+            let subject = match player {
+                PlayerFilter::You => "you",
+                PlayerFilter::Opponent => "an opponent",
+                PlayerFilter::Any => "a player",
+                _ => "that player",
+            };
+            let verb = if *player == PlayerFilter::You {
+                "have"
+            } else {
+                "has"
+            };
+            format!("As long as {subject} {verb} {count} or more cards in hand")
+        }
+        crate::ConditionExpr::PlayerCardsInHandOrFewer { player, count } => {
+            let subject = match player {
+                PlayerFilter::You => "you",
+                PlayerFilter::Opponent => "an opponent",
+                PlayerFilter::Any => "a player",
+                _ => "that player",
+            };
+            let verb = if *player == PlayerFilter::You {
+                "have"
+            } else {
+                "has"
+            };
+            format!("As long as {subject} {verb} {count} or fewer cards in hand")
+        }
         _ => "As long as the stated condition is true".to_string(),
     }
 }
@@ -726,10 +754,13 @@ impl StaticAbilityKind for CostReduction {
 pub struct ActivatedAbilityCostReduction {
     pub filter: ObjectFilter,
     pub reduction: u32,
+    pub replacement_mana_cost: Option<crate::mana::ManaCost>,
+    pub display: Option<String>,
     pub minimum_total_mana: Option<u32>,
     pub per_matching_objects: Option<ObjectFilter>,
     pub per_basic_land_types_among: Option<ObjectFilter>,
     pub condition: Option<ActivatedAbilityCostCondition>,
+    pub static_condition: Option<crate::ConditionExpr>,
 }
 
 impl ActivatedAbilityCostReduction {
@@ -737,10 +768,31 @@ impl ActivatedAbilityCostReduction {
         Self {
             filter,
             reduction,
+            replacement_mana_cost: None,
+            display: None,
             minimum_total_mana: None,
             per_matching_objects: None,
             per_basic_land_types_among: None,
             condition: None,
+            static_condition: None,
+        }
+    }
+
+    pub fn replacement_mana_cost(
+        filter: ObjectFilter,
+        replacement_mana_cost: crate::mana::ManaCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            reduction: 0,
+            replacement_mana_cost: Some(replacement_mana_cost),
+            display: Some(display.into()),
+            minimum_total_mana: None,
+            per_matching_objects: None,
+            per_basic_land_types_among: None,
+            condition: None,
+            static_condition: None,
         }
     }
 
@@ -761,6 +813,14 @@ impl ActivatedAbilityCostReduction {
 
     pub fn with_condition(mut self, condition: ActivatedAbilityCostCondition) -> Self {
         self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_static_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.static_condition = Some(match self.static_condition {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -899,7 +959,22 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
     }
 
     fn display(&self) -> String {
-        let mut line = if self.filter == ObjectFilter::source() {
+        let mut line = if let Some(display) = &self.display {
+            display.clone()
+        } else if let Some(replacement) = &self.replacement_mana_cost {
+            if self.filter == ObjectFilter::source() {
+                format!(
+                    "You may pay {} rather than pay this ability's mana cost",
+                    replacement.to_oracle()
+                )
+            } else {
+                format!(
+                    "You may pay {} rather than pay activated ability costs of {}",
+                    replacement.to_oracle(),
+                    self.filter.description()
+                )
+            }
+        } else if self.filter == ObjectFilter::source() {
             format!("This ability costs {{{}}} less to activate", self.reduction)
         } else {
             format!(
@@ -925,11 +1000,21 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         {
             line.push_str(". This effect can't reduce the mana in that cost to less than one mana");
         }
-        line
+        describe_cost_modifier_with_condition(line, &self.static_condition)
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(
+            self.clone().with_static_condition(condition),
+        ))
     }
 
     fn modifies_costs(&self) -> bool {
         true
+    }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.static_condition, game, source)
     }
 
     fn activated_ability_cost_reduction(&self) -> Option<&ActivatedAbilityCostReduction> {

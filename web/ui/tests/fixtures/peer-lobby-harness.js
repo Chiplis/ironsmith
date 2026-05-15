@@ -15,6 +15,9 @@ const ZIFFLE_OPENED_LAND_CARD = "Island";
 const POST_PUBLIC_OPEN_OBJECT_ID = 4444;
 const POST_PUBLIC_OPEN_ORIGINAL_SLOT = 13;
 const POST_PUBLIC_OPEN_CARD = "Mystical Tutor";
+const LATE_PUBLIC_OPEN_OBJECT_ID = 4545;
+const LATE_PUBLIC_OPEN_ORIGINAL_SLOT = 17;
+const LATE_PUBLIC_OPEN_CARD = "Mountain";
 
 function createFakeGame() {
   let matchConfig = null;
@@ -26,6 +29,7 @@ function createFakeGame() {
   let zifflePublicOpenRevealed = false;
   let ziffleOpenedLandRevealed = false;
   let postPublicOpenDispatched = false;
+  let latePublicOpenDispatched = false;
   let omitOwnerOpenedLandPosition = false;
   let failOpenedLandExport = false;
   let includeOpenedLandInCheckpointHand = false;
@@ -33,6 +37,9 @@ function createFakeGame() {
   const instrumentation = {
     exportPublicAuditCheckpoint: 0,
     exportSyncCheckpoint: 0,
+    revealHiddenSlot: 0,
+    postPublicOpenRevealSlot: 0,
+    latePublicOpenRevealSlot: 0,
   };
 
   const fakeHex = (label) => Array.from(String(label || "fixture"))
@@ -97,6 +104,15 @@ function createFakeGame() {
           sequence: actionSequence,
         },
       },
+      {
+        index: 5,
+        kind: "late_public_open_action",
+        action_ref: {
+          kind: "late_public_open_action",
+          actor,
+          sequence: actionSequence,
+        },
+      },
     ];
     for (const card of handCardsByPlayer[actor] || []) {
       actions.push({
@@ -111,9 +127,23 @@ function createFakeGame() {
         },
       });
     }
+    const cryptoRequirements = latePublicOpenDispatched
+      ? [
+          {
+            id: "fixture-late-public-open",
+            type: "public_open",
+            owner: 0,
+            zone: "hidden_zone",
+            slot: LATE_PUBLIC_OPEN_ORIGINAL_SLOT,
+            objectId: LATE_PUBLIC_OPEN_OBJECT_ID,
+            card: LATE_PUBLIC_OPEN_CARD,
+          },
+        ]
+      : [];
     return {
       snapshot_id: actionSequence,
       perspective,
+      crypto_requirements: cryptoRequirements,
       players: playerNames.map((name, index) => ({
         id: index,
         name,
@@ -269,6 +299,7 @@ function createFakeGame() {
     },
     applyVerifiedHiddenLibraryShuffle: async () => buildState(),
     revealHiddenSlot: async ({ owner, slot, commitment }) => {
+      instrumentation.revealHiddenSlot += 1;
       if (
         Number(owner) === 0
         && Number(slot) === ZIFFLE_PUBLIC_OPEN_POSITION
@@ -281,6 +312,15 @@ function createFakeGame() {
         && Number(slot) === POST_PUBLIC_OPEN_ORIGINAL_SLOT
         && postPublicOpenDispatched
       ) {
+        instrumentation.postPublicOpenRevealSlot += 1;
+        return buildState();
+      }
+      if (
+        Number(owner) === 0
+        && Number(slot) === LATE_PUBLIC_OPEN_ORIGINAL_SLOT
+        && latePublicOpenDispatched
+      ) {
+        instrumentation.latePublicOpenRevealSlot += 1;
         return buildState();
       }
       throw new Error("hidden card commitment does not match reveal");
@@ -318,6 +358,16 @@ function createFakeGame() {
             card: POST_PUBLIC_OPEN_CARD,
           };
         }
+        if (Number(objectId) === LATE_PUBLIC_OPEN_OBJECT_ID) {
+          return {
+            owner: 0,
+            slot: LATE_PUBLIC_OPEN_ORIGINAL_SLOT,
+            objectId: LATE_PUBLIC_OPEN_OBJECT_ID,
+            object_id: LATE_PUBLIC_OPEN_OBJECT_ID,
+            commitment: privateCommitmentForSlot(0, LATE_PUBLIC_OPEN_ORIGINAL_SLOT),
+            card: LATE_PUBLIC_OPEN_CARD,
+          };
+        }
         if (Number(objectId) !== ZIFFLE_OPENED_LAND_OBJECT_ID) {
           throw new Error(`unknown hidden object ${objectId}`);
         }
@@ -351,6 +401,7 @@ function createFakeGame() {
       zifflePublicOpenRevealed = false;
       ziffleOpenedLandRevealed = false;
       postPublicOpenDispatched = false;
+      latePublicOpenDispatched = false;
       failOpenedLandExport = false;
       return buildState();
     },
@@ -377,6 +428,12 @@ function createFakeGame() {
         && command?.action_ref?.kind === "post_public_open_action"
       ) {
         postPublicOpenDispatched = true;
+      }
+      if (
+        command?.type === "priority_action"
+        && command?.action_ref?.kind === "late_public_open_action"
+      ) {
+        latePublicOpenDispatched = true;
       }
       actionSequence += 1;
       battlefield = [
@@ -492,6 +549,7 @@ function createFakeGame() {
       zifflePublicOpenRevealed = false;
       ziffleOpenedLandRevealed = false;
       postPublicOpenDispatched = false;
+      latePublicOpenDispatched = false;
       failOpenedLandExport = false;
       const nextState = buildState();
       syncEvents.push({
@@ -507,6 +565,9 @@ function createFakeGame() {
     resetInstrumentation: () => {
       instrumentation.exportPublicAuditCheckpoint = 0;
       instrumentation.exportSyncCheckpoint = 0;
+      instrumentation.revealHiddenSlot = 0;
+      instrumentation.postPublicOpenRevealSlot = 0;
+      instrumentation.latePublicOpenRevealSlot = 0;
     },
     setOmitOwnerOpenedLandPosition: (enabled) => {
       omitOwnerOpenedLandPosition = Boolean(enabled);

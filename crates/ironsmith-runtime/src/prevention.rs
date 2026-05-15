@@ -14,6 +14,7 @@ use crate::color::Color;
 use crate::effect::{Effect, Until};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
+use std::collections::HashMap;
 pub use ironsmith_core::{DamageFilter, PreventionTarget};
 
 /// Unique identifier for a prevention shield.
@@ -296,6 +297,7 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
     ) -> u32 {
+        let source_filter_matches = HashMap::new();
         self.apply_prevention_to_player_with_follow_ups(
             player,
             damage,
@@ -304,6 +306,7 @@ impl PreventionEffectManager {
             source_colors,
             source_card_types,
             can_be_prevented,
+            &source_filter_matches,
         )
         .remaining
     }
@@ -318,6 +321,7 @@ impl PreventionEffectManager {
         source_colors: &crate::color::ColorSet,
         source_card_types: &[CardType],
         can_be_prevented: bool,
+        source_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> PreventionApplicationResult {
         if damage == 0 {
             return PreventionApplicationResult::default();
@@ -331,7 +335,10 @@ impl PreventionEffectManager {
             .get_shields_for_player(player)
             .iter()
             .filter(|s| {
-                s.damage_filter
+                let source_filter_ok = s.damage_filter.from_source.is_none()
+                    || source_filter_matches.get(&s.id).copied().unwrap_or(false);
+                source_filter_ok
+                    && s.damage_filter
                     .matches(is_combat, source, source_colors, source_card_types)
             })
             .map(|s| s.id)
@@ -385,6 +392,7 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
     ) -> u32 {
+        let source_filter_matches = HashMap::new();
         self.apply_prevention_to_permanent_with_follow_ups(
             permanent,
             controller,
@@ -394,6 +402,7 @@ impl PreventionEffectManager {
             source_colors,
             source_card_types,
             can_be_prevented,
+            &source_filter_matches,
         )
         .remaining
     }
@@ -409,6 +418,7 @@ impl PreventionEffectManager {
         source_colors: &crate::color::ColorSet,
         source_card_types: &[CardType],
         can_be_prevented: bool,
+        source_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> PreventionApplicationResult {
         if damage == 0 {
             return PreventionApplicationResult::default();
@@ -422,7 +432,10 @@ impl PreventionEffectManager {
             .get_shields_for_permanent(permanent, controller)
             .iter()
             .filter(|s| {
-                s.damage_filter
+                let source_filter_ok = s.damage_filter.from_source.is_none()
+                    || source_filter_matches.get(&s.id).copied().unwrap_or(false);
+                source_filter_ok
+                    && s.damage_filter
                     .matches(is_combat, source, source_colors, source_card_types)
             })
             .map(|s| s.id)

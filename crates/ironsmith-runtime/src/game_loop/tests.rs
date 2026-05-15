@@ -1,7 +1,7 @@
 use super::*;
 use crate::ability::Ability;
 use crate::ability::AbilityKind;
-use crate::card::{CardBuilder, PowerToughness, PtValue};
+use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness, PtValue};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::emrakul_the_promised_end;
 use crate::combat_state::AttackTarget;
@@ -5533,6 +5533,129 @@ fn test_exchange_control_second_target_requirement_includes_artifact_creatures()
 }
 
 #[test]
+fn test_exchange_control_target_requirements_descend_through_may_effect() {
+    use crate::Target;
+    use crate::target::{ChooseSpec, ObjectFilter, TaggedOpbjectRelation};
+
+    struct YesDecisionMaker;
+
+    impl DecisionMaker for YesDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::from_raw(5_054), "Puca Probe")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let illusion_card = CardBuilder::new(CardId::from_raw(5_055), "Illusions of Grandeur")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(3),
+            ManaSymbol::Blue,
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let illusion_id = game.create_object_from_card(&illusion_card, alice, Zone::Battlefield);
+    let celebrant_card = CardBuilder::new(CardId::from_raw(5_056), "Kor Celebrant")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::White,
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let celebrant_id = game.create_object_from_card(&celebrant_card, bob, Zone::Battlefield);
+
+    let tag = crate::tag::TagKey::from("exchange_first_probe");
+    let first = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::nonland_permanent().you_control(),
+    ));
+    let second = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::nonland_permanent()
+            .opponent_controls()
+            .match_tagged(tag.clone(), TaggedOpbjectRelation::ManaValueLteTagged),
+    ));
+    let prelude = Effect::new(crate::effects::TargetOnlyEffect::new(second.clone()));
+    let exchange = crate::effects::ExchangeControlEffect::new(first, second)
+        .with_permanent1_reference_tag(tag);
+    let effect = Effect::new(crate::effects::MayEffect::new(vec![Effect::new(
+        crate::effects::TaggedEffect::new("exchanged", Effect::new(exchange)),
+    )]));
+    let program = crate::resolution::ResolutionProgram::from_effects(vec![prelude, effect.clone()]);
+
+    let requirements = super::targeting::extract_target_requirements_from_program_with_modes(
+        &game,
+        &program,
+        alice,
+        Some(source_id),
+        None,
+    );
+
+    assert_eq!(
+        requirements.len(),
+        2,
+        "optional exchange effects still choose their targets while the trigger is put on the stack"
+    );
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&Target::Object(illusion_id))
+    );
+    assert!(
+        requirements[1]
+            .legal_targets
+            .contains(&Target::Object(celebrant_id))
+    );
+
+    let mut dm = YesDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(illusion_id),
+            crate::effects::ResolvedTarget::Object(celebrant_id),
+        ])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: requirements[0].spec.clone(),
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: requirements[1].spec.clone(),
+                range: 1..2,
+            },
+        ]);
+    super::stack_resolution::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source_id,
+        &program,
+        None,
+        &[
+            crate::game_state::TargetAssignment {
+                spec: requirements[0].spec.clone(),
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: requirements[1].spec.clone(),
+                range: 1..2,
+            },
+        ],
+    )
+    .expect("optional exchange should resolve");
+    assert_eq!(game.controller_of_id(illusion_id), Some(bob));
+    assert_eq!(game.controller_of_id(celebrant_id), Some(alice));
+}
+
+#[test]
 fn test_exchange_control_resolution_preserves_selected_permanent_when_assignment_spec_is_stale() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -6839,6 +6962,72 @@ fn create_creature(
         .power_toughness(PowerToughness::fixed(power, toughness))
         .build();
     game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[test]
+fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
+    use crate::cards::definitions::{basic_plains, basic_swamp};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    for _ in 0..6 {
+        game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
+    }
+    game.create_object_from_definition(&basic_plains(), alice, Zone::Battlefield);
+    create_creature(&mut game, "Silvercoat Lion", bob, 2, 2);
+
+    let destroy_target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::creature().opponent_controls(),
+    ));
+    let spell = CardDefinitionBuilder::new(CardId::from_raw(881_010), "Awaken Action Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::destroy(destroy_target)])
+        .awaken(
+            4,
+            ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(5)],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Black],
+            ]),
+        )
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "normal cast should be available; actions={actions:?}"
+    );
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(_),
+            } if *id == spell_id
+        )),
+        "awaken cast should also be available when the normal cast is legal; actions={actions:?}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -18073,6 +18262,990 @@ fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches() {
         game.object(survivor)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
         "friendly permanent should not be affected by overloaded spell"
+    );
+}
+
+fn test_adventure_pair_definitions() -> (crate::cards::CardDefinition, crate::cards::CardDefinition)
+{
+    let front_id = CardId::from_raw(88_100);
+    let adventure_id = CardId::from_raw(88_101);
+
+    let front = CardDefinitionBuilder::new(front_id, "Curious Pair")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Peasant])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .other_face(adventure_id)
+        .other_face_name("Treats to Share")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    let adventure = CardDefinitionBuilder::new(adventure_id, "Treats to Share")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Adventure])
+        .other_face(front_id)
+        .other_face_name("Curious Pair")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+
+    (front, adventure)
+}
+
+fn test_land_adventure_pair_definitions()
+-> (crate::cards::CardDefinition, crate::cards::CardDefinition) {
+    let front_id = CardId::from_raw(88_110);
+    let adventure_id = CardId::from_raw(88_111);
+
+    let front = CardDefinitionBuilder::new(front_id, "Zanarkand, Ancient Metropolis")
+        .card_types(vec![CardType::Land])
+        .other_face(adventure_id)
+        .other_face_name("Lasting Fayth")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    let adventure = CardDefinitionBuilder::new(adventure_id, "Lasting Fayth")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Adventure])
+        .other_face(front_id)
+        .other_face_name("Zanarkand, Ancient Metropolis")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+
+    (front, adventure)
+}
+
+fn register_test_adventure_pair(game: &mut GameState) -> crate::cards::CardDefinition {
+    let (front, adventure) = test_adventure_pair_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&adventure);
+    front
+}
+
+fn register_test_land_adventure_pair(game: &mut GameState) -> crate::cards::CardDefinition {
+    let (front, adventure) = test_land_adventure_pair_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&adventure);
+    front
+}
+
+fn register_costed_test_adventure_pair(
+    game: &mut GameState,
+    front_raw_id: u32,
+    adventure_raw_id: u32,
+    front_name: &str,
+    adventure_name: &str,
+    front_mana_value: u8,
+    adventure_mana_value: u8,
+) -> crate::cards::CardDefinition {
+    let front_id = CardId::from_raw(front_raw_id);
+    let adventure_id = CardId::from_raw(adventure_raw_id);
+
+    let front = CardDefinitionBuilder::new(front_id, front_name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            front_mana_value,
+        )]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .other_face(adventure_id)
+        .other_face_name(adventure_name)
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    let adventure = CardDefinitionBuilder::new(adventure_id, adventure_name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            adventure_mana_value,
+        )]]))
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Adventure])
+        .other_face(front_id)
+        .other_face_name(front_name)
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&adventure);
+    front
+}
+
+fn add_test_play_from_grant_source(
+    game: &mut GameState,
+    player: PlayerId,
+    filter: crate::filter::ObjectFilter,
+    zone: Zone,
+) -> ObjectId {
+    let source = CardBuilder::new(CardId::new(), "Play-From Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source_id = game.create_object_from_card(&source, player, Zone::Battlefield);
+    let grant = crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, zone);
+    game.object_mut(source_id)
+        .expect("grant source should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::grants(grant)));
+    source_id
+}
+
+#[test]
+fn test_land_adventure_half_is_legal_hand_cast_action() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_land_adventure_pair(&mut game);
+    game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::PlayLand { land_id } if *land_id == card_id
+            )
+        }),
+        "front-face land should still be playable as a land; got {actions:?}"
+    );
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::SplitOtherHalf,
+                } if *spell_id == card_id
+            )
+        }),
+        "front-face land should offer its Adventure half from hand; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_linked_front_land_stays_front_face_when_played() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_land_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::PlayLand { card_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("front-face Adventure land should be playable");
+
+    let battlefield_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Zanarkand, Ancient Metropolis")
+        })
+        .expect("front-face land should remain on the battlefield");
+    let land = game
+        .object(battlefield_id)
+        .expect("land object should exist");
+    assert!(land.card_types.contains(&CardType::Land));
+    assert!(
+        !land.subtypes.contains(&Subtype::Adventure),
+        "land play should not rewrite the permanent into the Adventure face"
+    );
+}
+
+#[test]
+fn test_adventure_exiled_land_can_be_played_from_exile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_land_adventure_pair(&mut game);
+    let exiled_id = game.create_object_from_definition(&front, alice, Zone::Exile);
+    game.set_adventure_exiled(exiled_id);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::PlayLand { land_id } if *land_id == exiled_id
+            )
+        }),
+        "Adventure-exiled front-face land should be playable from exile; got {actions:?}"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::PlayLand { card_id: exiled_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("Adventure-exiled land should be playable from exile");
+
+    let battlefield_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Zanarkand, Ancient Metropolis")
+        })
+        .expect("exiled Adventure land should enter as the front face");
+    assert!(
+        !game.is_adventure_exiled(battlefield_id),
+        "Adventure exile marker should not persist onto the new battlefield object"
+    );
+}
+
+#[test]
+fn test_adventure_half_is_legal_hand_cast_action() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_adventure_pair(&mut game);
+    game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::SplitOtherHalf,
+                } if *spell_id == card_id
+            )
+        }),
+        "Adventure card should offer its Adventure half from hand; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_adventure_stack_spell_uses_adventure_face_mana_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let front = register_test_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        card_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::SplitOtherHalf,
+    )
+    .expect("Adventure half should move to the stack");
+    let stack_obj = game
+        .object(stack_id)
+        .expect("adventure spell should exist on stack");
+
+    let cost = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        stack_obj,
+        &CastingMethod::SplitOtherHalf,
+        Zone::Hand,
+    )
+    .expect("Adventure stack spell should have a mana cost");
+    assert_eq!(
+        cost,
+        ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        "stack-time Adventure cost should use the Adventure face, not the creature face"
+    );
+}
+
+fn hand_free_cast_mana_value_three_or_less_effect() -> Effect {
+    Effect::may_cast_matching_spell_without_paying_mana_cost(
+        PlayerFilter::You,
+        crate::target::ObjectFilter::nonland()
+            .with_mana_value(crate::filter::Comparison::LessThanOrEqual(3)),
+        Zone::Hand,
+    )
+}
+
+fn exiled_free_cast_mana_value_less_than_four_effect() -> Effect {
+    Effect::may_cast_matching_spell_without_paying_mana_cost(
+        PlayerFilter::You,
+        crate::target::ObjectFilter::nonland()
+            .with_mana_value(crate::filter::Comparison::LessThan(4)),
+        Zone::Exile,
+    )
+}
+
+struct ChooseFreeCastOptionByLabel {
+    needle: &'static str,
+}
+
+impl DecisionMaker for ChooseFreeCastOptionByLabel {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.legal && option.description.contains(self.needle))
+            .map(|option| vec![option.index])
+            .unwrap_or_else(|| {
+                ctx.options
+                    .iter()
+                    .filter(|option| option.legal)
+                    .map(|option| option.index)
+                    .take(ctx.min)
+                    .collect()
+            })
+    }
+}
+
+#[test]
+fn test_effect_driven_free_cast_can_choose_adventure_half_from_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardBuilder::new(CardId::from_raw(88_120), "Free-Cast Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    let front = register_test_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let effect = hand_free_cast_mana_value_three_or_less_effect();
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Treats to Share",
+    };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx).expect("effect-driven free cast should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("free-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::SplitOtherHalf);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("Adventure half should exist on the stack");
+    assert_eq!(stack_obj.name, "Treats to Share");
+    assert!(
+        game.object(card_id)
+            .is_none_or(|object| object.zone != Zone::Hand),
+        "physical Adventure card should leave hand while its Adventure half is on the stack"
+    );
+}
+
+#[test]
+fn test_effect_driven_free_cast_can_choose_adventure_half_from_exile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardBuilder::new(CardId::from_raw(88_125), "Free-Cast Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    let front = register_test_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Exile);
+
+    let effect = exiled_free_cast_mana_value_less_than_four_effect();
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Treats to Share",
+    };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("effect-driven exiled free cast should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("free-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::SplitOtherHalf);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("Adventure half should exist on the stack");
+    assert_eq!(stack_obj.name, "Treats to Share");
+    assert!(
+        game.object(card_id)
+            .is_none_or(|object| object.zone != Zone::Exile),
+        "physical Adventure card should leave exile while its Adventure half is on the stack"
+    );
+}
+
+#[cfg(feature = "generated-registry")]
+#[test]
+fn test_generated_adventure_free_cast_can_choose_adventure_half_from_exile() {
+    let mut registry = crate::cards::CardRegistry::new();
+    registry.ensure_cards_loaded(["Curious Pair"]);
+    let front = registry
+        .get("Curious Pair")
+        .expect("generated Curious Pair should load");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardBuilder::new(CardId::from_raw(88_126), "Free-Cast Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    let card_id = game.create_object_from_catalog_definition(front, &registry, alice, Zone::Exile);
+
+    let effect = exiled_free_cast_mana_value_less_than_four_effect();
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Treats to Share",
+    };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("effect-driven generated exiled free cast should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("free-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::SplitOtherHalf);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("Adventure half should exist on the stack");
+    assert_eq!(stack_obj.name, "Treats to Share");
+    assert!(
+        game.object(card_id)
+            .is_none_or(|object| object.zone != Zone::Exile),
+        "physical generated Adventure card should leave exile while its Adventure half is on the stack"
+    );
+}
+
+#[cfg(feature = "generated-registry")]
+#[test]
+fn test_generated_cascade_can_choose_adventure_half() {
+    let mut registry = crate::cards::CardRegistry::new();
+    registry.ensure_cards_loaded(["Curious Pair"]);
+    let front = registry
+        .get("Curious Pair")
+        .expect("generated Curious Pair should load");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardBuilder::new(CardId::from_raw(88_127), "Bloodbraid Elf")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    game.create_object_from_catalog_definition(front, &registry, alice, Zone::Library);
+
+    let effect = Effect::new(crate::effects::CascadeEffect::new());
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Treats to Share",
+    };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx).expect("cascade effect should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("cascade-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::SplitOtherHalf);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("Adventure half should exist on the stack");
+    assert_eq!(stack_obj.name, "Treats to Share");
+}
+
+#[cfg(feature = "generated-registry")]
+#[test]
+fn test_generated_parent_name_adventure_card_resolves_adventure_half() {
+    let mut registry = crate::cards::CardRegistry::new();
+    registry.ensure_cards_loaded(["Curious Pair // Treats to Share"]);
+    assert!(
+        registry.get("Treats to Share").is_some(),
+        "parent-name loading should also prime the Adventure face"
+    );
+    let front = registry
+        .get("Curious Pair // Treats to Share")
+        .or_else(|| registry.get("Curious Pair"))
+        .expect("generated Curious Pair parent name should load");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let card_id =
+        game.create_object_from_catalog_definition(front, &registry, alice, Zone::Library);
+    let card = game
+        .object(card_id)
+        .expect("generated Adventure card should exist");
+    let adventure_view = crate::decision::spell_view_for_split_other_half_cast(&game, card)
+        .expect("parent-loaded Adventure card should have a linked spell half");
+
+    assert_eq!(adventure_view.name, "Treats to Share");
+    assert!(adventure_view.subtypes.contains(&Subtype::Adventure));
+}
+
+#[test]
+fn test_effect_driven_free_cast_matches_adventure_half_when_front_face_is_too_expensive() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardBuilder::new(CardId::from_raw(88_130), "Free-Cast Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    let front = register_costed_test_adventure_pair(
+        &mut game,
+        88_131,
+        88_132,
+        "Tall Tale Knight",
+        "Small Errand",
+        5,
+        3,
+    );
+    game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let effect = hand_free_cast_mana_value_three_or_less_effect();
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx).expect("effect-driven free cast should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("free-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::SplitOtherHalf);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("Adventure half should exist on the stack");
+    assert_eq!(stack_obj.name, "Small Errand");
+}
+
+#[test]
+fn test_effect_driven_free_cast_uses_front_face_when_adventure_half_is_too_expensive() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardBuilder::new(CardId::from_raw(88_140), "Free-Cast Source")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+    let front = register_costed_test_adventure_pair(
+        &mut game,
+        88_141,
+        88_142,
+        "Small Front",
+        "Large Quest",
+        3,
+        7,
+    );
+    game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let effect = hand_free_cast_mana_value_three_or_less_effect();
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx).expect("effect-driven free cast should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("free-cast spell should be stacked");
+    assert_eq!(stack_entry.casting_method, CastingMethod::Normal);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("front-face spell should exist on the stack");
+    assert_eq!(stack_obj.name, "Small Front");
+}
+
+#[test]
+fn test_resolved_adventure_exiles_front_face_and_allows_creature_cast() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_adventure_pair(&mut game);
+    for _ in 0..2 {
+        game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    }
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        card_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::SplitOtherHalf,
+    )
+    .expect("Adventure half should move to the stack");
+
+    let stack_obj = game
+        .object(stack_id)
+        .expect("adventure spell should exist on stack");
+    assert_eq!(stack_obj.name, "Treats to Share");
+    assert!(stack_obj.subtypes.contains(&Subtype::Adventure));
+
+    let mut dm = SelectFirstDecisionMaker;
+    game.stack
+        .push(StackEntry::new(stack_id, alice).with_casting_method(CastingMethod::SplitOtherHalf));
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Adventure spell should resolve");
+
+    let exile_id = game
+        .exile
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Curious Pair")
+        })
+        .expect("resolved Adventure should exile the front-face card");
+    let exile_obj = game
+        .object(exile_id)
+        .expect("exiled adventure card should exist");
+    assert!(game.is_adventure_exiled(exile_id));
+    assert!(exile_obj.card_types.contains(&CardType::Creature));
+    assert!(!exile_obj.subtypes.contains(&Subtype::Adventure));
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == exile_id
+            )
+        }),
+        "Adventure-exiled card should offer the normal creature cast from exile; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_stable_exile_play_from_grant_survives_adventure_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_adventure_pair(&mut game);
+    let source_id =
+        game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    for _ in 0..2 {
+        game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    }
+    let exiled_id = game.create_object_from_definition(&front, bob, Zone::Exile);
+    let stable_id = game
+        .object(exiled_id)
+        .expect("exiled Adventure card should exist")
+        .stable_id;
+    game.effect_store.grant_registry.grant_to_stable_card(
+        exiled_id,
+        stable_id,
+        Zone::Exile,
+        alice,
+        crate::grant::Grantable::PlayFrom,
+        crate::grant_registry::GrantSource::Effect {
+            source_id,
+            expires_end_of_turn: u32::MAX,
+        },
+    );
+
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        exiled_id,
+        Zone::Exile,
+        alice,
+        &CastingMethod::SplitOtherHalf,
+    )
+    .expect("granted exiled Adventure half should move to the stack");
+    game.stack
+        .push(StackEntry::new(stack_id, alice).with_casting_method(CastingMethod::SplitOtherHalf));
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Adventure spell should resolve");
+
+    let new_exile_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("physical card should still be tracked by stable id");
+    assert!(
+        game.object(new_exile_id)
+            .is_some_and(|object| object.zone == Zone::Exile && object.name == "Curious Pair"),
+        "resolved Adventure should return the front face to exile"
+    );
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    ..
+                } if *spell_id == new_exile_id
+            )
+        }),
+        "stable exiled-card grant should still allow casting the creature after Adventure resolution; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_countered_adventure_goes_to_graveyard_as_front_face() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let front = register_test_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        card_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::SplitOtherHalf,
+    )
+    .expect("Adventure half should move to the stack");
+
+    let graveyard_id = game
+        .move_object_by_effect(stack_id, Zone::Graveyard)
+        .expect("countered Adventure spell should move to graveyard");
+    let graveyard_obj = game
+        .object(graveyard_id)
+        .expect("graveyard object should exist");
+
+    assert_eq!(graveyard_obj.name, "Curious Pair");
+    assert!(graveyard_obj.card_types.contains(&CardType::Creature));
+    assert!(!graveyard_obj.subtypes.contains(&Subtype::Adventure));
+}
+
+#[test]
+fn test_library_play_from_grant_offers_top_creature_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = add_test_play_from_grant_source(
+        &mut game,
+        alice,
+        crate::filter::ObjectFilter::default().with_type(CardType::Creature),
+        Zone::Library,
+    );
+    let front = register_test_adventure_pair(&mut game);
+    for _ in 0..2 {
+        game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    }
+    let library_id = game.create_object_from_definition(&front, alice, Zone::Library);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Library,
+                    casting_method: CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Library,
+                        use_alternative: None,
+                    },
+                } if *spell_id == library_id && *source == source_id
+            )
+        }),
+        "top-library PlayFrom grant should offer the creature half; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_library_play_from_grant_offers_adventure_half_when_linked_face_matches() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut spell_filter = crate::filter::ObjectFilter::default();
+    spell_filter.any_of = vec![
+        crate::filter::ObjectFilter::default().with_type(CardType::Instant),
+        crate::filter::ObjectFilter::default().with_type(CardType::Sorcery),
+    ];
+    add_test_play_from_grant_source(&mut game, alice, spell_filter.clone(), Zone::Library);
+    let front = register_test_adventure_pair(&mut game);
+    game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    let library_id = game.create_object_from_definition(&front, alice, Zone::Library);
+
+    let view = crate::derived_view::DerivedGameView::new(&game);
+    let card = game
+        .object(library_id)
+        .expect("library Adventure card should exist");
+    let adventure_view = crate::decision::spell_view_for_split_other_half_cast(&game, card)
+        .expect("Adventure card should have a linked spell half");
+    assert!(
+        crate::filter::ObjectFilter::default()
+            .with_type(CardType::Sorcery)
+            .matches_non_recursive(
+                &adventure_view,
+                &game.filter_context_for(alice, None),
+                &game
+            ),
+        "direct sorcery filter should match the linked Adventure half"
+    );
+    assert!(
+        spell_filter.matches_non_recursive(
+            &adventure_view,
+            &game.filter_context_for(alice, None),
+            &game
+        ),
+        "instant/sorcery grant filter should match the linked Adventure half; view card types: {:?}, subtypes: {:?}",
+        adventure_view.card_types,
+        adventure_view.subtypes,
+    );
+    assert!(
+        !view
+            .granted_play_from_for_card_view(library_id, &adventure_view, Zone::Library, alice)
+            .is_empty(),
+        "top-library grant should apply to the linked Adventure half"
+    );
+    assert!(
+        crate::decision::can_cast_spell_with_view(
+            &game,
+            alice,
+            card,
+            &CastingMethod::SplitOtherHalf,
+            &view,
+        ),
+        "linked Adventure half should be castable from top library once a grant applies"
+    );
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Library,
+                    casting_method: CastingMethod::SplitOtherHalf,
+                } if *spell_id == library_id
+            )
+        }),
+        "top-library PlayFrom grant should offer the linked Adventure half; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_exile_play_from_grant_offers_adventure_half() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    add_test_play_from_grant_source(
+        &mut game,
+        alice,
+        crate::filter::ObjectFilter::default(),
+        Zone::Exile,
+    );
+    let front = register_test_adventure_pair(&mut game);
+    game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    let exiled_id = game.create_object_from_definition(&front, alice, Zone::Exile);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: CastingMethod::SplitOtherHalf,
+                } if *spell_id == exiled_id
+            )
+        }),
+        "exile PlayFrom grant should offer the linked Adventure half; got {actions:?}"
+    );
+}
+
+#[test]
+fn test_granted_enter_with_counters_applies_to_adventure_creature_entering() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let mut grant_filter = crate::filter::ObjectFilter::creature();
+    grant_filter.controller = Some(PlayerFilter::You);
+    let adventure_filter = crate::filter::ObjectFilter::default().with_subtype(Subtype::Adventure);
+    let source = CardBuilder::new(CardId::new(), "Adventure Counter Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+    let granted = StaticAbility::enters_with_counters_for_filter(
+        adventure_filter,
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+    );
+    game.object_mut(source_id)
+        .expect("grant source should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::grant_ability(
+            grant_filter,
+            granted,
+        )));
+
+    let front = register_test_adventure_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let entered = game
+        .move_object_with_etb_processing(card_id, Zone::Battlefield)
+        .expect("Adventure creature should enter")
+        .new_id;
+
+    assert_eq!(
+        game.counter_count(entered, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "granted ETB replacement should see that the creature has an Adventure"
     );
 }
 

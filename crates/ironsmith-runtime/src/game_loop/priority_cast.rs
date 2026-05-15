@@ -170,7 +170,9 @@ pub(super) fn collect_available_casting_methods(
             });
         }
 
-        if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split {
+        let has_linked_other_half =
+            crate::decision::spell_has_castable_linked_other_half(game, spell);
+        if has_linked_other_half {
             if can_cast_spell(game, player, spell, &CastingMethod::SplitOtherHalf)
                 && let Some(other_def) = game.linked_face_definition_by_name_or_id(
                     spell.other_face_name.as_deref(),
@@ -190,7 +192,10 @@ pub(super) fn collect_available_casting_methods(
                 });
             }
 
-            if spell.has_fuse && can_cast_spell(game, player, spell, &CastingMethod::Fuse) {
+            if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
+                && spell.has_fuse
+                && can_cast_spell(game, player, spell, &CastingMethod::Fuse)
+            {
                 let cost_desc = crate::decision::spell_mana_cost_for_cast(
                     game,
                     player,
@@ -271,7 +276,7 @@ pub(super) fn may_have_multiple_casting_methods(
     };
 
     if crate::decision::spell_can_be_cast_face_down(spell)
-        || spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
+        || crate::decision::spell_has_castable_linked_other_half(game, spell)
         || spell.has_fuse
         || spell
             .alternative_casts
@@ -391,6 +396,29 @@ pub(super) fn max_x_from_non_mana_costs(
     }
 
     max_x
+}
+
+pub(super) fn activation_cost_steps_reference_x(steps: &[ActivationCostStep]) -> bool {
+    steps.iter().any(|step| match step {
+        ActivationCostStep::Cost(cost) => cost_references_x(cost),
+        ActivationCostStep::Sacrifice { .. } | ActivationCostStep::CardChoice(_) => false,
+    })
+}
+
+pub(super) fn max_x_from_activation_cost_steps(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    steps: &[ActivationCostStep],
+) -> Option<u32> {
+    let costs: Vec<_> = steps
+        .iter()
+        .filter_map(|step| match step {
+            ActivationCostStep::Cost(cost) => Some(cost.clone()),
+            ActivationCostStep::Sacrifice { .. } | ActivationCostStep::CardChoice(_) => None,
+        })
+        .collect();
+    max_x_from_non_mana_costs(game, caster, source, &costs)
 }
 
 pub(super) fn compute_spell_cast_x_bounds(
@@ -654,6 +682,25 @@ pub(super) fn extract_modal_spec_from_spell(
     None
 }
 
+/// Helper to extract modal spec from a resolution program.
+pub(super) fn extract_modal_spec_from_program(
+    game: &GameState,
+    effects: &crate::resolution::ResolutionProgram,
+    controller: PlayerId,
+    source: ObjectId,
+) -> Option<crate::effects::ModalSpec> {
+    for effect in effects.all_effects() {
+        if let Some(spec) = effect
+            .0
+            .get_modal_spec_with_context(game, controller, source)
+        {
+            return Some(spec);
+        }
+    }
+
+    None
+}
+
 /// Check for modal effects and either prompt for mode selection or continue to optional costs.
 ///
 /// Per MTG rule 601.2b, modes must be chosen before targets.
@@ -741,6 +788,97 @@ pub(super) fn check_modes_or_continue(
         // No modal effects, continue to optional costs
         check_optional_costs_or_continue(game, trigger_queue, state, pending, decision_maker)
     }
+}
+
+pub(super) fn activation_stage_after_modes(pending: &PendingActivation) -> ActivationStage {
+    if pending.hybrid_choices.is_empty() && !pending.pending_hybrid_pips.is_empty() {
+        ActivationStage::AnnouncingCost
+    } else {
+        activation_stage_after_announcements(pending)
+    }
+}
+
+/// Check for modal effects on an activated ability and prompt before targets.
+///
+/// Per MTG rule 602.2b, activated ability modes are announced during activation.
+pub(super) fn check_activation_modes_or_continue(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    pending: PendingActivation,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if pending.chosen_modes.is_none()
+        && let Some(modal_spec) = extract_modal_spec_from_program(
+            game,
+            &pending.effects,
+            pending.activator,
+            pending.source,
+        )
+    {
+        let player = pending.activator;
+        let source = pending.source;
+        let effects = pending.effects.all_effects_owned();
+        let pending_x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+
+        let max_modes = resolve_modal_count_value(
+            &modal_spec.max_modes,
+            pending_x_value,
+            modal_spec.mode_descriptions.len().max(1),
+        );
+        let min_modes =
+            resolve_modal_count_value(&modal_spec.min_modes, pending_x_value, max_modes);
+
+        if !spell_has_legal_targets(game, &effects, player, Some(source)) {
+            return Err(GameLoopError::InvalidState(
+                "No legal mode/target combination available".to_string(),
+            ));
+        }
+
+        let mode_options: Vec<crate::decisions::specs::ModeOption> = modal_spec
+            .mode_descriptions
+            .iter()
+            .enumerate()
+            .map(|(i, desc)| {
+                let legal = spell_has_legal_targets_with_mode_preview(
+                    game,
+                    &effects,
+                    player,
+                    Some(source),
+                    &[i],
+                );
+                crate::decisions::specs::ModeOption::with_legality(i, desc.clone(), legal)
+            })
+            .collect();
+
+        let mut pending = pending;
+        pending.stage = ActivationStage::ChoosingModes;
+        state.pending_activation = Some(pending);
+
+        return Ok(GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Modes(
+                crate::decisions::context::ModesContext {
+                    player,
+                    source: Some(source),
+                    spell_name: game
+                        .object(source)
+                        .map(|o| format!("{}'s ability", o.name))
+                        .unwrap_or_else(|| "ability".to_string()),
+                    spec: crate::decisions::ModesSpec::new(
+                        source,
+                        mode_options,
+                        min_modes,
+                        max_modes,
+                        modal_spec.allow_repeated_modes,
+                    ),
+                },
+            ),
+        ));
+    }
+
+    let mut pending = pending;
+    pending.stage = activation_stage_after_modes(&pending);
+    continue_activation(game, trigger_queue, state, pending, decision_maker)
 }
 
 fn optional_mana_cost_is_affordable_with_spell_modifiers(
@@ -2199,6 +2337,11 @@ pub(super) fn collect_spell_cost_steps(
                 use_alternative: Some(idx),
                 zone,
                 ..
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom {
+                use_alternative: idx,
+                zone,
+                ..
             } => crate::decision::resolve_play_from_alternative_method(
                 game, caster, obj, *zone, *idx,
             )
@@ -2717,6 +2860,9 @@ pub(super) fn continue_activation_cost_payment(
                     } else {
                         pre_cost_source_snapshot.unwrap_or(pending.source_snapshot)
                     };
+                    if pending.x_value.is_none() {
+                        pending.x_value = cost_ctx.x_value.map(|x| x as usize);
+                    }
                     pending.tagged_objects = cost_ctx.tagged_objects;
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);
@@ -2836,9 +2982,12 @@ pub(super) fn continue_activation(
     // the player selects which remaining cost to satisfy next.
 
     match pending.stage {
+        ActivationStage::ChoosingModes => {
+            check_activation_modes_or_continue(game, trigger_queue, state, pending, decision_maker)
+        }
         ActivationStage::ChoosingX => {
             // Need to choose X value first
-            let max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
+            let mut max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
                 let allow_any_color =
                     game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
                 let allow_black_life = game.player_can_pay_black_with_life_for_reason(
@@ -2852,9 +3001,19 @@ pub(super) fn continue_activation(
                         allow_any_color,
                         allow_black_life,
                     )
+                    .into()
             } else {
-                0
+                None
             };
+            if let Some(cost_max_x) = max_x_from_activation_cost_steps(
+                game,
+                pending.activator,
+                pending.source,
+                &pending.remaining_cost_steps,
+            ) {
+                max_x = Some(max_x.map_or(cost_max_x, |mana_max| mana_max.min(cost_max_x)));
+            }
+            let max_x = max_x.unwrap_or(0);
 
             state.pending_activation = Some(pending.clone());
 
@@ -3136,6 +3295,7 @@ pub(super) fn continue_activation(
                     .with_provenance(pending.provenance)
                     .with_source_info(pending.source_stable_id, pending.source_name.clone())
                     .with_source_snapshot(pending.source_snapshot.clone())
+                    .with_chosen_modes(pending.chosen_modes.clone())
                     .with_mana_usage_restrictions(
                         pending.mana_usage_restrictions.clone(),
                         pending.mana_source_chosen_creature_type,

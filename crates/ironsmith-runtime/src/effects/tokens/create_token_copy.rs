@@ -17,7 +17,8 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::lifecycle::{
-    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry, schedule_token_cleanup,
+    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry, remaining_token_slots,
+    schedule_token_cleanup,
 };
 
 /// Effect that creates a token copy of a permanent.
@@ -125,7 +126,15 @@ impl EffectExecutor for CreateTokenCopyEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+        let replaced_count = crate::events::processing::process_token_creation_with_event(
+            game,
+            controller_id,
+            base_count,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+        ) as usize;
+        let count = replaced_count.min(remaining_token_slots(game, controller_id));
 
         // Resolve target from spec (supports tagged/spec-specific references)
         let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
@@ -534,6 +543,42 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn create_token_copy_replacement_doubles_token_copies_created_under_your_control() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Grizzly Bears", alice);
+        let source = game.new_object_id();
+        let doubler = CardDefinitionBuilder::new(CardId::new(), "Token Doubler")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(
+                StaticAbility::double_token_creation_replacement(
+                    PlayerFilter::You,
+                    "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.".to_string(),
+                ),
+            ))
+            .build();
+        game.create_object_from_definition(&doubler, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let result = CreateTokenCopyEffect::one(ChooseSpec::creature())
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().all(|id| {
+            game.object(*id).is_some_and(|token| {
+                token.name == "Grizzly Bears" && token.kind == ObjectKind::Token
+            })
+        }));
     }
 
     #[test]

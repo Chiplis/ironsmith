@@ -13,6 +13,8 @@ pub trait GrantStaticAbility: Clone + PartialEq {
 pub enum DerivedAlternativeCast<C> {
     /// Flashback using the card's mana cost plus optional extra cost components.
     FlashbackFromCardManaCost { additional_costs: Vec<C> },
+    /// Retrace using the card's mana cost plus discarding a land card.
+    RetraceFromCardManaCost,
     /// Blitz using the card's mana cost.
     BlitzFromCardManaCost,
     /// Emerge using the card's mana cost and sacrificing a creature.
@@ -32,6 +34,7 @@ impl<C> DerivedAlternativeCast<C> {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::FlashbackFromCardManaCost { .. } => "flashback",
+            Self::RetraceFromCardManaCost => "Retrace",
             Self::BlitzFromCardManaCost => "Blitz",
             Self::EmergeFromCardManaCost => "Emerge",
             Self::EscapeFromCardManaCost { .. } => "Escape",
@@ -62,6 +65,10 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
     pub fn blitz_from_cards_mana_cost() -> Self {
         Self::BlitzFromCardManaCost
+    }
+
+    pub fn retrace_from_cards_mana_cost() -> Self {
+        Self::RetraceFromCardManaCost
     }
 
     pub fn emerge_from_cards_mana_cost() -> Self {
@@ -128,6 +135,11 @@ where
     /// Create a grantable for blitz that uses the granted card's mana cost.
     pub fn blitz_from_cards_mana_cost() -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::blitz_from_cards_mana_cost())
+    }
+
+    /// Create a grantable for retrace that uses the granted card's mana cost.
+    pub fn retrace_from_cards_mana_cost() -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::retrace_from_cards_mana_cost())
     }
 
     /// Create a grantable for emerge that uses the granted card's mana cost.
@@ -533,6 +545,13 @@ where
             return format!(
                 "Each {filter_desc} has flashback. Its flashback cost is equal to {cost_text}"
             );
+        }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::RetraceFromCardManaCost) =
+            &self.grantable
+            && self.zone == Zone::Graveyard
+        {
+            let filter_desc = castable_filter_description(&filter);
+            return format!("Each {filter_desc} has retrace");
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::BlitzFromCardManaCost) =
             &self.grantable
