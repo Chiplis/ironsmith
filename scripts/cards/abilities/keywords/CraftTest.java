@@ -251,7 +251,7 @@ public class CraftTest extends CardTestPlayerBase {
     public void test_OreRichStalactite() {
         addCard(Zone.BATTLEFIELD, playerA, "Mountain", 1 + 5);
         addCard(Zone.BATTLEFIELD, playerA, "Ore-Rich Stalactite");
-        addCard(Zone.GRAVEYARD, playerA, "Ancestral Recall");
+        addCard(Zone.GRAVEYARD, playerA, "Opt");
         addCard(Zone.GRAVEYARD, playerA, "Arc Lightning");
         addCard(Zone.GRAVEYARD, playerA, "Lightning Helix");
         addCard(Zone.GRAVEYARD, playerA, "Lightning Strike");

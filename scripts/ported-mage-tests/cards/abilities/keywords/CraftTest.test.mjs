@@ -820,7 +820,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Ancestral Recall",
+          "name": "Opt",
           "count": 1
         },
         {

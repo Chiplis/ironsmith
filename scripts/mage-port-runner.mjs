@@ -31,6 +31,7 @@ const PLAYER_NAMES = ["Alice", "Bob", "Charlie", "Dana"];
 const MAX_ADVANCE_STEPS = 600;
 const DEFAULT_LIBRARY_CARD = "Plains";
 const DEFAULT_LIBRARY_SIZE = 60;
+const ALLOW_ENGINE_SHIMS = process.env.MAGE_PORT_ALLOW_ENGINE_SHIMS === "1";
 let scryfallFaceCache = null;
 const CARD_FIXTURES = new Map([
   ["Archetype of Courage", {
@@ -112,8 +113,8 @@ const CARD_FIXTURES = new Map([
   }],
 ]);
 const DAY_NIGHT_TRANSFORMS = new Map([
-  ["Tavern Ruffian", { front: "Tavern Ruffian", back: "Tavern Smasher", frontPower: 2, frontToughness: 5, backPower: 7, backToughness: 6 }],
-  ["Tavern Smasher", { front: "Tavern Ruffian", back: "Tavern Smasher", frontPower: 2, frontToughness: 5, backPower: 7, backToughness: 6 }],
+  ["Tavern Ruffian", { front: "Tavern Ruffian", back: "Tavern Smasher", frontPower: 2, frontToughness: 5, backPower: 6, backToughness: 5 }],
+  ["Tavern Smasher", { front: "Tavern Ruffian", back: "Tavern Smasher", frontPower: 2, frontToughness: 5, backPower: 6, backToughness: 5 }],
   ["Curse of Leeches", { front: "Curse of Leeches", back: "Leeching Lurker", frontPower: null, frontToughness: null, backPower: 4, backToughness: 4 }],
   ["Leeching Lurker", { front: "Curse of Leeches", back: "Leeching Lurker", frontPower: null, frontToughness: null, backPower: 4, backToughness: 4 }],
   ["Grizzled Outcasts", { front: "Grizzled Outcasts", back: "Krallenhorde Wantons", frontPower: 4, frontToughness: 4, backPower: 7, backToughness: 7 }],
@@ -199,6 +200,9 @@ async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) 
       sourcePath: fileSpec.sourcePath,
       testName: testSpec.name,
     };
+    if (context.daytime !== null && typeof game.setDaytime === "function") {
+      game.setDaytime(context.daytime);
+    }
     await runOperations(context, fileSpec.setupOperations || []);
     await runOperations(context, testSpec.setupOperations || []);
     return context;
@@ -411,21 +415,21 @@ function addCard(context, operation) {
         power: operation.power ?? "1",
         toughness: operation.toughness ?? "1",
       });
-    } else if (craftFrontFixtureForName(name)) {
+    } else if (ALLOW_ENGINE_SHIMS && craftFrontFixtureForName(name)) {
       objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
         ...craftFrontFixtureForName(name),
       });
-    } else if (craftExileTriggerFixtureForName(name)) {
+    } else if (ALLOW_ENGINE_SHIMS && craftExileTriggerFixtureForName(name)) {
       objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
         ...craftExileTriggerFixtureForName(name),
       });
-    } else if (CARD_FIXTURES.has(name)) {
+    } else if (ALLOW_ENGINE_SHIMS && CARD_FIXTURES.has(name)) {
       objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
@@ -440,6 +444,7 @@ function addCard(context, operation) {
     recordMageObjectAlias(context, operation.name, objectId);
     if (
       String(context.sourcePath || "").endsWith("DayNightTest.java") &&
+      ALLOW_ENGINE_SHIMS &&
       zone === "battlefield" &&
       ["Tavern Ruffian", "Curse of Leeches", "Brimstone Vandal"].includes(name) &&
       context.daytime === null
@@ -451,18 +456,25 @@ function addCard(context, operation) {
 
 async function applySupportedJavaHelper(context, operation) {
   const source = String(operation.source || "");
-  const dayNight = source.trim().match(/^setDayNight\(\s*\d+,\s*PhaseStep\.[A-Z_]+,\s*(true|false)\s*\)$/);
+  const dayNight = source.trim().match(/^setDayNight\(\s*(\d+),\s*PhaseStep\.([A-Z_]+),\s*(true|false)\s*\)$/);
   if (dayNight) {
-    setSyntheticDaytime(context, dayNight[1] === "true");
+    context.scheduled.push({
+      op: "setDayNight",
+      turn: Number(dayNight[1]),
+      phase: dayNight[2],
+      daytime: dayNight[3] === "true",
+    });
     return;
   }
 
   const assertDayNight = source.trim().match(/^assertDayNight\((true|false)\)$/);
   if (assertDayNight) {
     const expectedDaytime = assertDayNight[1] === "true";
+    const actualDaytime = engineDaytime(context);
+    assert(engineHasDayNight(context), "expected day/night designation, got neither day nor night");
     assert(
-      context.daytime === expectedDaytime,
-      `expected ${expectedDaytime ? "day" : "night"}, got ${context.daytime ? "day" : "night"}`,
+      actualDaytime === expectedDaytime,
+      `expected ${expectedDaytime ? "day" : "night"}, got ${actualDaytime ? "day" : "night"}`,
     );
     return;
   }
@@ -470,16 +482,18 @@ async function applySupportedJavaHelper(context, operation) {
   const ruffianSmasher = source.trim().match(/^assertRuffianSmasher\((true|false)\)$/);
   if (ruffianSmasher) {
     const daytime = ruffianSmasher[1] === "true";
+    const actualDaytime = engineDaytime(context);
+    assert(engineHasDayNight(context), "expected day/night designation, got neither day nor night");
     assert(
-      context.daytime === daytime,
-      `expected ${daytime ? "day" : "night"}, got ${context.daytime ? "day" : "night"}`,
+      actualDaytime === daytime,
+      `expected ${daytime ? "day" : "night"}, got ${actualDaytime ? "day" : "night"}`,
     );
     if (daytime) {
       await assertPowerToughness(context, { player: "playerA", name: "Tavern Ruffian", power: 2, toughness: 5 });
       return assertPermanentCount(context, { player: "playerA", name: "Tavern Smasher", count: 0 });
     }
     await assertPermanentCount(context, { player: "playerA", name: "Tavern Ruffian", count: 0 });
-    return assertPowerToughness(context, { player: "playerA", name: "Tavern Smasher", power: 7, toughness: 6 });
+    return assertPowerToughness(context, { player: "playerA", name: "Tavern Smasher", power: 6, toughness: 5 });
   }
 
   const daxosBoost = source.trim().match(/^assertDaxosBoost\((true|false)\)$/);
@@ -996,7 +1010,30 @@ function setSyntheticDaytime(context, daytime) {
   }
 }
 
+function setEngineDaytime(context, daytime) {
+  const value = Boolean(daytime);
+  if (typeof context.game.setDaytime === "function") {
+    context.game.setDaytime(value);
+  }
+  context.daytime = value;
+}
+
+function engineDaytime(context) {
+  if (typeof context.game.isDaytime === "function") {
+    return Boolean(context.game.isDaytime());
+  }
+  return Boolean(context.daytime);
+}
+
+function engineHasDayNight(context) {
+  if (typeof context.game.hasDayNight === "function") {
+    return Boolean(context.game.hasDayNight());
+  }
+  return context.daytime !== null;
+}
+
 function applyDayNightStopState(context) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   if (!String(context.sourcePath || "").endsWith("DayNightTest.java")) return;
   const stopTurn = Number(context.stopAt?.turn || 1);
   if (context.testName === "testNoSpellsBecomesNight" && stopTurn >= 3) {
@@ -1075,6 +1112,8 @@ async function executeScheduledActions(context, until = null, options = {}) {
       makeCurrentScheduledChoicesAvailable(context);
     } else if (operation.op === "playLand") {
       await playLand(context, operation);
+    } else if (operation.op === "setDayNight") {
+      setEngineDaytime(context, operation.daytime);
     }
     makeCurrentScheduledChoicesAvailable(context);
     executedScheduledCount = Math.max(executedScheduledCount, context.availableScheduledCount);
@@ -1294,6 +1333,7 @@ async function castSpell(context, operation) {
 }
 
 function applyDayNightCastSideEffects(context, operation) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   if (!String(context.sourcePath || "").endsWith("DayNightTest.java")) return;
   const name = cardName(operation.name);
   if (["Tavern Ruffian", "Curse of Leeches", "Brimstone Vandal"].includes(name) && context.daytime === null) {
@@ -1309,6 +1349,7 @@ function applyDayNightCastSideEffects(context, operation) {
 }
 
 function applyPucasMischiefExchange(context, player) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   const wanted = context.targets
     .filter((entry) => entry.player === player)
     .splice(0, 2)
@@ -1461,16 +1502,16 @@ async function activateAbility(context, operation) {
       const sourceMatches = !sourceName || candidateLabel.includes(sourceName);
       return sourceMatches && actionLabelMatches(candidate, label) && loyaltyLabelMatches(candidateLabel, label);
   };
-  if (isManualMarathDamageScenario(context, operation)) {
+  if (ALLOW_ENGINE_SHIMS && isManualMarathDamageScenario(context, operation)) {
     makeCurrentScheduledChoicesAvailable(context);
     return activateManualMarathDamage(context, operation);
   }
-  if (isManualCyclingScenario(context, player, label)) {
+  if (ALLOW_ENGINE_SHIMS && isManualCyclingScenario(context, player, label)) {
     makeCurrentScheduledChoicesAvailable(context);
     return activateManualCycling(context, operation);
   }
   let action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
-  if (!action && normalizeActionSearch(label).includes("target destroy")) {
+  if (ALLOW_ENGINE_SHIMS && !action && normalizeActionSearch(label).includes("target destroy")) {
     addCustomEffectTargetDestroy(context.game, { player, name: "target destroy", manaCost: "{0}" });
     state = context.game.uiState();
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
@@ -1484,20 +1525,20 @@ async function activateAbility(context, operation) {
     }
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
   }
-  if (!action && isCraftAbilityLabel(label) && canActivateCraft(context, player)) {
+  if (ALLOW_ENGINE_SHIMS && !action && isCraftAbilityLabel(label) && canActivateCraft(context, player)) {
     return activateCraftAbility(context, operation);
   }
-  if (!action && isCraftManaAbilityLabel(label)) {
+  if (ALLOW_ENGINE_SHIMS && !action && isCraftManaAbilityLabel(label)) {
     return activateCraftManaProxy(context, player);
   }
-  if (!action && normalizeActionSearch(label).startsWith("crew")) {
+  if (ALLOW_ENGINE_SHIMS && !action && normalizeActionSearch(label).startsWith("crew")) {
     makeCurrentScheduledChoicesAvailable(context);
     return activateCrewFallback(context, operation);
   }
   if (!action && (isTurnFaceUpAbilityLabel(label) || isManaCostOnlyAbilityLabel(label))) {
     state = await activateAvailableManaAndRetryAction(context, player, matchesAbility, label);
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
-    if (!action && typeof context.game.forceTurnFaceUp === "function") {
+    if (ALLOW_ENGINE_SHIMS && !action && typeof context.game.forceTurnFaceUp === "function") {
       const faceDown = getBattlefield(getCheckpoint(context.game), player)
         .find((object) => isFaceDownPermanent(object));
       if (faceDown) {
@@ -1640,7 +1681,9 @@ function craftFrontFixtureForName(name) {
   return {
     manaCost: face.mana_cost || "",
     typeLine: `${parsed.cardTypes.join(" ")}${parsed.subtypes.length ? ` - ${parsed.subtypes.join(" ")}` : ""}`,
-    oracleText: info.line,
+    // Legacy opt-in fallback: normal runs use engine-compiled Craft cards.
+    // This fixture is only used when MAGE_PORT_ALLOW_ENGINE_SHIMS=1.
+    oracleText: "",
     power: face.power ?? null,
     toughness: face.toughness ?? null,
   };
@@ -2061,8 +2104,10 @@ async function waitStackResolved(context, operation) {
     await advanceTo(context, operation.turn, operation.phase, player);
   }
   if (player !== null && player !== undefined) {
-    await settleOneStackObject(context);
-    return advanceToPriorityPlayer(context, player);
+    // In the MAGE tests, the player argument identifies who is waiting/passing
+    // while the stack resolves. It should not force priority to that player
+    // after resolution; normal Magic priority returns to the active player.
+    return settleOneStackObject(context);
   }
   if (operation.once) return settleOneStackObject(context);
   await settleStack(context);
@@ -2163,7 +2208,9 @@ async function assertPlayableAbility(context, operation) {
   const engineHas = (state.decision?.actions || []).some(
     (action) => action.kind !== "activate_mana_ability" && actionLabelMatches(action, operation.label),
   );
-  const has = engineHas || (isCraftAbilityLabel(operation.label) && canActivateCraft(context, player));
+  const has =
+    engineHas ||
+    (ALLOW_ENGINE_SHIMS && isCraftAbilityLabel(operation.label) && canActivateCraft(context, player));
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     const checkpoint = getCheckpoint(context.game);
     const battlefield = getBattlefield(checkpoint, null).map((object) => ({
@@ -2784,7 +2831,7 @@ function nextSelectObjectsChoice(context, decision) {
     if (shouldConsumeBooleanAfterTargetedObjectSelection(decision, queuedChoice)) {
       context.choices.shift();
     }
-    return nextQueuedTarget(context, decision.player);
+    return nextQueuedObjectTarget(context, decision);
   }
   if (queuedTarget !== undefined && isOptionalBottomPlacementDecision(decision)) {
     return nextQueuedTarget(context, decision.player);
@@ -2838,7 +2885,7 @@ function nextSelectObjectsChoice(context, decision) {
   }
   if (queuedChoice !== undefined) return nextQueuedObjectChoices(context, decision);
   context.lastBooleanChoice = null;
-  return nextQueuedTarget(context, decision.player);
+  return nextQueuedObjectTarget(context, decision);
 }
 
 function shouldConsumeBooleanAfterTargetedObjectSelection(decision, queuedChoice) {
@@ -3035,6 +3082,37 @@ function nextQueuedTarget(context, player = null) {
   const selectedIndex = index >= 0 ? index : 0;
   const [entry] = context.targets.splice(selectedIndex, 1);
   return entry && typeof entry === "object" && Object.hasOwn(entry, "value") ? entry.value : entry;
+}
+
+function nextQueuedObjectTarget(context, decision) {
+  if (context.targets.length === 0) return undefined;
+  const normalizedPlayer = decision?.player === null || decision?.player === undefined
+    ? null
+    : playerIndex(decision.player);
+  const index =
+    normalizedPlayer === null
+      ? 0
+      : context.targets.findIndex((entry) => entry.player === normalizedPlayer);
+  const selectedIndex = index >= 0 ? index : 0;
+  const entry = context.targets[selectedIndex];
+  const value = entry && typeof entry === "object" && Object.hasOwn(entry, "value")
+    ? entry.value
+    : entry;
+  const max = decision?.max === null || decision?.max === undefined
+    ? Number.POSITIVE_INFINITY
+    : Number(decision.max);
+  const parts = parseCompoundTargetChoice(value);
+  if (max <= 1 && parts.length > 1) {
+    const [first, ...rest] = parts;
+    const nextValue = rest.length === 1 ? rest[0] : rest.join("^");
+    if (entry && typeof entry === "object" && Object.hasOwn(entry, "value")) {
+      context.targets[selectedIndex] = { ...entry, value: nextValue };
+    } else {
+      context.targets[selectedIndex] = nextValue;
+    }
+    return first;
+  }
+  return nextQueuedTarget(context, decision?.player);
 }
 
 function nextTargetChoice(context, decision, immediateTarget = undefined) {
@@ -3984,8 +4062,11 @@ async function assertExileCount(context, operation) {
   };
   const actual = name
     ? cards.filter((object) => normalizeLooseName(visibleExileName(object)) === normalizeLooseName(name)).length +
-      (context.syntheticExileCounts.get(name) || 0)
-    : cards.length + [...context.syntheticExileCounts.values()].reduce((sum, count) => sum + count, 0);
+      (ALLOW_ENGINE_SHIMS ? context.syntheticExileCounts.get(name) || 0 : 0)
+    : cards.length +
+      (ALLOW_ENGINE_SHIMS
+        ? [...context.syntheticExileCounts.values()].reduce((sum, count) => sum + count, 0)
+        : 0);
   assert(actual === numericValue(operation.count), `expected ${operation.count} ${name || "exile"} cards in exile, got ${actual}`);
 }
 
@@ -4045,6 +4126,7 @@ async function assertPowerToughness(context, operation) {
 }
 
 function dayNightSyntheticPowerToughnessMatches(context, operation, name, expectedPower, expectedToughness) {
+  if (!ALLOW_ENGINE_SHIMS) return false;
   if (!String(context.sourcePath || "").endsWith("DayNightTest.java")) return false;
   const transform = DAY_NIGHT_TRANSFORMS.get(name);
   if (!transform) return false;
@@ -4065,7 +4147,10 @@ async function assertTappedCount(context, operation) {
   const name = cardName(operation.name);
   const actual = getBattlefield(getCheckpoint(context.game), operation.player ?? null).filter(
     (object) => object.name === name && Boolean(object.tapped) === Boolean(operation.tapped),
-  ).length + (context.syntheticTappedCounts.get(`${name}:${Boolean(operation.tapped)}`) || 0);
+  ).length +
+    (ALLOW_ENGINE_SHIMS
+      ? context.syntheticTappedCounts.get(`${name}:${Boolean(operation.tapped)}`) || 0
+      : 0);
   assert(actual === numericValue(operation.count), `expected ${operation.count} ${name} tapped=${operation.tapped}, got ${actual}`);
 }
 
@@ -4213,6 +4298,7 @@ async function addCountersToPermanent(context, operation) {
 }
 
 function ensurePucasMischiefControlState(context) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   runCode(context.game, (checkpoint) => {
     const illusions = (checkpoint.objects || []).find((object) => cardName(object.name) === "Illusions of Grandeur");
     const celebrant = (checkpoint.objects || []).find((object) => cardName(object.name) === "Kor Celebrant");
@@ -4490,9 +4576,9 @@ function effectivePermanentName(context, object) {
   const name = cardName(object?.name);
   const transform = DAY_NIGHT_TRANSFORMS.get(name);
   if (!transform) return name;
-  if (context.syntheticTransformedObjects.get(transform.front)) return transform.back;
-  if (context.syntheticTransformedObjects.get(transform.front) === false) return transform.front;
-  if (["Tavern Ruffian", "Curse of Leeches"].includes(transform.front) && context.daytime !== null) {
+  if (ALLOW_ENGINE_SHIMS && context.syntheticTransformedObjects.get(transform.front)) return transform.back;
+  if (ALLOW_ENGINE_SHIMS && context.syntheticTransformedObjects.get(transform.front) === false) return transform.front;
+  if (ALLOW_ENGINE_SHIMS && ["Tavern Ruffian", "Curse of Leeches"].includes(transform.front) && context.daytime !== null) {
     return context.daytime ? transform.front : transform.back;
   }
   return name;
@@ -4514,7 +4600,7 @@ function effectivePermanentDetails(context, object) {
     };
   }
   const transform = DAY_NIGHT_TRANSFORMS.get(effectiveName);
-  if (!transform) return details;
+  if (!transform || !ALLOW_ENGINE_SHIMS) return details;
   if (effectiveName === transform.front) {
     return { ...details, name: transform.front, power: transform.frontPower, toughness: transform.frontToughness };
   }
