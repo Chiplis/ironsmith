@@ -1718,7 +1718,7 @@ mod live_action_rollback_tests {
     use ironsmith::decisions::context::SelectableOption;
     use ironsmith::events::cause::EventCause;
     use ironsmith::game_loop::{CastStage, PendingCast};
-    use ironsmith::game_state::Phase;
+    use ironsmith::game_state::{Phase, Step};
     use ironsmith::ids::{CardId, ObjectId, PlayerId};
     use ironsmith::mana::{ManaCost, ManaSymbol};
     use ironsmith::provenance::ProvNodeId;
@@ -1808,6 +1808,52 @@ mod live_action_rollback_tests {
         ids.iter()
             .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
             .collect()
+    }
+
+    #[test]
+    fn hidden_reveal_without_recompute_preserves_priority_decision() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = bob;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 2;
+        wasm.game.turn.phase = Phase::Beginning;
+        wasm.game.turn.step = Some(Step::Draw);
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::DrawPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(1, 2);
+        wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            7,
+            "alice-slot-7".to_string(),
+        );
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 0,
+            slot: 7,
+            card_name: "Mountain".to_string(),
+            commitment: Some("alice-slot-7".to_string()),
+            recompute_decision: false,
+        })
+        .expect("hidden reveal should succeed");
+
+        assert_eq!(wasm.game.turn.priority_player, Some(alice));
+        assert_eq!(wasm.game.turn.step, Some(Step::Draw));
+        assert_eq!(wasm.priority_state.priority_tracker_snapshot(), (1, 2));
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
+            other => panic!("expected preserved priority decision, got {other:?}"),
+        }
     }
 
     #[test]

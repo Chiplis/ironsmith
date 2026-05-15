@@ -853,6 +853,30 @@ impl PriorityLoopState {
         self.auto_choose_single_pip_payment = enabled;
     }
 
+    /// Return the pass-tracker state needed to restore an in-progress priority window.
+    pub fn priority_tracker_snapshot(&self) -> (usize, usize) {
+        (
+            self.tracker.consecutive_passes,
+            self.tracker.players_in_game,
+        )
+    }
+
+    /// Restore pass tracking after importing a sync checkpoint.
+    pub fn restore_priority_tracker_for_sync(
+        &mut self,
+        consecutive_passes: usize,
+        players_in_game: usize,
+    ) {
+        let players_in_game = if players_in_game == 0 {
+            self.tracker.players_in_game
+        } else {
+            players_in_game
+        }
+        .max(1);
+        self.tracker.players_in_game = players_in_game;
+        self.tracker.consecutive_passes = consecutive_passes.min(players_in_game.saturating_sub(1));
+    }
+
     /// Reset pass tracking and assign priority to the active player for a fresh priority window.
     pub fn reset_for_new_priority_window(&mut self, game: &mut GameState) {
         self.tracker.set_players_in_game(game.players_in_game());

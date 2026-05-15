@@ -90,6 +90,87 @@ pub enum TurnState {
     Complete,
 }
 
+impl TurnState {
+    pub fn sync_name(&self) -> &'static str {
+        match self {
+            Self::BeginTurn => "begin_turn",
+            Self::Upkeep => "upkeep",
+            Self::UpkeepPriority => "upkeep_priority",
+            Self::Draw => "draw",
+            Self::DrawPriority => "draw_priority",
+            Self::FirstMain => "first_main",
+            Self::FirstMainPriority => "first_main_priority",
+            Self::BeginCombat => "begin_combat",
+            Self::BeginCombatPriority => "begin_combat_priority",
+            Self::DeclareAttackersDecision => "declare_attackers_decision",
+            Self::DeclareAttackersApply => "declare_attackers_apply",
+            Self::DeclareAttackersPriority => "declare_attackers_priority",
+            Self::DeclareBlockersCheck => "declare_blockers_check",
+            Self::DeclareBlockersDecision => "declare_blockers_decision",
+            Self::DeclareBlockersApply => "declare_blockers_apply",
+            Self::DeclareBlockersPriority => "declare_blockers_priority",
+            Self::CombatDamageFirstStrike => "combat_damage_first_strike",
+            Self::CombatDamageFirstStrikeSbas => "combat_damage_first_strike_sbas",
+            Self::CombatDamageFirstStrikePriority => "combat_damage_first_strike_priority",
+            Self::CombatDamageRegular => "combat_damage_regular",
+            Self::CombatDamageRegularSbas => "combat_damage_regular_sbas",
+            Self::CombatDamageRegularPriority => "combat_damage_regular_priority",
+            Self::EndCombat => "end_combat",
+            Self::EndCombatPriority => "end_combat_priority",
+            Self::NextMain => "next_main",
+            Self::NextMainPriority => "next_main_priority",
+            Self::EndStep => "end_step",
+            Self::EndStepPriority => "end_step_priority",
+            Self::CleanupDiscard => "cleanup_discard",
+            Self::CleanupApply => "cleanup_apply",
+            Self::CleanupRecursiveCheck => "cleanup_recursive_check",
+            Self::CleanupRecursivePriority => "cleanup_recursive_priority",
+            Self::CleanupRecursiveDiscard => "cleanup_recursive_discard",
+            Self::Complete => "complete",
+        }
+    }
+
+    pub fn from_sync_name(raw: &str) -> Option<Self> {
+        Some(match raw {
+            "begin_turn" => Self::BeginTurn,
+            "upkeep" => Self::Upkeep,
+            "upkeep_priority" => Self::UpkeepPriority,
+            "draw" => Self::Draw,
+            "draw_priority" => Self::DrawPriority,
+            "first_main" => Self::FirstMain,
+            "first_main_priority" => Self::FirstMainPriority,
+            "begin_combat" => Self::BeginCombat,
+            "begin_combat_priority" => Self::BeginCombatPriority,
+            "declare_attackers_decision" => Self::DeclareAttackersDecision,
+            "declare_attackers_apply" => Self::DeclareAttackersApply,
+            "declare_attackers_priority" => Self::DeclareAttackersPriority,
+            "declare_blockers_check" => Self::DeclareBlockersCheck,
+            "declare_blockers_decision" => Self::DeclareBlockersDecision,
+            "declare_blockers_apply" => Self::DeclareBlockersApply,
+            "declare_blockers_priority" => Self::DeclareBlockersPriority,
+            "combat_damage_first_strike" => Self::CombatDamageFirstStrike,
+            "combat_damage_first_strike_sbas" => Self::CombatDamageFirstStrikeSbas,
+            "combat_damage_first_strike_priority" => Self::CombatDamageFirstStrikePriority,
+            "combat_damage_regular" => Self::CombatDamageRegular,
+            "combat_damage_regular_sbas" => Self::CombatDamageRegularSbas,
+            "combat_damage_regular_priority" => Self::CombatDamageRegularPriority,
+            "end_combat" => Self::EndCombat,
+            "end_combat_priority" => Self::EndCombatPriority,
+            "next_main" => Self::NextMain,
+            "next_main_priority" => Self::NextMainPriority,
+            "end_step" => Self::EndStep,
+            "end_step_priority" => Self::EndStepPriority,
+            "cleanup_discard" => Self::CleanupDiscard,
+            "cleanup_apply" => Self::CleanupApply,
+            "cleanup_recursive_check" => Self::CleanupRecursiveCheck,
+            "cleanup_recursive_priority" => Self::CleanupRecursivePriority,
+            "cleanup_recursive_discard" => Self::CleanupRecursiveDiscard,
+            "complete" => Self::Complete,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 enum PendingCommanderChoice {
     DrawToHand { object_id: ObjectId },
@@ -195,6 +276,13 @@ impl TurnRunner {
             pending_commander_choice: None,
             defending_player: None,
         }
+    }
+
+    /// Rebuild a runner at a previously checkpointed state.
+    pub fn from_state_for_sync(state: TurnState) -> Self {
+        let mut runner = Self::new();
+        runner.state = state;
+        runner
     }
 
     /// Return a reference to the current state (for checkpoint/debug).

@@ -8,9 +8,10 @@ const DISCONNECT_FORFEIT_CERTIFICATE_TYPE = "ironsmith-disconnect-forfeit-v1";
 const DISCONNECT_FORFEIT_VOTE_DOMAIN = "ironsmith-disconnect-forfeit-vote-v1";
 export const DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 11;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 12;
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
+export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
 
 export function normalizeAuditPlayerCount(playerCount) {
   const count = Number(playerCount);
@@ -34,6 +35,194 @@ export function assertCurrentAuditPlayerCount(playerCount, context = "Current au
 
 export function canonicalJson(value) {
   return JSON.stringify(normalizeForJson(value));
+}
+
+export function cryptoMaterialRequirementType(requirement) {
+  return String(requirement?.type || requirement?.requirement_type || "");
+}
+
+export function isCryptoMaterialRequirement(requirement) {
+  return [
+    "public_open",
+    "private_open",
+    "private_view_window",
+  ].includes(cryptoMaterialRequirementType(requirement));
+}
+
+export function isOwnerPrivateCryptoMaterialRequirement(requirement) {
+  const type = cryptoMaterialRequirementType(requirement);
+  return (
+    (type === "private_open" || type === "private_view_window")
+    && requirement?.owner != null
+    && requirement?.viewer != null
+    && Number(requirement.owner) === Number(requirement.viewer)
+  );
+}
+
+function cryptoMaterialRequirementId(requirement) {
+  return String(
+    requirement?.id
+      || requirement?.requirementId
+      || requirement?.requirement_id
+      || ""
+  );
+}
+
+function cryptoMaterialRequirementReplayKey(requirement) {
+  if (!requirement || typeof requirement !== "object") return "";
+  return canonicalJson({
+    id: requirement.id ?? requirement.requirementId ?? requirement.requirement_id ?? null,
+    type: requirement.type ?? requirement.requirement_type ?? null,
+    owner: requirement.owner ?? null,
+    viewer: requirement.viewer ?? null,
+    zone: requirement.zone ?? null,
+    slot: requirement.slot ?? null,
+    objectId: requirement.objectId ?? requirement.object_id ?? null,
+    commitment: requirement.commitment ?? null,
+    count: requirement.count ?? null,
+    reason: requirement.reason ?? null,
+  });
+}
+
+function numericRequirementFieldMatches(authorized, requested, field) {
+  const requestedValue = requested?.[field] ?? (
+    field === "objectId" ? requested?.object_id : undefined
+  );
+  const authorizedValue = authorized?.[field] ?? (
+    field === "objectId" ? authorized?.object_id : undefined
+  );
+  if (requestedValue === null || requestedValue === undefined) return true;
+  if (authorizedValue === null || authorizedValue === undefined) return false;
+  return Number(authorizedValue) === Number(requestedValue);
+}
+
+function stringRequirementFieldMatches(authorized, requested, field, fallback = "") {
+  const requestedValue = requested?.[field];
+  if (requestedValue === null || requestedValue === undefined || String(requestedValue || "") === "") {
+    return true;
+  }
+  const authorizedValue = authorized?.[field];
+  return String(authorizedValue ?? fallback) === String(requestedValue);
+}
+
+export function cryptoMaterialRequirementMatchesAuthorization(authorized, requested) {
+  if (!authorized || !requested) return false;
+  if (!isCryptoMaterialRequirement(authorized) || !isCryptoMaterialRequirement(requested)) {
+    return false;
+  }
+  if (cryptoMaterialRequirementReplayKey(authorized) === cryptoMaterialRequirementReplayKey(requested)) {
+    return true;
+  }
+  const authorizedId = cryptoMaterialRequirementId(authorized);
+  const requestedId = cryptoMaterialRequirementId(requested);
+  if (!authorizedId || !requestedId || authorizedId !== requestedId) {
+    return false;
+  }
+  if (cryptoMaterialRequirementType(authorized) !== cryptoMaterialRequirementType(requested)) {
+    return false;
+  }
+  if (Number(authorized.owner) !== Number(requested.owner)) return false;
+  if (!numericRequirementFieldMatches(authorized, requested, "viewer")) return false;
+  if (!numericRequirementFieldMatches(authorized, requested, "slot")) return false;
+  if (!numericRequirementFieldMatches(authorized, requested, "objectId")) return false;
+  if (!numericRequirementFieldMatches(authorized, requested, "count")) return false;
+  if (!stringRequirementFieldMatches(authorized, requested, "zone")) return false;
+  if (!stringRequirementFieldMatches(authorized, requested, "commitment")) return false;
+  if (!stringRequirementFieldMatches(authorized, requested, "reason")) return false;
+  return true;
+}
+
+export function mergeCryptoMaterialRequirements(...requirementLists) {
+  const merged = new Map();
+  for (const requirement of requirementLists.flat()) {
+    if (!isCryptoMaterialRequirement(requirement)) continue;
+    const key = String(cryptoMaterialRequirementId(requirement) || cryptoMaterialRequirementReplayKey(requirement));
+    if (!merged.has(key)) {
+      merged.set(key, normalizeForJson(requirement));
+    }
+  }
+  return [...merged.values()];
+}
+
+export function localAnswerableCryptoMaterialRequirements(requirements = [], localSeat = null) {
+  const seat = Number(localSeat);
+  if (!Number.isInteger(seat)) return [];
+  return (requirements || []).filter((requirement) =>
+    isCryptoMaterialRequirement(requirement)
+    && !isOwnerPrivateCryptoMaterialRequirement(requirement)
+    && Number(requirement?.owner) === seat
+  );
+}
+
+export function authorizeCryptoMaterialRequestRequirements({
+  localSeat,
+  requestedRequirements = [],
+  previewedRequirements = [],
+} = {}) {
+  const requestedLocalRequirements = localAnswerableCryptoMaterialRequirements(
+    Array.isArray(requestedRequirements)
+      ? requestedRequirements.filter(isCryptoMaterialRequirement)
+      : [],
+    localSeat,
+  );
+  const answerablePreviewed = localAnswerableCryptoMaterialRequirements(
+    mergeCryptoMaterialRequirements(previewedRequirements),
+    localSeat,
+  );
+  const authorizedRequestedRequirements = [];
+  for (const requested of requestedLocalRequirements) {
+    const authorized = answerablePreviewed.find((entry) =>
+      cryptoMaterialRequirementMatchesAuthorization(entry, requested)
+    );
+    if (authorized) {
+      authorizedRequestedRequirements.push(authorized);
+    }
+  }
+  const unauthorizedRequirements = requestedLocalRequirements.filter((requested) =>
+    !answerablePreviewed.some((authorized) =>
+      cryptoMaterialRequirementMatchesAuthorization(authorized, requested)
+    )
+  );
+  if (unauthorizedRequirements.length > 0) {
+    throw new Error("Cryptographic material request asks for unauthorized hidden-card material");
+  }
+
+  if (requestedLocalRequirements.length === 0) {
+    return answerablePreviewed;
+  }
+  return mergeCryptoMaterialRequirements(authorizedRequestedRequirements);
+}
+
+export function fairRandomCombinedSeedPayload({
+  matchId,
+  seq,
+  requirementId,
+  commits = [],
+  reveals = [],
+}) {
+  return {
+    domain: "ironsmith-combined-rng-v2",
+    matchId: String(matchId || ""),
+    seq: Number(seq),
+    requirementId: String(requirementId || ""),
+    commits: (Array.isArray(commits) ? commits : [])
+      .map((entry) => ({
+        player: Number(entry?.player),
+        commitmentHex: String(entry?.commitmentHex || ""),
+      }))
+      .sort((left, right) => Number(left.player) - Number(right.player)),
+    reveals: (Array.isArray(reveals) ? reveals : [])
+      .map((entry) => ({
+        player: Number(entry?.player),
+        nonceHex: String(entry?.nonceHex || ""),
+        commitmentHex: String(entry?.commitmentHex || ""),
+      }))
+      .sort((left, right) => Number(left.player) - Number(right.player)),
+  };
+}
+
+export async function fairRandomCombinedSeedHex(args, cryptoImpl = globalThis.crypto) {
+  return sha256Hex(canonicalJson(fairRandomCombinedSeedPayload(args)), cryptoImpl);
 }
 
 function normalizeForJson(value) {
@@ -756,6 +945,9 @@ export async function verifyDisconnectForfeitVote({
   const signedAtMs = Math.max(0, Math.floor(Number(vote?.signedAtMs || 0)));
   const nowMs = Math.max(0, Math.floor(Number(expected?.nowMs ?? Date.now())));
   const maxFutureSkewMs = Math.max(0, Math.floor(Number(expected?.maxFutureSkewMs || 0)));
+  if (disconnectedAtMs <= 0) {
+    throw new Error("Disconnect forfeit vote is missing a disconnect observation timestamp");
+  }
   if (eligibleAtMs !== disconnectedAtMs + disconnectTimeoutMs) {
     throw new Error("Disconnect forfeit vote has an invalid eligibility timestamp");
   }
@@ -834,9 +1026,7 @@ export async function verifyDisconnectForfeitCertificate({
     basisSequence: Number(command.basis_sequence ?? certificate.basisSequence ?? 0),
     forfeitedPlayer: Number(command.player),
     forfeitedPeerId: String(command.disconnected_peer_id || certificate.forfeitedPeerId || ""),
-    disconnectedAtMs: command.disconnected_at_ms == null && certificate.disconnectedAtMs == null
-      ? null
-      : Math.max(0, Math.floor(Number(command.disconnected_at_ms ?? certificate.disconnectedAtMs ?? 0))),
+    disconnectedAtMs: null,
     disconnectTimeoutMs: Math.max(
       0,
       Math.floor(Number(command.disconnect_timeout_ms ?? certificate.disconnectTimeoutMs ?? DISCONNECT_AUTO_FORFEIT_MS))
@@ -1703,6 +1893,7 @@ export async function buildPrivateDeckManifest({
   sideboard = [],
   commanders = [],
   saltForSlot = null,
+  decklistSalt = null,
 }, cryptoImpl = globalThis.crypto) {
   const normalizedDeck = sanitizeAuditCardList(deck);
   const normalizedSideboard = sanitizeAuditCardList(sideboard);
@@ -1714,6 +1905,18 @@ export async function buildPrivateDeckManifest({
     sideboard: normalizedSideboard,
     commanders: normalizedCommanders,
   }, cryptoImpl);
+  const normalizedDecklistSalt = decklistSalt == null
+    ? randomHex(cryptoImpl, 32)
+    : String(decklistSalt);
+  const decklistCommitment = await sha256Hex(canonicalJson({
+    domain: "ironsmith-ui-audit-decklist-commitment-v2",
+    matchId,
+    owner,
+    deck: normalizedDeck,
+    sideboard: normalizedSideboard,
+    commanders: normalizedCommanders,
+    salt: normalizedDecklistSalt,
+  }), cryptoImpl);
   const slots = [];
   const slotSecrets = [];
   for (let slot = 0; slot < normalizedDeck.length; slot += 1) {
@@ -1740,10 +1943,10 @@ export async function buildPrivateDeckManifest({
     });
   }
   const commitmentRoot = await sha256Hex(canonicalJson({
-    domain: "ironsmith-ui-audit-deck-commitment-root-v1",
+    domain: "ironsmith-ui-audit-deck-commitment-root-v2",
     matchId,
     owner,
-    decklistHash,
+    decklistCommitment,
     slots,
   }), cryptoImpl);
   return {
@@ -1753,6 +1956,8 @@ export async function buildPrivateDeckManifest({
     sideboardCount: normalizedSideboard.length,
     commanderCount: normalizedCommanders.length,
     decklistHash,
+    decklistSalt: normalizedDecklistSalt,
+    decklistCommitment,
     commitmentRoot,
     slotCommitments: slots,
     slotSecrets,
@@ -1836,7 +2041,7 @@ export function publicDeckManifest(manifest) {
     deckCount: Number(manifest.deckCount || 0),
     sideboardCount: Number(manifest.sideboardCount || 0),
     commanderCount: Number(manifest.commanderCount || 0),
-    decklistHash: String(manifest.decklistHash || ""),
+    decklistCommitment: String(manifest.decklistCommitment || ""),
     commitmentRoot: String(manifest.commitmentRoot || ""),
     slotCommitments: Array.isArray(manifest.slotCommitments)
       ? manifest.slotCommitments.map((slot) => ({
@@ -1844,6 +2049,80 @@ export function publicDeckManifest(manifest) {
           commitment: String(slot.commitment || ""),
         }))
       : [],
+  };
+}
+
+function ziffleDeckHashFromCommitment(commitment) {
+  const normalized = String(commitment || "");
+  if (!normalized.startsWith("ziffle:")) return "";
+  const lastColon = normalized.lastIndexOf(":");
+  return lastColon > "ziffle:".length
+    ? normalized.slice("ziffle:".length, lastColon)
+    : "";
+}
+
+function zifflePositionFromCommitment(commitment) {
+  const normalized = String(commitment || "");
+  if (!normalized.startsWith("ziffle:")) return null;
+  const lastColon = normalized.lastIndexOf(":");
+  if (lastColon <= "ziffle:".length) return null;
+  const position = Number(normalized.slice(lastColon + 1));
+  return Number.isSafeInteger(position) && position >= 0 ? position : null;
+}
+
+function ziffleRuntimeCommitment(deckHash, position) {
+  return `ziffle:${String(deckHash || "")}:${Number(position)}`;
+}
+
+function normalizeZiffleKeys(keys = []) {
+  return (Array.isArray(keys) ? keys : [])
+    .map((key) => ({
+      player: Number(key?.player),
+      publicKeyHex: String(key?.publicKeyHex || ""),
+    }))
+    .sort((left, right) => Number(left.player) - Number(right.player));
+}
+
+function normalizeZiffleRevealTokens(tokens = [], position = null) {
+  return (Array.isArray(tokens) ? tokens : [])
+    .filter((token) =>
+      position == null
+      || token?.cardPosition == null
+      || Number(token.cardPosition) === Number(position)
+    )
+    .map((token) => ({
+      player: Number(token?.player),
+      publicKeyHex: String(token?.publicKeyHex || ""),
+      tokenHex: String(token?.tokenHex || ""),
+      proofHex: String(token?.proofHex || ""),
+    }))
+    .sort((left, right) => Number(left.player) - Number(right.player));
+}
+
+export function buildZiffleOpeningProof({
+  opening,
+  ceremony,
+  position = opening?.position,
+  originalSlot = opening?.slot,
+  positionCommitment = opening?.positionCommitment,
+  tokens = [],
+}) {
+  return {
+    type: ZIFFLE_OPENING_PROOF_TYPE,
+    owner: Number(opening?.owner ?? ceremony?.owner),
+    position: Number(position),
+    originalSlot: Number(originalSlot),
+    positionCommitment: String(
+      positionCommitment
+      || ziffleRuntimeCommitment(ceremony?.deckHash, position)
+    ),
+    commitment: String(opening?.commitment || ""),
+    deckCount: Number(ceremony?.deckCount || 0),
+    deckHash: String(ceremony?.deckHash || ""),
+    context: String(ceremony?.context || ""),
+    keyContext: String(ceremony?.keyContext || ceremony?.context || ""),
+    keys: normalizeZiffleKeys(ceremony?.keys || []),
+    tokens: normalizeZiffleRevealTokens(tokens, position),
   };
 }
 
@@ -1960,14 +2239,13 @@ async function verifyFairRandomReveal({
       throw new Error("Fair-random reveal signature is invalid");
     }
   }
-  const combinedSeedHex = await sha256Hex(canonicalJson({
-    domain: "ironsmith-combined-rng-v1",
-    matchId: String(matchId || ""),
-    seq: Number(seq),
-    requirementId: String(reveal?.requirementId || ""),
+  const combinedSeedHex = await fairRandomCombinedSeedHex({
+    matchId,
+    seq,
+    requirementId: reveal?.requirementId,
     commits: reveal.commits || [],
     reveals: reveal.reveals || [],
-  }), cryptoImpl);
+  }, cryptoImpl);
   if (combinedSeedHex !== String(reveal?.combinedSeedHex || "")) {
     throw new Error("Fair-random combined seed is invalid");
   }
@@ -1976,6 +2254,12 @@ async function verifyFairRandomReveal({
 async function verifyAuditOpenings({
   openings = [],
   manifests,
+  ziffleCeremonies = [],
+  verifyZiffleOpening,
+  expectedZiffleKeys = [],
+  expectedMatchId = "",
+  players = new Map(),
+  seq = 0,
 }, cryptoImpl) {
   for (const opening of openings || []) {
     const manifest = manifests.get(Number(opening?.owner));
@@ -1991,6 +2275,120 @@ async function verifyAuditOpenings({
     if (!valid) {
       throw new Error(`Opening does not match committed deck slot for player ${Number(opening?.owner) + 1}`);
     }
+    await verifyZifflePositionOpening({
+      opening,
+      manifest,
+      ziffleCeremonies,
+      verifyZiffleOpening,
+      expectedZiffleKeys,
+      expectedMatchId,
+      players,
+      seq,
+    });
+  }
+}
+
+async function verifyZifflePositionOpening({
+  opening,
+  manifest,
+  ziffleCeremonies = [],
+  verifyZiffleOpening,
+  expectedZiffleKeys = [],
+  expectedMatchId = "",
+  players = new Map(),
+  seq = 0,
+}) {
+  const explicitPosition = opening?.position == null ? null : Number(opening.position);
+  const commitmentPosition = zifflePositionFromCommitment(opening?.positionCommitment);
+  const position = explicitPosition ?? commitmentPosition;
+  const positionCommitment = String(opening?.positionCommitment || "");
+  const usesZifflePosition =
+    position != null
+    || Boolean(positionCommitment && ziffleDeckHashFromCommitment(positionCommitment))
+    || Boolean(opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof);
+  if (!usesZifflePosition) return;
+  if (!Number.isSafeInteger(position) || position < 0) {
+    throw new Error(`Ziffle opening at sequence ${seq} is missing a valid shuffled position`);
+  }
+  const proof = opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof;
+  if (!proof || typeof proof !== "object") {
+    throw new Error(`Ziffle opening at sequence ${seq} is missing its position reveal proof`);
+  }
+  if (String(proof.type || "") !== ZIFFLE_OPENING_PROOF_TYPE) {
+    throw new Error(`Ziffle opening at sequence ${seq} has an unsupported position proof`);
+  }
+  const owner = Number(opening.owner);
+  if (!Number.isInteger(owner) || !players.has(owner)) {
+    throw new Error(`Ziffle opening at sequence ${seq} references an unknown owner`);
+  }
+  if (Number(proof.owner) !== owner) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof owner mismatch`);
+  }
+  if (Number(proof.position) !== Number(position)) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof position mismatch`);
+  }
+  if (Number(proof.originalSlot) !== Number(opening.slot)) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof slot mismatch`);
+  }
+  if (opening.commitment && proof.commitment && String(proof.commitment) !== String(opening.commitment)) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof card commitment mismatch`);
+  }
+  if (Number(proof.deckCount) !== Number(manifest.deckCount || 0)) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof deck count mismatch`);
+  }
+  const matchId = String(expectedMatchId || "");
+  const proofContext = String(proof.context || "");
+  const proofKeyContext = String(proof.keyContext || proof.context || "");
+  if (!matchId || (proofContext !== matchId && !proofContext.startsWith(`${matchId}:`))) {
+    throw new Error(`Ziffle opening at sequence ${seq} is bound to a different match`);
+  }
+  if (proofKeyContext !== matchId) {
+    throw new Error(`Ziffle opening at sequence ${seq} uses a mismatched ziffle key context`);
+  }
+  const ceremony = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).find((entry) =>
+    Number(entry?.owner) === owner
+    && String(entry?.context || "") === proofContext
+    && String(entry?.deckHash || "") === String(proof.deckHash || ziffleDeckHashFromCommitment(positionCommitment))
+  );
+  if (!ceremony) {
+    throw new Error(`Ziffle opening at sequence ${seq} references an unknown shuffle ceremony`);
+  }
+  const expectedPositionCommitment = ziffleRuntimeCommitment(ceremony.deckHash, position);
+  if (positionCommitment && positionCommitment !== expectedPositionCommitment) {
+    throw new Error(`Ziffle opening at sequence ${seq} position commitment mismatch`);
+  }
+  if (String(proof.positionCommitment || "") !== expectedPositionCommitment) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof position commitment mismatch`);
+  }
+  if (String(proof.deckHash || "") !== String(ceremony.deckHash || "")) {
+    throw new Error(`Ziffle opening at sequence ${seq} proof deck hash mismatch`);
+  }
+  const expectedKeysJson = canonicalJson(normalizeZiffleKeys(expectedZiffleKeys || []));
+  if (
+    expectedKeysJson !== canonicalJson(normalizeZiffleKeys(ceremony.keys || []))
+    || expectedKeysJson !== canonicalJson(normalizeZiffleKeys(proof.keys || []))
+  ) {
+    throw new Error(`Ziffle opening at sequence ${seq} is not bound to the signed ziffle key roster`);
+  }
+  if (!Array.isArray(proof.tokens) || proof.tokens.length === 0) {
+    throw new Error(`Ziffle opening at sequence ${seq} is missing reveal tokens`);
+  }
+  if (typeof verifyZiffleOpening !== "function") {
+    throw new Error("Live audit transcript contains ziffle position openings but no verifier was provided");
+  }
+  const verified = await verifyZiffleOpening({
+    proof,
+    opening,
+    ceremony,
+    seq,
+  });
+  const verifiedOriginalSlot = Number(
+    typeof verified === "object" && verified
+      ? verified.originalSlot
+      : verified
+  );
+  if (verifiedOriginalSlot !== Number(opening.slot)) {
+    throw new Error(`Ziffle opening at sequence ${seq} reveals a different committed slot`);
   }
 }
 
@@ -2147,7 +2545,8 @@ export async function verifyLiveAuditTranscript(
   let clockHash = INITIAL_MATCH_CLOCK_HASH;
   let finalPublicCheckpointHash = String(transcript.initialPublicCheckpointHash || "");
   let expectedSeq = 1;
-  for (const entry of transcript.actions || []) {
+  const actions = Array.isArray(transcript.actions) ? transcript.actions : [];
+  for (const entry of actions) {
     const audit = entry?.audit;
     if (!audit || typeof audit !== "object") {
       throw new Error(`Action ${expectedSeq} is missing sequenced audit envelope`);
@@ -2240,6 +2639,12 @@ export async function verifyLiveAuditTranscript(
     await verifyAuditOpenings({
       openings: audit.openings || [],
       manifests,
+      ziffleCeremonies: transcript.match?.ziffleCeremonies || [],
+      verifyZiffleOpening: options.verifyZiffleOpening,
+      expectedZiffleKeys,
+      expectedMatchId: expectedShuffleMatchId,
+      players,
+      seq: expectedSeq,
     }, cryptoImpl);
     await verifyPrivateViewProofStructure(audit.privateViewProofs || [], players, cryptoImpl);
     for (const reveal of audit.rngReveals || []) {
@@ -2298,6 +2703,85 @@ export async function verifyLiveAuditTranscript(
   ) {
     throw new Error("Live audit transcript declared final public checkpoint hash does not match verified actions");
   }
+  const replayTranscript = typeof options.replayTranscript === "function"
+    ? options.replayTranscript
+    : null;
+  const requireEngineReplay = options.requireEngineReplay !== false;
+  if (requireEngineReplay && !replayTranscript) {
+    throw new Error("Live audit transcript verification requires engine replay");
+  }
+  let engineReplay = null;
+  if (replayTranscript) {
+    const replayReport = await replayTranscript({
+      transcript,
+      match: transcript.match,
+      actions,
+      initialPublicCheckpointHash: transcript.initialPublicCheckpointHash || "",
+      finalPublicCheckpointHash,
+      finalPublicCheckpoint: transcript.finalPublicCheckpoint || null,
+    });
+    const normalizedReplayReport =
+      typeof replayReport === "string"
+        ? { finalPublicCheckpointHash: replayReport }
+        : replayReport || {};
+    const replayedActions = Array.isArray(normalizedReplayReport.actions)
+      ? normalizedReplayReport.actions
+      : Array.isArray(normalizedReplayReport.actionReports)
+        ? normalizedReplayReport.actionReports
+        : [];
+    if (requireEngineReplay && actions.length > 0) {
+      if (replayedActions.length !== actions.length) {
+        throw new Error("Engine replay must report every action in the transcript");
+      }
+      const replayedSeqs = new Set(replayedActions.map((entry) => Number(entry?.seq)));
+      const expectedSeqs = new Set(actions.map((entry) => Number(entry?.audit?.seq ?? entry?.seq)));
+      if (
+        replayedSeqs.size !== expectedSeqs.size
+        || [...expectedSeqs].some((seq) => !replayedSeqs.has(seq))
+      ) {
+        throw new Error("Engine replay action coverage does not match the transcript");
+      }
+    }
+    if (replayedActions.length > 0) {
+      const expectedActionHashes = new Map(actions.map((entry) => [
+        Number(entry?.audit?.seq ?? entry?.seq),
+        String(entry?.audit?.publicCheckpointHash || ""),
+      ]));
+      for (const replayedAction of replayedActions) {
+        const seq = Number(replayedAction?.seq);
+        const expectedHash = expectedActionHashes.get(seq);
+        if (!expectedHash) {
+          throw new Error(`Engine replay reported an unknown action sequence ${seq}`);
+        }
+        const actualHash = String(replayedAction?.publicCheckpointHash || "");
+        if (actualHash !== expectedHash) {
+          throw new Error(`Engine replay public checkpoint hash mismatch at sequence ${seq}`);
+        }
+      }
+    }
+    const replayFinalPublicCheckpointHash = String(
+      normalizedReplayReport.finalPublicCheckpointHash
+        || replayedActions.at(-1)?.publicCheckpointHash
+        || "",
+    );
+    if (!replayFinalPublicCheckpointHash && requireEngineReplay && actions.length > 0) {
+      throw new Error("Engine replay did not report a final public checkpoint hash");
+    }
+    if (
+      replayFinalPublicCheckpointHash
+      && replayFinalPublicCheckpointHash !== finalPublicCheckpointHash
+    ) {
+      throw new Error("Engine replay final public checkpoint hash does not match verified transcript");
+    }
+    engineReplay = {
+      verified: true,
+      replayedActions: Number(
+        normalizedReplayReport.replayedActions
+          ?? (replayedActions.length > 0 ? replayedActions.length : actions.length)
+      ),
+      finalPublicCheckpointHash: replayFinalPublicCheckpointHash || finalPublicCheckpointHash,
+    };
+  }
   const disputeReports = await verifyTranscriptDisputes(
     transcript.disputes || transcript.disputeEvidence || [],
     players,
@@ -2317,6 +2801,7 @@ export async function verifyLiveAuditTranscript(
     finalPublicCheckpointHash,
     finalStateHash: stateHash,
     outcome,
+    engineReplay,
     disputes: disputeReports,
   };
 }

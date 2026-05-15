@@ -231,7 +231,7 @@ function createFakeGame() {
       if (Number(cardPosition) !== ZIFFLE_PUBLIC_OPEN_POSITION) {
         if (Number(cardPosition) === ZIFFLE_OPENED_LAND_POSITION) {
           return {
-            originalSlot: ZIFFLE_OPENED_LAND_WRONG_REVEAL_SLOT,
+            originalSlot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
             cardPosition: ZIFFLE_OPENED_LAND_POSITION,
           };
         }
@@ -702,16 +702,23 @@ function Harness() {
         setVisibleState(nextState);
         return nextState;
       },
-      snapshot: () => ({
-        multiplayer: lobby.multiplayer,
-        canStartHostedMatch: lobby.canStartHostedMatch,
-        visibleState,
-        statusEvents: [...statusEventsRef.current],
-        noticeEvents: [...noticeEventsRef.current],
-        syncEvents: [...syncEventsRef.current, ...game.syncEvents()],
-        instrumentation: game.instrumentation(),
-        auditTranscript: lobby.exportAuditTranscript?.() || null,
-      }),
+      snapshot: async () => {
+        const auditTranscript =
+          typeof lobby.exportAuditTranscript === "function"
+            ? await lobby.exportAuditTranscript()
+            : null;
+
+        return {
+          multiplayer: lobby.multiplayer,
+          canStartHostedMatch: lobby.canStartHostedMatch,
+          visibleState,
+          statusEvents: [...statusEventsRef.current],
+          noticeEvents: [...noticeEventsRef.current],
+          syncEvents: [...syncEventsRef.current, ...game.syncEvents()],
+          instrumentation: game.instrumentation(),
+          auditTranscript,
+        };
+      },
     };
   });
 

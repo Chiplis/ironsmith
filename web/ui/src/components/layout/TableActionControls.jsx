@@ -57,6 +57,22 @@ export default function TableActionControls({
     }
   };
 
+  const verifyExportedZiffleOpening = async ({ proof, ceremony }) => {
+    if (!game || typeof game.ziffleRevealCard !== "function") {
+      throw new Error("Ziffle mental-poker backend is not available");
+    }
+    const reveal = await game.ziffleRevealCard({
+      deckCount: Number(ceremony.deckCount),
+      context: String(ceremony.context || ""),
+      keyContext: String(ceremony.keyContext || ceremony.context || ""),
+      keys: ceremony.keys || [],
+      steps: ceremony.steps || [],
+      cardPosition: Number(proof.position),
+      tokens: proof.tokens || [],
+    });
+    return { originalSlot: Number(reveal.originalSlot) };
+  };
+
   const describeVerificationReport = (report) => {
     const actions = Number(report?.verifiedActions || 0);
     const suffix = `${actions} action${actions === 1 ? "" : "s"}`;
@@ -133,7 +149,10 @@ export default function TableActionControls({
       const report = await verifyLiveAuditTranscript(
         transcript,
         globalThis.crypto,
-        { verifyShuffleProof: verifyExportedShuffleProof }
+        {
+          verifyShuffleProof: verifyExportedShuffleProof,
+          verifyZiffleOpening: verifyExportedZiffleOpening,
+        }
       );
       setStatus(describeVerificationReport(report));
     } catch (err) {

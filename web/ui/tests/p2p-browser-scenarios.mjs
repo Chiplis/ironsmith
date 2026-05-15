@@ -11,7 +11,7 @@ const auditModulePath = resolve(repoRoot, "web/ui/src/lib/multiplayer-audit.js")
 
 const MATCH_ID_PREFIX = "browser-p2p-audit";
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
-const PROTOCOL_VERSION = 11;
+const PROTOCOL_VERSION = 12;
 
 function playerDeck(seat) {
   return [
@@ -61,6 +61,7 @@ window.IronsmithAudit = {
   CURRENT_AUDIT_PROTOCOL_VERSION,
   exportAuditEncryptionPublicKey,
   exportAuditPublicKey,
+  fairRandomCombinedSeedHex,
   importAuditPublicKey,
   matchGenesisPayload,
   publicDeckManifest,
@@ -179,14 +180,13 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         throw new Error("Transcripted fair-random reveal does not match commitment");
       }
     }
-    const combinedSeedHex = await audit.sha256Hex(audit.canonicalJson({
-      domain: "ironsmith-combined-rng-v1",
+    const combinedSeedHex = await audit.fairRandomCombinedSeedHex({
       matchId,
       seq: Number(seq),
       requirementId: String(rngReveal.requirementId || ""),
       commits: rngReveal.commits || [],
       reveals: rngReveal.reveals || [],
-    }));
+    });
     if (combinedSeedHex !== String(rngReveal.combinedSeedHex || "")) {
       throw new Error("Transcripted fair-random combined seed is invalid");
     }
@@ -599,14 +599,13 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         commits.push({ player, commitmentHex });
         reveals.push({ player, nonceHex, commitmentHex });
       }
-      const combinedSeedHex = await audit.sha256Hex(audit.canonicalJson({
-        domain: "ironsmith-combined-rng-v1",
+      const combinedSeedHex = await audit.fairRandomCombinedSeedHex({
         matchId,
         seq: state.lastSeq + 1,
         requirementId,
         commits,
         reveals,
-      }));
+      });
       if (tamper) {
         reveals[0] = {
           ...reveals[0],
@@ -647,7 +646,7 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         initialStateHash: "${INITIAL_AUDIT_STATE_HASH}",
         initialPublicCheckpointHash: state.matchPayload?.initialPublicCheckpointHash || "",
         actions: state.transcript,
-      });
+      }, globalThis.crypto, { requireEngineReplay: false });
     },
     snapshot() {
       return {

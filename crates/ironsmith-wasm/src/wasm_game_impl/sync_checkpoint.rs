@@ -2,6 +2,7 @@ use ironsmith::game_state::{HiddenCardInfo, Phase, Step, TurnState};
 use ironsmith::ids::{IdCountersSnapshot, StableId};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
+use ironsmith::turn_runner::{TurnRunner, TurnState as RunnerTurnState};
 use ironsmith::types::Subtype;
 use sha2::{Digest, Sha256};
 
@@ -258,6 +259,7 @@ struct PublicAuditCheckpoint {
     perspective: u8,
     snapshot_serial: u64,
     turn: SyncTurn,
+    priority_runtime: SyncPriorityRuntime,
     players: Vec<PublicAuditPlayer>,
     objects: Vec<PublicAuditObject>,
     battlefield: Vec<u64>,
@@ -298,6 +300,8 @@ struct SyncCheckpoint {
     auto_choose_single_object_decisions: bool,
     semantic_threshold: f32,
     turn: SyncTurn,
+    #[serde(default)]
+    priority_runtime: SyncPriorityRuntime,
     players: Vec<SyncPlayer>,
     objects: Vec<SyncObject>,
     battlefield: Vec<u64>,
@@ -309,6 +313,21 @@ struct SyncCheckpoint {
     #[serde(default)]
     return_exiled_when_source_leaves: Vec<u64>,
     id_counters: SyncIdCounters,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncPriorityRuntime {
+    #[serde(default)]
+    runner_awaiting_priority: bool,
+    #[serde(default)]
+    runner_pending_decision: bool,
+    #[serde(default)]
+    turn_runner_state: Option<String>,
+    #[serde(default)]
+    consecutive_priority_passes: usize,
+    #[serde(default)]
+    priority_players_in_game: usize,
 }
 
 fn default_auto_choose_single_object_decisions() -> bool {
@@ -792,6 +811,9 @@ impl WasmGame {
             })
             .collect();
 
+        let (consecutive_priority_passes, priority_players_in_game) =
+            self.priority_state.priority_tracker_snapshot();
+
         SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             format: self.match_format,
@@ -806,6 +828,16 @@ impl WasmGame {
                 turn_number: self.game.turn.turn_number,
                 phase: sync_phase_name(self.game.turn.phase).to_string(),
                 step: self.game.turn.step.map(sync_step_name).map(str::to_string),
+            },
+            priority_runtime: SyncPriorityRuntime {
+                runner_awaiting_priority: self.runner_awaiting_priority,
+                runner_pending_decision: self.runner_pending_decision,
+                turn_runner_state: self
+                    .runner
+                    .as_ref()
+                    .map(|runner| runner.state().sync_name().to_string()),
+                consecutive_priority_passes,
+                priority_players_in_game,
             },
             players,
             objects,
@@ -899,6 +931,8 @@ impl WasmGame {
     }
 
     fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
+        let (consecutive_priority_passes, priority_players_in_game) =
+            self.priority_state.priority_tracker_snapshot();
         let players = self
             .game
             .players
@@ -1050,6 +1084,16 @@ impl WasmGame {
                 phase: sync_phase_name(self.game.turn.phase).to_string(),
                 step: self.game.turn.step.map(sync_step_name).map(str::to_string),
             },
+            priority_runtime: SyncPriorityRuntime {
+                runner_awaiting_priority: self.runner_awaiting_priority,
+                runner_pending_decision: self.runner_pending_decision,
+                turn_runner_state: self
+                    .runner
+                    .as_ref()
+                    .map(|runner| runner.state().sync_name().to_string()),
+                consecutive_priority_passes,
+                priority_players_in_game,
+            },
             players,
             objects,
             battlefield: raw_ids(&self.game.battlefield),
@@ -1144,6 +1188,10 @@ impl WasmGame {
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(checkpoint.players.len());
         self.priority_state.set_auto_choose_single_pip_payment(false);
+        self.priority_state.restore_priority_tracker_for_sync(
+            checkpoint.priority_runtime.consecutive_priority_passes,
+            checkpoint.priority_runtime.priority_players_in_game,
+        );
         self.pregame = None;
         self.match_format = checkpoint.format;
         self.pending_decision = None;
@@ -1152,9 +1200,20 @@ impl WasmGame {
         self.pending_live_action_root = None;
         self.pending_live_continuation = None;
         self.game_over = None;
-        self.runner = None;
-        self.runner_awaiting_priority = false;
-        self.runner_pending_decision = false;
+        self.runner = checkpoint
+            .priority_runtime
+            .turn_runner_state
+            .as_deref()
+            .and_then(RunnerTurnState::from_sync_name)
+            .map(TurnRunner::from_state_for_sync);
+        if self.runner.is_none()
+            && (checkpoint.priority_runtime.runner_awaiting_priority
+                || checkpoint.priority_runtime.runner_pending_decision)
+        {
+            self.runner = Some(TurnRunner::new());
+        }
+        self.runner_awaiting_priority = checkpoint.priority_runtime.runner_awaiting_priority;
+        self.runner_pending_decision = checkpoint.priority_runtime.runner_pending_decision;
         self.auto_cleanup_discard = checkpoint.auto_cleanup_discard;
         self.game
             .set_auto_choose_single_object_decisions(checkpoint.auto_choose_single_object_decisions);
@@ -1544,6 +1603,77 @@ mod sync_checkpoint_tests {
                 .unwrap_or(0),
             2
         );
+    }
+
+    #[test]
+    fn sync_checkpoint_restores_in_progress_priority_pass_tracker() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        host.game.turn = TurnState {
+            active_player: alice,
+            priority_player: Some(bob),
+            turn_number: 1,
+            phase: Phase::FirstMain,
+            step: None,
+        };
+        host.runner = Some(TurnRunner::from_state_for_sync(
+            RunnerTurnState::FirstMainPriority,
+        ));
+        host.runner_awaiting_priority = true;
+        host.runner_pending_decision = false;
+        host.priority_state.restore_priority_tracker_for_sync(1, 2);
+
+        let public_checkpoint = host.build_public_audit_checkpoint();
+        assert_eq!(
+            public_checkpoint
+                .priority_runtime
+                .consecutive_priority_passes,
+            1
+        );
+        assert_eq!(
+            public_checkpoint.priority_runtime.turn_runner_state.as_deref(),
+            Some("first_main_priority")
+        );
+
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("guest checkpoint should import");
+
+        assert_eq!(guest.priority_state.priority_tracker_snapshot(), (1, 2));
+        assert!(guest.runner_awaiting_priority);
+
+        let pending = guest
+            .pending_decision
+            .take()
+            .expect("guest should have a priority decision");
+        let DecisionContext::Priority(priority) = &pending else {
+            panic!("expected priority decision, got {pending:?}");
+        };
+        assert_eq!(priority.player, bob);
+        let pass_index = priority
+            .actions
+            .iter()
+            .position(|action| matches!(action, LegalAction::PassPriority))
+            .expect("pass priority should be legal");
+
+        guest
+            .dispatch_live_priority_response(
+                pending,
+                UiCommand::PriorityAction {
+                    action_index: Some(pass_index),
+                    action_ref: None,
+                },
+            )
+            .expect("restored pass should complete the priority window");
+
+        assert_eq!(guest.game.turn.phase, Phase::Combat);
+        assert_eq!(guest.game.turn.step, Some(Step::BeginCombat));
+        assert_eq!(guest.game.turn.priority_player, Some(alice));
+        assert_eq!(guest.priority_state.priority_tracker_snapshot(), (0, 2));
     }
 
     #[test]

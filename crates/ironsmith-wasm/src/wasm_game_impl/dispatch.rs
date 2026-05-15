@@ -43,10 +43,7 @@ impl WasmGame {
             || self.pending_replay_action.is_some()
             || self.runner_pending_decision
             || self.active_viewed_cards.is_some()
-            || self
-                .pending_decision
-                .as_ref()
-                .is_some_and(|ctx| !matches!(ctx, DecisionContext::Priority(_)))
+            || self.pending_decision.is_some()
     }
 
     fn reveal_hidden_card_in_live_continuation_checkpoint(

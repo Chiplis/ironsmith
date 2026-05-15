@@ -572,8 +572,8 @@ test("PeerJS click during the final sync window is submitted after the previous 
       "guest renders its next decision while previous action is still syncing",
     );
 
-    await guestPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = snap.visibleState?.decision?.actions?.[0];
       if (!action?.action_ref) {
         throw new Error("guest has no local action to submit during sync");
@@ -678,8 +678,8 @@ test("PeerJS client actions can collect host ziffle shuffle steps", { timeout: 6
       "guest owns the next action before ziffle shuffle",
     );
 
-    await guestPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         entry.action_ref?.kind === "ziffle_shuffle_action"
       );
@@ -791,8 +791,8 @@ test("PeerJS remote public openings can prove ziffle positions against original 
     );
 
     const revealStartedAt = Date.now();
-    await guestPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         entry.action_ref?.kind === "ziffle_public_open_action"
       );
@@ -895,8 +895,8 @@ test("PeerJS opened ziffle hand cards keep original slots when played", { timeou
     await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts opened ziffle land match");
     await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives opened ziffle land match");
 
-    await hostPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await hostPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         Number(entry.action_ref?.land_id) === 4343
       );
@@ -992,8 +992,8 @@ test("PeerJS opened ziffle hand cards use cached positions when object export is
     await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives cached ziffle land match");
     await hostPage.evaluate(() => window.__peerHarness.setFailOpenedLandExport(true));
 
-    await hostPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await hostPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         Number(entry.action_ref?.land_id) === 4343
       );
@@ -1098,8 +1098,8 @@ test("PeerJS receivers infer ziffle positions for opened hand cards when audit o
     await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives inferred ziffle land match");
     await hostPage.evaluate(() => window.__peerHarness.setOmitOwnerOpenedLandPosition(true));
 
-    await hostPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await hostPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         Number(entry.action_ref?.land_id) === 4343
       );
@@ -1209,8 +1209,8 @@ test("PeerJS post-timed remote openings are revealed after dispatch", { timeout:
       "guest owns the next action before post-timed opening",
     );
 
-    await guestPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         entry.action_ref?.kind === "post_public_open_action"
       );
@@ -1304,8 +1304,8 @@ test("PeerJS local post-timed public openings are revealed before signing", { ti
     await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts local post-timed opening match");
     await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives local post-timed opening match");
 
-    await hostPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await hostPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         entry.action_ref?.kind === "post_public_open_action"
       );
@@ -1416,8 +1416,8 @@ test("PeerJS post-apply public openings are requested before signing", { timeout
       "guest owns the next action before post-apply public opening",
     );
 
-    await guestPage.evaluate(() => {
-      const snap = window.__peerHarness.snapshot();
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
       const action = (snap.visibleState?.decision?.actions || []).find((entry) =>
         entry.action_ref?.kind === "late_public_open_action"
       );
@@ -1938,7 +1938,7 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
     );
     assert.notEqual(cheatingPageIndex, -1, "expected one browser to own player 2");
     await pages[cheatingPageIndex].evaluate(async () => {
-      const playerIndex = window.__peerHarness.snapshot().multiplayer.localPlayerIndex;
+      const playerIndex = (await window.__peerHarness.snapshot()).multiplayer.localPlayerIndex;
       const state = await window.__peerHarness.silentlyAddCard({
         playerIndex,
         cardName: "Black Lotus",
