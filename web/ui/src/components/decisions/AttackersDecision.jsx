@@ -6,6 +6,7 @@ import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import { Button } from "@/components/ui/button";
+import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -95,7 +96,7 @@ export default function AttackersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
-  const { dispatch, state, playerAccentOverrides } = useGame();
+  const { dispatch, state, multiplayer, playerAccentOverrides } = useGame();
   const { updateArrows, clearArrows, startDragArrow, updateDragArrow, endDragArrow, setCombatMode } = useCombatArrows();
   const options = useMemo(() => decision.attacker_options || [], [decision.attacker_options]);
   const players = state?.players || [];
@@ -104,6 +105,8 @@ export default function AttackersDecision({
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
 
   const [declarations, setDeclarations] = useState(() => {
     const initial = [];
@@ -461,23 +464,31 @@ export default function AttackersDecision({
       </ScrollArea>
 
       <div className="w-full shrink-0 pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
-          style={decisionButtonStyle}
-          data-local-action={localDecisionButton ? "true" : "false"}
-          data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
-          disabled={!canAct || attackButtonTransition.locked}
-          onClick={() =>
-            dispatch(
-              { type: "declare_attackers", declarations },
-              `Declared ${declarations.length} attacker(s)`
-            )
-          }
-        >
-          Confirm Attackers ({declarations.length})
-        </Button>
+        <PeerWaitPopover peerWait={peerWait}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+            style={decisionButtonStyle}
+            data-local-action={localDecisionButton ? "true" : "false"}
+            data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+            aria-disabled={peerWaiting || !canAct || attackButtonTransition.locked}
+            disabled={peerWaiting ? false : (!canAct || attackButtonTransition.locked)}
+            onClick={() => {
+              if (peerWaiting) return;
+              dispatch(
+                { type: "declare_attackers", declarations },
+                `Declared ${declarations.length} attacker(s)`
+              );
+            }}
+          >
+            {peerWaiting ? (
+              <PeerWaitButtonContent />
+            ) : (
+              <>Confirm Attackers ({declarations.length})</>
+            )}
+          </Button>
+        </PeerWaitPopover>
       </div>
     </div>
   );

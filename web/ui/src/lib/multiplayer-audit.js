@@ -8,7 +8,7 @@ const DISCONNECT_FORFEIT_CERTIFICATE_TYPE = "ironsmith-disconnect-forfeit-v1";
 const DISCONNECT_FORFEIT_VOTE_DOMAIN = "ironsmith-disconnect-forfeit-vote-v1";
 export const DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 10;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 11;
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 
@@ -754,11 +754,16 @@ export async function verifyDisconnectForfeitVote({
   )));
   const eligibleAtMs = Math.max(0, Math.floor(Number(vote?.eligibleAtMs || 0)));
   const signedAtMs = Math.max(0, Math.floor(Number(vote?.signedAtMs || 0)));
+  const nowMs = Math.max(0, Math.floor(Number(expected?.nowMs ?? Date.now())));
+  const maxFutureSkewMs = Math.max(0, Math.floor(Number(expected?.maxFutureSkewMs || 0)));
   if (eligibleAtMs !== disconnectedAtMs + disconnectTimeoutMs) {
     throw new Error("Disconnect forfeit vote has an invalid eligibility timestamp");
   }
   if (signedAtMs < eligibleAtMs) {
     throw new Error("Disconnect forfeit vote was signed before the disconnect timeout elapsed");
+  }
+  if (signedAtMs > nowMs + maxFutureSkewMs) {
+    throw new Error("Disconnect forfeit vote is signed in the future");
   }
   const payload = disconnectForfeitVotePayload({
     matchId: expected?.matchId,
@@ -778,6 +783,10 @@ export async function verifyDisconnectForfeitVote({
     || Number(vote?.forfeitedPlayer) !== payload.forfeitedPlayer
     || String(vote?.forfeitedPeerId || "") !== payload.forfeitedPeerId
     || Number(vote?.disconnectTimeoutMs) !== payload.disconnectTimeoutMs
+    || (
+      expected?.disconnectedAtMs != null
+      && Number(vote?.disconnectedAtMs) !== Math.max(0, Math.floor(Number(expected.disconnectedAtMs || 0)))
+    )
   ) {
     throw new Error("Disconnect forfeit vote does not match the forfeit claim");
   }
@@ -825,10 +834,15 @@ export async function verifyDisconnectForfeitCertificate({
     basisSequence: Number(command.basis_sequence ?? certificate.basisSequence ?? 0),
     forfeitedPlayer: Number(command.player),
     forfeitedPeerId: String(command.disconnected_peer_id || certificate.forfeitedPeerId || ""),
+    disconnectedAtMs: command.disconnected_at_ms == null && certificate.disconnectedAtMs == null
+      ? null
+      : Math.max(0, Math.floor(Number(command.disconnected_at_ms ?? certificate.disconnectedAtMs ?? 0))),
     disconnectTimeoutMs: Math.max(
       0,
       Math.floor(Number(command.disconnect_timeout_ms ?? certificate.disconnectTimeoutMs ?? DISCONNECT_AUTO_FORFEIT_MS))
     ),
+    nowMs: Math.max(0, Math.floor(Number(command.nowMs ?? Date.now()))),
+    maxFutureSkewMs: Math.max(0, Math.floor(Number(command.maxFutureSkewMs || 0))),
   };
   if (
     String(certificate.matchId || "") !== expected.matchId
@@ -1352,10 +1366,22 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
   if (ziffleCeremonies.length !== playerCount) {
     throw new Error("Match genesis requires one ziffle ceremony per player");
   }
+  if (!String(match?.hostPeerId || "").trim()) {
+    throw new Error("Match genesis is missing its host peer id");
+  }
   const playerSeats = new Set(seats);
+  const peerIds = new Set();
   const ceremonyOwners = new Set();
   for (const player of players) {
     const seat = Number(player?.index);
+    const peerId = String(player?.peerId || "").trim();
+    if (!peerId) {
+      throw new Error(`Match genesis player ${seat + 1} is missing peer id`);
+    }
+    if (peerIds.has(peerId)) {
+      throw new Error("Match genesis requires unique player peer ids");
+    }
+    peerIds.add(peerId);
     if (!player?.auditPublicKey || !player?.auditEncryptionPublicKey) {
       throw new Error(`Match genesis player ${seat + 1} is missing audit keys`);
     }
@@ -1420,14 +1446,14 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
       }
     }
   }
+  const host = players.find((player) => Number(player?.index) === Number(genesis.hostSeat));
+  if (!host?.auditPublicKey) {
+    throw new Error("Match genesis host signer is missing");
+  }
   const payload = matchGenesisPayload(match);
   const payloadHash = await sha256Hex(canonicalJson(payload), cryptoImpl);
   if (payloadHash !== String(genesis.payloadHash || "")) {
     throw new Error("Match genesis payload hash mismatch");
-  }
-  const host = players.find((player) => Number(player?.index) === Number(genesis.hostSeat));
-  if (!host?.auditPublicKey) {
-    throw new Error("Match genesis host signer is missing");
   }
   const hostKey = await importAuditPublicKey(host.auditPublicKey, cryptoImpl);
   const hostValid = await verifyAuditPayload(
@@ -2018,11 +2044,40 @@ async function verifyPrivateViewProofStructure(
 async function verifyShuffleProofList({
   shuffleProofs = [],
   verifyShuffleProof,
+  expectedZiffleKeys = [],
+  expectedMatchId = "",
+  players = new Map(),
   seq,
 }) {
+  const expectedKeysJson = canonicalJson(expectedZiffleKeys || []);
+  const matchId = String(expectedMatchId || "");
   for (const proof of shuffleProofs || []) {
     if (String(proof?.type || "") !== "ziffle_shuffle") {
       throw new Error(`Unsupported shuffle proof type at sequence ${seq}`);
+    }
+    const owner = Number(proof?.owner);
+    if (!Number.isInteger(owner) || !players.has(owner)) {
+      throw new Error(`Shuffle proof at sequence ${seq} references an unknown owner`);
+    }
+    if (String(proof?.zone || "library") !== "library") {
+      throw new Error(`Shuffle proof at sequence ${seq} references an unsupported zone`);
+    }
+    if (!Number.isInteger(Number(proof?.deckCount)) || Number(proof?.deckCount) < 0) {
+      throw new Error(`Shuffle proof at sequence ${seq} contains an invalid deck count`);
+    }
+    if (!Array.isArray(proof?.keys) || canonicalJson(proof.keys) !== expectedKeysJson) {
+      throw new Error(`Shuffle proof at sequence ${seq} is not bound to the signed ziffle key roster`);
+    }
+    const proofContext = String(proof?.context || "");
+    const proofKeyContext = String(proof?.keyContext || proof?.context || "");
+    if (
+      !matchId
+      || (proofContext !== matchId && !proofContext.startsWith(`${matchId}:`))
+    ) {
+      throw new Error(`Shuffle proof at sequence ${seq} is bound to a different match`);
+    }
+    if (proofKeyContext !== matchId) {
+      throw new Error(`Shuffle proof at sequence ${seq} uses a mismatched ziffle key context`);
     }
     if (typeof verifyShuffleProof !== "function") {
       throw new Error("Live audit transcript contains shuffle proofs but no verifier was provided");
@@ -2079,6 +2134,15 @@ export async function verifyLiveAuditTranscript(
   let activeQuorumPlayers = [...playerList];
   const expectedPlayers = sortedPlayerSeats(players);
   const manifests = transcriptDeckManifestMap(transcript);
+  const expectedZiffleKeys = Array.isArray(transcript.match?.ziffleKeys)
+    ? transcript.match.ziffleKeys
+    : [];
+  const expectedShuffleMatchId = String(
+    transcript.match?.auditMatchId
+      || transcript.matchId
+      || transcript.match?.matchId
+      || "",
+  );
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
   let clockHash = INITIAL_MATCH_CLOCK_HASH;
   let finalPublicCheckpointHash = String(transcript.initialPublicCheckpointHash || "");
@@ -2190,6 +2254,9 @@ export async function verifyLiveAuditTranscript(
     await verifyShuffleProofList({
       shuffleProofs: audit.shuffleProofs || [],
       verifyShuffleProof: options.verifyShuffleProof,
+      expectedZiffleKeys,
+      expectedMatchId: expectedShuffleMatchId,
+      players,
       seq: expectedSeq,
     });
     const computedHash = await auditStateHash({

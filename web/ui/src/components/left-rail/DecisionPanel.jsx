@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
+import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
@@ -136,6 +137,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const decision = state?.decision;
   const gameOver = state?.game_over || null;
   const rematch = multiplayer?.rematch || null;
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
   const rematchSideboarding = rematch?.phase === "sideboarding";
   const rematchReady = Boolean(rematch?.localReady);
   const showGameOverPanel = Boolean(gameOver);
@@ -399,50 +402,67 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
 
           {showGameOverPanel && canPlayAgain && (
             <div className="pb-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-main-button pass-priority-btn h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
-                aria-disabled={rematchSideboarding && rematchReady}
-                disabled={rematchSideboarding && rematchReady}
-                onClick={handleRematchClick}
-              >
-                {rematchSideboarding
-                  ? rematchReady ? "Waiting for players" : "Ready"
-                  : "Play again"}
-              </Button>
+              <PeerWaitPopover peerWait={peerWait}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="decision-neon-button decision-main-button pass-priority-btn h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
+                  aria-disabled={peerWaiting || (rematchSideboarding && rematchReady)}
+                  disabled={peerWaiting ? false : (rematchSideboarding && rematchReady)}
+                  onClick={() => {
+                    if (peerWaiting) return;
+                    handleRematchClick();
+                  }}
+                >
+                  {peerWaiting ? (
+                    <PeerWaitButtonContent />
+                  ) : (
+                    rematchSideboarding
+                      ? rematchReady ? "Waiting for players" : "Ready"
+                      : "Play again"
+                  )}
+                </Button>
+              </PeerWaitPopover>
             </div>
           )}
 
           {!showGameOverPanel && isPriorityDecision && passAction && (
             <div className="pb-1">
               <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
-                  style={decisionButtonStyle}
-                  data-local-action={localDecisionButton ? "true" : "false"}
-                  aria-disabled={!canAct}
-                  onClick={() => {
-                    if (!canAct) return;
-                    dispatch(
-                      { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
-                      passAction.label
-                    );
-                  }}
-                >
-                  <PriorityPassButtonLabel
-                    currentLabel={passCurrentLabel}
-                    advanceLabel={passAdvanceLabel}
+                <PeerWaitPopover peerWait={peerWait}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
+                    style={decisionButtonStyle}
+                    data-local-action={localDecisionButton ? "true" : "false"}
+                    aria-disabled={peerWaiting || !canAct}
+                    onClick={() => {
+                      if (peerWaiting || !canAct) return;
+                      dispatch(
+                        { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
+                        passAction.label
+                      );
+                    }}
+                  >
+                    {peerWaiting ? (
+                      <PeerWaitButtonContent />
+                    ) : (
+                      <PriorityPassButtonLabel
+                        currentLabel={passCurrentLabel}
+                        advanceLabel={passAdvanceLabel}
+                      />
+                    )}
+                  </Button>
+                </PeerWaitPopover>
+                {!peerWaiting && (
+                  <PhaseHelpPopover
+                    state={state}
+                    decision={decision}
+                    advanceLabel={passHelpAdvanceLabel}
+                    className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                   />
-                </Button>
-                <PhaseHelpPopover
-                  state={state}
-                  decision={decision}
-                  advanceLabel={passHelpAdvanceLabel}
-                  className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
-                />
+                )}
               </div>
             </div>
           )}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
+import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
@@ -1258,13 +1259,15 @@ function MobileDecisionDock({
   inline = false,
   orientation = "horizontal",
 }) {
-  const { state, playerAccentOverrides } = useGame();
+  const { state, multiplayer, playerAccentOverrides } = useGame();
   const decision = state?.decision || null;
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
   const isVertical = orientation === "vertical";
   const effectivePrimaryDisabled = primaryDisabled || attackButtonTransition.locked;
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
 
   return (
     <div
@@ -1290,30 +1293,42 @@ function MobileDecisionDock({
             {secondaryLabel}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="mobile-decision-primary-button decision-main-button"
-          style={decisionButtonStyle}
-          data-local-action={localDecisionButton ? "true" : "false"}
-          data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
-          disabled={effectivePrimaryDisabled}
-          onClick={onPrimary}
-        >
-          <span className="mobile-decision-primary-label">
-            {primaryLabel}
-          </span>
-          {primaryAdvanceLabel ? (
-            <span className="mobile-decision-primary-subtitle">
-              {primaryAdvanceLabel}
-            </span>
-          ) : subtitle ? (
-            <span className="mobile-decision-primary-subtitle">
-              <SymbolText text={normalizeDecisionText(subtitle)} noWrap />
-            </span>
-          ) : null}
-        </Button>
+        <PeerWaitPopover peerWait={peerWait}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mobile-decision-primary-button decision-main-button"
+            style={decisionButtonStyle}
+            data-local-action={localDecisionButton ? "true" : "false"}
+            data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+            aria-disabled={peerWaiting || effectivePrimaryDisabled}
+            disabled={peerWaiting ? false : effectivePrimaryDisabled}
+            onClick={(event) => {
+              if (peerWaiting) return;
+              onPrimary?.(event);
+            }}
+          >
+            {peerWaiting ? (
+              <PeerWaitButtonContent />
+            ) : (
+              <>
+                <span className="mobile-decision-primary-label">
+                  {primaryLabel}
+                </span>
+                {primaryAdvanceLabel ? (
+                  <span className="mobile-decision-primary-subtitle">
+                    {primaryAdvanceLabel}
+                  </span>
+                ) : subtitle ? (
+                  <span className="mobile-decision-primary-subtitle">
+                    <SymbolText text={normalizeDecisionText(subtitle)} noWrap />
+                  </span>
+                ) : null}
+              </>
+            )}
+          </Button>
+        </PeerWaitPopover>
       </div>
     </div>
   );
@@ -2177,6 +2192,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     setHoldRule,
     cancelDecision,
     triggerOrderingState,
+    multiplayer,
     playerAccentOverrides,
   } = useGame();
   const {
@@ -2191,6 +2207,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
   const isPriorityDecision = decision?.kind === "priority";
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
   const decisionActions = useMemo(() => decision?.actions || [], [decision]);
@@ -2329,7 +2347,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const priorityActionCount = visibleActionGroups.length;
   const triggerPriorityAction = useCallback(
     (action) => {
-      if (!canAct || !action) return;
+      if (peerWaiting || !canAct || !action) return;
       clearHover();
       if (action.kind === "untap_land") {
         cancelDecision();
@@ -2340,7 +2358,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
         action.label
       );
     },
-    [canAct, cancelDecision, clearHover, dispatch]
+    [canAct, cancelDecision, clearHover, dispatch, peerWaiting]
   );
   const triggerPassActionFromPointer = useCallback(
     (event) => {
@@ -2499,24 +2517,29 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
                   <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                      data-local-action={localDecisionButton ? "true" : "false"}
-                      disabled={!canAdvanceViewedCardsStep}
-                      onPointerDown={(event) => {
-                        if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                        event.preventDefault();
-                        completeViewedCardsStep();
-                      }}
-                      onClick={(event) => {
-                        if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                        completeViewedCardsStep();
-                      }}
-                    >
-                      Done
-                    </Button>
+                    <PeerWaitPopover peerWait={peerWait}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        aria-disabled={peerWaiting || !canAdvanceViewedCardsStep}
+                        disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
+                        onPointerDown={(event) => {
+                          if (peerWaiting) return;
+                          if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                          event.preventDefault();
+                          completeViewedCardsStep();
+                        }}
+                        onClick={(event) => {
+                          if (peerWaiting) return;
+                          if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                          completeViewedCardsStep();
+                        }}
+                      >
+                        {peerWaiting ? <PeerWaitButtonContent /> : "Done"}
+                      </Button>
+                    </PeerWaitPopover>
                   </div>
                 </div>
                 <ViewedCardsStrip
@@ -2543,42 +2566,52 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
                   {showPriorityAdvanceButton && (
                     <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                        data-local-action={localDecisionButton ? "true" : "false"}
-                        aria-disabled={!canAct}
-                        aria-label={passCurrentLabel}
-                        onPointerDown={triggerPassActionFromPointer}
-                        onClick={triggerPassActionFromClick}
-                      >
-                        <span className="sr-only">{passCurrentLabel}</span>
-                      </Button>
-                      <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
-                        <div className="action-strip-main-title-row">
-                          <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
-                        </div>
-                        <div
-                          className="action-strip-main-controls"
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
+                      <PeerWaitPopover peerWait={peerWait}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                          data-local-action={localDecisionButton ? "true" : "false"}
+                          aria-disabled={peerWaiting || !canAct}
+                          aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
+                          onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
+                          onClick={peerWaiting ? undefined : triggerPassActionFromClick}
                         >
-                          <PriorityControlStack
-                            actionCount={priorityActionCount}
-                            holdEnabled={holdRule === "always"}
-                            onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                            advanceControlLabel={passControlAdvanceLabel}
-                            showActionCount={false}
-                          />
+                          {peerWaiting ? (
+                            <PeerWaitButtonContent />
+                          ) : (
+                            <span className="sr-only">{passCurrentLabel}</span>
+                          )}
+                        </Button>
+                      </PeerWaitPopover>
+                      {!peerWaiting && (
+                        <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
+                          <div className="action-strip-main-title-row">
+                            <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                          </div>
+                          <div
+                            className="action-strip-main-controls"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <PriorityControlStack
+                              actionCount={priorityActionCount}
+                              holdEnabled={holdRule === "always"}
+                              onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                              advanceControlLabel={passControlAdvanceLabel}
+                              showActionCount={false}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <PhaseHelpPopover
-                        state={state}
-                        decision={decision}
-                        advanceLabel={passHelpAdvanceLabel}
-                        className="action-strip-main-title-help absolute right-2 top-2 z-20"
-                      />
+                      )}
+                      {!peerWaiting && (
+                        <PhaseHelpPopover
+                          state={state}
+                          decision={decision}
+                          advanceLabel={passHelpAdvanceLabel}
+                          className="action-strip-main-title-help absolute right-2 top-2 z-20"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -2606,14 +2639,17 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
                   <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
+                    <PeerWaitPopover peerWait={peerWait}>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
+                        aria-disabled={peerWaiting || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                        disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
                         onPointerDown={(event) => {
+                          if (peerWaiting) return;
                           if (showViewedCardsStep) {
                             if (!canAdvanceViewedCardsStep || event.button !== 0) return;
                             event.preventDefault();
@@ -2625,6 +2661,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                           effectiveSubmitAction.onSubmit();
                         }}
                         onClick={(event) => {
+                          if (peerWaiting) return;
                           if (showViewedCardsStep) {
                             if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
                             completeViewedCardsStep();
@@ -2634,8 +2671,13 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                           effectiveSubmitAction.onSubmit();
                         }}
                       >
-                        {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
+                        {peerWaiting ? (
+                          <PeerWaitButtonContent />
+                        ) : (
+                          showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+                        )}
                       </Button>
+                    </PeerWaitPopover>
                       <Button
                         type="button"
                         variant="ghost"
@@ -2764,65 +2806,80 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                  data-local-action={localDecisionButton ? "true" : "false"}
-                  disabled={!canAdvanceViewedCardsStep}
-                  onPointerDown={(event) => {
-                    if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                    event.preventDefault();
-                    completeViewedCardsStep();
-                  }}
-                  onClick={(event) => {
-                    if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                    completeViewedCardsStep();
-                  }}
-                >
-                  Done
-                </Button>
+                <PeerWaitPopover peerWait={peerWait}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                    data-local-action={localDecisionButton ? "true" : "false"}
+                    aria-disabled={peerWaiting || !canAdvanceViewedCardsStep}
+                    disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
+                    onPointerDown={(event) => {
+                      if (peerWaiting) return;
+                      if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                      event.preventDefault();
+                      completeViewedCardsStep();
+                    }}
+                    onClick={(event) => {
+                      if (peerWaiting) return;
+                      if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                      completeViewedCardsStep();
+                    }}
+                  >
+                    {peerWaiting ? <PeerWaitButtonContent /> : "Done"}
+                  </Button>
+                </PeerWaitPopover>
               </div>
             ) : (
               <>
                 {showPriorityAdvanceButton && (
                   <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                      data-local-action={localDecisionButton ? "true" : "false"}
-                      aria-disabled={!canAct}
-                      aria-label={passCurrentLabel}
-                      onPointerDown={triggerPassActionFromPointer}
-                      onClick={triggerPassActionFromClick}
-                    >
-                      <span className="sr-only">{passCurrentLabel}</span>
-                    </Button>
-                    <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
-                      <div className="action-strip-main-title-row">
-                        <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
-                      </div>
-                      <div
-                        className="action-strip-main-controls"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
+                    <PeerWaitPopover peerWait={peerWait}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        aria-disabled={peerWaiting || !canAct}
+                        aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
+                        onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
+                        onClick={peerWaiting ? undefined : triggerPassActionFromClick}
                       >
-                        <PriorityControlStack
-                          actionCount={priorityActionCount}
-                          holdEnabled={holdRule === "always"}
-                          onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                          advanceControlLabel={passControlAdvanceLabel}
-                          showActionCount={false}
-                        />
+                        {peerWaiting ? (
+                          <PeerWaitButtonContent />
+                        ) : (
+                          <span className="sr-only">{passCurrentLabel}</span>
+                        )}
+                      </Button>
+                    </PeerWaitPopover>
+                    {!peerWaiting && (
+                      <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
+                        <div className="action-strip-main-title-row">
+                          <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                        </div>
+                        <div
+                          className="action-strip-main-controls"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <PriorityControlStack
+                            actionCount={priorityActionCount}
+                            holdEnabled={holdRule === "always"}
+                            onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                            advanceControlLabel={passControlAdvanceLabel}
+                            showActionCount={false}
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <PhaseHelpPopover
-                      state={state}
-                      decision={decision}
-                      advanceLabel={passHelpAdvanceLabel}
-                      className="action-strip-main-title-help absolute right-2 top-2 z-20"
-                    />
+                    )}
+                    {!peerWaiting && (
+                      <PhaseHelpPopover
+                        state={state}
+                        decision={decision}
+                        advanceLabel={passHelpAdvanceLabel}
+                        className="action-strip-main-title-help absolute right-2 top-2 z-20"
+                      />
+                    )}
                   </div>
                 )}
               </>
@@ -2831,36 +2888,45 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             <>
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
                 <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                    disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
-                    onPointerDown={(event) => {
-                      if (showViewedCardsStep) {
-                        if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                  <PeerWaitPopover peerWait={peerWait}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                      style={decisionButtonStyle}
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      aria-disabled={peerWaiting || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                      disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                      onPointerDown={(event) => {
+                        if (peerWaiting) return;
+                        if (showViewedCardsStep) {
+                          if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                          event.preventDefault();
+                          completeViewedCardsStep();
+                          return;
+                        }
+                        if (!canSubmitFocused || event.button !== 0) return;
                         event.preventDefault();
-                        completeViewedCardsStep();
-                        return;
-                      }
-                      if (!canSubmitFocused || event.button !== 0) return;
-                      event.preventDefault();
-                      effectiveSubmitAction.onSubmit();
-                    }}
-                    onClick={(event) => {
-                      if (showViewedCardsStep) {
-                        if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                        completeViewedCardsStep();
-                        return;
-                      }
-                      if (!canSubmitFocused || event.detail !== 0) return;
-                      effectiveSubmitAction.onSubmit();
-                    }}
-                  >
-                    {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
-                  </Button>
+                        effectiveSubmitAction.onSubmit();
+                      }}
+                      onClick={(event) => {
+                        if (peerWaiting) return;
+                        if (showViewedCardsStep) {
+                          if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                          completeViewedCardsStep();
+                          return;
+                        }
+                        if (!canSubmitFocused || event.detail !== 0) return;
+                        effectiveSubmitAction.onSubmit();
+                      }}
+                    >
+                      {peerWaiting ? (
+                        <PeerWaitButtonContent />
+                      ) : (
+                        showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+                      )}
+                    </Button>
+                  </PeerWaitPopover>
                   <Button
                     type="button"
                     variant="ghost"
@@ -3006,6 +3072,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     holdRule,
     setHoldRule,
     cancelDecision,
+    multiplayer,
     playerAccentOverrides,
   } = useGame();
   const decisionIdentity = [
@@ -3022,6 +3089,8 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
   const handleCombatActionChange = useCallback(
     (nextAction) => {
       setCombatActionState({ key: decisionIdentity, action: nextAction || null });
@@ -3058,27 +3127,33 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
       <div className={innerClass} style={anchoredStyle || undefined}>
         <div className={cn("min-w-0 flex-1", compactPortraitViewport && "w-full")}>
           <div className={cn("action-strip-layout flex min-h-[46px] items-stretch gap-2", compactPortraitViewport && "flex-col")}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "pass-priority-btn decision-main-button action-strip-advance-button h-full w-[224px] min-w-[224px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
-                compactPortraitViewport && "w-full min-w-0"
-              )}
-              style={decisionButtonStyle}
-              data-local-action={localDecisionButton ? "true" : "false"}
-              data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
-              disabled={combatPrimaryDisabled}
-              aria-disabled={!canSubmitCombat}
-              onClick={() => {
-                if (!canSubmitCombat) return;
-                combatAction?.onSubmit?.();
-              }}
-            >
-              {combatAction?.label || (
-                decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)"
-              )}
-            </Button>
+            <PeerWaitPopover peerWait={peerWait}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "pass-priority-btn decision-main-button action-strip-advance-button h-full w-[224px] min-w-[224px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
+                  compactPortraitViewport && "w-full min-w-0"
+                )}
+                style={decisionButtonStyle}
+                data-local-action={localDecisionButton ? "true" : "false"}
+                data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+                aria-disabled={peerWaiting || !canSubmitCombat}
+                disabled={peerWaiting ? false : combatPrimaryDisabled}
+                onClick={() => {
+                  if (peerWaiting || !canSubmitCombat) return;
+                  combatAction?.onSubmit?.();
+                }}
+              >
+                {peerWaiting ? (
+                  <PeerWaitButtonContent />
+                ) : (
+                  combatAction?.label || (
+                    decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)"
+                  )
+                )}
+              </Button>
+            </PeerWaitPopover>
             {canCancelDecision ? (
               <Button
                 type="button"

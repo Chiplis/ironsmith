@@ -510,6 +510,27 @@ test("disconnect forfeits verify with peer-signed timeout evidence", async () =>
     }, webcrypto),
     /expected at least 2/,
   );
+  await assert.rejects(
+    () => verifyDisconnectForfeitCertificate({
+      certificate: disconnectCertificate,
+      command: { ...command, matchId, disconnected_at_ms: 100001 },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /does not match the forfeit claim/,
+  );
+  await assert.rejects(
+    () => verifyDisconnectForfeitCertificate({
+      certificate: disconnectCertificate,
+      command: {
+        ...command,
+        matchId,
+        nowMs: 160000,
+        maxFutureSkewMs: 0,
+      },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /signed in the future/,
+  );
 
   const audit = await buildSignedActionEnvelope({
     keyPair: keys[0],
@@ -1256,8 +1277,18 @@ test("live audit transcript verifier accepts signed fair-random reveals", async 
 });
 
 test("live audit transcript verifier requires a shuffle-proof verifier", async () => {
-  const actorKey = await createAuditSessionKey(webcrypto);
-  const actorPublicKey = await exportAuditPublicKey(actorKey, webcrypto);
+  const playerKeys = [
+    await createAuditSessionKey(webcrypto),
+    await createAuditSessionKey(webcrypto),
+  ];
+  const playerPublicKeys = await Promise.all(
+    playerKeys.map((keyPair) => exportAuditPublicKey(keyPair, webcrypto))
+  );
+  const ziffleKeys = playerKeys.map((_, index) => ({
+    player: index,
+    publicKeyHex: `shuffle-ziffle-key-${index}`,
+    ownershipProofHex: `shuffle-ziffle-proof-${index}`,
+  }));
   const command = { type: "priority_action", action_index: 0 };
   const shuffleProof = {
     type: "ziffle_shuffle",
@@ -1265,26 +1296,35 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     owner: 0,
     zone: "library",
     deckCount: 2,
-    context: "ctx",
-    keys: [],
+    context: "m-shuffle",
+    keyContext: "m-shuffle",
+    keys: ziffleKeys,
     steps: [],
     deckHash: "deck-hash",
   };
-  const audit = await buildSignedActionEnvelope({
-    keyPair: actorKey,
-    matchId: "m-shuffle",
-    seq: 1,
-    actor: 0,
-    prevStateHash: "0".repeat(64),
-    command,
-    shuffleProofs: [shuffleProof],
-    publicCheckpointHash: "public-checkpoint-after-shuffle",
-  }, webcrypto);
-  const transcript = await buildCurrentProtocolTranscript({
-    matchId: "m-shuffle",
-    players: [{ index: 0, keyPair: actorKey, auditPublicKey: actorPublicKey }],
-    actions: [{ seq: 1, actorIndex: 0, command, audit }],
-  });
+  const buildTranscriptForProof = async (proof) => {
+    const audit = await buildSignedActionEnvelope({
+      keyPair: playerKeys[0],
+      matchId: "m-shuffle",
+      seq: 1,
+      actor: 0,
+      prevStateHash: "0".repeat(64),
+      command,
+      shuffleProofs: [proof],
+      publicCheckpointHash: "public-checkpoint-after-shuffle",
+    }, webcrypto);
+    return buildCurrentProtocolTranscript({
+      matchId: "m-shuffle",
+      players: playerPublicKeys.map((auditPublicKey, index) => ({
+        index,
+        keyPair: playerKeys[index],
+        auditPublicKey,
+        ziffleKey: ziffleKeys[index],
+      })),
+      actions: [{ seq: 1, actorIndex: 0, command, audit }],
+    });
+  };
+  const transcript = await buildTranscriptForProof(shuffleProof);
 
   await assert.rejects(
     () => verifyLiveAuditTranscript(transcript, webcrypto),
@@ -1296,6 +1336,32 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     },
   });
   assert.equal(report.valid, true);
+
+  const badRosterTranscript = await buildTranscriptForProof({
+    ...shuffleProof,
+    keys: ziffleKeys.map((key, index) => ({
+      ...key,
+      publicKeyHex: index === 0 ? "attacker-key" : key.publicKeyHex,
+    })),
+  });
+  await assert.rejects(
+    () => verifyLiveAuditTranscript(badRosterTranscript, webcrypto, {
+      verifyShuffleProof: async () => {},
+    }),
+    /signed ziffle key roster/,
+  );
+
+  const badContextTranscript = await buildTranscriptForProof({
+    ...shuffleProof,
+    context: "attacker-match",
+    keyContext: "attacker-match",
+  });
+  await assert.rejects(
+    () => verifyLiveAuditTranscript(badContextTranscript, webcrypto, {
+      verifyShuffleProof: async () => {},
+    }),
+    /different match/,
+  );
 });
 
 test("match genesis and resync envelopes bind roster and checkpoints", async () => {
@@ -1398,6 +1464,13 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       players: [{ ...players[0], name: "Impostor" }, ...players.slice(1)],
     }, webcrypto),
     /genesis payload hash mismatch|genesis signature/,
+  );
+  await assert.rejects(
+    () => verifySignedMatchGenesis({
+      ...match,
+      hostPeerId: "peer-1",
+    }, webcrypto),
+    /genesis payload hash mismatch|genesis signature|host peer id/,
   );
 
   const checkpoint = { players: [{ id: 0, hand: [] }], objects: [] };

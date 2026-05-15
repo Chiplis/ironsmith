@@ -44,6 +44,10 @@ const HIDDEN_CARD_BACK_SVG = `
 export const HIDDEN_CARD_BACK_IMAGE_URL =
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HIDDEN_CARD_BACK_SVG)}`;
 
+const resolvedCardImageUrlCache = new Map();
+const cardJsonCache = new Map();
+const imagePreloadCache = new Map();
+
 function storage() {
   try {
     return globalThis?.localStorage || null;
@@ -96,6 +100,100 @@ export function isHiddenCardName(cardName) {
   return HIDDEN_CARD_NAMES.has(customArtKey(cardName));
 }
 
+function cardImageCacheKey(cardName, version = "normal") {
+  return `${customArtKey(cardName)}|${String(version || "normal").trim() || "normal"}`;
+}
+
+function cardJsonCacheKey(cardName) {
+  return customArtKey(cardName);
+}
+
+function namedCardParams(cardName) {
+  const query = String(cardName || "").trim();
+  const params = new URLSearchParams();
+
+  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
+    params.set("exact", query);
+    params.set("set", "lea");
+  } else {
+    params.set("fuzzy", query);
+  }
+
+  return params;
+}
+
+function fallbackScryfallImageUrl(cardName, version = "normal") {
+  const params = namedCardParams(cardName);
+  params.set("format", "image");
+  params.set("version", version);
+  return `https://api.scryfall.com/cards/named?${params.toString()}`;
+}
+
+function namedCardJsonUrls(cardName) {
+  const query = String(cardName || "").trim();
+  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
+    return [`https://api.scryfall.com/cards/named?${namedCardParams(query).toString()}`];
+  }
+  return [
+    `https://api.scryfall.com/cards/named?${new URLSearchParams({ exact: query }).toString()}`,
+    `https://api.scryfall.com/cards/named?${new URLSearchParams({ fuzzy: query }).toString()}`,
+  ];
+}
+
+function imageUrlFromScryfallCard(card, version = "normal") {
+  const wanted = String(version || "normal").trim() || "normal";
+  const imageUris = card?.image_uris
+    || (Array.isArray(card?.card_faces)
+      ? card.card_faces.find((face) => face?.image_uris)?.image_uris
+      : null);
+  if (!imageUris) return "";
+  return String(
+    imageUris[wanted]
+    || imageUris.normal
+    || imageUris.large
+    || imageUris.art_crop
+    || imageUris.small
+    || ""
+  );
+}
+
+function cacheResolvedImageUrls(cardName, card) {
+  const imageUris = card?.image_uris
+    || (Array.isArray(card?.card_faces)
+      ? card.card_faces.find((face) => face?.image_uris)?.image_uris
+      : null);
+  if (!imageUris) return;
+  for (const [version, url] of Object.entries(imageUris)) {
+    if (!url) continue;
+    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version), String(url));
+  }
+}
+
+async function fetchScryfallCardJson(cardName) {
+  const query = String(cardName || "").trim();
+  const key = cardJsonCacheKey(query);
+  if (!query || isHiddenCardName(query)) return null;
+  if (cardJsonCache.has(key)) return cardJsonCache.get(key);
+
+  const request = (async () => {
+    for (const url of namedCardJsonUrls(query)) {
+      const response = await fetch(url);
+      if (!response.ok) continue;
+      const card = await response.json();
+      cacheResolvedImageUrls(query, card);
+      return card;
+    }
+    throw new Error(`Could not resolve Scryfall card for ${query}`);
+  })()
+    .catch((error) => {
+      cardJsonCache.delete(key);
+      throw error;
+    });
+
+  cardJsonCache.set(key, request);
+  return request;
+}
+
 export function setCustomCardArtUrls(entries) {
   const map = readCustomCardArtUrlMap();
   for (const entry of entries || []) {
@@ -118,18 +216,80 @@ export function scryfallImageUrl(cardName, version = "normal") {
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
   const customUrl = customCardArtUrl(query);
   if (customUrl) return customUrl;
+  const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version));
+  if (cached) return cached;
+  return fallbackScryfallImageUrl(query, version);
+}
 
-  const params = new URLSearchParams({ format: "image", version });
+export async function resolveScryfallImageUrl(cardName, version = "normal") {
+  const query = String(cardName || "").trim();
+  if (!query) return "";
+  if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const customUrl = customCardArtUrl(query);
+  if (customUrl) return customUrl;
 
-  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
-    params.set("exact", query);
-    params.set("set", "lea");
-  } else {
-    params.set("fuzzy", query);
+  const key = cardImageCacheKey(query, version);
+  const cached = resolvedCardImageUrlCache.get(key);
+  if (cached) return cached;
+
+  const card = await fetchScryfallCardJson(query);
+  const resolved = imageUrlFromScryfallCard(card, version);
+  if (resolved) {
+    resolvedCardImageUrlCache.set(key, resolved);
+    return resolved;
+  }
+  return fallbackScryfallImageUrl(query, version);
+}
+
+export async function preloadScryfallImage(cardName, version = "normal") {
+  const url = await resolveScryfallImageUrl(cardName, version);
+  if (!url || url === HIDDEN_CARD_BACK_IMAGE_URL) return url;
+  if (imagePreloadCache.has(url)) return imagePreloadCache.get(url);
+
+  const request = new Promise((resolve) => {
+    if (typeof Image === "undefined") {
+      resolve(url);
+      return;
+    }
+    const image = new Image();
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+    image.onload = () => resolve(url);
+    image.onerror = () => resolve(url);
+    image.src = url;
+  });
+
+  imagePreloadCache.set(url, request);
+  return request;
+}
+
+export async function preloadCardArt(cardNames, options = {}) {
+  const versions = Array.isArray(options.versions) && options.versions.length > 0
+    ? options.versions
+    : ["normal"];
+  const concurrency = Math.max(1, Math.min(Number(options.concurrency) || 4, 8));
+  const names = [...new Set((cardNames || [])
+    .map((name) => String(name || "").trim())
+    .filter((name) => name && !isHiddenCardName(name)))];
+  const jobs = [];
+  for (const name of names) {
+    for (const version of versions) {
+      jobs.push({ name, version });
+    }
   }
 
-  return `https://api.scryfall.com/cards/named?${params.toString()}`;
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+    while (nextIndex < jobs.length) {
+      const job = jobs[nextIndex];
+      nextIndex += 1;
+      await preloadScryfallImage(job.name, job.version).catch(() => null);
+    }
+  });
+  await Promise.all(workers);
+  return { requested: jobs.length, cards: names.length };
 }
+
 const namedCardMetaCache = new Map();
 
 export async function fetchScryfallCardMeta(cardName) {
@@ -146,23 +306,7 @@ export async function fetchScryfallCardMeta(cardName) {
   }
 
   const request = (async () => {
-    const params = new URLSearchParams({ exact: query });
-    const exactResponse = await fetch(`https://api.scryfall.com/cards/named?${params.toString()}`);
-    if (exactResponse.ok) {
-      const card = await exactResponse.json();
-      return {
-        mana_cost: card?.mana_cost || null,
-        oracle_text: card?.oracle_text || "",
-        produced_mana: Array.isArray(card?.produced_mana) ? card.produced_mana : [],
-      };
-    }
-
-    const fuzzyParams = new URLSearchParams({ fuzzy: query });
-    const fuzzyResponse = await fetch(`https://api.scryfall.com/cards/named?${fuzzyParams.toString()}`);
-    if (!fuzzyResponse.ok) {
-      throw new Error(`Could not resolve Scryfall metadata for ${query}`);
-    }
-    const fuzzyCard = await fuzzyResponse.json();
+    const fuzzyCard = await fetchScryfallCardJson(query);
     return {
       mana_cost: fuzzyCard?.mana_cost || null,
       oracle_text: fuzzyCard?.oracle_text || "",

@@ -11,7 +11,7 @@ const auditModulePath = resolve(repoRoot, "web/ui/src/lib/multiplayer-audit.js")
 
 const MATCH_ID_PREFIX = "browser-p2p-audit";
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
-const PROTOCOL_VERSION = 10;
+const PROTOCOL_VERSION = 11;
 
 function playerDeck(seat) {
   return [

@@ -4,6 +4,7 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import { Button } from "@/components/ui/button";
+import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +47,7 @@ export default function BlockersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
-  const { dispatch, state, playerAccentOverrides } = useGame();
+  const { dispatch, state, multiplayer, playerAccentOverrides } = useGame();
   const {
     updateArrows,
     clearArrows,
@@ -65,6 +66,8 @@ export default function BlockersDecision({
   const declarationsRef = useRef([]);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
 
   const [declarations, setDeclarations] = useState([]);
   const [selectedBlockerId, setSelectedBlockerId] = useState(null);
@@ -355,22 +358,30 @@ export default function BlockersDecision({
       </ScrollArea>
 
       <div className="w-full shrink-0 pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
-          style={decisionButtonStyle}
-          data-local-action={localDecisionButton ? "true" : "false"}
-          disabled={!canAct}
-          onClick={() =>
-            dispatch(
-              { type: "declare_blockers", declarations },
-              `Declared ${declarations.length} blocker(s)`
-            )
-          }
-        >
-          Confirm Blockers ({declarations.length})
-        </Button>
+        <PeerWaitPopover peerWait={peerWait}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+            style={decisionButtonStyle}
+            data-local-action={localDecisionButton ? "true" : "false"}
+            aria-disabled={peerWaiting || !canAct}
+            disabled={peerWaiting ? false : !canAct}
+            onClick={() => {
+              if (peerWaiting) return;
+              dispatch(
+                { type: "declare_blockers", declarations },
+                `Declared ${declarations.length} blocker(s)`
+              );
+            }}
+          >
+            {peerWaiting ? (
+              <PeerWaitButtonContent />
+            ) : (
+              <>Confirm Blockers ({declarations.length})</>
+            )}
+          </Button>
+        </PeerWaitPopover>
       </div>
     </div>
   );

@@ -805,6 +805,8 @@ export default function GameCard({
   const name = card.name || "";
   const artVersion = variant === "hand" ? "normal" : "art_crop";
   const artUrl = scryfallImageUrl(name, artVersion);
+  const imageLoading = variant === "hand" ? "eager" : "lazy";
+  const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
@@ -1314,7 +1316,9 @@ export default function GameCard({
             )}
             src={artUrl}
             alt=""
-            loading="lazy"
+            loading={imageLoading}
+            fetchPriority={imageFetchPriority}
+            decoding="async"
             referrerPolicy="no-referrer"
           />
         )}

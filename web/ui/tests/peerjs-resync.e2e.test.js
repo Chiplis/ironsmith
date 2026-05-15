@@ -1762,7 +1762,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       (snap) => snap.multiplayer.matchStarted
         && snap.multiplayer.localPlayerIndex === 1
         && snap.multiplayer.lastAppliedSequence === 1
-        && checkpointImportEvents(snap).length >= 1
+        && syncedCommandEvents(snap).length >= 1
         && snap.statusEvents.some((event) => event.message.includes("Resynced with host at action 1")),
       "guest reconnect receives state_resync",
     );
@@ -1770,9 +1770,9 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     assert.equal(guestResync.visibleState.perspective, 1);
     assert.equal(guestResync.visibleState.players[0].battlefield.length, 1);
     assert.equal(
-      syncedCommandEvents(guestResync).length,
+      checkpointImportEvents(guestResync).length,
       0,
-      "resync should restore a host checkpoint instead of replaying actions",
+      "resync should replay signed actions instead of importing a host checkpoint",
     );
 
     await hostPage.close();
@@ -1802,7 +1802,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
         && snap.multiplayer.role === "client"
         && snap.multiplayer.localPlayerIndex === 0
         && snap.multiplayer.lastAppliedSequence === 1
-        && checkpointImportEvents(snap).length >= 1
+        && syncedCommandEvents(snap).length >= 1
         && snap.statusEvents.some((event) => event.message.includes("Resynced with host at action 1")),
       "original host reconnects to promoted host and receives state_resync",
       30000,
@@ -1811,9 +1811,9 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     assert.equal(hostResync.visibleState.perspective, 0);
     assert.equal(hostResync.visibleState.players[0].battlefield.length, 1);
     assert.equal(
-      syncedCommandEvents(hostResync).length,
+      checkpointImportEvents(hostResync).length,
       0,
-      "host takeover resync should restore the promoted host checkpoint",
+      "host takeover resync should replay signed actions instead of importing a host checkpoint",
     );
 
     await waitForSnapshot(

@@ -59,6 +59,7 @@ import {
 } from "@/lib/decklists";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDecisionCommandCompatible } from "@/lib/sync-commands";
+import { preloadCardArt } from "@/lib/scryfall";
 
 const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
 const DEFAULT_OPENING_HAND_SIZE = 7;
@@ -81,6 +82,7 @@ const AUDIT_REVEALED_OPENING_STORAGE_PREFIX = "ironsmith.auditRevealedOpening.v1
 const ACTION_QUORUM_VOTE_STORAGE_PREFIX = "ironsmith.actionQuorumVote.v1";
 const AUDIT_IDENTITY_STORAGE_KEY = "ironsmith.auditIdentity.v1";
 const ZIFFLE_IDENTITY_STORAGE_PREFIX = "ironsmith.ziffleIdentity.v1";
+const preloadedPrivateDeckArtKeys = new Set();
 const CURRENT_PLAYER_STORAGE_KEY = "currentPlayer";
 const CURRENT_LOBBY_STORAGE_KEY = "currentLobby";
 const MATCH_SEED_OFFSET = 0xcbf29ce484222325n;
@@ -115,6 +117,7 @@ function createEmptyState() {
     matchStarted: false,
     lastAppliedSequence: 0,
     submittingAction: false,
+    peerWait: null,
     matchClock,
     actionTimer: actionTimerSnapshotFromMatchClock(matchClock),
   };
@@ -1040,36 +1043,6 @@ function localizeShuffleOrder(order, idMap) {
   return localized;
 }
 
-function localizeShuffleProofForRequirement(proof, requirement) {
-  if (!proof || !requirement) return proof;
-  const requirementBefore = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
-  const requirementAfter = normalizeShuffleOrder(requirement.afterOrder ?? requirement.after_order);
-  const proofBefore = normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order);
-  const proofAfter = normalizeShuffleOrder(proof.afterOrder ?? proof.after_order);
-  const beforeMap = shuffleOrderIdMap(proofBefore, requirementBefore);
-  const afterMap = shuffleOrderIdMap(proofAfter, requirementAfter);
-  if (!beforeMap && !afterMap) return proof;
-  const localizedBefore = beforeMap ? localizeShuffleOrder(proofBefore, beforeMap) : proofBefore;
-  const localizedAfter = afterMap ? localizeShuffleOrder(proofAfter, afterMap) : proofAfter;
-  if (!localizedBefore || !localizedAfter) return proof;
-  return {
-    ...proof,
-    beforeOrder: localizedBefore,
-    before_order: localizedBefore,
-    afterOrder: localizedAfter,
-    after_order: localizedAfter,
-  };
-}
-
-function localizeShuffleProofForRequirements(proof, requirements = []) {
-  const requirement = (requirements || []).find((candidate) =>
-    shuffleProofMatchesRequirement(proof, candidate)
-  ) || (requirements || []).find((candidate) =>
-    shuffleProofSameOwnerZone(proof, candidate)
-  );
-  return requirement ? localizeShuffleProofForRequirement(proof, requirement) : proof;
-}
-
 function shuffleProofWithRequirementOrder(proof, requirement) {
   if (!proof || !requirement) return proof;
   const beforeOrder = normalizeShuffleOrder(requirement.beforeOrder ?? requirement.before_order);
@@ -1311,6 +1284,16 @@ function resolveLocalPlayerIndexFromPeer(session, players = null) {
   return normalizePlayerIndex(localPlayer?.index);
 }
 
+function findLocalMatchPlayer(players, session, auditPublicKey = "", auditEncryptionPublicKey = "") {
+  const entries = Array.isArray(players) ? players : [];
+  const localPeerId = String(session?.localPeerId || "").trim();
+  return entries.find((player) => String(player?.peerId || "").trim() === localPeerId)
+    || entries.find((player) =>
+      playerMatchesPresentedAuditIdentity(player, auditPublicKey, auditEncryptionPublicKey)
+    )
+    || null;
+}
+
 function getPeerSessionStorage() {
   if (typeof window === "undefined") return null;
   return window.localStorage || window.sessionStorage || null;
@@ -1428,6 +1411,35 @@ function writeStoredPrivateDeckManifest(manifest) {
     );
   } catch {
     // Ignore localStorage failures.
+  }
+}
+
+function privateDeckManifestCardNames(manifest) {
+  return [...new Set((manifest?.slotSecrets || [])
+    .map((entry) => String(entry?.card || "").trim())
+    .filter(Boolean))];
+}
+
+function preloadPrivateDeckManifestArt(manifest) {
+  const key = [
+    String(manifest?.matchId || ""),
+    Number(manifest?.owner),
+    String(manifest?.decklistHash || manifest?.commitmentRoot || ""),
+  ].join(":");
+  if (preloadedPrivateDeckArtKeys.has(key)) return;
+  const cardNames = privateDeckManifestCardNames(manifest);
+  if (cardNames.length === 0) return;
+  preloadedPrivateDeckArtKeys.add(key);
+  const preload = () => {
+    void preloadCardArt(cardNames, {
+      versions: ["normal"],
+      concurrency: 4,
+    });
+  };
+  if (typeof globalThis.requestIdleCallback === "function") {
+    globalThis.requestIdleCallback(preload, { timeout: 1000 });
+  } else {
+    globalThis.setTimeout(preload, 0);
   }
 }
 
@@ -1769,9 +1781,12 @@ function zifflePositionFromCommitment(commitment) {
   return Number.isSafeInteger(position) && position >= 0 ? position : null;
 }
 
-function redactedMatchPayloadForPeer(payload, peerId) {
+function redactedMatchPayloadForPeer(payload, peerId, playerIndex = null) {
   if (!payload || typeof payload !== "object") return payload;
-  const target = (payload.players || []).find((player) => player.peerId === peerId);
+  const target = (payload.players || []).find((player) => player.peerId === peerId)
+    || (payload.players || []).find((player) =>
+      normalizePlayerIndex(player?.index) === normalizePlayerIndex(playerIndex)
+    );
   const targetIndex = normalizePlayerIndex(target?.index);
   const redactLists = (lists) => {
     if (!Array.isArray(lists)) return lists;
@@ -2105,6 +2120,35 @@ export function usePeerLobby({
     return normalized;
   }, [resolveSubmissionIdleWaiters, setMultiplayer]);
 
+  const beginPeerWait = useCallback((wait = {}) => {
+    const requestId = String(
+      wait.requestId || `peer-wait:${Date.now().toString(36)}:${randomAuditHex(8)}`
+    );
+    const peerWait = {
+      kind: String(wait.kind || "peer_response"),
+      requestId,
+      title: String(wait.title || "Waiting for peers"),
+      description: String(wait.description || ""),
+      peerIndex: wait.peerIndex == null ? null : Number(wait.peerIndex),
+      peerName: wait.peerName == null ? "" : String(wait.peerName),
+      peers: Array.isArray(wait.peers) ? cloneMultiplayerPayload(wait.peers) : [],
+      detail: wait.detail == null ? "" : String(wait.detail),
+      startedAtMs: Date.now(),
+    };
+    updateMultiplayer((prev) => ({ ...prev, peerWait }));
+    return requestId;
+  }, [updateMultiplayer]);
+
+  const clearPeerWait = useCallback((requestId = null) => {
+    updateMultiplayer((prev) => {
+      if (!prev.peerWait) return prev;
+      if (requestId && String(prev.peerWait.requestId || "") !== String(requestId)) {
+        return prev;
+      }
+      return { ...prev, peerWait: null };
+    });
+  }, [updateMultiplayer]);
+
   const ensureAuditIdentity = useCallback(async () => {
     let storedIdentity = null;
     if (!auditKeyPairRef.current) {
@@ -2227,29 +2271,47 @@ export function usePeerLobby({
     `${prefix}:${Date.now().toString(36)}:${randomAuditHex(8)}`
   ), []);
 
-  const waitForZiffleShuffleStep = useCallback((requestId, timeoutMs = 60000) => (
+  const waitForZiffleShuffleStep = useCallback((requestId, timeoutMs = 60000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "ziffle_shuffle",
+        requestId,
+        title: "Waiting for shuffle material",
+        description: "A peer is producing verifiable shuffle material before the game can continue.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         ziffleShuffleWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for ziffle shuffle step"));
       }, timeoutMs);
       ziffleShuffleWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForZiffleRevealToken = useCallback((requestId, timeoutMs = 60000, metadata = null) => (
+  const waitForZiffleRevealToken = useCallback((requestId, timeoutMs = 60000, metadata = null, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "ziffle_reveal",
+        requestId,
+        title: "Waiting for reveal material",
+        description: "A peer is sending cryptographic reveal material before this hidden card can open locally.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         ziffleRevealWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error(
           metadata
             ? `Timed out waiting for ziffle reveal token: ${compactZiffleDiagnosticsJson(metadata)}`
@@ -2260,110 +2322,162 @@ export function usePeerLobby({
         metadata,
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForRngCommit = useCallback((requestId, timeoutMs = 60000) => (
+  const waitForRngCommit = useCallback((requestId, timeoutMs = 60000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "fair_random_commit",
+        requestId,
+        title: "Waiting for random commitment",
+        description: "A peer must commit to their random contribution before the shared random value can be revealed.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         rngCommitWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for random commitment"));
       }, timeoutMs);
       rngCommitWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForRngReveal = useCallback((requestId, timeoutMs = 60000) => (
+  const waitForRngReveal = useCallback((requestId, timeoutMs = 60000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "fair_random_reveal",
+        requestId,
+        title: "Waiting for random reveal",
+        description: "A peer must reveal their committed random contribution before the shared random value can be used.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         rngRevealWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for random reveal"));
       }, timeoutMs);
       rngRevealWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForTimeoutVote = useCallback((requestId, timeoutMs = 15000) => (
+  const waitForTimeoutVote = useCallback((requestId, timeoutMs = 15000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "timeout_vote",
+        requestId,
+        title: "Waiting for peer vote",
+        description: "A peer must sign the timeout vote before this claim can be submitted.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         timeoutVoteWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for timeout vote"));
       }, timeoutMs);
       timeoutVoteWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForActionQuorumVote = useCallback((requestId, timeoutMs = 30000) => (
+  const waitForActionQuorumVote = useCallback((requestId, timeoutMs = 30000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "action_quorum",
+        requestId,
+        title: "Waiting for action quorum",
+        description: "Peers are validating and signing this action before it can be accepted.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         actionQuorumVoteWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for action quorum vote"));
       }, timeoutMs);
       actionQuorumVoteWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
-  const waitForCryptoMaterial = useCallback((requestId, timeoutMs = 60000) => (
+  const waitForCryptoMaterial = useCallback((requestId, timeoutMs = 60000, wait = {}) => (
     new Promise((resolve, reject) => {
+      beginPeerWait({
+        kind: "crypto_material",
+        requestId,
+        title: "Waiting for cryptographic material",
+        description: "A peer must send hidden-card opening material before this action can advance.",
+        ...wait,
+      });
       const timer = window.setTimeout(() => {
         cryptoMaterialWaitersRef.current.delete(requestId);
+        clearPeerWait(requestId);
         reject(new Error("Timed out waiting for cryptographic opening material"));
       }, timeoutMs);
       cryptoMaterialWaitersRef.current.set(requestId, {
         resolve: (value) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
           window.clearTimeout(timer);
+          clearPeerWait(requestId);
           reject(err);
         },
       });
     })
-  ), []);
+  ), [beginPeerWait, clearPeerWait]);
 
   const resolveZiffleShuffleStep = useCallback((message) => {
     const requestId = String(message?.requestId || "");
@@ -2489,6 +2603,7 @@ export function usePeerLobby({
 	    const key = `${manifest.matchId}:${Number(manifest.owner)}`;
 	    privateDeckManifestsRef.current.set(key, manifest);
 	    writeStoredPrivateDeckManifest(manifest);
+      preloadPrivateDeckManifestArt(manifest);
 	  }, []);
 
 	  const privateDeckManifestForOwner = useCallback((owner, matchId = currentAuditMatchId()) => {
@@ -2498,6 +2613,7 @@ export function usePeerLobby({
 	    const stored = readStoredPrivateDeckManifest(matchId, owner);
 	    if (stored?.slotSecrets) {
 	      privateDeckManifestsRef.current.set(key, stored);
+        preloadPrivateDeckManifestArt(stored);
 	      return stored;
 	    }
 	    return null;
@@ -4286,7 +4402,13 @@ export function usePeerLobby({
       }
       const conn = await waitForZiffleRoute(player.peerId);
       const requestId = makeZiffleRequestId("crypto-material");
-      const waiter = waitForCryptoMaterial(requestId);
+      const playerLabel = player.name || `Player ${owner + 1}`;
+      const waiter = waitForCryptoMaterial(requestId, 60000, {
+        peerIndex: owner,
+        peerName: playerLabel,
+        description:
+          `${playerLabel} must provide cryptographic opening material before the game state can advance.`,
+      });
       outboundCryptoMaterialRequestsRef.current.set(requestId, {
         owner,
         peerId: String(player.peerId || ""),
@@ -4296,7 +4418,7 @@ export function usePeerLobby({
         actorIndex,
         createdAt: Date.now(),
       });
-      setStatus(`Waiting for cryptographic material from ${player.name || `Player ${owner + 1}`}`);
+      setStatus(`Waiting for cryptographic material from ${playerLabel}`);
       safeSend(conn, {
         type: "crypto_material_request",
         protocolVersion: PROTOCOL_VERSION,
@@ -4505,7 +4627,7 @@ export function usePeerLobby({
       });
       safeSend(conn, {
         ...payload,
-        match: redactedMatchPayloadForPeer(payload.match, conn.peer),
+        match: redactedMatchPayloadForPeer(payload.match, conn.peer, peerIndex),
         checkpoint,
         actions,
         resyncEnvelope,
@@ -5101,7 +5223,13 @@ export function usePeerLobby({
       }
       const conn = await waitForZiffleRoute(player.peerId);
       const requestId = makeZiffleRequestId("timeout-vote");
-      const waiter = waitForTimeoutVote(requestId);
+      const voterLabel = player.name || `Player ${Number(voter) + 1}`;
+      const waiter = waitForTimeoutVote(requestId, 15000, {
+        peerIndex: voter,
+        peerName: voterLabel,
+        description:
+          `${voterLabel} must sign the timeout vote before this forfeit claim can be submitted.`,
+      });
       safeSend(conn, {
         type: "timeout_vote_request",
         protocolVersion: PROTOCOL_VERSION,
@@ -5220,12 +5348,51 @@ export function usePeerLobby({
       throw new Error("Disconnect forfeit is not based on the local transcript head");
     }
     const certificate = disconnectCertificateFromCommand(command);
+    const target = playerForDisconnectForfeit(forfeitedPlayer);
+    const forfeitedPeerId = String(
+      command.disconnected_peer_id
+      || certificate?.forfeitedPeerId
+      || target?.peerId
+      || ""
+    ).trim();
+    const disconnectTimeoutMs = Math.max(
+      0,
+      Math.floor(Number(command.disconnect_timeout_ms ?? certificate?.disconnectTimeoutMs ?? DISCONNECT_AUTO_FORFEIT_MS))
+    );
+    const claimedDisconnectedAtMs = Math.max(
+      0,
+      Math.floor(Number(command.disconnected_at_ms ?? certificate?.disconnectedAtMs ?? 0))
+    );
+    const observedDisconnectedAtMs = Math.max(
+      0,
+      Math.floor(Number(target?.disconnectedAtMs || 0))
+    );
+    if (!target || target.connected !== false) {
+      throw new Error("Disconnect forfeit requires a local disconnect observation");
+    }
+    if (!forfeitedPeerId || String(target.peerId || "").trim() !== forfeitedPeerId) {
+      throw new Error("Disconnect forfeit peer id does not match the local player record");
+    }
+    if (!claimedDisconnectedAtMs || !observedDisconnectedAtMs) {
+      throw new Error("Disconnect forfeit is missing a local disconnect observation timestamp");
+    }
+    if (Math.abs(claimedDisconnectedAtMs - observedDisconnectedAtMs) > MATCH_CLOCK_CLAIM_SKEW_MS) {
+      throw new Error("Disconnect forfeit does not match the local disconnect observation");
+    }
+    if (Date.now() + MATCH_CLOCK_CLAIM_SKEW_MS < observedDisconnectedAtMs + disconnectTimeoutMs) {
+      throw new Error("Disconnect timeout has not elapsed");
+    }
     const roster = disconnectForfeitRoster(forfeitedPlayer);
     await verifyDisconnectForfeitCertificate({
       certificate,
       command: {
         ...command,
+        disconnected_peer_id: forfeitedPeerId,
+        disconnect_timeout_ms: disconnectTimeoutMs,
+        disconnected_at_ms: claimedDisconnectedAtMs,
         matchId: currentAuditMatchId(),
+        nowMs: Date.now(),
+        maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
       },
       players: roster,
       threshold: disconnectForfeitVoteThreshold(roster.length),
@@ -5252,6 +5419,11 @@ export function usePeerLobby({
         0,
         Math.floor(Number(command.disconnect_timeout_ms || DISCONNECT_AUTO_FORFEIT_MS))
       ),
+      disconnectedAtMs: command.disconnected_at_ms == null
+        ? null
+        : Math.max(0, Math.floor(Number(command.disconnected_at_ms || 0))),
+      nowMs: Date.now(),
+      maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
     };
     const votes = [];
     const seen = new Set();
@@ -5277,6 +5449,8 @@ export function usePeerLobby({
 
     if (votes.length < threshold) {
       ensureDirectPeerConnections(roster);
+      const pendingWaitRequestIds = [];
+      let collectingVotes = true;
       const pending = roster
         .filter((player) => Number(player.index) !== Number(localPlayer))
         .map(async (player) => {
@@ -5284,8 +5458,18 @@ export function usePeerLobby({
             throw new Error(`Missing peer route for disconnect voter ${Number(player.index) + 1}`);
           }
           const conn = await waitForZiffleRoute(player.peerId);
+          if (!collectingVotes) {
+            throw new Error("Disconnect-forfeit vote collection is complete");
+          }
           const requestId = makeZiffleRequestId("disconnect-forfeit-vote");
-          const waiter = waitForTimeoutVote(requestId);
+          pendingWaitRequestIds.push(requestId);
+          const voterLabel = player.name || `Player ${Number(player.index) + 1}`;
+          const waiter = waitForTimeoutVote(requestId, 15000, {
+            peerIndex: Number(player.index),
+            peerName: voterLabel,
+            description:
+              `${voterLabel} must sign the disconnect-forfeit vote before this claim can be submitted.`,
+          });
           safeSend(conn, {
             type: "disconnect_forfeit_vote_request",
             protocolVersion: PROTOCOL_VERSION,
@@ -5307,8 +5491,12 @@ export function usePeerLobby({
         if (settled.err) continue;
         await addVote(settled.vote);
       }
+      collectingVotes = false;
       for (const promise of unsettled) {
         promise.catch(() => {});
+      }
+      for (const requestId of pendingWaitRequestIds) {
+        clearPeerWait(requestId);
       }
     }
 
@@ -5458,6 +5646,8 @@ export function usePeerLobby({
     if (votes.length < threshold) {
       ensureDirectPeerConnections(players);
       const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
+      const pendingWaitRequestIds = [];
+      let collectingVotes = true;
       const pending = players
         .filter((player) => Number(player.index) !== Number(localPlayer))
         .map(async (player) => {
@@ -5465,8 +5655,18 @@ export function usePeerLobby({
             throw new Error(`Missing peer route for quorum voter ${Number(player.index) + 1}`);
           }
           const conn = await waitForZiffleRoute(player.peerId);
+          if (!collectingVotes) {
+            throw new Error("Action quorum vote collection is complete");
+          }
           const requestId = makeZiffleRequestId("action-quorum");
-          const waiter = waitForActionQuorumVote(requestId);
+          pendingWaitRequestIds.push(requestId);
+          const voterLabel = player.name || `Player ${Number(player.index) + 1}`;
+          const waiter = waitForActionQuorumVote(requestId, 30000, {
+            peerIndex: Number(player.index),
+            peerName: voterLabel,
+            description:
+              `${voterLabel} must validate and sign this action before the game state can advance.`,
+          });
           safeSend(conn, {
             type: "action_quorum_vote_request",
             protocolVersion: PROTOCOL_VERSION,
@@ -5488,8 +5688,12 @@ export function usePeerLobby({
         if (settled.err) continue;
         await addVote(settled.vote);
       }
+      collectingVotes = false;
       for (const promise of unsettled) {
         promise.catch(() => {});
+      }
+      for (const requestId of pendingWaitRequestIds) {
+        clearPeerWait(requestId);
       }
     }
 
@@ -5814,7 +6018,11 @@ export function usePeerLobby({
       liveAuditTranscript: liveAuditTranscriptRef.current
         ? cloneMultiplayerPayload(liveAuditTranscriptRef.current)
         : null,
+      matchStartPayload: matchStartPayloadRef.current
+        ? cloneMultiplayerPayload(matchStartPayloadRef.current)
+        : null,
       auditStateHash: auditStateHashRef.current,
+      initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
       lastAppliedSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
       matchClock: cloneMultiplayerPayload(matchClockRef.current),
       matchClockConfig: cloneMultiplayerPayload(matchClockConfigRef.current),
@@ -5824,6 +6032,7 @@ export function usePeerLobby({
           cloneMultiplayerPayload(requirements),
         ])
       ),
+      relayedActionIds: [...relayedActionIdsRef.current],
       ziffleHandRevealKey: ziffleHandRevealKeyRef.current,
     };
   }
@@ -5846,7 +6055,11 @@ export function usePeerLobby({
     liveAuditTranscriptRef.current = snapshot.liveAuditTranscript
       ? cloneMultiplayerPayload(snapshot.liveAuditTranscript)
       : null;
+    matchStartPayloadRef.current = snapshot.matchStartPayload
+      ? cloneMultiplayerPayload(snapshot.matchStartPayload)
+      : null;
     auditStateHashRef.current = snapshot.auditStateHash;
+    initialPublicCheckpointHashRef.current = snapshot.initialPublicCheckpointHash || "";
     matchClockConfigRef.current = cloneMultiplayerPayload(snapshot.matchClockConfig);
     matchClockRef.current = cloneMultiplayerPayload(snapshot.matchClock);
     actionCryptoRequirementsRef.current = new Map(
@@ -5855,6 +6068,7 @@ export function usePeerLobby({
         cloneMultiplayerPayload(requirements),
       ])
     );
+    relayedActionIdsRef.current = new Set(snapshot.relayedActionIds || []);
     ziffleHandRevealKeyRef.current = snapshot.ziffleHandRevealKey;
     const restoredState = currentGame && typeof currentGame.uiState === "function"
       ? await currentGame.uiState()
@@ -5873,21 +6087,22 @@ export function usePeerLobby({
     const nextSequence = Number(message?.seq || 0);
     const session = multiplayerRef.current;
     const dryRun = Boolean(options.dryRun);
-    if (awaitingStateResyncRef.current) {
-      if (dryRun || options.throwOnOrderMismatch) {
+    const throwOnFailure = Boolean(options.throwOnFailure);
+    if (awaitingStateResyncRef.current && !options.allowWhileAwaitingResync) {
+      if (dryRun || options.throwOnOrderMismatch || throwOnFailure) {
         throw new Error("Cannot validate action while awaiting state resync");
       }
       return;
     }
     if (nextSequence <= session.lastAppliedSequence) {
-      if (dryRun || options.throwOnOrderMismatch) {
+      if (dryRun || options.throwOnOrderMismatch || throwOnFailure) {
         throw new Error("Action quorum request is not ahead of the local transcript");
       }
       await handleHistoricalSequencedAction(message);
       return;
     }
     if (nextSequence !== session.lastAppliedSequence + 1) {
-      if (dryRun || options.throwOnOrderMismatch) {
+      if (dryRun || options.throwOnOrderMismatch || throwOnFailure) {
         throw new Error(
           `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`
         );
@@ -6104,6 +6319,9 @@ export function usePeerLobby({
         throw err;
       }
       if (isUnauthorizedAddCardCommand(message?.command)) {
+        if (throwOnFailure) {
+          throw err;
+        }
         const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
         const reason = err instanceof Error ? err.message : String(err);
         const status = `Rejected signed add-card cheat from ${actorName}: ${reason}`;
@@ -6113,11 +6331,17 @@ export function usePeerLobby({
       }
       const failureReason = err instanceof Error ? err.message : String(err);
       if (isRejectedActionCheatReason(failureReason)) {
+        if (throwOnFailure) {
+          throw err;
+        }
         const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
         const status = `Cheat detected from ${actorName}: ${failureReason}`;
         emitSyncFailureNotice("Cheat detected", status);
         setStatus(status, true);
         return;
+      }
+      if (throwOnFailure) {
+        throw err;
       }
       const resynced = reportSyncFailure(
         failureReason,
@@ -6266,7 +6490,13 @@ export function usePeerLobby({
         const conn = await waitForZiffleRoute(shuffler.peerId);
         results = await Promise.all(ceremonies.map(async (ceremony) => {
           const requestId = makeZiffleRequestId("ziffle-live-shuffle");
-          const waiter = waitForZiffleShuffleStep(requestId);
+          const waiter = waitForZiffleShuffleStep(requestId, 60000, {
+            peerIndex: shufflerIndex,
+            peerName: label,
+            description:
+              `${label} must provide verifiable shuffle material for ${ceremonies.length} `
+              + `shuffle${ceremonies.length === 1 ? "" : "s"} before the game can advance.`,
+          });
           const stepStartedAt = nowMonotonicMs();
           safeSend(conn, {
             type: "ziffle_shuffle_step_request",
@@ -6967,7 +7197,8 @@ export function usePeerLobby({
       if (!peer?.peerId) {
         throw new Error(`Missing peer for ziffle reveal token player ${key.player}`);
       }
-      setStatus(`Waiting for cryptographic reveal material from ${peer.name || `Player ${Number(key.player) + 1}`}`);
+      const peerLabel = peer.name || `Player ${Number(key.player) + 1}`;
+      setStatus(`Waiting for cryptographic reveal material from ${peerLabel}`);
       const conn = await waitForZiffleRoute(peer.peerId);
       const requestId = makeZiffleRequestId("ziffle-reveal");
       const requestDiagnostics = {
@@ -6983,7 +7214,13 @@ export function usePeerLobby({
         matchStartPayloadPresent: Boolean(matchStartPayloadRef.current),
         matchStartAuditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
       };
-      const waiter = waitForZiffleRevealToken(requestId, 60000, requestDiagnostics);
+      const waiter = waitForZiffleRevealToken(requestId, 60000, requestDiagnostics, {
+        peerIndex: Number(key.player),
+        peerName: peerLabel,
+        description:
+          `${peerLabel} must provide reveal material for ${positions.length} hidden `
+          + `card${positions.length === 1 ? "" : "s"} before the game can advance.`,
+      });
       safeSend(conn, {
         type: "ziffle_reveal_token_request",
         protocolVersion: PROTOCOL_VERSION,
@@ -7070,6 +7307,55 @@ export function usePeerLobby({
     return buildLiveZiffleShuffleProofs(requirements, seq);
   }
 
+  const signedZiffleKeysForPayload = useCallback((matchPayload = null) => {
+    const payload = matchPayload || matchStartPayloadRef.current;
+    if (Array.isArray(payload?.ziffleKeys) && payload.ziffleKeys.length > 0) {
+      return cloneMultiplayerPayload(payload.ziffleKeys);
+    }
+    return zifflePublicKeysForPlayers(
+      reindexPlayers(payload?.players || multiplayerRef.current.players || [])
+    );
+  }, [zifflePublicKeysForPlayers]);
+
+  const assertZiffleShuffleProofBoundToSignedMatch = useCallback((proof, requirement = null, options = {}) => {
+    const matchPayload = options.matchPayload || matchStartPayloadRef.current;
+    const players = reindexPlayers(matchPayload?.players || multiplayerRef.current.players || []);
+    const playerSeats = new Set(players.map((player) => Number(player.index)));
+    const owner = normalizePlayerIndex(proof?.owner);
+    if (owner === null || !playerSeats.has(owner)) {
+      throw new Error("Ziffle shuffle proof references an unknown player");
+    }
+    if (requirement && owner !== normalizePlayerIndex(requirement.owner)) {
+      throw new Error(`Ziffle shuffle proof owner mismatch for player ${Number(requirement.owner) + 1}`);
+    }
+    const zone = String(proof?.zone || "library");
+    const expectedZone = String(requirement?.zone || "library");
+    if (zone !== expectedZone) {
+      throw new Error(`Ziffle shuffle proof zone mismatch for player ${owner + 1}`);
+    }
+    const expectedKeys = signedZiffleKeysForPayload(matchPayload);
+    if (!expectedKeys.length || canonicalMultiplayerPayload(proof?.keys || []) !== canonicalMultiplayerPayload(expectedKeys)) {
+      throw new Error("Ziffle shuffle proof is not bound to the signed ziffle key roster");
+    }
+    const expectedMatchId = String(
+      matchPayload?.auditMatchId
+        || matchPayload?.matchId
+        || currentAuditMatchId()
+        || ""
+    );
+    const proofContext = String(proof?.context || "");
+    const proofKeyContext = String(proof?.keyContext || proof?.context || "");
+    if (
+      !expectedMatchId
+      || (proofContext !== expectedMatchId && !proofContext.startsWith(`${expectedMatchId}:`))
+    ) {
+      throw new Error("Ziffle shuffle proof is bound to a different match");
+    }
+    if (proofKeyContext !== expectedMatchId) {
+      throw new Error("Ziffle shuffle proof uses a mismatched ziffle key context");
+    }
+  }, [currentAuditMatchId, signedZiffleKeysForPayload]);
+
   async function verifyShuffleProofsForRequirements(requirements = [], shuffleProofs = [], options = {}) {
     const currentGame = gameRef.current;
     const allowAfterOrderMismatch = Boolean(options.allowAfterOrderMismatch);
@@ -7114,6 +7400,7 @@ export function usePeerLobby({
       if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
         throw new Error("Ziffle mental-poker backend is not available");
       }
+      assertZiffleShuffleProofBoundToSignedMatch(proof, requirement);
       pendingVerifications.push({ proof });
     }
     if (pendingVerifications.length > 0) {
@@ -7437,8 +7724,14 @@ export function usePeerLobby({
       } else {
         const conn = await waitForZiffleRoute(player.peerId);
         const requestId = makeZiffleRequestId("rng-commit");
-        const waiter = waitForRngCommit(requestId);
-        setStatus(`Waiting for random commitment from ${player.name || `Player ${Number(player.index) + 1}`}`);
+        const playerLabel = player.name || `Player ${Number(player.index) + 1}`;
+        const waiter = waitForRngCommit(requestId, 60000, {
+          peerIndex: Number(player.index),
+          peerName: playerLabel,
+          description:
+            `${playerLabel} must sign a random commitment before the shared random value can be generated.`,
+        });
+        setStatus(`Waiting for random commitment from ${playerLabel}`);
         safeSend(conn, {
           type: "rng_commit_request",
           protocolVersion: PROTOCOL_VERSION,
@@ -7489,8 +7782,14 @@ export function usePeerLobby({
       } else {
         const conn = await waitForZiffleRoute(request.player.peerId);
         const requestId = makeZiffleRequestId("rng-reveal");
-        const waiter = waitForRngReveal(requestId);
-        setStatus(`Waiting for random reveal from ${request.player.name || `Player ${Number(request.player.index) + 1}`}`);
+        const playerLabel = request.player.name || `Player ${Number(request.player.index) + 1}`;
+        const waiter = waitForRngReveal(requestId, 60000, {
+          peerIndex: Number(request.player.index),
+          peerName: playerLabel,
+          description:
+            `${playerLabel} must reveal their committed random contribution before the game can use it.`,
+        });
+        setStatus(`Waiting for random reveal from ${playerLabel}`);
         safeSend(conn, {
           type: "rng_reveal_request",
           protocolVersion: PROTOCOL_VERSION,
@@ -7855,7 +8154,13 @@ export function usePeerLobby({
             throw new Error(`Cannot request ziffle shuffle step from ${shuffler.name}`);
           }
           const requestId = makeZiffleRequestId("ziffle-shuffle");
-          const waiter = waitForZiffleShuffleStep(requestId);
+          const shufflerLabel = shuffler.name || `Player ${Number(shuffler.index) + 1}`;
+          const waiter = waitForZiffleShuffleStep(requestId, 60000, {
+            peerIndex: Number(shuffler.index),
+            peerName: shufflerLabel,
+            description:
+              `${shufflerLabel} must provide verifiable shuffle material before the match can start.`,
+          });
           safeSend(conn, {
             type: "ziffle_shuffle_step_request",
             protocolVersion: PROTOCOL_VERSION,
@@ -7933,8 +8238,13 @@ export function usePeerLobby({
       }
 
       const currentSession = multiplayerRef.current;
-      const localEntry = payload.players.find(
-        (player) => player.peerId === currentSession.localPeerId
+      const localAuditPublicKey = auditPublicKeyRef.current || "";
+      const localEncryptionPublicKey = auditEncryptionPublicKeyRef.current || "";
+      const localEntry = findLocalMatchPlayer(
+        payload.players,
+        currentSession,
+        localAuditPublicKey,
+        localEncryptionPublicKey
       );
 
       if (!localEntry) {
@@ -7946,8 +8256,6 @@ export function usePeerLobby({
       await verifyZiffleCeremoniesForPayload(payload);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       ensureDirectPeerConnections(payload.players || []);
-      const localAuditPublicKey = auditPublicKeyRef.current || "";
-      const localEncryptionPublicKey = auditEncryptionPublicKeyRef.current || "";
       if (
         localAuditPublicKey
         && String(localEntry.auditPublicKey || "") !== String(localAuditPublicKey)
@@ -8018,7 +8326,7 @@ export function usePeerLobby({
 
       updateMultiplayer((prev) => ({
         ...prev,
-        role: payload.hostPeerId === localEntry.peerId ? "host" : prev.role,
+        role: payload.hostPeerId === prev.localPeerId ? "host" : prev.role,
         mode: "in_match",
         lobbyId: payload.lobbyId || prev.lobbyId,
         hostPeerId: payload.hostPeerId || prev.hostPeerId,
@@ -8094,13 +8402,22 @@ export function usePeerLobby({
       }
 
       const currentGame = gameRef.current;
-      if (!currentGame || typeof currentGame.importSyncCheckpoint !== "function") {
-        throw new Error("Game engine cannot import a resync checkpoint");
+      if (!currentGame || typeof currentGame.startMatch !== "function") {
+        throw new Error("Game engine cannot replay a resync transcript");
+      }
+      if (
+        typeof currentGame.exportSyncCheckpoint !== "function"
+        || typeof currentGame.importSyncCheckpoint !== "function"
+      ) {
+        throw new Error("Game engine cannot sandbox a resync replay");
       }
 
       const currentSession = multiplayerRef.current;
-      const localEntry = matchPayload.players?.find(
-        (player) => player.peerId === currentSession.localPeerId
+      const localEntry = findLocalMatchPlayer(
+        matchPayload.players,
+        currentSession,
+        auditPublicKeyRef.current || "",
+        auditEncryptionPublicKeyRef.current || ""
       );
 
       if (!localEntry) {
@@ -8115,6 +8432,7 @@ export function usePeerLobby({
         if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
           throw new Error("Ziffle mental-poker backend is not available");
         }
+        assertZiffleShuffleProofBoundToSignedMatch(proof, null, { matchPayload });
         const verified = await currentGame.ziffleVerifyShuffle({
           deckCount: Number(proof.deckCount),
           context: String(proof.context || ""),
@@ -8183,80 +8501,88 @@ export function usePeerLobby({
           || ""
         );
 
-      const rollbackCheckpoint = typeof currentGame.exportSyncCheckpoint === "function"
-        ? await currentGame.exportSyncCheckpoint()
-        : null;
+      const validationSnapshot = await createSequencedActionValidationSnapshot();
+      const multiplayerSnapshot = cloneMultiplayerPayload(currentSession);
+      const replayMatchPayload = cloneMultiplayerPayload(matchPayload);
       let nextState;
       try {
-        nextState = await currentGame.importSyncCheckpoint(
-          message.checkpoint,
-          localEntry.index,
-        );
+        await applyMatchStart(replayMatchPayload);
+        for (const action of actionEntries) {
+          await applySequencedActionMessage(cloneMultiplayerPayload(action), {
+            relay: false,
+            allowWhileAwaitingResync: true,
+            throwOnOrderMismatch: true,
+            throwOnFailure: true,
+            failureResyncReason: "",
+          });
+        }
+        nextState = typeof currentGame.uiState === "function"
+          ? await currentGame.uiState()
+          : stateRef.current;
         if (expectedPublicCheckpointHash) {
           await verifyCurrentPublicCheckpointHash(
             expectedPublicCheckpointHash,
-            "Resync checkpoint public state does not match the signed action transcript"
+            "Resync replay public state does not match the signed action transcript"
           );
         }
       } catch (err) {
-        if (rollbackCheckpoint) {
-          try {
-            await currentGame.importSyncCheckpoint(
-              rollbackCheckpoint,
-              currentSession.localPlayerIndex ?? localEntry.index
-            );
-          } catch {
-            // Keep the resync verification error as the actionable failure.
-          }
+        try {
+          await restoreSequencedActionValidationSnapshot(validationSnapshot);
+          updateMultiplayer(() => ({
+            ...multiplayerSnapshot,
+            submittingAction: false,
+          }));
+        } catch {
+          // Keep the resync verification error as the actionable failure.
         }
+        awaitingStateResyncRef.current = false;
         throw err;
       }
       setState(nextState);
-      const matchClock = restoreMatchClockFromTranscript(matchPayload, actionEntries, nextState);
+      const matchClock = runtimeMatchClockSnapshot();
 
       const lastSequence = Number(
         message?.lastSequence ?? actionEntries.at(-1)?.seq ?? 0
       );
-      liveZiffleCeremoniesRef.current.clear();
-      ziffleOpeningPositionsRef.current.clear();
-      localRevealedOpeningsRef.current.clear();
-      clearStoredRevealedOpeningsForMatch(matchPayload.auditMatchId || currentAuditMatchId());
-      matchStartPayloadRef.current = cloneMultiplayerPayload(matchPayload);
+      const acceptedMatchPayload = matchStartPayloadRef.current
+        ? cloneMultiplayerPayload(matchStartPayloadRef.current)
+        : cloneMultiplayerPayload(replayMatchPayload);
+      matchStartPayloadRef.current = cloneMultiplayerPayload(acceptedMatchPayload);
       actionHistoryRef.current = actionEntries.map((entry) => cloneMultiplayerPayload(entry));
-      actionCryptoRequirementsRef.current.clear();
       relayedActionIdsRef.current.clear();
       auditStateHashRef.current =
         actionEntries.at(-1)?.audit?.nextStateHash || INITIAL_AUDIT_STATE_HASH;
       initialPublicCheckpointHashRef.current =
-        matchPayload.initialPublicCheckpointHash
+        acceptedMatchPayload.initialPublicCheckpointHash
         || transcriptReport.initialPublicCheckpointHash
         || initialPublicCheckpointHashRef.current;
       liveAuditTranscriptRef.current = {
         version: 1,
         kind: "ironsmith-live-browser-audit-v1",
-        match: cloneMultiplayerPayload(matchPayload),
-        matchId: matchPayload.auditMatchId || currentAuditMatchId(),
-        lobbyId: matchPayload.lobbyId || matchPayload.hostPeerId || "",
+        match: cloneMultiplayerPayload(acceptedMatchPayload),
+        matchId: acceptedMatchPayload.auditMatchId || currentAuditMatchId(),
+        lobbyId: acceptedMatchPayload.lobbyId || acceptedMatchPayload.hostPeerId || "",
         protocolVersion: PROTOCOL_VERSION,
         signatureAlgorithm: "ecdsa-p256-sha256",
-        genesis: cloneMultiplayerPayload(matchPayload.genesis),
+        genesis: cloneMultiplayerPayload(acceptedMatchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
         initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
         actions: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
       };
-      writeStoredPlayerIndex(matchPayload.lobbyId || matchPayload.hostPeerId, localEntry.index);
+      writeStoredPlayerIndex(
+        acceptedMatchPayload.lobbyId || acceptedMatchPayload.hostPeerId,
+        localEntry.index
+      );
       updateMultiplayer((prev) => ({
         ...prev,
-        role: matchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
-        lobbyId: matchPayload.lobbyId || prev.lobbyId,
-        hostPeerId: matchPayload.hostPeerId || prev.hostPeerId,
-        desiredPlayers: matchPayload.players?.length ?? prev.desiredPlayers,
-        startingLife: Number(matchPayload.startingLife || prev.startingLife || 20),
-        format: normalizeMatchFormat(matchPayload.format || prev.format),
-        localPlayerIndex:
-          matchPayload.players?.find((player) => player.peerId === prev.localPeerId)?.index
-          ?? prev.localPlayerIndex,
-        players: matchPayload.players || prev.players,
+        role: acceptedMatchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
+        lobbyId: acceptedMatchPayload.lobbyId || prev.lobbyId,
+        hostPeerId: acceptedMatchPayload.hostPeerId || prev.hostPeerId,
+        desiredPlayers: acceptedMatchPayload.players?.length ?? prev.desiredPlayers,
+        startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
+        format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
+        localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
+        players: acceptedMatchPayload.players || prev.players,
         lastAppliedSequence: lastSequence,
         submittingAction: false,
         matchStarted: true,
@@ -8270,7 +8596,7 @@ export function usePeerLobby({
           : "Resynced with host",
       );
       awaitingStateResyncRef.current = false;
-      await revealLocalZiffleHand(matchPayload);
+      await revealLocalZiffleHand(acceptedMatchPayload);
 
       safeSend(hostConnectionRef.current, {
         type: "resync_ack",
@@ -8279,11 +8605,13 @@ export function usePeerLobby({
       });
     },
     [
+      assertZiffleShuffleProofBoundToSignedMatch,
       currentAuditMatchId,
       setState,
       setStatus,
       updateMultiplayer,
       verifyCurrentPublicCheckpointHash,
+      applyMatchStart,
     ]
   );
 
@@ -11124,8 +11452,18 @@ export function usePeerLobby({
       updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
       try {
         if (resyncingPeerIdsRef.current.size > 0) {
+          const waitId = beginPeerWait({
+            kind: "peer_resync",
+            title: "Waiting for peer resync",
+            description:
+              "One or more peers are importing the latest checkpoint before another action can be submitted.",
+          });
           setStatus("Waiting for peers to finish resyncing");
-          await waitForPeerResyncs();
+          try {
+            await waitForPeerResyncs();
+          } finally {
+            clearPeerWait(waitId);
+          }
         }
         const preSubmitState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
         if (!isDecisionCommandCompatible(preSubmitState?.decision, command)) {
@@ -11472,6 +11810,8 @@ export function usePeerLobby({
       verifyAuditSatisfiesCryptoRequirements,
       setStatus,
       updateMultiplayer,
+      beginPeerWait,
+      clearPeerWait,
       waitForPeerResyncs,
       waitForSubmissionIdle,
     ]
@@ -11658,18 +11998,30 @@ export function usePeerLobby({
           player.connected === false && player.disconnectedAtMs
         );
         if (!hasDisconnectedPlayers) return prev;
+        const nowMs = Date.now();
+        let changed = false;
+        const players = (prev.players || []).map((player) => {
+          if (player.connected !== false || !player.disconnectedAtMs) return player;
+          const autoForfeitAtMs = Number(player.autoForfeitAtMs || 0)
+            || Number(player.disconnectedAtMs) + DISCONNECT_AUTO_FORFEIT_MS;
+          const disconnectRemainingMs = Math.max(0, autoForfeitAtMs - nowMs);
+          if (
+            Number(player.autoForfeitAtMs || 0) === autoForfeitAtMs
+            && Math.abs(Number(player.disconnectRemainingMs ?? disconnectRemainingMs) - disconnectRemainingMs) < 250
+          ) {
+            return player;
+          }
+          changed = true;
+          return {
+            ...player,
+            autoForfeitAtMs,
+            disconnectRemainingMs,
+          };
+        });
+        if (!changed) return prev;
         return {
           ...prev,
-          players: (prev.players || []).map((player) => {
-            if (player.connected !== false || !player.disconnectedAtMs) return player;
-            const autoForfeitAtMs = Number(player.autoForfeitAtMs || 0)
-              || Number(player.disconnectedAtMs) + DISCONNECT_AUTO_FORFEIT_MS;
-            return {
-              ...player,
-              autoForfeitAtMs,
-              disconnectRemainingMs: Math.max(0, autoForfeitAtMs - Date.now()),
-            };
-          }),
+          players,
         };
       });
 
