@@ -6,12 +6,15 @@ const ACTION_QUORUM_CERTIFICATE_TYPE = "ironsmith-action-quorum-v1";
 const ACTION_QUORUM_VOTE_DOMAIN = "ironsmith-action-quorum-vote-v1";
 const DISCONNECT_FORFEIT_CERTIFICATE_TYPE = "ironsmith-disconnect-forfeit-v1";
 const DISCONNECT_FORFEIT_VOTE_DOMAIN = "ironsmith-disconnect-forfeit-vote-v1";
-export const DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
+export const LEGACY_DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
+export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 12;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 13;
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
+const P256_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+const P256_HALF_ORDER = P256_ORDER >> 1n;
 
 export function normalizeAuditPlayerCount(playerCount) {
   const count = Number(playerCount);
@@ -35,6 +38,12 @@ export function assertCurrentAuditPlayerCount(playerCount, context = "Current au
 
 export function canonicalJson(value) {
   return JSON.stringify(normalizeForJson(value));
+}
+
+export function isDisconnectForfeitReason(reason) {
+  const normalized = String(reason || "");
+  return normalized === DISCONNECT_FORFEIT_REASON
+    || normalized === LEGACY_DISCONNECT_FORFEIT_REASON;
 }
 
 export function cryptoMaterialRequirementType(requirement) {
@@ -688,6 +697,42 @@ export async function verifyPrivateViewDisclosure({
   };
 }
 
+function fixedWidthBigIntHex(value, byteLength) {
+  const hex = value.toString(16);
+  if (hex.length > byteLength * 2) {
+    throw new Error("Integer does not fit in fixed-width field");
+  }
+  return hex.padStart(byteLength * 2, "0");
+}
+
+function signatureScalar(bytes, offset) {
+  return BigInt(`0x${bytesToHex(bytes.slice(offset, offset + 32)) || "0"}`);
+}
+
+function canonicalP256SignatureBytes(signatureBytes) {
+  if (!(signatureBytes instanceof Uint8Array) || signatureBytes.length !== 64) {
+    throw new Error("P-256 signatures must be 64 raw bytes");
+  }
+  const r = signatureScalar(signatureBytes, 0);
+  const s = signatureScalar(signatureBytes, 32);
+  if (r <= 0n || r >= P256_ORDER || s <= 0n || s >= P256_ORDER) {
+    throw new Error("P-256 signature scalar is out of range");
+  }
+  if (s <= P256_HALF_ORDER) {
+    return signatureBytes;
+  }
+  const canonical = new Uint8Array(signatureBytes);
+  canonical.set(hexToBytes(fixedWidthBigIntHex(P256_ORDER - s, 32)), 32);
+  return canonical;
+}
+
+function isCanonicalP256SignatureBytes(signatureBytes) {
+  if (!(signatureBytes instanceof Uint8Array) || signatureBytes.length !== 64) return false;
+  const r = signatureScalar(signatureBytes, 0);
+  const s = signatureScalar(signatureBytes, 32);
+  return r > 0n && r < P256_ORDER && s > 0n && s <= P256_HALF_ORDER;
+}
+
 export async function signAuditPayload(keyPair, payload, cryptoImpl = globalThis.crypto) {
   const canonical = canonicalJson(payload);
   const signature = await cryptoImpl.subtle.sign(
@@ -698,7 +743,7 @@ export async function signAuditPayload(keyPair, payload, cryptoImpl = globalThis
     keyPair.privateKey,
     textEncoder.encode(canonical),
   );
-  return bytesToHex(new Uint8Array(signature));
+  return bytesToHex(canonicalP256SignatureBytes(new Uint8Array(signature)));
 }
 
 export async function verifyAuditPayload(
@@ -708,13 +753,22 @@ export async function verifyAuditPayload(
   cryptoImpl = globalThis.crypto,
 ) {
   const canonical = canonicalJson(payload);
+  let signatureBytes = null;
+  try {
+    signatureBytes = hexToBytes(signatureHex);
+  } catch {
+    return false;
+  }
+  if (!isCanonicalP256SignatureBytes(signatureBytes)) {
+    return false;
+  }
   return cryptoImpl.subtle.verify(
     {
       name: "ECDSA",
       hash: "SHA-256",
     },
     publicKey,
-    hexToBytes(signatureHex),
+    signatureBytes,
     textEncoder.encode(canonical),
   );
 }
@@ -820,14 +874,12 @@ export function actionQuorumThreshold(playerCount) {
 
 export function isDisconnectForfeitCommand(command) {
   return command?.type === "forfeit_player"
-    && String(command?.reason || "") === DISCONNECT_FORFEIT_REASON;
+    && isDisconnectForfeitReason(command?.reason);
 }
 
 export function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
   const count = Math.max(0, Number(nonTargetPlayerCount || 0));
-  if (count <= 0) return 0;
-  if (count === 1) return 1;
-  return 2;
+  return count;
 }
 
 function actionQuorumExpected(action) {
@@ -1195,6 +1247,30 @@ export async function verifyDisconnectForfeitCertificate({
   };
 }
 
+function sequencedActionSignedPayload(action) {
+  const audit = action?.audit || {};
+  const signer = Number(audit.signer ?? audit.actor);
+  return {
+    matchId: audit.matchId,
+    seq: Number(audit.seq),
+    actor: Number(audit.actor),
+    signer,
+    prevStateHash: audit.prevStateHash,
+    command: audit.command,
+    clock: audit.clock,
+    openings: audit.openings || [],
+    rngReveals: audit.rngReveals || [],
+    shuffleProofs: audit.shuffleProofs || [],
+    privateViewProofs: audit.privateViewProofs || [],
+    publicCheckpointHash: audit.publicCheckpointHash,
+    nextStateHash: audit.nextStateHash,
+  };
+}
+
+function sequencedActionSignedPayloadFingerprint(action) {
+  return canonicalJson(sequencedActionSignedPayload(action));
+}
+
 async function verifySequencedActionEnvelope({
   entry,
   players,
@@ -1223,21 +1299,7 @@ async function verifySequencedActionEnvelope({
     throw new Error("Dispute action was not signed by the acting player");
   }
   const signerKey = await importAuditPublicKey(players.get(signer)?.auditPublicKey || "", cryptoImpl);
-  const envelopePayload = {
-    matchId: audit.matchId,
-    seq: Number(audit.seq),
-    actor: Number(audit.actor),
-    signer,
-    prevStateHash: audit.prevStateHash,
-    command: audit.command,
-    clock: audit.clock,
-    openings: audit.openings || [],
-    rngReveals: audit.rngReveals || [],
-    shuffleProofs: audit.shuffleProofs || [],
-    privateViewProofs: audit.privateViewProofs || [],
-    publicCheckpointHash: audit.publicCheckpointHash,
-    nextStateHash: audit.nextStateHash,
-  };
+  const envelopePayload = sequencedActionSignedPayload(action);
   const sequencedValid = await verifyAuditPayload(
     signerKey,
     envelopePayload,
@@ -1272,13 +1334,7 @@ function sequencedActionsConflict(left, right) {
   return (
     Number(leftAudit.seq) === Number(rightAudit.seq)
     && String(leftAudit.prevStateHash || "") === String(rightAudit.prevStateHash || "")
-    && (
-      Number(leftAudit.actor) !== Number(rightAudit.actor)
-      || canonicalJson(left.command) !== canonicalJson(right.command)
-      || String(leftAudit.nextStateHash || "") !== String(rightAudit.nextStateHash || "")
-      || String(leftAudit.publicCheckpointHash || "") !== String(rightAudit.publicCheckpointHash || "")
-      || String(leftAudit.signature || "") !== String(rightAudit.signature || "")
-    )
+    && sequencedActionSignedPayloadFingerprint(left) !== sequencedActionSignedPayloadFingerprint(right)
   );
 }
 
@@ -1303,7 +1359,7 @@ export function buildActionForkDisputeEvidence({
   const accused = new Set();
   if (
     Number(existing?.audit?.actor) === Number(conflicting?.audit?.actor)
-    && String(existing?.audit?.signature || "") !== String(conflicting?.audit?.signature || "")
+    && sequencedActionsConflict(existing, conflicting)
   ) {
     accused.add(Number(existing.audit.actor));
   }
@@ -1373,7 +1429,7 @@ async function verifyActionForkDispute(dispute, players, cryptoImpl = globalThis
   const accused = new Set();
   if (
     Number(existing.audit?.actor) === Number(conflicting.audit?.actor)
-    && String(existing.audit?.signature || "") !== String(conflicting.audit?.signature || "")
+    && sequencedActionsConflict(existing, conflicting)
   ) {
     accused.add(Number(existing.audit.actor));
   }

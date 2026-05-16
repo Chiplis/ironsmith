@@ -14,6 +14,11 @@ function sameActionRef(left, right) {
   return stableStringify(left) === stableStringify(right);
 }
 
+const DISCONNECT_TIMEOUT_POLICY_REASONS = new Set([
+  "disconnect_timeout_policy",
+  "peer_claimed_disconnect_timeout",
+]);
+
 export function findPriorityActionForCommand(decision, command) {
   if (!decision || decision.kind !== "priority" || command?.type !== "priority_action") {
     return null;
@@ -47,7 +52,7 @@ export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
-    if (String(command.reason || "") === "peer_claimed_disconnect_timeout") {
+    if (DISCONNECT_TIMEOUT_POLICY_REASONS.has(String(command.reason || ""))) {
       return command.player !== null && command.player !== undefined;
     }
     return decision?.player !== null

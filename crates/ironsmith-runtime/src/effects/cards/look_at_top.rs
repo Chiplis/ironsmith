@@ -41,8 +41,8 @@ impl EffectExecutor for LookAtTopCardsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
         if self.reveal {
+            ctx.tag_objects_unique(self.tag.clone(), snapshots.clone());
             ctx.tag_objects(crate::effects::PUBLIC_REVEALED_TAG, snapshots.clone());
             for viewer_idx in 0..game.players.len() {
                 let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
@@ -68,6 +68,7 @@ impl EffectExecutor for LookAtTopCardsEffect {
             ctx.decision_maker
                 .view_cards(game, ctx.controller, &top_cards, &view_ctx);
             ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
+            ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
         }
 
         let memory: Vec<_> = snapshots
@@ -103,9 +104,14 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
+    use crate::effect::Effect;
+    use crate::effects::{ForEachObject, ForPlayersEffect};
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaSymbol;
     use crate::tag::TagKey;
+    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
     use crate::test_prelude::*;
+    use crate::types::CardType;
     use crate::zone::Zone;
 
     #[derive(Debug)]
@@ -155,6 +161,19 @@ mod tests {
         }
     }
 
+    fn add_typed_card_to_library(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        id: u32,
+        card_types: Vec<CardType>,
+    ) {
+        let card = CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(card_types)
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+
     #[test]
     fn look_at_top_fixed_count_tags_cards() {
         let mut game = setup_game();
@@ -175,6 +194,67 @@ mod tests {
                 .map(|snapshots| snapshots.len()),
             Some(2)
         );
+    }
+
+    #[test]
+    fn revealing_top_cards_accumulates_shared_tags_across_each_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        add_typed_card_to_library(
+            &mut game,
+            alice,
+            "Alice Revealed Creature",
+            20_001,
+            vec![CardType::Creature],
+        );
+        add_typed_card_to_library(
+            &mut game,
+            bob,
+            "Bob Revealed Creature",
+            20_002,
+            vec![CardType::Creature],
+        );
+
+        let tag = TagKey::from("revealed_this_way");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let reveal_each = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::reveal_top_cards(
+                PlayerFilter::IteratedPlayer,
+                1,
+                tag.clone(),
+            )],
+        );
+        reveal_each
+            .execute(&mut game, &mut ctx)
+            .expect("execute each-player reveal");
+
+        assert_eq!(
+            ctx.get_tagged_all(&tag).map(|snapshots| snapshots.len()),
+            Some(2)
+        );
+
+        let mut filter = ObjectFilter::default();
+        filter.excluded_card_types.push(CardType::Land);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let parley_reward = ForEachObject::new(
+            filter,
+            vec![
+                Effect::add_mana(vec![ManaSymbol::Green]),
+                Effect::gain_life(1),
+            ],
+        );
+        parley_reward
+            .execute(&mut game, &mut ctx)
+            .expect("execute parley reward");
+
+        assert_eq!(game.player(alice).expect("alice").mana_pool.green, 2);
+        assert_eq!(game.player(alice).expect("alice").life, 22);
     }
 
     #[test]

@@ -11108,6 +11108,12 @@ fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability() -> Result<(
             assert!(debug.contains("ForPlayersEffect"), "{debug}");
             assert!(debug.contains("ForEachObject"), "{debug}");
             assert!(debug.contains("AddManaEffect"), "{debug}");
+            let compact = debug.split_whitespace().collect::<String>();
+            assert!(
+                compact.contains("effects:[Effect(AddManaEffect")
+                    && compact.contains("player:You,},),Effect(GainLifeEffect"),
+                "expected parley mana and life rewards to stay inside the revealed-card fanout, got {debug}"
+            );
         }
         other => panic!("expected activated mana ability, got {other:?}"),
     }

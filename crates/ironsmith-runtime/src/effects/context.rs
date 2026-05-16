@@ -852,6 +852,19 @@ impl<'a> ExecutionContext<'a> {
             .extend(snapshots);
     }
 
+    /// Append object snapshots under a tag, skipping objects already present.
+    pub fn tag_objects_unique(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
+        let entry = self.tagged_objects.entry(tag.into()).or_default();
+        for snapshot in snapshots {
+            if !entry
+                .iter()
+                .any(|existing| existing.object_id == snapshot.object_id)
+            {
+                entry.push(snapshot);
+            }
+        }
+    }
+
     /// Replace any existing object snapshots for a tag.
     pub fn set_tagged_objects(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
         self.tagged_objects.insert(tag.into(), snapshots);

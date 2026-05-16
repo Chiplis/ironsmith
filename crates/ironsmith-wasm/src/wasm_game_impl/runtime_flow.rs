@@ -398,6 +398,7 @@ impl WasmGame {
         match progress {
             GameProgress::NeedsDecisionCtx(next_ctx) => {
                 let action_still_pending = self.priority_action_chain_still_pending();
+                let next_is_priority = matches!(next_ctx, DecisionContext::Priority(_));
                 if action_still_pending {
                     self.clear_active_resolving_stack_object();
                 } else {
@@ -415,12 +416,19 @@ impl WasmGame {
                     self.priority_state.pending_continuation = None;
                     self.pending_live_action_root = None;
                     self.pending_replay_action = None;
-                    self.pending_live_continuation = Some(LivePriorityContinuation {
-                        checkpoint: self.capture_replay_checkpoint_tagged("finish_live_dispatch"),
-                        root: PendingPriorityContinuation::ApplyDecisionContext(next_ctx.clone()),
-                        answers: Vec::new(),
-                        speculative_progress: None,
-                    });
+                    self.pending_live_continuation = if next_is_priority {
+                        None
+                    } else {
+                        Some(LivePriorityContinuation {
+                            checkpoint: self
+                                .capture_replay_checkpoint_tagged("finish_live_dispatch"),
+                            root: PendingPriorityContinuation::ApplyDecisionContext(
+                                next_ctx.clone(),
+                            ),
+                            answers: Vec::new(),
+                            speculative_progress: None,
+                        })
+                    };
                 } else if self.decision_uses_live_priority_response(&next_ctx) {
                     self.priority_state.pending_continuation = None;
                     self.pending_live_continuation = None;
@@ -1895,6 +1903,101 @@ mod live_action_rollback_tests {
         match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, bob),
             other => panic!("expected rebuilt priority decision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn post_resolution_hidden_reveals_do_not_advance_priority_after_mana_ability() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+
+        let selvala = CardDefinitionBuilder::new(CardId::new(), "Selvala, Explorer Returned")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "{T}: Each player reveals the top card of their library. For each nonland permanent revealed this way, add {G} and you gain 1 life. Then each player draws a card.",
+            )
+            .expect("Selvala parley ability should parse");
+        let selvala_id = wasm
+            .game
+            .create_object_from_definition(&selvala, alice, Zone::Battlefield);
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Library, 0, "alice-slot-0".to_string());
+        wasm.game
+            .create_hidden_card_placeholder(bob, Zone::Library, 0, "bob-slot-0".to_string());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(
+                action,
+                LegalAction::ActivateManaAbility { source, .. } if *source == selvala_id
+            )
+        });
+
+        let green_before_reveals = wasm
+            .game
+            .player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .green;
+        assert_eq!(wasm.game.turn.phase, Phase::FirstMain);
+        assert_eq!(wasm.game.turn.priority_player, Some(alice));
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
+            other => panic!("expected Alice priority after Selvala activation, got {other:?}"),
+        }
+        assert!(
+            wasm.pending_live_continuation.is_none(),
+            "ordinary priority after a completed mana ability should not keep a replay continuation"
+        );
+
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 0,
+            slot: 0,
+            card_name: "Black Lotus".to_string(),
+            commitment: Some("alice-slot-0".to_string()),
+            recompute_decision: false,
+        })
+        .expect("Alice's revealed card should open");
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 1,
+            slot: 0,
+            card_name: "Selvala, Explorer Returned".to_string(),
+            commitment: Some("bob-slot-0".to_string()),
+            recompute_decision: false,
+        })
+        .expect("Bob's revealed card should open");
+
+        assert_eq!(wasm.game.turn.phase, Phase::FirstMain);
+        assert_eq!(wasm.game.turn.step, None);
+        assert_eq!(wasm.game.turn.priority_player, Some(alice));
+        assert_eq!(
+            wasm.game
+                .player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .green,
+            green_before_reveals,
+            "opening revealed cards must not consume floating mana"
+        );
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
+            other => panic!("expected Alice priority after post-resolution openings, got {other:?}"),
         }
     }
 

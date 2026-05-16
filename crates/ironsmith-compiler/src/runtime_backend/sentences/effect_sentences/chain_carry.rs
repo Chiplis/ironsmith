@@ -42,11 +42,11 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::Subtype;
 use crate::zone::Zone;
 
@@ -1386,8 +1386,10 @@ pub(crate) fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<Effect
     let mut idx = 0usize;
     while idx + 1 < effects.len() {
         let should_merge = match (&effects[idx], &effects[idx + 1]) {
-            (EffectAst::ForEachObject { .. }, followup) => {
+            (EffectAst::ForEachObject { filter, .. }, followup) => {
                 effects_reference_it_tag(std::slice::from_ref(followup))
+                    || (for_each_revealed_this_way_filter(filter)
+                        && is_revealed_this_way_scalar_reward(followup))
             }
             _ => false,
         };
@@ -1408,6 +1410,33 @@ pub(crate) fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<Effect
         }
         // Re-check this index in case we have a longer chain of followups.
     }
+}
+
+fn for_each_revealed_this_way_filter(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && (constraint.tag.as_str() == IT_TAG
+                || constraint
+                    .tag
+                    .as_str()
+                    .starts_with("__sentence_helper_revealed"))
+    })
+}
+
+fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { .. }
+                | SubjectVerbActionAst::AddMana { .. }
+                | SubjectVerbActionAst::AddManaScaled { .. }
+                | SubjectVerbActionAst::AddManaAnyColor { .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
+                | SubjectVerbActionAst::AddManaChosenColor { .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { .. },
+            ..
+        })
+    )
 }
 
 pub(crate) fn parse_effect_clause_with_trailing_if_lexed(

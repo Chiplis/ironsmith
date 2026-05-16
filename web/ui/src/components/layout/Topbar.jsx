@@ -285,7 +285,7 @@ export default function Topbar({
             type="button"
             className="stone-pill inline-flex min-h-8 max-w-[240px] items-center gap-2 rounded-none border border-[#7d302f] bg-[#2b1114]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffb8c0]"
             onClick={onOpenLobby}
-            title={`Disconnected: ${connectionWarningLabel}. Auto-forfeit in ${disconnectCountdown}.`}
+            title={`Disconnected: ${connectionWarningLabel}. Timeout policy in ${disconnectCountdown}.`}
             aria-label={`Disconnected players: ${connectionWarningLabel}`}
           >
             <WifiOff className="size-3.5 shrink-0" />

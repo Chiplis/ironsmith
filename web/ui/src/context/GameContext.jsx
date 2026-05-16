@@ -683,7 +683,17 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     stateRef.current = state;
+    if (state?.viewed_cards) {
+      stickyViewedCardsRef.current = state.viewed_cards;
+    }
   }, [state]);
+
+  const setPeerState = useCallback((nextState) => {
+    if (nextState?.viewed_cards) {
+      stickyViewedCardsRef.current = nextState.viewed_cards;
+    }
+    setState(nextState);
+  }, []);
 
   const moveTriggerOrderingItem = useCallback((position, direction) => {
     const decision = stateRef.current?.decision || null;
@@ -1431,7 +1441,7 @@ export function GameProvider({ children }) {
   } = usePeerLobby({
     game,
     state,
-    setState,
+    setState: setPeerState,
     setStatus,
     applySyncedCommand,
   });

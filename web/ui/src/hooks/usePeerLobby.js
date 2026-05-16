@@ -35,6 +35,7 @@ import {
   importAuditKeyPair,
   importAuditPublicKey,
   isCurrentAuditPlayerCount,
+  isDisconnectForfeitReason,
   publicCheckpointHash,
   publicDeckManifest,
   randomAuditHex,
@@ -478,7 +479,7 @@ function isActionTimeoutForfeitCommand(command) {
 
 function isDisconnectTimeoutForfeitCommand(command) {
   return isForfeitCommand(command)
-    && String(command?.reason || "") === DISCONNECT_FORFEIT_REASON;
+    && isDisconnectForfeitReason(command?.reason);
 }
 
 function isSelfForfeitCommand(command, actorIndex) {
@@ -523,9 +524,7 @@ function disconnectCertificateFromCommand(command) {
 
 function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
   const count = Math.max(0, Number(nonTargetPlayerCount || 0));
-  if (count <= 0) return 0;
-  if (count === 1) return 1;
-  return 2;
+  return count;
 }
 
 function timeoutVotePayload({
@@ -1494,6 +1493,30 @@ function clearStoredRevealedOpeningsForMatch(matchId) {
   }
 }
 
+function clearStoredRevealedOpeningsForMatchOwner(matchId, owner) {
+  const storage = getPeerSessionStorage();
+  if (!storage) return;
+  const normalizedOwner = Number(owner);
+  const prefix = revealedOpeningStorageKey(`${String(matchId || "")}:`);
+  try {
+    const keys = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key || !key.startsWith(prefix)) continue;
+      let parsed = null;
+      try {
+        parsed = JSON.parse(storage.getItem(key) || "null");
+      } catch {
+        parsed = null;
+      }
+      if (Number(parsed?.owner) === normalizedOwner) keys.push(key);
+    }
+    for (const key of keys) storage.removeItem(key);
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
 function ziffleIdentityStorageKey(context) {
   return `${ZIFFLE_IDENTITY_STORAGE_PREFIX}:${String(context || "")}`;
 }
@@ -1980,6 +2003,8 @@ export function usePeerLobby({
   const ziffleKeyPairsRef = useRef(new Map());
   const ziffleShuffleWaitersRef = useRef(new Map());
   const ziffleRevealWaitersRef = useRef(new Map());
+  const ziffleRevealTokenCacheRef = useRef(new Map());
+  const verifiedAuditOpeningsRef = useRef(new Set());
   const rngCommitWaitersRef = useRef(new Map());
   const rngRevealWaitersRef = useRef(new Map());
   const rngCommitNoncesRef = useRef(new Map());
@@ -2645,6 +2670,31 @@ export function usePeerLobby({
     );
   }, []);
 
+  const clearOwnerZiffleOpeningCache = useCallback((owner, matchId = currentAuditMatchId()) => {
+    const normalizedOwner = Number(owner);
+    if (!Number.isSafeInteger(normalizedOwner)) return;
+    for (const key of [...ziffleOpeningPositionsRef.current.keys()]) {
+      if (key.startsWith(`${normalizedOwner}:`)) {
+        ziffleOpeningPositionsRef.current.delete(key);
+      }
+    }
+    for (const key of [...ziffleRevealTokenCacheRef.current.keys()]) {
+      if (key.startsWith(`${normalizedOwner}:`)) {
+        ziffleRevealTokenCacheRef.current.delete(key);
+      }
+    }
+    const normalizedMatchId = String(matchId || "");
+    for (const [key, opening] of [...localRevealedOpeningsRef.current.entries()]) {
+      if (
+        key.startsWith(`${normalizedMatchId}:`)
+        && Number(opening?.owner) === normalizedOwner
+      ) {
+        localRevealedOpeningsRef.current.delete(key);
+      }
+    }
+    clearStoredRevealedOpeningsForMatchOwner(normalizedMatchId, normalizedOwner);
+  }, [currentAuditMatchId]);
+
   const rememberLocalRevealedOpening = useCallback((opening, details = {}) => {
     if (!opening || opening.owner == null || opening.slot == null || !opening.card) return;
     const matchId = String(details.matchId || currentAuditMatchId());
@@ -2739,6 +2789,10 @@ export function usePeerLobby({
     const slot = requirement.slot == null ? null : Number(requirement.slot);
     const commitment = String(requirement.commitment || "");
     const positionCommitment = String(requirement.positionCommitment || requirement.position_commitment || "");
+    const slotIsZifflePosition = Boolean(
+      ziffleDeckHashFromCommitment(commitment)
+      || ziffleDeckHashFromCommitment(positionCommitment)
+    );
     const readEntry = (indexKey) => {
       const cached = localRevealedOpeningsRef.current.get(indexKey);
       if (cached) return cached;
@@ -2763,13 +2817,13 @@ export function usePeerLobby({
     if (objectId != null) {
       candidates.push(readEntry(`${matchId}:object:${Number(objectId)}`));
     }
-    if (slot != null) {
+    if (slot != null && !slotIsZifflePosition) {
       candidates.push(readEntry(`${matchId}:owner:${owner}:slot:${slot}`));
     }
     for (const candidate of candidates) {
       if (!candidate) continue;
       if (Number(candidate.owner) !== owner) continue;
-      if (slot != null && Number(candidate.slot) !== slot) continue;
+      if (slot != null && !slotIsZifflePosition && Number(candidate.slot) !== slot) continue;
       if (requirement.card && String(candidate.card || "") !== String(requirement.card || "")) {
         continue;
       }
@@ -2845,6 +2899,58 @@ export function usePeerLobby({
         tokenHex: String(token.tokenHex || ""),
         proofHex: String(token.proofHex || ""),
       }));
+  }
+
+  function ziffleRevealTokenCacheKey(ceremony, player, position) {
+    return [
+      Number(ceremony?.owner ?? -1),
+      ziffleKeyContextForCeremony(ceremony),
+      String(ceremony?.context || ""),
+      String(ceremony?.deckHash || ""),
+      Number(player),
+      Number(position),
+    ].join(":");
+  }
+
+  function normalizeZiffleRevealToken(token, fallbackPosition = null) {
+    if (!token || typeof token !== "object") return null;
+    const position = Number(token.cardPosition ?? fallbackPosition);
+    const player = Number(token.player);
+    if (!Number.isSafeInteger(position) || position < 0 || !Number.isSafeInteger(player)) {
+      return null;
+    }
+    return {
+      player,
+      publicKeyHex: String(token.publicKeyHex || ""),
+      tokenHex: String(token.tokenHex || ""),
+      proofHex: String(token.proofHex || ""),
+      cardPosition: position,
+    };
+  }
+
+  function rememberZiffleRevealTokens(ceremony, tokens = [], fallbackPositions = []) {
+    const tokenList = Array.isArray(tokens) ? tokens : [tokens];
+    const fallbackPosition = fallbackPositions.length === 1 ? fallbackPositions[0] : null;
+    for (const token of tokenList) {
+      const normalized = normalizeZiffleRevealToken(token, fallbackPosition);
+      if (!normalized) continue;
+      ziffleRevealTokenCacheRef.current.set(
+        ziffleRevealTokenCacheKey(ceremony, normalized.player, normalized.cardPosition),
+        normalized
+      );
+    }
+  }
+
+  function cachedZiffleRevealTokens(ceremony, player, positions = []) {
+    const tokens = [];
+    for (const position of positions) {
+      const token = ziffleRevealTokenCacheRef.current.get(
+        ziffleRevealTokenCacheKey(ceremony, player, position)
+      );
+      if (!token) return null;
+      tokens.push({ ...token });
+    }
+    return tokens;
   }
 
   function openingNeedsZiffleProof(opening) {
@@ -3058,9 +3164,18 @@ export function usePeerLobby({
     return auditVerifyKeyCacheRef.current.get(normalized);
   }, []);
 
+  function verifiedAuditOpeningKey(opening) {
+    return canonicalMultiplayerPayload({
+      matchId: currentAuditMatchId(),
+      opening,
+    });
+  }
+
   const verifyAuditOpeningsAgainstManifests = useCallback(async (openings = []) => {
     for (const opening of openings || []) {
       if (!opening || opening.owner == null || opening.slot == null) continue;
+      const verificationKey = verifiedAuditOpeningKey(opening);
+      if (verifiedAuditOpeningsRef.current.has(verificationKey)) continue;
       const manifest = publicDeckManifestForOwner(opening.owner);
       if (!manifest) {
         throw new Error(`Missing deck audit manifest for player ${Number(opening.owner) + 1}`);
@@ -3077,8 +3192,9 @@ export function usePeerLobby({
         );
       }
       await verifyZiffleOpeningProofForOpening(opening);
+      verifiedAuditOpeningsRef.current.add(verificationKey);
     }
-  }, [publicDeckManifestForOwner]);
+  }, [currentAuditMatchId, publicDeckManifestForOwner]);
 
   const buildDeckSlotOpeningForExport = useCallback(async ({
     manifest,
@@ -4922,6 +5038,10 @@ export function usePeerLobby({
       teardownPeer();
       matchStartPayloadRef.current = null;
       liveZiffleCeremoniesRef.current.clear();
+      ziffleRevealTokenCacheRef.current.clear();
+      verifiedAuditOpeningsRef.current.clear();
+      ziffleOpeningPositionsRef.current.clear();
+      localRevealedOpeningsRef.current.clear();
       localDisconnectObservationsRef.current.clear();
       actionHistoryRef.current = [];
       actionCryptoRequirementsRef.current.clear();
@@ -6759,7 +6879,7 @@ export function usePeerLobby({
       });
       await revealLocalZiffleHand(matchStartPayloadRef.current, {
         skipIfHandUnchanged: true,
-        stateHint: appliedState,
+        stateHint: viewedCardsStateHint(remotePostOpeningState, appliedState),
         command: localCommand,
         seq: nextSequence,
         actorIndex: message.actorIndex,
@@ -7690,10 +7810,17 @@ export function usePeerLobby({
       }
       : null;
     const tokenGroups = await Promise.all((ceremony.keys || []).map(async (key) => {
-      if (Number(key.player) === Number(localIndex)) {
-        return buildLocalZiffleRevealTokens(ceremony, positions);
+      const tokenPlayer = Number(key.player);
+      const cached = cachedZiffleRevealTokens(ceremony, tokenPlayer, positions);
+      if (cached) {
+        return cached;
       }
-      const peer = players.find((player) => Number(player.index) === Number(key.player));
+      if (tokenPlayer === Number(localIndex)) {
+        const localTokens = await buildLocalZiffleRevealTokens(ceremony, positions);
+        rememberZiffleRevealTokens(ceremony, localTokens, positions);
+        return cachedZiffleRevealTokens(ceremony, tokenPlayer, positions) || localTokens;
+      }
+      const peer = players.find((player) => Number(player.index) === tokenPlayer);
       if (!peer?.peerId) {
         throw new Error(`Missing peer for ziffle reveal token player ${key.player}`);
       }
@@ -7707,7 +7834,7 @@ export function usePeerLobby({
         localRole: String(session.role || ""),
         localMode: String(session.mode || ""),
         targetPeerId: String(peer.peerId || ""),
-        targetPlayerIndex: Number(key.player),
+        targetPlayerIndex: tokenPlayer,
         ceremony: compactZiffleCeremonyForDiagnostics(ceremony),
         cardPosition: positions.length === 1 ? positions[0] : null,
         cardPositions: positions,
@@ -7715,7 +7842,7 @@ export function usePeerLobby({
         matchStartAuditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
       };
       const waiter = waitForZiffleRevealToken(requestId, 60000, requestDiagnostics, {
-        peerIndex: Number(key.player),
+        peerIndex: tokenPlayer,
         peerName: peerLabel,
         description:
           `${peerLabel} must provide reveal material for ${positions.length} hidden `
@@ -7736,7 +7863,9 @@ export function usePeerLobby({
         cryptoMaterialRequestId: options.cryptoMaterialRequestId || "",
         ...(actionAuthorization ? { actionAuthorization } : {}),
       });
-      return waiter;
+      const remoteTokens = await waiter;
+      rememberZiffleRevealTokens(ceremony, remoteTokens, positions);
+      return cachedZiffleRevealTokens(ceremony, tokenPlayer, positions) || remoteTokens;
     }));
     return tokenGroups.flatMap((group) => Array.isArray(group) ? group : [group]);
   }
@@ -7953,6 +8082,7 @@ export function usePeerLobby({
           + `afterOrderLen ${afterOrder.length} firstAfterOrder ${afterOrder.slice(0, 12).join(",")}`
         );
       }
+      clearOwnerZiffleOpeningCache(proof.owner);
       liveZiffleCeremoniesRef.current.set(Number(proof.owner), cloneMultiplayerPayload(proof));
     }
   }
@@ -8618,13 +8748,92 @@ export function usePeerLobby({
     ].join("|");
   }
 
-  function preserveViewedCardsFromHint(nextState, stateHint = null) {
-    if (!nextState || nextState.viewed_cards || !stateHint?.viewed_cards) {
+  function viewedCardsStateHint(...states) {
+    for (const candidate of states) {
+      if (candidate?.viewed_cards) return candidate;
+    }
+    return states.find(Boolean) || null;
+  }
+
+  function isHiddenViewedCardName(name) {
+    return String(name || "").trim().toLowerCase() === "hidden card";
+  }
+
+  async function hydrateViewedCardsFromLiveObjects(viewedCards, currentGame) {
+    if (
+      !viewedCards
+      || !Array.isArray(viewedCards.cards)
+      || typeof currentGame?.objectDetails !== "function"
+    ) {
+      return viewedCards;
+    }
+
+    let changed = false;
+    const cards = [];
+    for (const card of viewedCards.cards) {
+      const objectId = Number(card?.id);
+      if (!Number.isSafeInteger(objectId) || objectId < 0) {
+        cards.push(card);
+        continue;
+      }
+
+      let details = null;
+      try {
+        details = await currentGame.objectDetails(wasmObjectIdArg(objectId));
+      } catch {
+        cards.push(card);
+        continue;
+      }
+
+      const detailName = String(details?.name || "").trim();
+      const cardName = String(card?.name || "").trim();
+      let nextCard = card;
+      if (
+        detailName
+        && !isHiddenViewedCardName(detailName)
+        && (isHiddenViewedCardName(cardName) || cardName !== detailName)
+      ) {
+        nextCard = { ...nextCard, name: detailName };
+        changed = true;
+      }
+      if (details?.oracle_text && details.oracle_text !== nextCard?.oracle_text) {
+        nextCard = { ...nextCard, oracle_text: details.oracle_text };
+        changed = true;
+      }
+      if (
+        details?.stable_id != null
+        && Number(details.stable_id) !== Number(nextCard?.stable_id)
+      ) {
+        nextCard = { ...nextCard, stable_id: details.stable_id };
+        changed = true;
+      }
+      cards.push(nextCard);
+    }
+
+    return changed ? { ...viewedCards, cards } : viewedCards;
+  }
+
+  async function preserveViewedCardsFromHint(nextState, stateHint = null, currentGame = null) {
+    if (!nextState) {
       return nextState;
     }
+    if (nextState.viewed_cards) {
+      const viewedCards = await hydrateViewedCardsFromLiveObjects(
+        nextState.viewed_cards,
+        currentGame
+      );
+      return viewedCards === nextState.viewed_cards
+        ? nextState
+        : { ...nextState, viewed_cards: viewedCards };
+    }
+    if (!stateHint?.viewed_cards) return nextState;
+    const viewedCards = await hydrateViewedCardsFromLiveObjects(
+      stateHint.viewed_cards,
+      currentGame
+    );
     return {
       ...nextState,
-      viewed_cards: stateHint.viewed_cards,
+      viewed_cards: viewedCards,
     };
   }
 
@@ -8851,9 +9060,10 @@ export function usePeerLobby({
     }
     if (changed) {
       await currentGame.setPerspective(localIndex);
-      const nextState = preserveViewedCardsFromHint(
+      const nextState = await preserveViewedCardsFromHint(
         await currentGame.uiState(),
         options.stateHint,
+        currentGame,
       );
       stateRef.current = nextState;
       setState(nextState);
@@ -9025,6 +9235,8 @@ export function usePeerLobby({
       await currentGame.setPerspective(localEntry.index);
       liveZiffleCeremoniesRef.current.clear();
       ziffleOpeningPositionsRef.current.clear();
+      ziffleRevealTokenCacheRef.current.clear();
+      verifiedAuditOpeningsRef.current.clear();
       localRevealedOpeningsRef.current.clear();
       clearStoredRevealedOpeningsForMatch(payload.auditMatchId || currentAuditMatchId());
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
@@ -10370,7 +10582,7 @@ export function usePeerLobby({
         players: markPlayerConnectionState(prev.players, peerId, false, disconnectedAtMs),
       }));
       if (departed) {
-        setStatus(`${departed.name} disconnected; waiting 60s before auto-forfeit`);
+        setStatus(`${departed.name} disconnected; waiting 60s for timeout policy`);
       }
       if (multiplayerRef.current.matchStarted) {
         broadcastMatchPresence(peerId, false, {
@@ -12930,13 +13142,13 @@ export function usePeerLobby({
       try {
         await submitMultiplayerCommand(
           command,
-          `${playerName} was peer-claimed disconnected for 60s`
+          `${playerName} forfeited by unanimous disconnect timeout policy`
         );
       } catch (err) {
         disconnectForfeitInFlightRef.current.delete(claimKey);
         const message = toErrorMessage(err);
         if (!message.includes("Disconnect timeout has not elapsed")) {
-          setStatus(`Disconnect forfeit failed: ${message}`, true);
+          setStatus(`Disconnect timeout policy failed: ${message}`, true);
           console.error(err);
         }
       }

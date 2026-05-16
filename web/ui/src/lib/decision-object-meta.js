@@ -1,5 +1,5 @@
-import { getPlayerAccent } from "@/lib/player-colors";
-import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { getPlayerAccent } from "./player-colors.js";
+import { getVisibleStackObjects } from "./stack-targets.js";
 
 function registerName(map, id, name) {
   if (id == null) return;
@@ -7,7 +7,13 @@ function registerName(map, id, name) {
   if (!key) return;
   const text = String(name || "").trim();
   if (!text) return;
+  const existing = map.get(key);
+  if (existing && isHiddenCardName(text) && !isHiddenCardName(existing)) return;
   map.set(key, text);
+}
+
+function isHiddenCardName(name) {
+  return String(name || "").trim().toLowerCase() === "hidden card";
 }
 
 function registerController(map, id, controller) {

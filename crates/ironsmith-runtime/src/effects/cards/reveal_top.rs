@@ -27,12 +27,17 @@ impl EffectExecutor for RevealTopEffect {
             player_id,
             LibraryConsultMode::Reveal,
             LibraryConsultStopRule::MatchCount(1),
-            self.tag.as_ref(),
-            self.tag.as_ref(),
+            None,
+            None,
             |_, _| true,
         )?;
 
         let count = result.exposed_object_ids.len() as i32;
+        if let Some(tag) = &self.tag
+            && !result.exposed_snapshots.is_empty()
+        {
+            ctx.tag_objects_unique(tag.clone(), result.exposed_snapshots.clone());
+        }
         if !result.exposed_snapshots.is_empty() {
             ctx.tag_objects(
                 crate::effects::PUBLIC_REVEALED_TAG,

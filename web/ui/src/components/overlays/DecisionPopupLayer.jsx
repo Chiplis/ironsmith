@@ -1024,6 +1024,16 @@ function buildViewedCardsIdentity(viewedCards) {
   ].join("|");
 }
 
+function isHiddenCardName(name) {
+  return String(name || "").trim().toLowerCase() === "hidden card";
+}
+
+function viewedCardDisplayName(card, objectNameById) {
+  const objectName = objectNameById.get(String(card?.id));
+  if (objectName && !isHiddenCardName(objectName)) return objectName;
+  return card?.name || `Card #${card?.id}`;
+}
+
 function normalizeMobileDecisionSummaryText(text) {
   if (typeof text !== "string") return "";
   return normalizeDecisionText(text)
@@ -1622,7 +1632,7 @@ function MobileBattleDecisionLayer({
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
         return viewedCards.cards.map((card) => ({
           id: String(card.id),
-          name: card.name || `Card #${card.id}`,
+          name: viewedCardDisplayName(card, objectNameById),
           controller: viewedCards?.subject,
         }));
       }
@@ -2305,7 +2315,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
         return viewedCards.cards.map((card) => ({
           id: String(card.id),
-          name: card.name || `Card #${card.id}`,
+          name: viewedCardDisplayName(card, objectNameById),
           controller: viewedCards?.subject,
         }));
       }

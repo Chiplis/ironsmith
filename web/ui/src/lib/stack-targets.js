@@ -1,4 +1,4 @@
-import { getPlayerAccent } from "@/lib/player-colors";
+import { getPlayerAccent } from "./player-colors.js";
 
 export const STACK_TARGET_ZONE_ORDER = [
   "battlefield",

@@ -660,8 +660,8 @@ export default function LobbyOverlay({
                 {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
                   <div className="lobby-sheet-status border border-[#7d302f] bg-[#2b1114]/70 px-3 py-2 text-[13px] leading-5 text-[#ffb8c0]">
                     {offlinePlayers.length === 1
-                      ? `${offlinePlayers[0].name} is disconnected. Wait ${formatCountdown(offlinePlayers[0].remainingMs)} for them to reconnect before auto-forfeit.`
-                      : `${offlinePlayerSummary(offlinePlayers)} are disconnected. Wait for reconnects or the auto-forfeit timers.`}
+                      ? `${offlinePlayers[0].name} is disconnected. Wait ${formatCountdown(offlinePlayers[0].remainingMs)} for the timeout policy.`
+                      : `${offlinePlayerSummary(offlinePlayers)} are disconnected. Wait for reconnects or timeout policy timers.`}
                   </div>
                 ) : null}
 

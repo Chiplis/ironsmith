@@ -126,7 +126,15 @@ test("surrender forfeits must target the pending decision player", () => {
   );
 });
 
-test("disconnect forfeits can be submitted without a pending decision", () => {
+test("disconnect timeout policy forfeits can be submitted without a pending decision", () => {
+  assert.equal(
+    isDecisionCommandCompatible(null, {
+      type: "forfeit_player",
+      player: 0,
+      reason: "disconnect_timeout_policy",
+    }),
+    true,
+  );
   assert.equal(
     isDecisionCommandCompatible(null, {
       type: "forfeit_player",

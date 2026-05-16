@@ -27,6 +27,8 @@ import {
   exportAuditEncryptionPublicKey,
   exportAuditPublicKey,
   fairRandomCombinedSeedHex,
+  disconnectForfeitVoteThreshold,
+  DISCONNECT_FORFEIT_REASON,
   importAuditPublicKey,
   rngCommitmentPayload,
   rngRevealPayload,
@@ -45,6 +47,42 @@ import {
 
 function cloneTestPayload(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+const P256_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+const P256_HALF_ORDER = P256_ORDER >> 1n;
+
+function p256SignatureS(signatureHex) {
+  return BigInt(`0x${String(signatureHex || "").slice(64, 128) || "0"}`);
+}
+
+function fixedWidthScalarHex(value) {
+  return value.toString(16).padStart(64, "0");
+}
+
+function malleateP256SignatureHex(signatureHex) {
+  const normalized = String(signatureHex || "");
+  const rHex = normalized.slice(0, 64);
+  const s = p256SignatureS(normalized);
+  return `${rHex}${fixedWidthScalarHex(P256_ORDER - s)}`;
+}
+
+function actionEnvelopePayload(audit) {
+  return {
+    matchId: audit.matchId,
+    seq: Number(audit.seq),
+    actor: Number(audit.actor),
+    signer: Number(audit.signer ?? audit.actor),
+    prevStateHash: audit.prevStateHash,
+    command: audit.command,
+    clock: audit.clock,
+    openings: audit.openings || [],
+    rngReveals: audit.rngReveals || [],
+    shuffleProofs: audit.shuffleProofs || [],
+    privateViewProofs: audit.privateViewProofs || [],
+    publicCheckpointHash: audit.publicCheckpointHash,
+    nextStateHash: audit.nextStateHash,
+  };
 }
 
 function verifyEnvelopeOnlyTranscript(transcript, options = {}) {
@@ -463,6 +501,37 @@ test("signed audit envelopes verify and reject tampering", async () => {
   );
 });
 
+test("audit payload signatures are canonical low-S P-256 signatures", async () => {
+  const keyPair = await createAuditSessionKey(webcrypto);
+  const payload = {
+    matchId: "m-low-s",
+    seq: 1,
+    actor: 0,
+    signer: 0,
+    prevStateHash: "0".repeat(64),
+    command: { type: "priority_action", action_index: 0 },
+    openings: [],
+    rngReveals: [],
+    shuffleProofs: [],
+    privateViewProofs: [],
+    publicCheckpointHash: "public-checkpoint-low-s",
+    nextStateHash: "1".repeat(64),
+  };
+  const signature = await signAuditPayload(keyPair, payload, webcrypto);
+  assert.equal(signature.length, 128);
+  assert.ok(p256SignatureS(signature) <= P256_HALF_ORDER);
+
+  const publicKey = await importAuditPublicKey(
+    await exportAuditPublicKey(keyPair, webcrypto),
+    webcrypto,
+  );
+  assert.equal(await verifyAuditPayload(publicKey, payload, signature, webcrypto), true);
+  assert.equal(
+    await verifyAuditPayload(publicKey, payload, malleateP256SignatureHex(signature), webcrypto),
+    false,
+  );
+});
+
 test("action quorum certificates require 2-of-3 or 3-of-4 votes", async () => {
   assert.equal(actionQuorumThreshold(2), 0);
   assert.equal(actionQuorumThreshold(3), 2);
@@ -609,9 +678,15 @@ test("three-player live transcripts verify with a 2-of-3 action quorum", async (
   );
 });
 
-test("disconnect forfeits verify with peer-signed timeout evidence", async () => {
+test("disconnect timeout policy forfeits require unanimous non-target consent", async () => {
+  assert.equal(disconnectForfeitVoteThreshold(0), 0);
+  assert.equal(disconnectForfeitVoteThreshold(1), 1);
+  assert.equal(disconnectForfeitVoteThreshold(2), 2);
+  assert.equal(disconnectForfeitVoteThreshold(3), 3);
+
   const matchId = "m-disconnect-forfeit";
   const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
     createAuditSessionKey(webcrypto),
     createAuditSessionKey(webcrypto),
     createAuditSessionKey(webcrypto),
@@ -650,7 +725,7 @@ test("disconnect forfeits verify with peer-signed timeout evidence", async () =>
   const command = {
     type: "forfeit_player",
     player: 1,
-    reason: "peer_claimed_disconnect_timeout",
+    reason: DISCONNECT_FORFEIT_REASON,
     disconnected_peer_id: "peer-1",
     disconnect_timeout_ms: 60000,
     disconnected_at_ms: 100000,
@@ -706,6 +781,14 @@ test("disconnect forfeits verify with peer-signed timeout evidence", async () =>
   await assert.rejects(
     () => verifyDisconnectForfeitCertificate({
       certificate: disconnectCertificate,
+      command: { ...command, matchId },
+      players: [players[0], players[2], players[3]],
+    }, webcrypto),
+    /expected at least 3/,
+  );
+  await assert.rejects(
+    () => verifyDisconnectForfeitCertificate({
+      certificate: disconnectCertificate,
       command: { ...command, matchId, disconnected_peer_id: "peer-forged" },
       players: [players[0], players[2]],
     }, webcrypto),
@@ -736,7 +819,7 @@ test("disconnect forfeits verify with peer-signed timeout evidence", async () =>
   }, webcrypto);
   const transcript = await buildCurrentProtocolTranscript({
     matchId,
-    players,
+    players: players.slice(0, 3),
     playerCount: 3,
     actions: [{ seq: 1, actorIndex: 0, command, audit }],
   });
@@ -957,6 +1040,57 @@ test("two-player transcripts remain tamper-evident without action quorum", async
       }],
     }),
     /command mismatch/,
+  );
+});
+
+test("action-fork disputes ignore alternate signatures for the same signed payload", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const command = { type: "priority_action", action_index: 0 };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-action-same-payload",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-same-payload",
+  }, webcrypto);
+  const action = { seq: 1, actorIndex: 0, command, audit };
+  const payload = actionEnvelopePayload(audit);
+  let alternateSignature = audit.signature;
+  for (let attempt = 0; attempt < 8 && alternateSignature === audit.signature; attempt += 1) {
+    alternateSignature = await signAuditPayload(keys[0], payload, webcrypto);
+  }
+  assert.notEqual(alternateSignature, audit.signature);
+
+  const duplicateAction = cloneTestPayload(action);
+  duplicateAction.audit.signature = alternateSignature;
+  const dispute = buildActionForkDisputeEvidence({
+    sequence: 1,
+    existingAction: action,
+    conflictingAction: duplicateAction,
+  });
+  assert.deepEqual(dispute.accusedPlayers, []);
+
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-action-same-payload",
+    players,
+    playerCount: 2,
+    actions: [action],
+  });
+  transcript.disputes = [dispute];
+
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(transcript),
+    /does not contain conflicting actions/,
   );
 });
 
