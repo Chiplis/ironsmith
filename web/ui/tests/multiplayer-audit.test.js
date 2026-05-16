@@ -1390,7 +1390,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
       tokens,
     }),
   };
-  const buildTranscript = async (openings) => {
+  const buildTranscript = async (openings, shuffleProofs = []) => {
     const audit = await buildSignedActionEnvelope({
       keyPair: playerKeys[0],
       matchId,
@@ -1399,6 +1399,7 @@ test("ziffle public openings must prove shuffled position to committed slot", as
       prevStateHash: "0".repeat(64),
       command,
       openings,
+      shuffleProofs,
       publicCheckpointHash: "public-checkpoint-after-ziffle-opening",
     }, webcrypto);
     return buildCurrentProtocolTranscript({
@@ -1431,6 +1432,63 @@ test("ziffle public openings must prove shuffled position to committed slot", as
     () => verifyEnvelopeOnlyTranscript(transcript, {
       verifyZiffleOpening: async () => ({ originalSlot: 0 }),
     }),
+    /reveals a different shuffle slot/,
+  );
+
+  const remapShuffleProof = {
+    type: "ziffle_shuffle",
+    requirementId: "shuffle-remap-1",
+    owner: 0,
+    zone: "library",
+    epoch: 1,
+    deckCount: 2,
+    context: `${matchId}:action:1:shuffle:shuffle-remap-1:0:library`,
+    keyContext: matchId,
+    keys: ziffleKeys,
+    steps: ceremony.steps,
+    deckHash: "remapped-ziffle-deck-0",
+    beforeOrder: [42, 77],
+    afterOrder: [42, 77],
+  };
+  const remappedOpeningBase = {
+    ...baseOpening,
+    objectId: 42,
+    position: 0,
+    positionCommitment: "ziffle:remapped-ziffle-deck-0:0",
+  };
+  const remappedOpening = {
+    ...remappedOpeningBase,
+    ziffleReveal: buildZiffleOpeningProof({
+      opening: remappedOpeningBase,
+      ceremony: remapShuffleProof,
+      position: 0,
+      originalSlot: 1,
+      shuffleOriginalSlot: 0,
+      positionCommitment: remappedOpeningBase.positionCommitment,
+      tokens,
+    }),
+  };
+  const remappedTranscript = await buildTranscript([remappedOpening], [remapShuffleProof]);
+  assert.equal((await verifyEnvelopeOnlyTranscript(remappedTranscript, {
+    verifyShuffleProof: async () => {},
+    verifyZiffleOpening: async ({ proof }) => ({
+      originalSlot: Number(proof.shuffleOriginalSlot ?? proof.originalSlot),
+    }),
+  })).valid, true);
+
+  await assert.rejects(
+    async () => verifyEnvelopeOnlyTranscript(
+      await buildTranscript([remappedOpening], [{
+        ...remapShuffleProof,
+        afterOrder: [77, 42],
+      }]),
+      {
+        verifyShuffleProof: async () => {},
+        verifyZiffleOpening: async ({ proof }) => ({
+          originalSlot: Number(proof.shuffleOriginalSlot ?? proof.originalSlot),
+        }),
+      },
+    ),
     /reveals a different committed slot/,
   );
 });
@@ -1889,12 +1947,15 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
     requirementId: "shuffle-1",
     owner: 0,
     zone: "library",
+    epoch: 1,
     deckCount: 2,
-    context: "m-shuffle",
+    context: "m-shuffle:action:1:shuffle:shuffle-1:0:library",
     keyContext: "m-shuffle",
     keys: ziffleKeys,
     steps: [],
     deckHash: "deck-hash",
+    beforeOrder: [1001, 1002],
+    afterOrder: [1002, 1001],
   };
   const buildTranscriptForProof = async (proof) => {
     const audit = await buildSignedActionEnvelope({
@@ -1931,6 +1992,29 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
   });
   assert.equal(report.valid, true);
 
+  const missingOrderTranscript = await buildTranscriptForProof({
+    ...shuffleProof,
+    beforeOrder: undefined,
+    afterOrder: undefined,
+  });
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(missingOrderTranscript, {
+      verifyShuffleProof: async () => {},
+    }),
+    /missing its object order/,
+  );
+
+  const wrongEpochTranscript = await buildTranscriptForProof({
+    ...shuffleProof,
+    epoch: 2,
+  });
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(wrongEpochTranscript, {
+      verifyShuffleProof: async () => {},
+    }),
+    /different action/,
+  );
+
   const badRosterTranscript = await buildTranscriptForProof({
     ...shuffleProof,
     keys: ziffleKeys.map((key, index) => ({
@@ -1947,7 +2031,7 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
 
   const badContextTranscript = await buildTranscriptForProof({
     ...shuffleProof,
-    context: "attacker-match",
+    context: "attacker-match:action:1:shuffle:shuffle-1:0:library",
     keyContext: "attacker-match",
   });
   await assert.rejects(
