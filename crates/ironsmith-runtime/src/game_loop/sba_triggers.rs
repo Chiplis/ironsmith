@@ -479,6 +479,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
             triggering_event,
             entry.object_id,
             None,
+            Some(&entry.optional_costs_paid),
         )
     {
         return;
@@ -598,6 +599,7 @@ pub(super) fn can_stack_trigger_this_turn(
             &trigger.triggering_event,
             trigger.source,
             Some(trigger.trigger_identity),
+            None,
         ),
         _ => true,
     }

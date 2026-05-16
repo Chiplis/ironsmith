@@ -1264,16 +1264,31 @@ pub fn can_begin_to_cast_from_hand_for_suspend(
 }
 
 pub(crate) fn spell_has_legal_targets_for_cast_with_view(
+    game: &GameState,
     spell: &crate::object::Object,
     spell_id: ObjectId,
+    program_override: Option<&crate::resolution::ResolutionProgram>,
     effects_override: Option<&[crate::effect::Effect]>,
     player: PlayerId,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    let synthesized_aura_effects = if effects_override.is_none()
-        && spell.spell_effect.is_none()
-        && spell.subtypes.contains(&crate::types::Subtype::Aura)
-    {
+    if let Some(effects) = effects_override {
+        return effects.is_empty()
+            || view.spell_has_legal_targets(effects, player, Some(spell_id), None);
+    }
+
+    if let Some(program) = program_override.or(spell.spell_effect.as_ref()) {
+        return crate::game_loop::spell_program_has_legal_targets_with_modes_and_view(
+            game,
+            program,
+            player,
+            Some(spell_id),
+            None,
+            view,
+        );
+    }
+
+    let synthesized_aura_effects = if spell.subtypes.contains(&crate::types::Subtype::Aura) {
         spell
             .aura_attach_filter
             .clone()
@@ -1281,13 +1296,74 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
     } else {
         None
     };
-    let effects = effects_override.unwrap_or_else(|| {
-        synthesized_aura_effects
-            .as_deref()
-            .or(spell.spell_effect.as_deref())
-            .unwrap_or(&[])
-    });
+    let effects = synthesized_aura_effects.as_deref().unwrap_or(&[]);
     effects.is_empty() || view.spell_has_legal_targets(effects, player, Some(spell_id), None)
+}
+
+fn spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+    game: &GameState,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    program_override: Option<&crate::resolution::ResolutionProgram>,
+    effects_override: Option<&[crate::effect::Effect]>,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if spell_has_legal_targets_for_cast_with_view(
+        game,
+        spell,
+        spell_id,
+        program_override,
+        effects_override,
+        player,
+        view,
+    ) {
+        return true;
+    }
+
+    if spell.optional_costs.is_empty() {
+        return false;
+    }
+
+    for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
+        if optional_cost.cost.mana_cost().is_some() {
+            continue;
+        }
+        if crate::cost::can_pay_cost_with_reason(
+            game,
+            spell_id,
+            player,
+            &optional_cost.cost,
+            crate::costs::PaymentReason::CastSpell,
+        )
+        .is_err()
+        {
+            continue;
+        }
+
+        let mut hypothetical = game.clone();
+        let Some(hypothetical_spell) = hypothetical.object_mut(spell_id) else {
+            continue;
+        };
+        hypothetical_spell.optional_costs_paid =
+            crate::cost::OptionalCostsPaid::from_costs(&hypothetical_spell.optional_costs);
+        hypothetical_spell.optional_costs_paid.pay_times(index, 1);
+
+        let hypothetical_view = DerivedGameView::new(&hypothetical);
+        if spell_has_legal_targets_for_cast_with_view(
+            &hypothetical,
+            spell,
+            spell_id,
+            program_override,
+            effects_override,
+            player,
+            &hypothetical_view,
+        ) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn mana_cost_can_be_paid_with_view(
@@ -1441,17 +1517,20 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let target_started_at = PerfTimer::start();
-    let effects = cast_view
+    let program = cast_view
         .as_ref()
-        .and_then(|view| view.spell_effect.as_deref())
-        .or(spell.spell_effect.as_deref());
-    let has_legal_targets = spell_has_legal_targets_for_cast_with_view(
-        spell_for_checks,
-        spell.id,
-        effects,
-        player,
-        view,
-    );
+        .and_then(|view| view.spell_effect.as_ref())
+        .or(spell.spell_effect.as_ref());
+    let has_legal_targets =
+        spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+            game,
+            spell_for_checks,
+            spell.id,
+            program,
+            None,
+            player,
+            view,
+        );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
         ctx.add_total_ms(total_started_at.elapsed_ms());
@@ -1649,14 +1728,22 @@ pub(crate) fn can_cast_with_cost_with_context(
     ctx.add_timing_ms(timing_started_at.elapsed_ms());
 
     let target_started_at = PerfTimer::start();
-    let effects = effects_override.or_else(|| spell_for_checks.spell_effect.as_deref());
-    let has_legal_targets = spell_has_legal_targets_for_cast_with_view(
-        spell_for_checks,
-        spell_id,
-        effects,
-        player,
-        view,
-    );
+    let effects = effects_override;
+    let program = if effects_override.is_some() {
+        None
+    } else {
+        spell_for_checks.spell_effect.as_ref()
+    };
+    let has_legal_targets =
+        spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+            game,
+            spell_for_checks,
+            spell_id,
+            program,
+            effects,
+            player,
+            view,
+        );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
         return false;

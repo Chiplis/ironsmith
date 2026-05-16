@@ -30,11 +30,13 @@ struct TurnFaceUpSpec {
     cost: crate::cost::TotalCost,
     description: &'static str,
     megamorph: bool,
+    disguise: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TurnFaceUpMethod {
     TurnFaceUpAbility,
+    DisguiseAbility,
     MegamorphAbility,
     PrintedManaCost,
 }
@@ -43,6 +45,7 @@ impl TurnFaceUpMethod {
     pub fn description(self) -> &'static str {
         match self {
             Self::TurnFaceUpAbility => "turn-face-up cost",
+            Self::DisguiseAbility => "disguise cost",
             Self::MegamorphAbility => "megamorph cost",
             Self::PrintedManaCost => "mana cost",
         }
@@ -67,6 +70,7 @@ fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<T
             cost: crate::cost::TotalCost::mana(cost),
             description: TurnFaceUpMethod::PrintedManaCost.description(),
             megamorph: false,
+            disguise: false,
         });
     }
 
@@ -88,18 +92,23 @@ fn append_turn_face_up_specs_from_abilities(
             continue;
         };
         let candidate = TurnFaceUpSpec {
-            method: if static_ability.is_megamorph() {
+            method: if static_ability.is_disguise() {
+                TurnFaceUpMethod::DisguiseAbility
+            } else if static_ability.is_megamorph() {
                 TurnFaceUpMethod::MegamorphAbility
             } else {
                 TurnFaceUpMethod::TurnFaceUpAbility
             },
             cost: cost.clone(),
-            description: if static_ability.is_megamorph() {
+            description: if static_ability.is_disguise() {
+                TurnFaceUpMethod::DisguiseAbility.description()
+            } else if static_ability.is_megamorph() {
                 TurnFaceUpMethod::MegamorphAbility.description()
             } else {
                 TurnFaceUpMethod::TurnFaceUpAbility.description()
             },
             megamorph: static_ability.is_megamorph(),
+            disguise: static_ability.is_disguise(),
         };
         specs.push(candidate);
     }
@@ -127,16 +136,7 @@ pub fn turn_face_up_cost_display(
     let object = game.object(permanent_id)?;
     let spec = turn_face_up_spec(game, object, method)?;
     let controller = game.controller_of(object);
-    Some(
-        adjust_total_cost_mana_components_for_reason(
-            game,
-            controller,
-            permanent_id,
-            &spec.cost,
-            crate::costs::PaymentReason::TurnFaceUp,
-        )
-        .display(),
-    )
+    Some(adjusted_turn_face_up_cost(game, controller, permanent_id, &spec).display())
 }
 
 fn turn_face_up_spec(
@@ -147,6 +147,129 @@ fn turn_face_up_spec(
     turn_face_up_specs(game, object)
         .into_iter()
         .find(|spec| spec.method == method)
+}
+
+fn reduce_total_cost_mana_components(
+    total_cost: &crate::cost::TotalCost,
+    generic_reduction: u32,
+    mana_cost_reduction: Option<&crate::mana::ManaCost>,
+) -> crate::cost::TotalCost {
+    match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            let mut remaining_generic = generic_reduction;
+            let mut remaining_mana_cost_reduction = mana_cost_reduction.cloned();
+            crate::cost::TotalCost::from_costs(
+                costs
+                    .iter()
+                    .map(|cost| {
+                        if let Some(mana_cost) = cost.mana_cost_ref() {
+                            let before = mana_cost.generic_mana_total();
+                            let mut adjusted = mana_cost.reduce_generic(remaining_generic);
+                            let reduced = before.saturating_sub(adjusted.generic_mana_total());
+                            remaining_generic = remaining_generic.saturating_sub(reduced);
+                            if let Some(reduction) = remaining_mana_cost_reduction.take() {
+                                adjusted = crate::decision::reduce_mana_cost(&adjusted, &reduction);
+                            }
+                            crate::costs::Cost::mana(adjusted)
+                        } else {
+                            cost.clone()
+                        }
+                    })
+                    .collect(),
+            )
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| {
+                    reduce_total_cost_mana_components(
+                        branch,
+                        generic_reduction,
+                        mana_cost_reduction,
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+
+fn disguise_turn_face_up_cost_reductions(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+) -> (u32, Option<crate::mana::ManaCost>) {
+    let Some(object) = game.object(permanent_id) else {
+        return (0, None);
+    };
+    let Some(restore) = object.face_down_cast_state.as_ref() else {
+        return (0, None);
+    };
+
+    let mut generic_reduction = 0u32;
+    let mut mana_cost_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    for ability in &restore.abilities {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if let Some(reduction) = static_ability.this_spell_cost_reduction()
+            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                game,
+                permanent_id,
+                &reduction.condition,
+                &[],
+            )
+        {
+            let amount = crate::decision::resolve_this_spell_cost_reduction_value(
+                game, player, object, reduction,
+            );
+            if amount > 0 {
+                generic_reduction = generic_reduction.saturating_add(amount as u32);
+            }
+        }
+        if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost()
+            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                game,
+                permanent_id,
+                &reduction.condition,
+                &[],
+            )
+        {
+            mana_cost_reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+        }
+    }
+
+    let mana_cost_reduction = (!mana_cost_reduction_pips.is_empty())
+        .then(|| crate::mana::ManaCost::from_pips(mana_cost_reduction_pips));
+    (generic_reduction, mana_cost_reduction)
+}
+
+fn adjusted_turn_face_up_cost(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    spec: &TurnFaceUpSpec,
+) -> crate::cost::TotalCost {
+    let adjusted = adjust_total_cost_mana_components_for_reason(
+        game,
+        player,
+        permanent_id,
+        &spec.cost,
+        crate::costs::PaymentReason::TurnFaceUp,
+    );
+    if !spec.disguise {
+        return adjusted;
+    }
+    let (generic_reduction, mana_cost_reduction) =
+        disguise_turn_face_up_cost_reductions(game, player, permanent_id);
+    if generic_reduction == 0 && mana_cost_reduction.is_none() {
+        adjusted
+    } else {
+        reduce_total_cost_mana_components(
+            &adjusted,
+            generic_reduction,
+            mana_cost_reduction.as_ref(),
+        )
+    }
 }
 
 fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
@@ -605,7 +728,7 @@ fn can_pay_turn_face_up_spec(
         game,
         permanent_id,
         player,
-        &spec.cost,
+        &adjusted_turn_face_up_cost(game, player, permanent_id, spec),
         crate::costs::PaymentReason::TurnFaceUp,
     )
     .map_err(cost_error_to_action_error)
@@ -646,13 +769,7 @@ fn perform_turn_face_up(
             controller: player,
         },
     );
-    let adjusted_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        permanent_id,
-        &spec.cost,
-        crate::costs::PaymentReason::TurnFaceUp,
-    );
+    let adjusted_cost = adjusted_turn_face_up_cost(game, player, permanent_id, &spec);
     pay_total_cost_with_choice(
         game,
         player,
@@ -2934,6 +3051,118 @@ mod tests {
 
         assert!(!game.is_face_down(morph_id));
         assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn disguise_overlay_grants_ward_and_uses_own_cost_reduction() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let disguise_card = CardBuilder::new(CardId::new(), "Disguised Codebreaker Probe")
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(1),
+                ManaSymbol::Red,
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let permanent_id = game.create_object_from_card(&disguise_card, alice, Zone::Battlefield);
+
+        let mut graveyard_filter = ObjectFilter::instant_or_sorcery();
+        graveyard_filter.zone = Some(Zone::Graveyard);
+        graveyard_filter.stack_kind = None;
+        graveyard_filter.owner = Some(crate::filter::PlayerFilter::You);
+
+        let abilities = &mut game
+            .object_mut(permanent_id)
+            .expect("disguise permanent should exist")
+            .abilities;
+        abilities.push(Ability::static_ability(StaticAbility::disguise(
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(5),
+                ManaSymbol::Red,
+            ])),
+        )));
+        abilities.push(Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::ThisSpellCostReduction::new(
+                crate::effect::Value::Count(graveyard_filter),
+                crate::static_abilities::ThisSpellCostCondition::Always,
+            ),
+        )));
+
+        for index in 0..3 {
+            let card = CardBuilder::new(CardId::new(), format!("Bolt {index}"))
+                .card_types(vec![CardType::Instant])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Graveyard);
+        }
+
+        game.object_mut(permanent_id)
+            .expect("disguise permanent should exist")
+            .apply_face_down_cast_overlay();
+        game.set_face_down(permanent_id);
+
+        let object = game
+            .object(permanent_id)
+            .expect("face-down permanent should exist");
+        assert!(object.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.is_disguise()
+            )
+        }));
+        assert!(object.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.ward_cost().is_some()
+            )
+        }));
+        assert_eq!(
+            turn_face_up_cost_display(&game, permanent_id, TurnFaceUpMethod::DisguiseAbility)
+                .as_deref(),
+            Some("{2}{R}")
+        );
+
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 3);
+
+        assert!(
+            can_turn_face_up_with_method(
+                &game,
+                alice,
+                permanent_id,
+                TurnFaceUpMethod::DisguiseAbility,
+            )
+            .is_ok(),
+            "disguise cost reduction should make {5}{R} payable as {2}{R}"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            permanent_id,
+            TurnFaceUpMethod::DisguiseAbility,
+            &mut dm,
+        )
+        .expect("turning a disguised permanent face up should succeed");
+
+        assert!(!game.is_face_down(permanent_id));
+        assert_eq!(
+            game.object(permanent_id)
+                .expect("face-up permanent should exist")
+                .name,
+            "Disguised Codebreaker Probe"
+        );
     }
 
     #[test]

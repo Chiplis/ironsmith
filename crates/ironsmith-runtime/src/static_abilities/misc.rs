@@ -215,6 +215,40 @@ impl StaticAbilityKind for Morph {
     }
 }
 
+/// Disguise keyword ability (turn face up by paying disguise cost as a special action).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Disguise {
+    pub cost: crate::cost::TotalCost,
+}
+
+impl Disguise {
+    pub fn new(cost: crate::cost::TotalCost) -> Self {
+        Self { cost }
+    }
+}
+
+impl StaticAbilityKind for Disguise {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Disguise
+    }
+
+    fn display(&self) -> String {
+        format!("Disguise {}", self.cost.display())
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
+        Some(&self.cost)
+    }
+
+    fn is_disguise(&self) -> bool {
+        true
+    }
+}
+
 /// Megamorph keyword ability (turn face up by paying megamorph cost as a special action).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Megamorph {
@@ -4938,6 +4972,19 @@ mod tests {
         let ability = Morph::new(cost.clone());
         assert_eq!(ability.id(), StaticAbilityId::Morph);
         assert_eq!(ability.turn_face_up_cost(), Some(&cost));
+        assert!(!ability.is_megamorph());
+        assert!(!ability.is_disguise());
+    }
+
+    #[test]
+    fn test_disguise_static_ability_reports_turn_face_up_cost() {
+        let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Generic(2),
+        ]]));
+        let ability = Disguise::new(cost.clone());
+        assert_eq!(ability.id(), StaticAbilityId::Disguise);
+        assert_eq!(ability.turn_face_up_cost(), Some(&cost));
+        assert!(ability.is_disguise());
         assert!(!ability.is_megamorph());
     }
 

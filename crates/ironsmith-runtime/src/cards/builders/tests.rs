@@ -16255,6 +16255,35 @@ fn parse_megamorph_keyword_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_disguise_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Disguise Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Disguise {R/W}{R/W}")
+        .expect("disguise keyword line should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::Disguise),
+        "expected disguise static ability, got {ids:?}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        compiled.to_ascii_lowercase().contains("disguise") && compiled.contains("{R/W}{R/W}"),
+        "expected disguise line in compiled text, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_morph_keyword_line_with_trailing_clause_fails() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Morph Variant")
         .card_types(vec![CardType::Creature])

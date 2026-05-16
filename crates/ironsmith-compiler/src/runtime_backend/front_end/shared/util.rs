@@ -4374,7 +4374,9 @@ pub(crate) fn parse_morph_keyword_line(
         "Morph"
     };
     let text = format!("{label}—{}", cost.display());
-    let static_ability = if is_megamorph {
+    let static_ability = if is_disguise {
+        StaticAbility::disguise(cost)
+    } else if is_megamorph {
         StaticAbility::megamorph(cost)
     } else {
         StaticAbility::morph(cost)

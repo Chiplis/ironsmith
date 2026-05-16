@@ -187,6 +187,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     Ward(TotalCost<C>),
     Morph(TotalCost<C>),
+    Disguise(TotalCost<C>),
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
     CantBeBlockedByMoreThan(usize),
@@ -820,6 +821,9 @@ where
             }
             StaticAbilityPayload::Morph(cost) => {
                 StaticAbilityPayload::Morph(map_total_cost(cost, map_cost)?)
+            }
+            StaticAbilityPayload::Disguise(cost) => {
+                StaticAbilityPayload::Disguise(map_total_cost(cost, map_cost)?)
             }
             StaticAbilityPayload::Megamorph(cost) => {
                 StaticAbilityPayload::Megamorph(map_total_cost(cost, map_cost)?)
@@ -1526,6 +1530,14 @@ impl<
             id: Some(StaticAbilityId::Morph),
             label: "morph".to_string(),
             payload: StaticAbilityPayload::Morph(cost),
+        }
+    }
+
+    pub fn disguise(cost: TotalCost<C>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Disguise),
+            label: "disguise".to_string(),
+            payload: StaticAbilityPayload::Disguise(cost),
         }
     }
 

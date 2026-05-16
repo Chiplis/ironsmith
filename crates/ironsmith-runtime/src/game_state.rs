@@ -7893,9 +7893,10 @@ impl GameState {
         {
             return false;
         }
-        let Some(other_def) =
-            self.linked_face_definition_by_name_or_id(target.other_face_name.as_deref(), target.other_face)
-        else {
+        let Some(other_def) = self.linked_face_definition_by_name_or_id(
+            target.other_face_name.as_deref(),
+            target.other_face,
+        ) else {
             return false;
         };
         if other_def.card.card_types.contains(&CardType::Instant)
@@ -7959,14 +7960,16 @@ impl GameState {
 
     /// Apply day/night setup rules for a permanent that just entered the battlefield.
     pub fn handle_day_night_object_entered(&mut self, id: ObjectId) {
-        let Some((sets_day_if_unset, daybound_or_nightbound)) = self.object(id).and_then(|object| {
-            (object.zone == Zone::Battlefield).then(|| {
-                (
-                    Self::object_starts_daytime_if_unset_as_enters(object),
-                    Self::object_has_day_or_nightbound_keyword(object),
-                )
+        let Some((sets_day_if_unset, daybound_or_nightbound)) =
+            self.object(id).and_then(|object| {
+                (object.zone == Zone::Battlefield).then(|| {
+                    (
+                        Self::object_starts_daytime_if_unset_as_enters(object),
+                        Self::object_has_day_or_nightbound_keyword(object),
+                    )
+                })
             })
-        }) else {
+        else {
             return;
         };
 

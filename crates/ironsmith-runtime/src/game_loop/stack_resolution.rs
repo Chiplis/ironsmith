@@ -688,6 +688,7 @@ pub(super) fn resolve_stack_entry_full(
             triggering_event,
             execution_source,
             None,
+            Some(&entry.optional_costs_paid),
         )
     {
         // Condition no longer true - ability resolves but does nothing

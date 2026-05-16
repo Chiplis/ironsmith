@@ -4834,6 +4834,80 @@ mod tests {
         );
     }
 
+    #[test]
+    fn optional_cost_can_make_cast_time_targets_legal() {
+        use crate::effect::Condition;
+        use crate::game_state::StackEntry;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let island = basic_island();
+        game.create_object_from_definition(&island, alice, Zone::Battlefield);
+        game.create_object_from_definition(&island, alice, Zone::Battlefield);
+
+        let card = CardBuilder::new(CardId::from_raw(95), "Long River's Pull Variant")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Blue,
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&card, alice, Zone::Hand);
+
+        let gift_player_cost = crate::costs::Cost::effect(
+            crate::effects::ChoosePlayerEffect::new(
+                PlayerFilter::You,
+                PlayerFilter::Opponent,
+                "gifted_player",
+            )
+            .remember_as_chosen_player(),
+        );
+        let mut creature_spell_filter = ObjectFilter::spell();
+        creature_spell_filter.card_types.push(CardType::Creature);
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects: vec![Effect::counter(ChooseSpec::target(ChooseSpec::Object(
+                    creature_spell_filter,
+                )))],
+                self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                    Condition::ThisSpellPaidLabel("Gift".to_string()),
+                    vec![Effect::counter(ChooseSpec::target_spell())],
+                )],
+            }]);
+        if let Some(spell) = game.object_mut(spell_id) {
+            spell.optional_costs = vec![crate::cost::OptionalCost::custom(
+                "Gift a card",
+                crate::cost::TotalCost::from_cost(gift_player_cost),
+            )];
+            spell.spell_effect = Some(program);
+        }
+
+        let dummy_spell = CardBuilder::new(CardId::from_raw(96), "Noncreature Stack Spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+            .build();
+        let dummy_id = game.create_object_from_card(&dummy_spell, bob, Zone::Stack);
+        game.push_to_stack(StackEntry::new(dummy_id, bob));
+
+        let actions = compute_legal_actions(&game, alice);
+        let can_cast = actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )
+        });
+        assert!(
+            can_cast,
+            "a payable Gift cost should expose the promised branch's noncreature spell target"
+        );
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_if_effect_counter_spell_not_castable_without_stack_target() {

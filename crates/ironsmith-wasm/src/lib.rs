@@ -492,6 +492,8 @@ struct HiddenAuditCard {
     slot: u16,
     commitment: String,
     card: Option<String>,
+    face_down: bool,
+    foretold: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1039,7 +1041,9 @@ fn push_hidden_move_requirements(
     }
 
     if after_card.card.is_some()
-        && !matches!(after_card.zone, Zone::Library | Zone::Hand | Zone::Exile)
+        && !matches!(after_card.zone, Zone::Library | Zone::Hand)
+        && !after_card.face_down
+        && !after_card.foretold
     {
         push_requirement_unique(
             requirements,
@@ -1284,6 +1288,8 @@ impl WasmGame {
                 slot: info.slot,
                 commitment: info.commitment.clone(),
                 card: object.card.as_ref().map(|_| object.name.clone()),
+                face_down: self.game.is_face_down(object_id),
+                foretold: self.game.is_foretold(object_id),
             };
             state
                 .hidden_by_key
@@ -4010,6 +4016,39 @@ mod native_tests {
                 && requirement.zone == "hand"
                 && requirement.object_id == Some(hidden_hand.0)
                 && requirement.commitment.as_deref() == Some("bob-hand-commitment")
+        }));
+    }
+
+    #[test]
+    fn crypto_requirements_public_open_revealed_hidden_card_moved_to_exile() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        let hidden_hand_card = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            3,
+            "alice-hidden-hand-commitment".to_string(),
+        );
+        let definition = ironsmith_registry::cards::definitions::ornithopter();
+        wasm.game
+            .reveal_hidden_card_with_definition(hidden_hand_card, &definition)
+            .expect("hidden hand card should reveal locally");
+
+        let before = wasm.capture_crypto_audit_state();
+        let exiled_id = wasm
+            .game
+            .move_object_by_effect(hidden_hand_card, Zone::Exile)
+            .expect("hidden hand card should move to exile");
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "public_open"
+                && requirement.owner == alice.index() as u8
+                && requirement.zone == "face_down_exile"
+                && requirement.object_id == Some(exiled_id.0)
+                && requirement.commitment.as_deref() == Some("alice-hidden-hand-commitment")
+                && requirement.card.as_deref() == Some("Ornithopter")
         }));
     }
 

@@ -970,6 +970,7 @@ pub(crate) fn check_triggers_with_view(
                         trigger_event,
                         obj_id,
                         Some(trigger_identity),
+                        None,
                     )
                 {
                     continue;
@@ -1043,6 +1044,7 @@ pub(crate) fn check_triggers_with_view(
                             trigger_event,
                             snapshot.object_id,
                             Some(trigger_identity),
+                            None,
                         )
                     {
                         continue;
@@ -1114,6 +1116,7 @@ pub(crate) fn check_triggers_with_view(
                         trigger_event,
                         snapshot.object_id,
                         Some(trigger_identity),
+                        None,
                     )
                 {
                     continue;
@@ -1178,6 +1181,7 @@ pub(crate) fn check_triggers_with_view(
                         trigger_event,
                         snapshot.object_id,
                         Some(trigger_identity),
+                        None,
                     )
                 {
                     continue;
@@ -1467,6 +1471,7 @@ fn collect_attached_source_lki_triggers(
                     trigger_event,
                     source_snapshot.object_id,
                     Some(trigger_identity),
+                    None,
                 )
             {
                 continue;
@@ -1598,6 +1603,7 @@ fn collect_state_triggers_for_object(
             &trigger_event,
             obj.id,
             Some(trigger_identity),
+            None,
         ) {
             continue;
         }
@@ -1876,6 +1882,7 @@ fn check_triggers_in_zone(
                     trigger_event,
                     obj_id,
                     Some(trigger_identity),
+                    None,
                 )
             {
                 continue;
@@ -2081,6 +2088,7 @@ pub fn verify_intervening_if(
     event: &TriggerEvent,
     source_object_id: ObjectId,
     trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
@@ -2125,7 +2133,37 @@ pub fn verify_intervening_if(
         ability_index: None,
         options: Default::default(),
     };
-    crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
+    evaluate_intervening_if_condition(game, condition, &eval_ctx, optional_costs_paid)
+}
+
+fn evaluate_intervening_if_condition(
+    game: &GameState,
+    condition: &crate::ConditionExpr,
+    eval_ctx: &crate::condition_eval::ExternalEvaluationContext<'_>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
+    match condition {
+        crate::effect::Condition::Not(inner) => {
+            !evaluate_intervening_if_condition(game, inner, eval_ctx, optional_costs_paid)
+        }
+        crate::effect::Condition::And(left, right) => {
+            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
+                && evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
+        }
+        crate::effect::Condition::Or(left, right) => {
+            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
+                || evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
+        }
+        crate::effect::Condition::ThisSpellWasKicked => optional_costs_paid.map_or_else(
+            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
+            crate::cost::OptionalCostsPaid::was_kicked,
+        ),
+        crate::effect::Condition::ThisSpellPaidLabel(label) => optional_costs_paid.map_or_else(
+            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
+            |paid| paid.was_paid_label(label),
+        ),
+        _ => crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
+    }
 }
 
 #[cfg(test)]

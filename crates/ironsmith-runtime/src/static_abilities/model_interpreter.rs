@@ -912,6 +912,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::Ward(cost) => StaticAbility::ward(cost.clone()),
             ironsmith_core::StaticAbilityPayload::Morph(cost) => StaticAbility::morph(cost.clone()),
+            ironsmith_core::StaticAbilityPayload::Disguise(cost) => {
+                StaticAbility::disguise(cost.clone())
+            }
             ironsmith_core::StaticAbilityPayload::Megamorph(cost) => {
                 StaticAbility::megamorph(cost.clone())
             }
@@ -1595,6 +1598,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn is_megamorph(&self) -> bool {
         self.leaf_static_ability()
             .is_some_and(|ability| ability.is_megamorph())
+    }
+
+    fn is_disguise(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.is_disguise())
     }
 
     fn forbids_paying_life_for_cast_or_activate(&self) -> bool {

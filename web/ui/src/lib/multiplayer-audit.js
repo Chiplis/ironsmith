@@ -2351,10 +2351,11 @@ export function buildZiffleOpeningProof({
   ceremony,
   position = opening?.position,
   originalSlot = opening?.slot,
+  shuffleOriginalSlot = originalSlot,
   positionCommitment = opening?.positionCommitment,
   tokens = [],
 }) {
-  return {
+  const proof = {
     type: ZIFFLE_OPENING_PROOF_TYPE,
     owner: Number(opening?.owner ?? ceremony?.owner),
     position: Number(position),
@@ -2371,6 +2372,13 @@ export function buildZiffleOpeningProof({
     keys: normalizeZiffleKeys(ceremony?.keys || []),
     tokens: normalizeZiffleRevealTokens(tokens, position),
   };
+  if (opening?.objectId != null || opening?.object_id != null) {
+    proof.objectId = Number(opening.objectId ?? opening.object_id);
+  }
+  if (Number(shuffleOriginalSlot) !== Number(originalSlot)) {
+    proof.shuffleOriginalSlot = Number(shuffleOriginalSlot);
+  }
+  return proof;
 }
 
 function transcriptDeckManifestMap(transcript) {

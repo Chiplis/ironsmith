@@ -1461,12 +1461,18 @@ pub(super) fn continue_spell_cost_payment(
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.x_value = pending.x_value;
 
-            match cost.pay(game, &mut cost_ctx).map_err(|err| {
+            let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
                 GameLoopError::InvalidState(format!(
                     "Failed to pay deferred spell cost {}: {err:?}",
                     describe_cost_component(&cost)
                 ))
-            })? {
+            })?;
+            if cost_ctx.decision_maker.awaiting_choice() {
+                state.pending_cast = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+
+            match payment {
                 crate::costs::CostPaymentResult::Paid => {
                     record_immediate_cost_payment(
                         &mut pending.payment_trace,
@@ -2841,12 +2847,18 @@ pub(super) fn continue_activation_cost_payment(
                 )
             });
 
-            match cost.pay(game, &mut cost_ctx).map_err(|err| {
+            let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
                 GameLoopError::InvalidState(format!(
                     "Failed to pay deferred activation cost {}: {err:?}",
                     cost.display()
                 ))
-            })? {
+            })?;
+            if cost_ctx.decision_maker.awaiting_choice() {
+                state.pending_activation = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+
+            match payment {
                 crate::costs::CostPaymentResult::Paid => {
                     record_immediate_cost_payment(
                         &mut pending.payment_trace,

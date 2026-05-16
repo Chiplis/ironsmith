@@ -682,6 +682,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    /// Returns true if this is a disguise ability.
+    fn is_disguise(&self) -> bool {
+        false
+    }
+
     /// Returns true if this is an anthem effect.
     fn is_anthem(&self) -> bool {
         false
@@ -1328,6 +1333,10 @@ impl StaticAbility {
         self.0.is_megamorph()
     }
 
+    pub fn is_disguise(&self) -> bool {
+        self.0.is_disguise()
+    }
+
     pub fn cost_reduction(&self) -> Option<&CostReduction> {
         self.0.cost_reduction()
     }
@@ -1782,6 +1791,10 @@ impl StaticAbility {
 
     pub fn morph(cost: crate::cost::TotalCost) -> Self {
         Self::new(Morph::new(cost))
+    }
+
+    pub fn disguise(cost: crate::cost::TotalCost) -> Self {
+        Self::new(Disguise::new(cost))
     }
 
     pub fn megamorph(cost: crate::cost::TotalCost) -> Self {

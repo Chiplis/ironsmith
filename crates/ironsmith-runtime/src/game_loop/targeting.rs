@@ -1562,6 +1562,25 @@ pub(crate) fn spell_program_has_legal_targets_with_modes(
     spell_has_legal_targets_with_modes(game, &selected, caster, source_id, chosen_modes)
 }
 
+pub(crate) fn spell_program_has_legal_targets_with_modes_and_view(
+    game: &GameState,
+    program: &crate::resolution::ResolutionProgram,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let selected = cast_time_selected_effects_from_program(game, program, caster, source_id);
+    spell_has_legal_targets_with_modes_and_view(
+        game,
+        &selected,
+        caster,
+        source_id,
+        chosen_modes,
+        view,
+    )
+}
+
 pub(crate) fn spell_has_legal_targets_with_mode_preview(
     game: &GameState,
     effects: &[Effect],

@@ -126,4 +126,5 @@ pub(crate) use self::targeting::{
     extract_target_requirements_from_program_with_modes, spell_has_legal_targets_with_mode_preview,
     spell_has_legal_targets_with_modes, spell_has_legal_targets_with_modes_and_view,
     spell_program_has_legal_targets_with_modes,
+    spell_program_has_legal_targets_with_modes_and_view,
 };

@@ -187,6 +187,7 @@ async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) 
       syntheticExileCounts: new Map(),
       syntheticTappedCounts: new Map(),
       syntheticTransformedObjects: new Map(),
+      customTargetDestroyHelpers: new Map(),
       daytime: javaTestStartsAtNight(fileSpec.sourcePath, testSpec.name) ? false : null,
       tavernLockedBack: false,
       stopAt: null,
@@ -633,16 +634,7 @@ async function applySupportedJavaHelper(context, operation) {
   if (destroy) {
     const player = playerIndex(destroy[1]);
     const count = Number(destroy[2] || 1);
-    if (count > 1) {
-      addCustomEffectTargetDestroy(context.game, {
-        player,
-        name: "target destroy",
-        manaCost: "{0}",
-        oracleText: `Destroy up to ${numberWord(count)} target creatures.`,
-      });
-    } else {
-      addCustomEffectTargetDestroy(context.game, { player, name: "target destroy", manaCost: "{0}" });
-    }
+    registerCustomTargetDestroyHelper(context, player, count);
     return;
   }
 
@@ -985,6 +977,26 @@ async function applySupportedJavaHelper(context, operation) {
   }
 
   throw new Error(`unsupported Java statement: ${operation.source}`);
+}
+
+function customTargetDestroyOptions(player, count = 1) {
+  const options = { player, name: "target destroy", manaCost: "{0}" };
+  if (Number(count) > 1) {
+    options.oracleText = `Destroy up to ${numberWord(count)} target creatures.`;
+  }
+  return options;
+}
+
+function registerCustomTargetDestroyHelper(context, player, count = 1) {
+  context.customTargetDestroyHelpers.set(player, Math.max(1, Number(count) || 1));
+  addCustomEffectTargetDestroy(context.game, customTargetDestroyOptions(player, count));
+}
+
+function refreshCustomTargetDestroyHelper(context, player) {
+  const count = context.customTargetDestroyHelpers.get(player);
+  if (!count) return false;
+  addCustomEffectTargetDestroy(context.game, customTargetDestroyOptions(player, count));
+  return true;
 }
 
 async function executeScheduled(context) {
@@ -1511,8 +1523,11 @@ async function activateAbility(context, operation) {
     return activateManualCycling(context, operation);
   }
   let action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
-  if (ALLOW_ENGINE_SHIMS && !action && normalizeActionSearch(label).includes("target destroy")) {
-    addCustomEffectTargetDestroy(context.game, { player, name: "target destroy", manaCost: "{0}" });
+  if (!action && normalizeActionSearch(label).includes("target destroy")) {
+    const refreshed = refreshCustomTargetDestroyHelper(context, player);
+    if (!refreshed && ALLOW_ENGINE_SHIMS) {
+      addCustomEffectTargetDestroy(context.game, { player, name: "target destroy", manaCost: "{0}" });
+    }
     state = context.game.uiState();
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
   }

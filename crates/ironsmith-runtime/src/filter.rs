@@ -4580,6 +4580,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Landwalk => Some("landwalk"),
         Bloodthirst => Some("bloodthirst"),
         Morph => Some("morph"),
+        Disguise => Some("disguise"),
         Megamorph => Some("megamorph"),
         Shadow => Some("shadow"),
         Horsemanship => Some("horsemanship"),

@@ -22,7 +22,7 @@ use super::types::{TargetingInvalidReason, TargetingResult};
 /// This function performs all targeting legality checks:
 /// - Shroud (can't be targeted by anything)
 /// - Hexproof (can't be targeted by opponents)
-/// - HexproofFrom (can't be targeted by sources matching filter)
+/// - HexproofFrom (can't be targeted by opponents' sources matching filter)
 /// - Protection (can't be targeted by sources matching quality)
 /// - "Can't be targeted" effects
 ///
@@ -60,7 +60,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
 
-    let Some(_source) = game.object(source_id) else {
+    let Some(source) = game.object(source_id) else {
         // Rule 608.2b: if the source of an ability has left its expected zone,
         // resolution-time target legality uses that source's last known information.
         let Some(source_snapshot) = source_snapshot else {
@@ -98,11 +98,13 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     }
 
     // Check for HexproofFrom
-    for ability in target_abilities.iter() {
-        if let Some(filter) = ability.hexproof_from_filter()
-            && source_matches_hexproof_from(game, source_id, filter, caster)
-        {
-            return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
+    if game.controller_of(target) != game.controller_of(source) {
+        for ability in target_abilities.iter() {
+            if let Some(filter) = ability.hexproof_from_filter()
+                && source_matches_hexproof_from(game, source_id, filter, caster)
+            {
+                return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
+            }
         }
     }
 
@@ -147,11 +149,13 @@ fn can_target_object_from_source_snapshot_with_view(
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
-    for ability in target_abilities.iter() {
-        if let Some(filter) = ability.hexproof_from_filter()
-            && source_snapshot_matches_hexproof_from(game, source_snapshot, filter, caster)
-        {
-            return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
+    if game.controller_of(target) != source_snapshot.controller {
+        for ability in target_abilities.iter() {
+            if let Some(filter) = ability.hexproof_from_filter()
+                && source_snapshot_matches_hexproof_from(game, source_snapshot, filter, caster)
+            {
+                return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
+            }
         }
     }
 
@@ -1207,12 +1211,16 @@ mod tests {
             .card_types(vec![CardType::Instant])
             .build();
         let black_source = Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
+        let own_black_source =
+            Object::from_card(ObjectId::from_raw(3), &card, p1, Zone::Battlefield);
 
         let target_id = target.id;
         let black_source_id = black_source.id;
+        let own_black_source_id = own_black_source.id;
 
         game.add_object(target);
         game.add_object(black_source);
+        game.add_object(own_black_source);
 
         // Black source can't target creature with hexproof from black
         let result = can_target_object(&game, target_id, black_source_id, p0);
@@ -1220,6 +1228,11 @@ mod tests {
             result,
             TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom)
         ));
+
+        // Hexproof from black still allows the protected creature's controller
+        // to target it with their own black source.
+        let result = can_target_object(&game, target_id, own_black_source_id, p1);
+        assert!(result.is_legal());
     }
 
     #[test]
@@ -1233,8 +1246,11 @@ mod tests {
             .card_types(vec![CardType::Instant])
             .build();
         let source = Object::from_card(ObjectId::from_raw(1), &card, p0, Zone::Battlefield);
+        let own_source = Object::from_card(ObjectId::from_raw(2), &card, p1, Zone::Battlefield);
         let source_id = source.id;
+        let own_source_id = own_source.id;
         game.add_object(source);
+        game.add_object(own_source);
 
         game.effect_store
             .cant_effects
@@ -1244,7 +1260,8 @@ mod tests {
                 source_filter: ObjectFilter {
                     colors: Some(ColorSet::from(Color::Blue)),
                     ..Default::default()
-                },
+                }
+                .controlled_by(PlayerFilter::Opponent),
                 controller: p1,
             });
 
@@ -1262,6 +1279,18 @@ mod tests {
         assert!(
             legal_targets.contains(&Target::Player(p0)),
             "other legal players should remain targetable"
+        );
+
+        let legal_targets = compute_legal_targets(
+            &game,
+            &ChooseSpec::Player(PlayerFilter::Any),
+            p1,
+            Some(own_source_id),
+        );
+
+        assert!(
+            legal_targets.contains(&Target::Player(p1)),
+            "hexproof-from player restrictions should not block that player's own matching source"
         );
     }
 

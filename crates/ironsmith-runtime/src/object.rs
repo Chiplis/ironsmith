@@ -1040,6 +1040,14 @@ impl Object {
             return false;
         }
 
+        let has_disguise = self.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.is_disguise()
+            )
+        });
+
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
             name: self.name.clone(),
             mana_cost: self.mana_cost.clone(),
@@ -1076,6 +1084,14 @@ impl Object {
                     if static_ability.turn_face_up_cost().is_some()
             )
         });
+        if has_disguise {
+            self.abilities
+                .push(Ability::static_ability(StaticAbility::ward(
+                    TotalCost::mana(ManaCost::from_pips(vec![vec![
+                        crate::mana::ManaSymbol::Generic(2),
+                    ]])),
+                )));
+        }
         self.spell_effect = None;
         self.aura_attach_filter = None;
         self.bestow_cast_state = None;

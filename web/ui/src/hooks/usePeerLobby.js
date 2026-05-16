@@ -2966,6 +2966,26 @@ export function usePeerLobby({
     );
   }
 
+  function ziffleObjectOrderLinksOpening(ceremony, shuffleOriginalSlot, position, opening) {
+    const objectId = Number(opening?.objectId ?? opening?.object_id);
+    if (!Number.isSafeInteger(objectId) || objectId < 0) return false;
+    const beforeOrder = normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order);
+    const afterOrder = normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order);
+    if (beforeOrder.length === 0 && afterOrder.length === 0) return false;
+    const beforeMatches =
+      beforeOrder.length === 0
+      || Number(beforeOrder[Number(shuffleOriginalSlot)]) === objectId;
+    const afterMatches =
+      afterOrder.length === 0
+      || Number(afterOrder[Number(position)]) === objectId;
+    return beforeMatches && afterMatches;
+  }
+
+  function ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening) {
+    if (Number(revealOriginalSlot) === Number(opening?.slot)) return true;
+    return ziffleObjectOrderLinksOpening(ceremony, revealOriginalSlot, position, opening);
+  }
+
   async function verifyZiffleOpeningProofForOpening(opening) {
     if (!openingNeedsZiffleProof(opening)) return;
     const proof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof;
@@ -3036,8 +3056,21 @@ export function usePeerLobby({
       cardPosition: position,
       tokens,
     });
-    if (Number(reveal.originalSlot) !== Number(opening.slot)) {
-      throw new Error("Ziffle card opening proof reveals a different committed slot");
+    const revealOriginalSlot = Number(reveal.originalSlot);
+    const proofShuffleOriginalSlot = Number(proof.shuffleOriginalSlot ?? proof.originalSlot);
+    if (revealOriginalSlot !== proofShuffleOriginalSlot) {
+      throw new Error(
+        `Ziffle card opening proof reveals a different shuffle slot `
+        + `(owner ${Number(opening.owner)}, position ${position}, proof slot ${proofShuffleOriginalSlot}, `
+        + `revealed slot ${revealOriginalSlot}, card ${String(opening.card || "")})`
+      );
+    }
+    if (!ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening)) {
+      throw new Error(
+        `Ziffle card opening proof reveals a different committed slot `
+        + `(owner ${Number(opening.owner)}, position ${position}, opening slot ${Number(opening.slot)}, `
+        + `revealed slot ${Number(reveal.originalSlot)}, card ${String(opening.card || "")})`
+      );
     }
   }
 
@@ -3072,8 +3105,13 @@ export function usePeerLobby({
       cardPosition: position,
       tokens,
     });
-    if (Number(reveal.originalSlot) !== Number(opening.slot)) {
-      throw new Error("Ziffle card opening proof reveals a different committed slot");
+    const revealOriginalSlot = Number(reveal.originalSlot);
+    if (!ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening)) {
+      throw new Error(
+        `Ziffle card opening proof reveals a different committed slot `
+        + `(owner ${Number(opening.owner)}, position ${position}, opening slot ${Number(opening.slot)}, `
+        + `revealed slot ${Number(reveal.originalSlot)}, card ${String(opening.card || "")})`
+      );
     }
     const positionCommitment =
       String(opening.positionCommitment || "")
@@ -3091,6 +3129,7 @@ export function usePeerLobby({
         ceremony,
         position,
         originalSlot: Number(opening.slot),
+        shuffleOriginalSlot: revealOriginalSlot,
         positionCommitment,
         tokens,
       }),
@@ -3290,8 +3329,9 @@ export function usePeerLobby({
     );
     const hidden = object?.hiddenCard || object?.hidden_card || null;
     if (!hidden) return null;
-    return {
+	    return {
       owner: hidden.owner == null ? null : Number(hidden.owner),
+      zone: String(object?.zone || ""),
       slot: hidden.slot == null ? null : Number(hidden.slot),
       commitment: String(hidden.commitment || ""),
       publicSlot: hidden.publicSlot ?? hidden.public_slot ?? null,
@@ -3357,7 +3397,7 @@ export function usePeerLobby({
           opening.objectId = Number(requirement.objectId);
           opening.timing = commandObjectIds.has(Number(objectId)) ? "pre" : "post";
           let positionCommitment = String(opening.positionCommitment || "");
-          let zifflePosition = opening.position ?? ziffleOpeningPositionForSlot(opening.owner, opening.slot);
+          let zifflePosition = opening.position ?? null;
           if (zifflePosition == null) {
             const hiddenMetadata = await currentHiddenCardMetadataForObject(
               requirement.objectId ?? requirement.object_id ?? objectId
@@ -3418,6 +3458,54 @@ export function usePeerLobby({
       if (!manifest && !cachedOpening) {
         throw new Error(`Missing private deck opening for slot ${Number(exported.slot)}`);
       }
+      const hiddenMetadata = await currentHiddenCardMetadataForObject(
+        exported.object_id ?? exported.objectId ?? objectId
+      );
+      const hiddenZone = String(hiddenMetadata?.zone || "").toLowerCase();
+      const publicPosition = hiddenZone === "library" && hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
+        ? Number(hiddenMetadata.publicSlot)
+        : null;
+      const publicPositionCommitment = hiddenZone === "library"
+        ? String(hiddenMetadata?.publicCommitment || "")
+        : "";
+      const hiddenPositionCommitment =
+        hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
+          ? String(hiddenMetadata.commitment)
+          : "";
+      const currentZifflePosition =
+        publicPosition != null
+          ? publicPosition
+          : hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
+            ? Number(hiddenMetadata.slot)
+            : null;
+      const currentZifflePositionCommitment =
+        publicPositionCommitment || hiddenPositionCommitment;
+      const exportedCommitmentIsZiffle = Boolean(
+        ziffleDeckHashFromCommitment(String(exported.commitment || ""))
+      );
+      if (
+        cachedOpening
+        && currentZifflePositionCommitment
+        && String(cachedOpening.positionCommitment || "") !== currentZifflePositionCommitment
+      ) {
+        cachedOpening = null;
+      }
+      if (cachedOpening && !currentZifflePositionCommitment && !exportedCommitmentIsZiffle) {
+        cachedOpening = cloneMultiplayerPayload(cachedOpening);
+        delete cachedOpening.position;
+        delete cachedOpening.positionCommitment;
+        delete cachedOpening.ziffleReveal;
+        delete cachedOpening.ziffleProof;
+        delete cachedOpening.positionOpeningProof;
+      }
+      if (
+        cachedOpening
+        && currentZifflePosition != null
+        && cachedOpening.position != null
+        && Number(cachedOpening.position) !== Number(currentZifflePosition)
+      ) {
+        cachedOpening = null;
+      }
       let remappedFromSlot = null;
       let opening = cachedOpening;
       if (!opening) {
@@ -3426,18 +3514,8 @@ export function usePeerLobby({
         let positionCommitment = "";
         let ziffleProofCeremony = null;
         let ziffleProofTokens = null;
-        const hiddenMetadata = await currentHiddenCardMetadataForObject(
-          exported.object_id ?? exported.objectId ?? objectId
-        );
+        let ziffleProofShuffleOriginalSlot = null;
         const exportedCommitment = String(exported.commitment || "");
-        const publicPosition = hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
-          ? Number(hiddenMetadata.publicSlot)
-          : null;
-        const publicPositionCommitment = String(hiddenMetadata?.publicCommitment || "");
-        const hiddenPositionCommitment =
-          hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
-            ? String(hiddenMetadata.commitment)
-            : "";
         let ziffleCommitment = exportedCommitment;
         let ziffleDeckHash = ziffleDeckHashFromCommitment(ziffleCommitment);
         if (!exportedCommitment || ziffleDeckHash) {
@@ -3469,8 +3547,8 @@ export function usePeerLobby({
             throw new Error("Ziffle opening reveal backend is not available");
           }
           position = Number(
-            hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
-              ? hiddenMetadata.publicSlot
+            publicPosition != null
+              ? publicPosition
               : hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
                 ? hiddenMetadata.slot
                 : exported.slot
@@ -3491,7 +3569,8 @@ export function usePeerLobby({
             cardPosition: position,
             tokens,
           });
-          preferredSlot = Number(reveal.originalSlot);
+          ziffleProofShuffleOriginalSlot = Number(reveal.originalSlot);
+          preferredSlot = ziffleProofShuffleOriginalSlot;
           positionCommitment = ziffleCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position);
           ziffleProofCeremony = ceremony;
           ziffleProofTokens = tokens;
@@ -3515,6 +3594,7 @@ export function usePeerLobby({
               ceremony: ziffleProofCeremony,
               position,
               originalSlot: Number(opening.slot),
+              shuffleOriginalSlot: ziffleProofShuffleOriginalSlot ?? Number(opening.slot),
               positionCommitment,
               tokens: ziffleProofTokens || [],
             });
@@ -3523,7 +3603,13 @@ export function usePeerLobby({
       }
       opening.objectId = Number(exported.object_id ?? exported.objectId ?? objectId);
       opening.timing = commandObjectIds.has(Number(objectId)) ? "pre" : "post";
-      const zifflePosition = ziffleOpeningPositionForSlot(opening.owner, opening.slot);
+      const shouldUseRememberedZifflePosition = Boolean(
+        currentZifflePositionCommitment
+        || ziffleDeckHashFromCommitment(opening.positionCommitment)
+      );
+      const zifflePosition = shouldUseRememberedZifflePosition
+        ? ziffleOpeningPositionForSlot(opening.owner, opening.slot)
+        : null;
       if (zifflePosition != null) {
         opening.position = Number(zifflePosition);
         const ceremony = ziffleCeremonyForOwner(opening.owner);
@@ -3562,8 +3648,8 @@ export function usePeerLobby({
 	    if (!Number.isInteger(owner)) {
 	      throw new Error("Crypto opening requirement is missing an owner");
 		    }
-		    const manifest = privateDeckManifestForOwner(owner);
-	      const cachedOpeningForRequirement = exported
+	    const manifest = privateDeckManifestForOwner(owner);
+	      let cachedOpeningForRequirement = exported
         ? localRevealedOpeningForExport(exported)
         : localRevealedOpeningForRequirement(requirement);
 		    if (!manifest && !cachedOpeningForRequirement) {
@@ -3578,18 +3664,60 @@ export function usePeerLobby({
 	    let positionCommitment = "";
       let ziffleProofCeremony = null;
       let ziffleProofTokens = null;
+      let ziffleProofShuffleOriginalSlot = null;
       const hiddenMetadata = await currentHiddenCardMetadataForObject(
         exported?.object_id ?? exported?.objectId ?? requirement?.objectId
       );
 	    const exportedCommitment = String(exported?.commitment || requirement?.commitment || "");
-      const publicPosition = hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
+      const hiddenZone = String(hiddenMetadata?.zone || "").toLowerCase();
+      const publicPosition = hiddenZone === "library" && hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
         ? Number(hiddenMetadata.publicSlot)
         : null;
-      const publicPositionCommitment = String(hiddenMetadata?.publicCommitment || "");
+      const publicPositionCommitment = hiddenZone === "library"
+        ? String(hiddenMetadata?.publicCommitment || "")
+        : "";
       const hiddenPositionCommitment =
         hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
           ? String(hiddenMetadata.commitment)
           : "";
+      const currentZifflePosition =
+        publicPosition != null
+          ? publicPosition
+          : hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
+            ? Number(hiddenMetadata.slot)
+            : null;
+      const currentZifflePositionCommitment =
+        publicPositionCommitment || hiddenPositionCommitment;
+      const exportedCommitmentIsZiffle = Boolean(
+        ziffleDeckHashFromCommitment(exportedCommitment)
+      );
+      if (
+        cachedOpeningForRequirement
+        && currentZifflePositionCommitment
+        && String(cachedOpeningForRequirement.positionCommitment || "") !== currentZifflePositionCommitment
+      ) {
+        cachedOpeningForRequirement = null;
+      }
+      if (
+        cachedOpeningForRequirement
+        && currentZifflePosition != null
+        && cachedOpeningForRequirement.position != null
+        && Number(cachedOpeningForRequirement.position) !== Number(currentZifflePosition)
+      ) {
+        cachedOpeningForRequirement = null;
+      }
+      if (
+        cachedOpeningForRequirement
+        && !currentZifflePositionCommitment
+        && !exportedCommitmentIsZiffle
+      ) {
+        cachedOpeningForRequirement = cloneMultiplayerPayload(cachedOpeningForRequirement);
+        delete cachedOpeningForRequirement.position;
+        delete cachedOpeningForRequirement.positionCommitment;
+        delete cachedOpeningForRequirement.ziffleReveal;
+        delete cachedOpeningForRequirement.ziffleProof;
+        delete cachedOpeningForRequirement.positionOpeningProof;
+      }
       let ziffleCommitment = exportedCommitment;
 	    let ziffleDeckHash = ziffleDeckHashFromCommitment(ziffleCommitment);
       if (!exportedCommitment || ziffleDeckHash) {
@@ -3622,8 +3750,8 @@ export function usePeerLobby({
 	        throw new Error("Ziffle opening reveal backend is not available");
 	      }
 	      position = Number(
-          hiddenMetadata?.publicCommitment && hiddenMetadata.publicSlot != null
-            ? hiddenMetadata.publicSlot
+          publicPosition != null
+            ? publicPosition
             : hiddenMetadata?.commitment && ziffleDeckHashFromCommitment(hiddenMetadata.commitment)
               ? hiddenMetadata.slot
               : exported?.slot ?? requirement?.slot
@@ -3642,17 +3770,25 @@ export function usePeerLobby({
 	        cardPosition: position,
 	        tokens,
 	      });
-	      originalSlot = Number(reveal.originalSlot);
+	      ziffleProofShuffleOriginalSlot = Number(reveal.originalSlot);
+	      originalSlot = ziffleProofShuffleOriginalSlot;
 	      positionCommitment = ziffleCommitment || ziffleRuntimeCommitment(ceremony.deckHash, position);
         ziffleProofCeremony = ceremony;
         ziffleProofTokens = tokens;
 	      rememberZiffleOpeningPosition(owner, originalSlot, position);
 	    }
-      if (position == null && cachedOpeningForRequirement?.position != null) {
+      if (
+        position == null
+        && cachedOpeningForRequirement?.position != null
+        && (
+          currentZifflePositionCommitment
+          || ziffleDeckHashFromCommitment(cachedOpeningForRequirement.positionCommitment)
+        )
+      ) {
         position = Number(cachedOpeningForRequirement.position);
         positionCommitment = String(cachedOpeningForRequirement.positionCommitment || positionCommitment || "");
       }
-      if (position == null) {
+      if (position == null && (currentZifflePositionCommitment || ziffleDeckHashFromCommitment(positionCommitment))) {
         const rememberedPosition = ziffleOpeningPositionForSlot(owner, originalSlot);
         if (rememberedPosition != null) {
           position = Number(rememberedPosition);
@@ -3700,6 +3836,7 @@ export function usePeerLobby({
             ceremony: ziffleProofCeremony,
             position,
             originalSlot: Number(opening.slot),
+            shuffleOriginalSlot: ziffleProofShuffleOriginalSlot ?? Number(opening.slot),
             positionCommitment,
             tokens: ziffleProofTokens || [],
           });
@@ -4112,9 +4249,10 @@ export function usePeerLobby({
       if (timing && String(opening.timing || "pre") !== timing && !opensCommandObject) {
         continue;
       }
+      let localHiddenMetadata = null;
       try {
         await verifyAuditOpeningsAgainstManifests([opening]);
-        const localHiddenMetadata = opening.objectId != null
+        localHiddenMetadata = opening.objectId != null
           ? await currentHiddenCardMetadataForObject(opening.objectId)
           : null;
         const localHiddenZiffleCommitment =
@@ -4199,9 +4337,17 @@ export function usePeerLobby({
                 ? null
                 : Number(localHiddenMetadata.slot);
               const metadataCommitment = String(localHiddenMetadata?.commitment || "");
+              const canRevealByCommittedSlot =
+                (
+                  metadataSlot === Number(opening.slot)
+                  && (!opening.commitment || metadataCommitment === String(opening.commitment || ""))
+                )
+                || (
+                  !localHiddenMetadata
+                  && Boolean(opening.commitment || opening.positionCommitment)
+                );
               if (
-                metadataSlot === Number(opening.slot)
-                && (!opening.commitment || metadataCommitment === String(opening.commitment || ""))
+                canRevealByCommittedSlot
               ) {
                 latestState = await revealByCommittedSlot();
               } else {
@@ -4210,7 +4356,18 @@ export function usePeerLobby({
             }
           }
         } else {
-          latestState = await revealByCommittedSlot();
+          latestState = await revealByObjectMetadata();
+          if (
+            !latestState
+            && (
+              opening.objectId == null
+              || localHiddenMetadata
+              || opening.commitment
+              || opening.positionCommitment
+            )
+          ) {
+            latestState = await revealByCommittedSlot();
+          }
         }
         rememberLocalRevealedOpening(opening, {
           objectId: opening.objectId,
@@ -4224,7 +4381,18 @@ export function usePeerLobby({
           opensCommandObject
           || (!message.includes("not present") && !message.includes("not a hidden"))
         ) {
-          throw err;
+          throw new Error(
+            `${message}; opening owner ${Number(opening.owner)} slot ${Number(opening.slot)}`
+            + ` object ${opening.objectId == null ? "none" : Number(opening.objectId)}`
+            + ` card ${String(opening.card || "")}`
+            + ` commitment ${String(opening.commitment || "").slice(0, 24) || "none"}`
+            + ` position ${opening.position == null ? "none" : Number(opening.position)}`
+            + ` positionCommitment ${String(opening.positionCommitment || "").slice(0, 32) || "none"}`
+            + ` hiddenSlot ${localHiddenMetadata?.slot == null ? "none" : Number(localHiddenMetadata.slot)}`
+            + ` hiddenCommitment ${String(localHiddenMetadata?.commitment || "").slice(0, 32) || "none"}`
+            + ` hiddenPublicSlot ${localHiddenMetadata?.publicSlot == null ? "none" : Number(localHiddenMetadata.publicSlot)}`
+            + ` hiddenPublicCommitment ${String(localHiddenMetadata?.publicCommitment || "").slice(0, 32) || "none"}`
+          );
         }
       }
     }
@@ -4249,6 +4417,66 @@ export function usePeerLobby({
     }
     const requirements = await currentGame.previewCryptoRequirements(command);
     return Array.isArray(requirements) ? requirements : [];
+  }
+
+  async function currentHiddenObjectIdForOpening(opening) {
+    if (!opening || opening.owner == null) return null;
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+      return null;
+    }
+    let checkpoint = null;
+    try {
+      checkpoint = await currentGame.exportSyncCheckpoint();
+    } catch {
+      return null;
+    }
+    const owner = Number(opening.owner);
+    const slot = opening.slot == null ? null : Number(opening.slot);
+    const position = opening.position == null ? null : Number(opening.position);
+    const commitment = String(opening.commitment || "");
+    const positionCommitment = String(opening.positionCommitment || "");
+    for (const object of checkpoint?.objects || []) {
+      const hidden = object?.hiddenCard || object?.hidden_card || null;
+      if (!hidden || Number(hidden.owner) !== owner) continue;
+      const hiddenSlot = hidden.slot == null ? null : Number(hidden.slot);
+      const hiddenCommitment = String(hidden.commitment || "");
+      const publicSlot = hidden.publicSlot ?? hidden.public_slot ?? null;
+      const publicCommitment = String(hidden.publicCommitment || hidden.public_commitment || "");
+      const matchesSlot =
+        slot != null
+        && hiddenSlot === slot
+        && (!commitment || hiddenCommitment === commitment);
+      const matchesPosition =
+        position != null
+        && (
+          Number(publicSlot) === position
+          || hiddenSlot === position
+        )
+        && (
+          !positionCommitment
+          || hiddenCommitment === positionCommitment
+          || publicCommitment === positionCommitment
+        );
+      const matchesCommitment =
+        Boolean(commitment) && hiddenCommitment === commitment;
+      const matchesPositionCommitment =
+        Boolean(positionCommitment)
+        && (
+          hiddenCommitment === positionCommitment
+          || publicCommitment === positionCommitment
+        );
+      if (
+        matchesSlot
+        || matchesPosition
+        || matchesCommitment
+        || matchesPositionCommitment
+      ) {
+        const objectId = Number(object.id);
+        return Number.isSafeInteger(objectId) && objectId > 0 ? objectId : null;
+      }
+    }
+    return null;
   }
 
   async function remapPriorityCommandForLocalHiddenOpening(command, openings = []) {
@@ -4301,6 +4529,80 @@ export function usePeerLobby({
     }
 
     return command;
+  }
+
+  async function remapSelectObjectsCommandForLocalHiddenOpening(command, openings = [], actorIndex = null) {
+    if (!command || command.type !== "select_objects" || !Array.isArray(command.object_ids)) {
+      return command;
+    }
+
+    const selectedIds = command.object_ids.map((objectId) => Number(objectId));
+    if (selectedIds.length === 0) return command;
+
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.uiState !== "function") return command;
+
+    const liveState = await currentGame.uiState();
+    if (String(liveState?.decision?.kind || "") !== "select_objects") return command;
+    const visibleCandidateIds = new Set(
+      (liveState.decision.candidates || [])
+        .map((candidate) => Number(candidate?.id))
+        .filter((objectId) => Number.isSafeInteger(objectId) && objectId > 0)
+    );
+    if (selectedIds.every((objectId) => visibleCandidateIds.has(objectId))) {
+      return command;
+    }
+
+    let candidateOpenings = (openings || []).filter(
+      (opening) => opening?.owner != null && opening?.slot != null && opening?.card
+    );
+    const actorOwnedOpenings = Number.isInteger(Number(actorIndex))
+      ? candidateOpenings.filter((opening) => Number(opening.owner) === Number(actorIndex))
+      : [];
+    if (actorOwnedOpenings.length > 0) {
+      candidateOpenings = actorOwnedOpenings;
+    }
+    if (candidateOpenings.length === 0) return command;
+
+    const usedOpenings = new Set();
+    let changed = false;
+    const objectIds = [];
+    for (const selectedId of selectedIds) {
+      if (visibleCandidateIds.has(selectedId)) {
+        objectIds.push(selectedId);
+        continue;
+      }
+
+      const orderedOpenings = [
+        ...candidateOpenings.filter((opening) => Number(opening.objectId ?? opening.object_id) === selectedId),
+        ...candidateOpenings.filter((opening) => Number(opening.objectId ?? opening.object_id) !== selectedId),
+      ];
+      let localObjectId = null;
+      for (const opening of orderedOpenings) {
+        if (usedOpenings.has(opening)) continue;
+        localObjectId = await currentHiddenObjectIdForOpening(opening);
+        if (localObjectId == null) continue;
+        usedOpenings.add(opening);
+        break;
+      }
+      if (localObjectId != null) {
+        objectIds.push(localObjectId);
+        changed = true;
+      } else {
+        objectIds.push(selectedId);
+      }
+    }
+
+    if (!changed) return command;
+    return {
+      ...cloneMultiplayerPayload(command),
+      object_ids: objectIds,
+    };
+  }
+
+  async function remapCommandForLocalHiddenOpening(command, openings = [], actorIndex = null) {
+    const priorityCommand = await remapPriorityCommandForLocalHiddenOpening(command, openings);
+    return remapSelectObjectsCommandForLocalHiddenOpening(priorityCommand, openings, actorIndex);
   }
 
   async function privateOpeningFromEncryptedProof(proof, requirement = {}) {
@@ -5381,13 +5683,32 @@ export function usePeerLobby({
       runtime.playerCount,
       runtime.policy.initialMs
     );
-    const elapsedMs = Math.max(0, Math.floor(Number(clock.elapsedMs || 0)));
+    const rawElapsedMs = Number(clock.elapsedMs ?? 0);
+    if (!Number.isFinite(rawElapsedMs) || rawElapsedMs < 0) {
+      throw new Error("Match clock elapsed time is invalid");
+    }
+    const elapsedMs = Math.floor(rawElapsedMs);
+    if (activePlayer == null && elapsedMs !== 0) {
+      throw new Error("Match clock elapsed time requires an active decision");
+    }
     const expectedRemaining = debitMatchClockRemaining(baseRemaining, activePlayer, elapsedMs);
     const actualRemaining = normalizeMatchClockRemaining(
       clock.remainingMsByPlayer,
       runtime.playerCount,
       runtime.policy.initialMs
     );
+    if (activePlayer != null) {
+      const activeRemaining = Number(baseRemaining[activePlayer] || 0);
+      if (elapsedMs > activeRemaining) {
+        throw new Error("Match clock elapsed time exceeds remaining time");
+      }
+      const observedElapsedMs = snapshot.startedAtMs == null
+        ? 0
+        : Math.max(0, Math.floor(nowMonotonicMs() - Number(snapshot.startedAtMs)));
+      if (elapsedMs > observedElapsedMs + Number(skewMs || 0)) {
+        throw new Error("Match clock elapsed time exceeds local observation");
+      }
+    }
     if (canonicalJson(expectedRemaining) !== canonicalJson(actualRemaining)) {
       throw new Error("Match clock remaining time does not match elapsed time");
     }
@@ -6707,16 +7028,6 @@ export function usePeerLobby({
         await verifyActionQuorumForMessage(message);
       }
       const liveStateForClock = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
-      if (!isUnauthorizedAddCardCommand(message.command)) {
-        await verifyMatchClockAuditForAction({
-          clock: message.audit?.clock,
-          command: message.command,
-          seq: nextSequence,
-          actorIndex: message.actorIndex,
-          uiState: liveStateForClock,
-          skewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
-        });
-      }
       const auditSigner = Number(message.audit?.signer ?? message.actorIndex);
       if (auditSigner !== Number(message.actorIndex)) {
         throw new Error("Sequenced action must be signed by the acting player");
@@ -6754,6 +7065,16 @@ export function usePeerLobby({
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
+      if (!isUnauthorizedAddCardCommand(message.command)) {
+        await verifyMatchClockAuditForAction({
+          clock: message.audit?.clock,
+          command: message.command,
+          seq: nextSequence,
+          actorIndex: message.actorIndex,
+          uiState: liveStateForClock,
+          skewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+        });
+      }
       await revealAuditOpenings(message.audit?.openings || [], {
         timing: "pre",
         command: message.command,
@@ -6762,9 +7083,10 @@ export function usePeerLobby({
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: !dryRun,
       });
-      const localCommand = await remapPriorityCommandForLocalHiddenOpening(
+      const localCommand = await remapCommandForLocalHiddenOpening(
         message.command,
-        message.audit?.openings || []
+        message.audit?.openings || [],
+        message.actorIndex
       );
       const cryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
@@ -6800,27 +7122,6 @@ export function usePeerLobby({
         && expectedActorBeforeApply !== undefined
         && Number(expectedActorBeforeApply) !== Number(message.actorIndex)
       ) {
-        const currentPostHash = await currentPublicAuditCheckpointHash();
-        if (currentPostHash === String(message.audit?.publicCheckpointHash || "")) {
-          if (dryRun) {
-            await restoreValidationSnapshot();
-            return {
-              verified: true,
-              publicCheckpointHash: String(message.audit?.publicCheckpointHash || ""),
-              nextStateHash: String(message.audit?.nextStateHash || ""),
-              alreadyAtPublicCheckpoint: true,
-            };
-          }
-          commitMatchClockAudit(message.audit?.clock, liveStateBeforeApply);
-          await appendAppliedSequencedAction(message);
-          if (options.relay !== false) {
-            relaySequencedAction(message);
-          }
-          return {
-            applied: true,
-            alreadyAtPublicCheckpoint: true,
-          };
-        }
         throw new Error("Sequenced action actor is not the current decision player");
       }
       const publishAppliedStateImmediately =
@@ -8925,31 +9226,50 @@ export function usePeerLobby({
               ? exportedCommitment
               : "";
       if (exported && !exportedZiffleDeckHash) {
-        const cached = localRevealedOpeningForExport(exported);
-        if (cached) {
-          rememberLocalRevealedOpening(cached, {
-            objectId,
-            position: cached.position ?? knownPosition,
-            positionCommitment: cached.positionCommitment || knownPositionCommitment,
-            matchId: payload.auditMatchId,
-          });
-          continue;
+        let opening = localRevealedOpeningForExport(exported);
+        if (opening && !knownPositionCommitment) {
+          opening = cloneMultiplayerPayload(opening);
+          delete opening.position;
+          delete opening.positionCommitment;
+          delete opening.ziffleReveal;
+          delete opening.ziffleProof;
+          delete opening.positionOpeningProof;
         }
-        const { opening } = await buildDeckSlotOpeningForExport({
-          manifest,
-          preferredSlot: exported.slot,
-          card: exported.card,
-          exportedCommitment,
-          label: "Local hidden card opening",
-        });
+        if (!opening) {
+          const built = await buildDeckSlotOpeningForExport({
+            manifest,
+            preferredSlot: exported.slot,
+            card: exported.card,
+            exportedCommitment,
+            label: "Local hidden card opening",
+          });
+          opening = built.opening;
+        }
         rememberLocalRevealedOpening(opening, {
           objectId,
-          position: knownPosition,
-          positionCommitment: knownPositionCommitment,
+          position: opening.position ?? knownPosition,
+          positionCommitment: opening.positionCommitment || knownPositionCommitment,
           matchId: payload.auditMatchId,
         });
         if (knownPosition != null) {
           rememberZiffleOpeningPosition(localIndex, opening.slot, knownPosition);
+        }
+        if (typeof currentGame.revealHiddenObject === "function") {
+          try {
+            await currentGame.revealHiddenObject({
+              objectId,
+              slot: Number(opening.slot),
+              cardName: String(opening.card || exported.card || ""),
+              commitment: String(opening.commitment || exportedCommitment || "") || undefined,
+              recomputeDecision: false,
+            });
+            changed = true;
+          } catch (err) {
+            const message = String(err?.message || err || "");
+            if (!message.includes("not present") && !message.includes("not a hidden")) {
+              throw err;
+            }
+          }
         }
         continue;
       }

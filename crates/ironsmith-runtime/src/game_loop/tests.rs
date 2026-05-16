@@ -4432,9 +4432,11 @@ fn joint_assault_is_castable_with_creature_target_and_green_mana() {
     );
     assert!(
         crate::decision::spell_has_legal_targets_for_cast_with_view(
+            &game,
             spell_object,
             spell,
-            spell_object.spell_effect.as_deref(),
+            spell_object.spell_effect.as_ref(),
+            None,
             alice,
             &view,
         ),
@@ -7430,6 +7432,7 @@ fn beamsplitter_mage_copies_spell_and_retargets_copy_to_chosen_creature() {
                 .expect("trigger entry should retain the spell-cast event"),
             trigger_entry.object_id,
             None,
+            None,
         ),
         "resolution-time intervening-if should still see another legal targetable creature"
     );
@@ -10081,6 +10084,57 @@ fn test_target_lki_refreshes_when_shuffle_into_library_moves_target() {
         game.player(alice).expect("Alice should exist").life,
         25,
         "608.2h requires target LKI from immediately before shuffle-into-library moved it"
+    );
+}
+
+#[test]
+fn optional_cost_intervening_if_trigger_uses_stack_entry_paid_state_after_source_leaves() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(71_100), "Bargained Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let optional_costs = vec![crate::cost::OptionalCost::custom(
+        "Bargain",
+        crate::cost::TotalCost::free(),
+    )];
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&optional_costs);
+    paid.pay(0);
+    if let Some(obj) = game.object_mut(source) {
+        obj.optional_costs = optional_costs;
+        obj.optional_costs_paid = paid.clone();
+    }
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source).expect("source should exist"),
+        &game,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let stack_entry = StackEntry::ability(source, alice, vec![Effect::gain_life(3)])
+        .with_optional_costs_paid(paid)
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_snapshot(source_snapshot)
+        .with_triggering_event(event)
+        .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
+            "Bargain".to_string(),
+        ));
+    game.push_to_stack(stack_entry);
+
+    game.move_object_by_effect(source, Zone::Graveyard)
+        .expect("source should leave before its trigger resolves");
+
+    resolve_stack_entry(&mut game).expect("trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        23,
+        "intervening-if should use the trigger stack entry's captured optional-cost state"
     );
 }
 
@@ -18170,6 +18224,94 @@ fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
         pending.remaining_requirements[0].legal_targets,
         vec![Target::Object(artifact_id)],
         "expected cached pending requirements to be refreshed after choosing Gift"
+    );
+}
+
+#[test]
+fn gift_player_choice_cost_waits_for_choice_before_being_paid() {
+    #[derive(Default)]
+    struct PromptOnlyDecisionMaker {
+        prompted: bool,
+    }
+
+    impl DecisionMaker for PromptOnlyDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.prompted
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.prompted = true;
+            Vec::new()
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let alice = PlayerId::from_index(0);
+
+    let spell = CardBuilder::new(CardId::from_raw(9120), "Gift Choice Pending")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+    let gift_player_cost = crate::costs::Cost::effect(
+        crate::effects::ChoosePlayerEffect::new(
+            PlayerFilter::You,
+            PlayerFilter::Opponent,
+            "gifted_player",
+        )
+        .remember_as_chosen_player(),
+    );
+
+    let mut pending = PendingCast::new(
+        spell_id,
+        Zone::Hand,
+        alice,
+        crate::provenance::ProvNodeId::default(),
+        CastStage::ProcessingCosts,
+        None,
+        Vec::new(),
+        CastingMethod::Normal,
+        crate::cost::OptionalCostsPaid::default(),
+        None,
+        spell_id,
+    );
+    pending.remaining_cost_steps = vec![super::priority_state::ActivationCostStep::Cost(
+        gift_player_cost,
+    )];
+
+    let mut dm = PromptOnlyDecisionMaker::default();
+    let progress = super::priority_cast::continue_spell_cost_payment(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        pending,
+        &mut dm,
+    )
+    .expect("prompting for Gift's opponent should pause cost payment");
+
+    assert!(matches!(progress, GameProgress::Continue));
+    assert!(
+        dm.prompted,
+        "Gift cost should ask for the promised opponent"
+    );
+    let pending = state
+        .pending_cast
+        .as_ref()
+        .expect("cast should remain pending while opponent choice is unresolved");
+    assert_eq!(
+        pending.remaining_cost_steps.len(),
+        1,
+        "Gift opponent choice cost must not be removed before the choice is answered"
+    );
+    assert_eq!(
+        game.chosen_player(spell_id),
+        None,
+        "prompt fallback must not commit a promised opponent"
     );
 }
 

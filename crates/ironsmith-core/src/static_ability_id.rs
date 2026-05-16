@@ -38,6 +38,7 @@ pub enum StaticAbilityId {
     Nightbound,
     DayNightStartsDayAsEnters,
     Morph,
+    Disguise,
     Megamorph,
     Shadow,
     Horsemanship,
@@ -271,6 +272,7 @@ impl StaticAbilityId {
             | Nightbound
             | DayNightStartsDayAsEnters
             | Morph
+            | Disguise
             | Megamorph
             | Shadow
             | Horsemanship
@@ -500,6 +502,7 @@ impl StaticAbilityId {
                 | Landwalk
                 | Bloodthirst
                 | Morph
+                | Disguise
                 | Megamorph
                 | Shadow
                 | Horsemanship

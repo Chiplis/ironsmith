@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -414,9 +415,56 @@ async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
 function assertNoSyncFailureText(text, label = "unexpected sync failure") {
   assert.doesNotMatch(
     text,
-    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|hidden card commitment does not match reveal|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
+    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Ziffle card opening proof reveals a different committed slot|hidden card commitment does not match reveal|Sequenced action public checkpoint hash does not match local state|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
     label
   );
+}
+
+async function hasLocalButton(page, textPattern) {
+  const buttons = await buttonDebugText(page);
+  return buttons.some((button) =>
+    button.localAction === "true"
+    && !button.disabled
+    && button.ariaDisabled !== "true"
+    && textPattern.test(button.text)
+  );
+}
+
+async function waitAndClickLocalButton(page, label, textPattern, timeoutMs = 90000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const clicked = await activateLocalButton(page, label, textPattern);
+    if (clicked) return clicked;
+    await sleep(250);
+  }
+  assert.fail(
+    `${label}\nbuttons: ${JSON.stringify(await buttonDebugText(page), null, 2)}\nbody:\n${await visibleBodyText(page)}`
+  );
+}
+
+async function waitAndClickEnabledButton(page, label, textPattern, timeoutMs = 90000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const clicked = await clickEnabledButton(page, label, textPattern);
+    if (clicked) return clicked;
+    await sleep(500);
+  }
+  assert.fail(
+    `${label}\nbuttons: ${JSON.stringify(await buttonDebugText(page), null, 2)}\nbody:\n${await visibleBodyText(page)}`
+  );
+}
+
+async function captureFullUiStep(dir, index, slug, pages) {
+  fs.mkdirSync(dir, { recursive: true });
+  const prefix = String(index).padStart(2, "0");
+  const saved = [];
+  for (const [label, page] of pages) {
+    if (!page) continue;
+    const filePath = path.join(dir, `${prefix}-${slug}-${label}.png`);
+    await page.screenshot({ path: filePath, fullPage: false });
+    saved.push(filePath);
+  }
+  return saved;
 }
 
 test("PeerJS remote apply gates auto-pass until sequence append completes", { timeout: 60000 }, async () => {
@@ -2530,6 +2578,498 @@ test("full UI PeerJS both players Mulligan then host remulligans stays synced", 
       );
     }
     assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries without desync", { timeout: 600000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const screenshotDir = path.join(UI_ROOT, "test-results", "selvala-mulligan-e2e");
+  fs.rmSync(screenshotDir, { recursive: true, force: true });
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  let hostPage = null;
+  let guestPage = null;
+  let screenshotStep = 0;
+
+  const capture = async (slug) => {
+    screenshotStep += 1;
+    return captureFullUiStep(screenshotDir, screenshotStep, slug, [
+      ["p1-host", hostPage],
+      ["p2-guest", guestPage],
+    ]);
+  };
+
+  const combinedText = async () => `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+
+  const assertClean = async (label) => {
+    const text = await combinedText();
+    assertNoSyncFailureText(text, label);
+    assert.doesNotMatch(
+      text,
+      /Cheat detected|Invalid priority action ref|Action order mismatch|Missing public_open audit opening|Missing audit material/i,
+      label,
+    );
+  };
+
+  const clickUnselectedButton = async (page, label, textPattern) => {
+    const button = page.locator("button:enabled:not(.is-selected)").filter({ hasText: textPattern }).first();
+    if ((await button.count()) === 0) return null;
+    const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+    await activateButtonNode(button);
+    return { label, text };
+  };
+
+  const unselectedChoiceTexts = async (page) =>
+    page.locator("button:enabled:not(.is-selected)").evaluateAll((buttons) =>
+      buttons.map((button) => (button.innerText || button.textContent || "").replace(/\s+/g, " ").trim())
+    );
+
+  const visibleHandCardNames = async (page) =>
+    page.locator(".hand-card[data-card-name]").evaluateAll((cards) =>
+      cards
+        .map((card) => String(card.getAttribute("data-card-name") || "").trim())
+        .filter(Boolean)
+    );
+
+  const battlefieldCardCount = async (page, cardName) =>
+    page.locator(".battlefield-row-card[data-card-name]").evaluateAll((cards, name) =>
+      cards.filter((card) => String(card.getAttribute("data-card-name") || "") === name).length,
+      cardName,
+    );
+
+  const stackCardCount = async (page, cardName) =>
+    page.locator(".stack-card[data-card-name]").evaluateAll((cards, name) =>
+      cards.filter((card) => String(card.getAttribute("data-card-name") || "") === name).length,
+      cardName,
+    );
+
+  const castableSelvalaSetupHand = async () => {
+    const names = await visibleHandCardNames(hostPage);
+    const lotusCount = names.filter((name) => /^Black Lotus$/i.test(name)).length;
+    const selvalaCount = names.filter((name) => /^Selvala, Explorer Returned$/i.test(name)).length;
+    const hiddenCount = names.filter((name) => /^Hidden Card$/i.test(name)).length;
+    return {
+      names,
+      lotusCount,
+      selvalaCount,
+      hiddenCount,
+      castable: lotusCount >= 2 && (selvalaCount + hiddenCount) >= 1,
+    };
+  };
+
+  const bottomOneCardKeepingCastableHand = async (index) => {
+    const choices = await unselectedChoiceTexts(hostPage);
+    const lotusCount = choices.filter((text) => /^Black Lotus\b/i.test(text)).length;
+    const selvalaCount = choices.filter((text) => /^Selvala, Explorer Returned\b/i.test(text)).length;
+    const hiddenCount = choices.filter((text) => /^Hidden Card\b/i.test(text)).length;
+    let pattern = null;
+    if (selvalaCount > 1) pattern = /^Selvala, Explorer Returned\b/i;
+    else if (selvalaCount + hiddenCount > 1 && hiddenCount > 0) pattern = /^Hidden Card\b/i;
+    else if (lotusCount > 2) pattern = /^Black Lotus\b/i;
+    assert.ok(
+      pattern,
+      `mulligan redraw must leave at least two Black Lotuses and one Selvala-or-hidden deck card after bottoming\nchoices: ${JSON.stringify(choices, null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
+    );
+    const clicked = await clickUnselectedButton(hostPage, `host-bottom-card-${index}`, pattern);
+    assert.ok(clicked, `expected to select bottom card ${index}\nchoices: ${JSON.stringify(choices, null, 2)}`);
+  };
+
+  const advanceUntil = async (predicate, label, maxSteps = 160) => {
+    const advancePattern = /KEEP HAND|PREGAME|BEGIN GAME|CONTINUE|UPKEEP|DRAW|MAIN|COMBAT|M2|END|CLEAN|PASS PRIORITY|RESOLVE|NO ATTACKERS|DECLARE ATTACKERS|DECLARE BLOCKERS|CONFIRM ATTACKERS|CONFIRM BLOCKERS|DONE|SUBMIT/i;
+    let lastHostText = "";
+    let lastGuestText = "";
+    for (let step = 0; step < maxSteps; step += 1) {
+      lastHostText = await visibleBodyText(hostPage);
+      lastGuestText = await visibleBodyText(guestPage);
+      await assertClean(label);
+      const hostButtons = await buttonDebugText(hostPage);
+      const guestButtons = await buttonDebugText(guestPage);
+      if (await predicate({ hostText: lastHostText, guestText: lastGuestText, hostButtons, guestButtons })) {
+        return { hostText: lastHostText, guestText: lastGuestText, hostButtons, guestButtons };
+      }
+
+      const bottomPromptMatch = lastHostText.match(/Choose (\d+) card\(s\) to put on the bottom of your library/i);
+      if (bottomPromptMatch) {
+        const required = Number(bottomPromptMatch[1]);
+        const submitButton = hostButtons.find((button) => /SUBMIT/i.test(button.text || ""));
+        const submitProgress = String(submitButton?.text || "").match(/\((\d+)\/(\d+)\)/);
+        const selected = submitProgress ? Number(submitProgress[1]) : 0;
+        const target = submitProgress ? Number(submitProgress[2]) : required;
+        for (let index = selected + 1; index <= target; index += 1) {
+          await bottomOneCardKeepingCastableHand(index);
+        }
+        await capture("p1-selected-bottom-cards-late");
+        const submittedBottom = await clickLocalButton(hostPage, `${label}-host-submit-late-bottom-${step}`, /SUBMIT/i);
+        assert.ok(
+          submittedBottom,
+          `expected late bottom-card decision to be submittable\nbuttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
+        );
+        await sleep(3000);
+        await capture("p1-bottomed-cards-late");
+        continue;
+      }
+
+      const hostDiscard = /Discard \d+ card/i.test(lastHostText)
+        ? await clickEnabledButton(hostPage, `${label}-host-discard-choice-${step}`, /^(Black Lotus|Selvala, Explorer Returned)$/i)
+        : null;
+      if (hostDiscard) {
+        await sleep(500);
+        const submit = await clickLocalButton(hostPage, `${label}-host-submit-discard-${step}`, /SUBMIT/i);
+        if (submit) {
+          await sleep(2200);
+          continue;
+        }
+      }
+
+      const guestDiscard = /Discard \d+ card/i.test(lastGuestText)
+        ? await clickEnabledButton(guestPage, `${label}-guest-discard-choice-${step}`, /^(Black Lotus|Selvala, Explorer Returned)$/i)
+        : null;
+      if (guestDiscard) {
+        await sleep(500);
+        const submit = await clickLocalButton(guestPage, `${label}-guest-submit-discard-${step}`, /SUBMIT/i);
+        if (submit) {
+          await sleep(2200);
+          continue;
+        }
+      }
+
+      const hostAdvanced = await clickLocalButton(hostPage, `${label}-host-advance-${step}`, advancePattern);
+      if (hostAdvanced) {
+        await sleep(2200);
+        continue;
+      }
+      const guestAdvanced = await clickLocalButton(guestPage, `${label}-guest-advance-${step}`, advancePattern);
+      if (guestAdvanced) {
+        await sleep(2200);
+        continue;
+      }
+      await sleep(1000);
+    }
+    assert.fail(
+      `${label}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${lastHostText}\nguest body:\n${lastGuestText}`
+    );
+  };
+
+  const resolveUntilNoStackCard = async (cardName, label) => {
+    const cardPattern = new RegExp(`STACK[\\s\\S]*${cardName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+    let sawStackCard = false;
+    await advanceUntil(
+      async ({ hostText, guestText }) => {
+        const hasStackCard = cardPattern.test(hostText) || cardPattern.test(guestText);
+        if (hasStackCard) {
+          sawStackCard = true;
+          return false;
+        }
+        return sawStackCard;
+      },
+      label,
+      80,
+    );
+  };
+
+  const waitForStackCardToResolve = async (cardName, expectedBattlefieldCount, label, maxSteps = 90) => {
+    for (let step = 0; step < maxSteps; step += 1) {
+      await assertClean(label);
+      const hostText = await visibleBodyText(hostPage);
+      const hostBattlefieldCount = await battlefieldCardCount(hostPage, cardName);
+      const hostStackCount = await stackCardCount(hostPage, cardName);
+      const guestStackCount = await stackCardCount(guestPage, cardName);
+      const expectedBattlefieldSummary = new RegExp(`BF\\s*${expectedBattlefieldCount}\\s*HAND`, "i").test(hostText);
+      if (
+        (hostBattlefieldCount >= expectedBattlefieldCount || expectedBattlefieldSummary)
+        && hostStackCount === 0
+        && guestStackCount === 0
+      ) {
+        return;
+      }
+      const hostPass = await clickLocalButton(hostPage, `${label}-host-pass-${step}`, /PASS PRIORITY|RESOLVE/i);
+      if (hostPass) {
+        await sleep(2200);
+        continue;
+      }
+      const guestPass = await clickLocalButton(guestPage, `${label}-guest-pass-${step}`, /PASS PRIORITY|RESOLVE/i);
+      if (guestPass) {
+        await sleep(2200);
+        continue;
+      }
+      await sleep(1000);
+    }
+    assert.fail(
+      `${label}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${await visibleBodyText(hostPage)}\nguest body:\n${await visibleBodyText(guestPage)}`
+    );
+  };
+
+  const castBlackLotus = async (ordinal) => {
+    await advanceUntil(
+      async () => hasLocalButton(hostPage, /CAST BLACK LOTUS/i),
+      `expected Player 1 to have Black Lotus ${ordinal} castable`,
+      180,
+    );
+    await waitAndClickLocalButton(hostPage, `host-cast-black-lotus-${ordinal}`, /CAST BLACK LOTUS/i, 120000);
+    await waitForStackCardToResolve("Black Lotus", ordinal, `resolve Black Lotus ${ordinal}`);
+    await assertClean(`casting Black Lotus ${ordinal} should not sync-fail`);
+  };
+
+  const activateLotusFor = async (colorName, colorPattern) => {
+    await advanceUntil(
+      async () =>
+        await stackCardCount(hostPage, "Black Lotus") === 0
+        && await stackCardCount(guestPage, "Black Lotus") === 0
+        && await hasLocalButton(hostPage, /SACRIFICE|ADD THREE MANA|ADD/i),
+      `expected a resolved Black Lotus to be activatable for ${colorName}`,
+      140,
+    );
+    await waitAndClickLocalButton(hostPage, `host-activate-lotus-for-${colorName}`, /SACRIFICE|ADD THREE MANA|ADD/i, 120000);
+    await waitAndClickEnabledButton(hostPage, `host-choose-${colorName}`, colorPattern, 60000);
+    await sleep(1500);
+  };
+
+  const paySelvalaCost = async () => {
+    const paymentPatterns = [
+      /Use\s+from mana pool/i,
+      /GREEN|\{G\}/i,
+      /WHITE|\{W\}/i,
+      /GENERIC|\{1\}|MANA|PAY|SUBMIT/i,
+      /^CAST$/i,
+    ];
+    for (let step = 0; step < 40; step += 1) {
+      const text = await visibleBodyText(hostPage);
+      await assertClean("Selvala payment should stay synced");
+      const paymentPending = /Pay \{|remaining|Use\s+from mana pool|CHOOSE OPTION/i.test(text);
+      if (!paymentPending && await stackCardCount(hostPage, "Selvala, Explorer Returned") > 0) return;
+      for (const pattern of paymentPatterns) {
+        const clicked = await clickEnabledButton(hostPage, `host-pay-selvala-${step}`, pattern);
+        if (clicked) {
+          await sleep(800);
+          break;
+        }
+      }
+      const nextText = await visibleBodyText(hostPage);
+      const nextPaymentPending = /Pay \{|remaining|Use\s+from mana pool|CHOOSE OPTION/i.test(nextText);
+      if (!nextPaymentPending && await stackCardCount(hostPage, "Selvala, Explorer Returned") > 0) return;
+      await sleep(500);
+    }
+    assert.fail(
+      `expected Selvala payment to put Selvala on the stack\nbuttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
+    );
+  };
+
+  const activateSelvalaAndAcknowledgeReveal = async (slug, expectedPhasePattern = null) => {
+    await waitAndClickLocalButton(
+      hostPage,
+      `host-activate-selvala-${slug}`,
+      /Each player reveals the top card of their library/i,
+      120000,
+    );
+    await sleep(4000);
+    await Promise.all([
+      waitForVisibleBodyText(
+        hostPage,
+        /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
+        `expected host to see Selvala reveal during ${slug}`,
+        120000,
+      ),
+      waitForVisibleBodyText(
+        guestPage,
+        /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
+        `expected guest to see Selvala reveal during ${slug}`,
+        120000,
+      ),
+    ]);
+    await capture(`${slug}-reveal-visible`);
+
+    const guestRevealText = await visibleBodyText(guestPage);
+    assert.doesNotMatch(
+      guestRevealText,
+      /REVEALED[\s\S]{0,260}Hidden Card/i,
+      `guest reveal strip should show opened card names during ${slug}`,
+    );
+    await assertClean(`Selvala ${slug} reveal should not desync`);
+
+    await clickEnabledButton(hostPage, `host-done-${slug}`, /^DONE$/i);
+    await sleep(1200);
+    await clickEnabledButton(guestPage, `guest-done-${slug}`, /^DONE$/i);
+    await sleep(3000);
+    await capture(`${slug}-after-done`);
+    const afterDoneHost = await visibleBodyText(hostPage);
+    await assertClean(`Selvala ${slug} Done should not desync or auto-pass incorrectly`);
+    if (expectedPhasePattern) {
+      assert.match(
+        afterDoneHost,
+        expectedPhasePattern,
+        `expected ${slug} Done to leave priority in the expected phase\n${afterDoneHost}`,
+      );
+    }
+  };
+
+  try {
+    const deck = deckUrlParam("30 Black Lotus\n30 Selvala, Explorer Returned");
+    hostPage = await openFullUiPage(
+      hostContext,
+      `${baseUrl}/?name=Alice P1&deck=${deck}`,
+      "host-selvala-mulligan-ui",
+    );
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await capture("host-load");
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+    await capture("host-created-lobby");
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, `expected the full UI to create a lobby code\n${await visibleBodyText(hostPage)}`);
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice P2&deck=${deck}`,
+      "guest-selvala-mulligan-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await capture("guest-joined-lobby");
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+    await capture("opening-hand");
+    await assertClean("match start should not sync-fail before Selvala mulligans");
+
+    await waitAndClickLocalButton(hostPage, "host-first-mulligan", /Mulligan/i, 120000);
+    await sleep(3000);
+    await capture("p1-first-mulligan");
+    await assertClean("host first mulligan should not sync-fail");
+
+    await waitAndClickLocalButton(guestPage, "guest-keep-after-host-first-mulligan", /KEEP HAND/i, 120000);
+    await sleep(3000);
+    await capture("p2-kept-opening-hand");
+    await assertClean("guest keep after host mulligan should not sync-fail");
+
+    await waitAndClickLocalButton(hostPage, "host-second-mulligan", /Mulligan/i, 120000);
+    await sleep(5000);
+    await capture("p1-second-mulligan");
+    await assertClean("host second mulligan should not sync-fail");
+
+    let hostMulliganCount = 2;
+    let setupHand = await castableSelvalaSetupHand();
+    while (!setupHand.castable && hostMulliganCount < 10) {
+      await waitAndClickLocalButton(
+        hostPage,
+        `host-extra-mulligan-${hostMulliganCount + 1}-for-selvala-setup`,
+        /Mulligan/i,
+        120000,
+      );
+      hostMulliganCount += 1;
+      await sleep(5000);
+      await capture(`p1-mulligan-${hostMulliganCount}-for-selvala-setup`);
+      await assertClean(`host mulligan ${hostMulliganCount} should not sync-fail`);
+      setupHand = await castableSelvalaSetupHand();
+    }
+    assert.ok(
+      setupHand.castable,
+      `expected a mulligan hand with at least two Black Lotuses and one Selvala-or-hidden deck card before keeping\nhand: ${JSON.stringify(setupHand.names, null, 2)}`
+    );
+
+    await waitAndClickLocalButton(hostPage, "host-keep-after-selvala-setup-hand", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await capture(`p1-kept-after-${hostMulliganCount}-mulligans`);
+    await assertClean("host keep after mulligans should not sync-fail");
+
+    await sleep(7000);
+    const afterKeepFlowText = await waitForVisibleBodyText(
+      hostPage,
+      /Choose \d+ card\(s\) to put on the bottom of your library|BEGINNING|UNTAP|DRAW|MAIN|CAST BLACK LOTUS/i,
+      "expected Player 1 to either bottom cards or advance into the game after mulligans",
+      120000,
+    );
+    const bottomPromptMatch = afterKeepFlowText.match(/Choose (\d+) card\(s\) to put on the bottom of your library/i);
+    if (bottomPromptMatch) {
+      const bottomCount = Number(bottomPromptMatch[1]);
+      assert.ok(Number.isFinite(bottomCount) && bottomCount >= 0, `invalid bottom prompt: ${bottomPromptMatch[0]}`);
+      for (let index = 1; index <= bottomCount; index += 1) {
+        await bottomOneCardKeepingCastableHand(index);
+      }
+      await capture("p1-selected-bottom-cards");
+      await waitAndClickLocalButton(hostPage, "host-submit-bottom-cards", /SUBMIT/i, 60000);
+      await sleep(4000);
+      await capture("p1-bottomed-cards");
+      await assertClean("bottoming cards after mulligans should not sync-fail");
+    } else {
+      await capture("p1-advanced-without-bottom-prompt");
+      await assertClean("advancing after mulligans without a bottom prompt should not sync-fail");
+    }
+
+    await advanceUntil(
+      async () => hasLocalButton(hostPage, /CAST BLACK LOTUS/i),
+      "expected Player 1 to reach a main phase with Black Lotus castable",
+      160,
+    );
+    await capture("p1-main-ready-to-cast-lotus");
+
+    await castBlackLotus(1);
+    await capture("first-black-lotus-resolved");
+    await castBlackLotus(2);
+    await capture("second-black-lotus-resolved");
+
+    await activateLotusFor("green", /GREEN|\{G\}/i);
+    await capture("first-lotus-added-green");
+    await activateLotusFor("white", /WHITE|\{W\}/i);
+    await capture("second-lotus-added-white");
+
+    await waitAndClickLocalButton(hostPage, "host-cast-selvala", /CAST SELVALA, EXPLORER RETURNED/i, 120000);
+    await sleep(1200);
+    await paySelvalaCost();
+    await capture("selvala-on-stack");
+    await waitForStackCardToResolve("Selvala, Explorer Returned", 1, "resolve Selvala", 120);
+    await advanceUntil(
+      async ({ hostText }) => /BF\s*1/i.test(hostText) && /Selvala, Explorer Returned/i.test(hostText),
+      "expected Selvala to resolve to Player 1 battlefield",
+      80,
+    );
+    await capture("selvala-on-battlefield");
+
+    await advanceUntil(
+      async ({ hostText }) =>
+        /UPKEEP/i.test(hostText)
+        && /ACTIVE\s+ALICE P1/i.test(hostText)
+        && await hasLocalButton(hostPage, /Each player reveals the top card of their library/i),
+      "expected Selvala to be activatable during Player 1 upkeep after a full turn",
+      260,
+    );
+    await capture("selvala-ready-in-upkeep");
+    await activateSelvalaAndAcknowledgeReveal(
+      "upkeep-selvala",
+      /UPKEEP[\s\S]*ACTIVE\s+ALICE P1[\s\S]*PRIORITY\s+ALICE P1/i,
+    );
+    await capture("final-after-upkeep-selvala");
+
+    const finalCombinedText = await combinedText();
+    assertNoSyncFailureText(finalCombinedText, "Selvala full UI ziffle reveal flow should stay synced");
+    assert.doesNotMatch(finalCombinedText, /Hidden Card commitment does not match reveal|Ziffle card opening proof/i);
+    assertNoPageErrors(hostPage, guestPage);
+    console.log(`SELVALA_MULLIGAN_E2E_SCREENSHOTS=${screenshotDir}`);
   } finally {
     await withTimeout(Promise.allSettled([
       hostContext.close(),

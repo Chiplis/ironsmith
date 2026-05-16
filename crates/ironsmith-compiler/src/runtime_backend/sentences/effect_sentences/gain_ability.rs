@@ -272,11 +272,21 @@ fn player_gain_effects_for_abilities(
 
     for ability in abilities {
         match ability {
+            GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof) => {
+                effects.push(EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_targeted_player_from(
+                        PlayerFilter::You,
+                        ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+                    ),
+                    duration.clone(),
+                    None,
+                ));
+            }
             GrantedAbilityAst::KeywordAction(KeywordAction::HexproofFrom(filter)) => {
                 effects.push(EffectAst::subject_verb_cant(
                     crate::effect::Restriction::be_targeted_player_from(
                         PlayerFilter::You,
-                        filter.clone(),
+                        filter.clone().controlled_by(PlayerFilter::Opponent),
                     ),
                     duration.clone(),
                     None,
@@ -555,6 +565,14 @@ fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
     }
 }
 
+fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].is_word("also") {
+        end -= 1;
+    }
+    &tokens[..end]
+}
+
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
     for prefix_len in (1..=subject_words.len()).rev() {
@@ -618,7 +636,9 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     }
 
-    let subject_tokens = trim_lexed_commas(&tokens[subject_start_token_idx..verb_token_idx]);
+    let subject_tokens = trim_trailing_also(trim_lexed_commas(
+        &tokens[subject_start_token_idx..verb_token_idx],
+    ));
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -848,7 +868,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&tokens[subject_start_token_idx..verb_token_idx]);
+    let subject_token_storage = trim_commas(&tokens[subject_start_token_idx..verb_token_idx]);
+    let subject_tokens = trim_trailing_also(&subject_token_storage);
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -1401,8 +1422,9 @@ pub(crate) fn parse_gain_ability_sentence(
     if real_subject_start_token_idx >= real_subject_end_token_idx {
         return Ok(None);
     }
-    let real_subject_tokens =
+    let real_subject_token_storage =
         trim_commas(&tokens[real_subject_start_token_idx..real_subject_end_token_idx]);
+    let real_subject_tokens = trim_trailing_also(&real_subject_token_storage);
 
     let mut effects = Vec::new();
 
@@ -2186,6 +2208,83 @@ mod tests {
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
                 && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
+        );
+    }
+
+    #[test]
+    fn you_and_permanents_gain_hexproof_splits_player_and_permanent_grants() {
+        let tokens = tokenize_line(
+            "You and permanents you control gain hexproof until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("mixed player/permanent grant should parse")
+            .expect("mixed player/permanent grant should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "Cant")
+                && string_contains(&debug, "BeTargetedPlayerFrom")
+                && string_contains(&debug, "GrantAbilitiesAll")
+                && string_contains(&debug, "Hexproof"),
+            "expected player hexproof restriction plus permanent hexproof grant, got {debug}"
+        );
+    }
+
+    #[test]
+    fn you_and_permanents_gain_hexproof_from_keeps_player_grant_opponent_scoped() {
+        let tokens = tokenize_line(
+            "You and permanents you control gain hexproof from blue and from black until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("mixed player/permanent hexproof-from grant should parse")
+            .expect("mixed player/permanent hexproof-from grant should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "BeTargetedPlayerFrom")
+                && string_contains(&debug, "Opponent")
+                && string_contains(&debug, "GrantAbilitiesAll")
+                && string_contains(&debug, "HexproofFrom"),
+            "expected player hexproof-from restriction to apply only to opponents' sources plus permanent hexproof-from grant, got {debug}"
+        );
+    }
+
+    #[test]
+    fn gain_ability_subject_ignores_also_before_gain() {
+        let tokens = tokenize_line(
+            "Permanents you control also gain indestructible until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("also-gain sentence should parse")
+            .expect("also-gain sentence should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "GrantAbilitiesAll")
+                && string_contains(&debug, "Indestructible"),
+            "expected also to be ignored in the subject filter, got {debug}"
+        );
+    }
+
+    #[test]
+    fn dawns_truce_gift_line_compiles_promised_and_not_promised_branches() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dawn's Truce")
+            .parse_text(
+                "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)\nYou and permanents you control gain hexproof until end of turn. If the gift was promised, permanents you control also gain indestructible until end of turn.",
+            )
+            .expect("Dawn's Truce gift text should parse");
+
+        let debug = format!("{def:#?}");
+        assert!(
+            string_contains(&debug, "ThisSpellPaidLabel")
+                && string_contains(&debug, "\"Gift\"")
+                && string_contains(&debug, "EmitGiftGiven")
+                && string_contains(&debug, "Hexproof")
+                && string_contains(&debug, "Indestructible"),
+            "expected Gift condition, gift event, hexproof, and indestructible effects, got {debug}"
         );
     }
 
