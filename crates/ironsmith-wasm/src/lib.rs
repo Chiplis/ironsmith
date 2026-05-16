@@ -1221,10 +1221,7 @@ fn normalized_after_shuffle_order(
 ) -> Vec<ObjectId> {
     let remapped = remap_journaled_after_shuffle_order(before, after, after_order);
     let effective = effective_after_shuffle_order(player, before, after);
-    if remapped.is_empty()
-        || !object_order_has_unique_ids(&remapped)
-        || (!effective.is_empty() && remapped.len() != effective.len())
-    {
+    if remapped.is_empty() || !object_order_has_unique_ids(&remapped) {
         return effective;
     }
     remapped

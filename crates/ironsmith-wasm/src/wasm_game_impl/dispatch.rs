@@ -38,7 +38,47 @@ impl WasmGame {
         None
     }
 
+    fn pending_priority_decision_is_stale(&self) -> bool {
+        if self.pregame.is_some() {
+            return false;
+        }
+        if let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref()
+            && self.game.turn.priority_player != Some(priority.player)
+        {
+            return true;
+        }
+        false
+    }
+
+    fn recompute_stale_priority_decision(&mut self) -> Result<(), JsValue> {
+        if self.pending_priority_decision_is_stale() {
+            self.rebuild_stale_priority_decision();
+        }
+        Ok(())
+    }
+
+    fn rebuild_stale_priority_decision(&mut self) -> bool {
+        if !self.pending_priority_decision_is_stale() {
+            return false;
+        }
+        let Some(priority_player) = self.game.turn.priority_player else {
+            self.pending_decision = None;
+            return true;
+        };
+        self.pending_decision = Some(DecisionContext::Priority(
+            ironsmith::decisions::context::PriorityContext::new(
+                priority_player,
+                ironsmith::decision::compute_legal_actions(&self.game, priority_player),
+            ),
+        ));
+        self.runner_pending_decision = false;
+        true
+    }
+
     fn should_preserve_decision_after_hidden_reveal(&self) -> bool {
+        if self.pending_priority_decision_is_stale() {
+            return false;
+        }
         self.pending_live_continuation.is_some()
             || self.pending_replay_action.is_some()
             || self.runner_pending_decision
@@ -97,6 +137,9 @@ impl WasmGame {
     fn finish_hidden_card_reveal(&mut self, recompute_decision: bool) -> Result<JsValue, JsValue> {
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = None;
+        if !recompute_decision && self.rebuild_stale_priority_decision() {
+            return self.snapshot();
+        }
         let preserve_decision =
             !recompute_decision && self.should_preserve_decision_after_hidden_reveal();
         if preserve_decision {
@@ -762,6 +805,7 @@ impl WasmGame {
     /// Return the current UI state from the selected player perspective.
     #[wasm_bindgen(js_name = uiState)]
     pub fn ui_state(&mut self) -> Result<JsValue, JsValue> {
+        self.recompute_stale_priority_decision()?;
         self.snapshot()
     }
 
@@ -1795,6 +1839,12 @@ impl WasmGame {
     pub fn dispatch(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
         let dispatch_started_at = PerfTimer::start();
         self.last_dispatch_perf = None;
+        if self.pending_priority_decision_is_stale() {
+            self.recompute_stale_priority_decision()?;
+            return Err(JsValue::from_str(
+                "pending priority decision no longer matches the game priority holder",
+            ));
+        }
         let command_decode_started_at = PerfTimer::start();
         let command: UiCommand = serde_wasm_bindgen::from_value(command)
             .map_err(|e| JsValue::from_str(&format!("invalid command payload: {e}")))?;

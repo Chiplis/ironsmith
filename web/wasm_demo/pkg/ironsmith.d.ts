@@ -242,6 +242,7 @@ export interface InitOutput {
     readonly wasmgame_applyVerifiedHiddenLibraryShuffle: (a: number, b: any) => [number, number, number];
     readonly wasmgame_validateMatchConfig: (a: number, b: any) => [number, number, number];
     readonly wasmgame_snapshot: (a: number) => [number, number, number];
+    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly wasmgame_lastSnapshotPerf: (a: number) => [number, number, number];
     readonly wasmgame_lastDispatchPerf: (a: number) => [number, number, number];
     readonly wasmgame_lastReplayExecutionPerf: (a: number) => [number, number, number];
@@ -296,7 +297,6 @@ export interface InitOutput {
     readonly wasmgame_ziffleBuildRevealTokens: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCard: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCards: (a: number, b: any) => [number, number, number];
-    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

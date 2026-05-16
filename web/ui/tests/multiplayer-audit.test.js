@@ -4,6 +4,7 @@ import { webcrypto } from "node:crypto";
 import {
   auditStateHash,
   actionQuorumThreshold,
+  assertResyncActionsExtendLocalTranscript,
   assertCurrentAuditPlayerCount,
   authorizeCryptoMaterialRequestRequirements,
   buildActionForkDisputeEvidence,
@@ -365,6 +366,59 @@ test("public checkpoint hashes ignore transient worker metadata", async () => {
         },
       ],
     }, webcrypto),
+  );
+});
+
+test("public checkpoint hashes normalize public object runtime ids to stable ids", async () => {
+  const hostCheckpoint = {
+    version: 1,
+    players: [
+      { id: 0, handCount: 6, libraryCount: 53, graveyard: [140], commanders: [] },
+      { id: 1, handCount: 8, libraryCount: 52, graveyard: [], commanders: [] },
+    ],
+    objects: [
+      {
+        id: 135,
+        stableId: 60,
+        owner: 0,
+        controller: 0,
+        zone: "battlefield",
+        identity: { name: "Mountain", cardTypes: ["Land"], subtypes: ["Mountain"], oracleText: "" },
+        attachments: [140],
+        attachedTo: null,
+        tapped: false,
+      },
+      {
+        id: 140,
+        stableId: 64,
+        owner: 0,
+        controller: 0,
+        zone: "graveyard",
+        identity: { name: "Mountain", cardTypes: ["Land"], subtypes: ["Mountain"], oracleText: "" },
+        attachments: [],
+        attachedTo: { kind: "object", object: 135 },
+        tapped: false,
+      },
+    ],
+    battlefield: [135],
+    publicExile: [],
+    command: [],
+    stack: [{ objectId: 140, controller: 0, targets: [{ kind: "object", object: 135 }] }],
+    hiddenZones: [{ owner: 0, zone: "hand", count: 6, commitmentRoot: "same-root" }],
+  };
+  const guestCheckpoint = cloneTestPayload(hostCheckpoint);
+  guestCheckpoint.players[0].graveyard = [940];
+  guestCheckpoint.objects[0].id = 931;
+  guestCheckpoint.objects[1].id = 940;
+  guestCheckpoint.objects[0].attachments = [940];
+  guestCheckpoint.objects[1].attachedTo.object = 931;
+  guestCheckpoint.battlefield = [931];
+  guestCheckpoint.stack[0].objectId = 940;
+  guestCheckpoint.stack[0].targets[0].object = 931;
+
+  assert.equal(
+    await publicCheckpointHash(hostCheckpoint, webcrypto),
+    await publicCheckpointHash(guestCheckpoint, webcrypto),
   );
 });
 
@@ -1908,5 +1962,113 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       actions,
     }, webcrypto),
     /checkpoint hash mismatch/,
+  );
+
+  const signedAction = {
+    seq: 1,
+    actorIndex: 0,
+    command: { type: "priority_action", action_ref: { kind: "test_priority_action" } },
+    label: "action 1",
+    audit: { signature: "sig-1", nextStateHash: "1".repeat(64) },
+  };
+  const actionEnvelope = await buildSignedResyncEnvelope({
+    keyPair: hostKey,
+    matchId: "m",
+    signer: 0,
+    lastSequence: 1,
+    finalStateHash: "1".repeat(64),
+    checkpoint,
+    actions: [signedAction],
+  }, webcrypto);
+  assert.equal(
+    (await verifySignedResyncEnvelope({
+      envelope: actionEnvelope,
+      publicKey: hostPublicCryptoKey,
+      checkpoint,
+      actions: [signedAction],
+    }, webcrypto)).valid,
+    true,
+  );
+  await assert.rejects(
+    () => buildSignedResyncEnvelope({
+      keyPair: hostKey,
+      matchId: "m",
+      signer: 0,
+      lastSequence: 2,
+      finalStateHash: "1".repeat(64),
+      checkpoint,
+      actions: [signedAction],
+    }, webcrypto),
+    /last sequence/,
+  );
+  await assert.rejects(
+    () => verifySignedResyncEnvelope({
+      envelope: actionEnvelope,
+      publicKey: hostPublicCryptoKey,
+      checkpoint,
+      actions: [],
+    }, webcrypto),
+    /last sequence/,
+  );
+});
+
+test("resync continuity rejects rollback and divergent local history", () => {
+  const action1 = {
+    seq: 1,
+    actorIndex: 0,
+    command: { type: "priority_action", action_ref: { kind: "test_priority_action", sequence: 0 } },
+    label: "action 1",
+    audit: { signature: "sig-1", nextStateHash: "1".repeat(64) },
+  };
+  const action2 = {
+    seq: 2,
+    actorIndex: 1,
+    command: { type: "priority_action", action_ref: { kind: "test_priority_action", sequence: 1 } },
+    label: "action 2",
+    audit: { signature: "sig-2", nextStateHash: "2".repeat(64) },
+  };
+  const action3 = {
+    seq: 3,
+    actorIndex: 0,
+    command: { type: "priority_action", action_ref: { kind: "test_priority_action", sequence: 2 } },
+    label: "action 3",
+    audit: { signature: "sig-3", nextStateHash: "3".repeat(64) },
+  };
+
+  assert.deepEqual(
+    assertResyncActionsExtendLocalTranscript({
+      actionEntries: [action1, action2, action3],
+      localActions: [action1, action2],
+      localLastSequence: 2,
+    }),
+    {
+      localSequence: 2,
+      finalSequence: 3,
+      checkedActions: 2,
+    },
+  );
+  assert.throws(
+    () => assertResyncActionsExtendLocalTranscript({
+      actionEntries: [action1],
+      localActions: [action1, action2],
+      localLastSequence: 2,
+    }),
+    /older than the local transcript/,
+  );
+  assert.throws(
+    () => assertResyncActionsExtendLocalTranscript({
+      actionEntries: [action1, { ...action2, label: "tampered label" }],
+      localActions: [action1, action2],
+      localLastSequence: 2,
+    }),
+    /does not match local transcript/,
+  );
+  assert.throws(
+    () => assertResyncActionsExtendLocalTranscript({
+      actionEntries: [action1, action2],
+      localActions: [action2],
+      localLastSequence: 2,
+    }),
+    /incomplete/,
   );
 });

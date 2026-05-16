@@ -705,7 +705,7 @@ function Harness() {
       snapshot: async () => {
         const auditTranscript =
           typeof lobby.exportAuditTranscript === "function"
-            ? await lobby.exportAuditTranscript()
+            ? await lobby.exportAuditTranscript({ includeLiveCheckpoint: false })
             : null;
 
         return {

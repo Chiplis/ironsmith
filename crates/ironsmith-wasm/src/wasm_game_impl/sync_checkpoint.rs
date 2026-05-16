@@ -652,6 +652,85 @@ fn public_audit_protocol_name() -> String {
 
 #[wasm_bindgen]
 impl WasmGame {
+    fn public_audit_known_object_identity(object: &Object) -> PublicAuditObjectIdentity {
+        PublicAuditObjectIdentity {
+            name: object.name.clone(),
+            card_types: object
+                .card_types
+                .iter()
+                .map(|card_type| card_type.name().to_string())
+                .collect(),
+            subtypes: object
+                .subtypes
+                .iter()
+                .map(|subtype| subtype.display_name())
+                .collect(),
+            oracle_text: object.compiled_card_text.clone(),
+        }
+    }
+
+    fn public_audit_hidden_zone_entry(
+        &self,
+        position: usize,
+        id: ObjectId,
+    ) -> serde_json::Value {
+        if let Some(info) = self.game.hidden_card_info(id) {
+            let public_slot = info.public_slot.unwrap_or(info.slot);
+            let public_commitment = info
+                .public_commitment
+                .as_deref()
+                .unwrap_or(info.commitment.as_str());
+            return serde_json::json!({
+                "position": position,
+                "owner": info.owner.0,
+                "slot": public_slot,
+                "commitment": public_commitment,
+            });
+        }
+
+        let Some(object) = self.game.object(id) else {
+            return serde_json::json!({
+                "position": position,
+                "kind": "missing_object",
+                "object": id.0,
+            });
+        };
+
+        serde_json::json!({
+            "position": position,
+            "kind": "known_object",
+            "stableId": object.stable_id.0.0,
+            "owner": object.owner.0,
+            "controller": self.game.controller_of(object).0,
+            "zone": sync_zone_name(object.zone),
+            "identity": Self::public_audit_known_object_identity(object),
+            "objectKind": object.kind.name(),
+            "token": matches!(object.kind, ironsmith::object::ObjectKind::Token),
+            "power": object.power(),
+            "toughness": object.toughness(),
+            "loyalty": object.loyalty(),
+            "defense": object.defense(),
+            "counters": object
+                .counters
+                .iter()
+                .map(|(kind, amount)| SyncCounter {
+                    kind: sync_counter_kind(*kind),
+                    amount: *amount,
+                })
+                .collect::<Vec<_>>(),
+            "faceDown": self.game.is_face_down(id),
+            "manifested": self.game.is_manifested(id),
+            "foretold": self.game.is_foretold(id),
+            "plottedBy": self
+                .game
+                .plotted_cards
+                .get(&id)
+                .map(|(player, _)| player.0),
+            "plottedTurn": self.game.plotted_turn(id),
+            "commander": self.game.is_commander_object(id),
+        })
+    }
+
     fn public_audit_commitment_root(
         &self,
         owner: PlayerId,
@@ -661,22 +740,8 @@ impl WasmGame {
         let entries = ids
             .iter()
             .enumerate()
-            .map(|(position, id)| {
-                self.game.hidden_card_info(*id).map(|info| {
-                    let public_slot = info.public_slot.unwrap_or(info.slot);
-                    let public_commitment = info
-                        .public_commitment
-                        .as_deref()
-                        .unwrap_or(info.commitment.as_str());
-                    serde_json::json!({
-                        "position": position,
-                        "owner": info.owner.0,
-                        "slot": public_slot,
-                        "commitment": public_commitment,
-                    })
-                })
-            })
-            .collect::<Option<Vec<_>>>()?;
+            .map(|(position, id)| self.public_audit_hidden_zone_entry(position, *id))
+            .collect::<Vec<_>>();
         let bytes = serde_json::to_vec(&serde_json::json!({
             "domain": "ironsmith-public-hidden-zone-root-v1",
             "owner": owner.0,
@@ -914,20 +979,7 @@ impl WasmGame {
 
     fn public_audit_object_identity(&self, id: ObjectId, object: &Object) -> Option<PublicAuditObjectIdentity> {
         self.public_audit_object_identity_is_public(id)
-            .then(|| PublicAuditObjectIdentity {
-                name: object.name.clone(),
-                card_types: object
-                    .card_types
-                    .iter()
-                    .map(|card_type| card_type.name().to_string())
-                    .collect(),
-                subtypes: object
-                    .subtypes
-                    .iter()
-                    .map(|subtype| subtype.display_name())
-                    .collect(),
-                oracle_text: object.compiled_card_text.clone(),
-            })
+            .then(|| Self::public_audit_known_object_identity(object))
     }
 
     fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
@@ -1513,6 +1565,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn normalized_shuffle_after_order_uses_live_order_when_remap_duplicates_ids() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
         let mut before = CryptoAuditState::default();
         let mut after = CryptoAuditState::default();
@@ -1557,6 +1610,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn sync_checkpoint_restores_battlefield_state_for_guest_perspective() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let object_id = ObjectId::from_raw(
@@ -1607,6 +1661,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn sync_checkpoint_restores_in_progress_priority_pass_tracker() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let mut host = WasmGame::new();
@@ -1678,6 +1733,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn public_audit_checkpoint_redacts_hidden_zone_card_identities() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         host.add_card_to_zone(0, "Ornithopter".to_string(), "battlefield".to_string(), true)
@@ -1720,6 +1776,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn public_audit_checkpoint_uses_stable_public_hidden_commitments() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let object_id = game.game.create_hidden_card_placeholder(
@@ -1759,7 +1816,69 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn public_audit_hidden_zone_root_commits_known_cards_without_hidden_metadata() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let known_id = ObjectId::from_raw(
+            game.add_card_to_zone(0, "Forest".to_string(), "hand".to_string(), true)
+                .expect("known card should be added to hand"),
+        );
+        let hidden_id = game.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            9,
+            "hidden-slot-9".to_string(),
+        );
+        assert!(
+            game.game.hidden_card_info(known_id).is_none(),
+            "manual known hand card should not be tracked as hidden"
+        );
+        assert!(game.game.hidden_card_info(hidden_id).is_some());
+
+        let hand_root = |game: &WasmGame| {
+            let checkpoint = game.build_public_audit_checkpoint();
+            checkpoint
+                .hidden_zones
+                .into_iter()
+                .find(|zone| zone.owner == alice.0 && zone.zone == "hand")
+                .expect("hand hidden zone should be exported")
+                .commitment_root
+                .expect("mixed hand should still have a commitment root")
+        };
+
+        let original = hand_root(&game);
+        game.game
+            .player_mut(alice)
+            .expect("Alice should exist")
+            .hand
+            .swap(0, 1);
+        let reordered = hand_root(&game);
+        assert_ne!(
+            reordered, original,
+            "root should commit to the order of known and hidden hand objects"
+        );
+
+        game.game
+            .player_mut(alice)
+            .expect("Alice should exist")
+            .hand
+            .swap(0, 1);
+        game.game
+            .object_mut(known_id)
+            .expect("known hand object should exist")
+            .name = "Island".to_string();
+        let renamed = hand_root(&game);
+        assert_ne!(
+            renamed, original,
+            "root should commit to known object identity when no hidden metadata is present"
+        );
+    }
+
+    #[test]
     fn hidden_card_placeholder_moves_and_reveals_in_place() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let hidden_id = game.game.create_hidden_card_placeholder(
@@ -1809,6 +1928,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn mulligan_shuffle_requirement_reseals_drawn_hidden_hand_cards() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let bob = PlayerId::from_index(1);
@@ -1897,6 +2017,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn verified_shuffle_reseal_accepts_pre_draw_after_order_ids() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let bob = PlayerId::from_index(1);
@@ -2014,6 +2135,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn repeated_mulligan_shuffle_requirements_keep_unique_after_orders() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let alice = PlayerId::from_index(0);
@@ -2083,6 +2205,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn mulligan_bottoming_revealed_hand_card_does_not_require_library_shuffle() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let alice = PlayerId::from_index(0);
@@ -2146,6 +2269,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn sync_checkpoint_preserves_hidden_card_placeholders() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         host.game.create_hidden_card_placeholder(
@@ -2184,6 +2308,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn hidden_deck_manifest_populates_committed_library_placeholders() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         game.populate_libraries_with_hidden_manifests(
@@ -2219,6 +2344,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn local_committed_card_exports_opening_metadata() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         game.populate_libraries_with_hidden_manifests(
@@ -2256,6 +2382,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn redacted_sync_checkpoint_hides_opponent_hidden_zones_and_imports() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         host.populate_libraries_with_hidden_manifests(
@@ -2328,6 +2455,7 @@ mod sync_checkpoint_tests {
 
     #[test]
     fn redacted_sync_checkpoint_hides_opened_opponent_hand_cards() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         host.populate_libraries_with_hidden_manifests(

@@ -272,6 +272,128 @@ function stripTransientMetadata(value) {
   return value;
 }
 
+function publicStableObjectId(object) {
+  const stable = Number(object?.stableId ?? object?.stable_id);
+  if (Number.isSafeInteger(stable) && stable >= 0) return stable;
+  const id = Number(object?.id);
+  return Number.isSafeInteger(id) && id >= 0 ? id : null;
+}
+
+function normalizePublicAttachmentTarget(target, stableIdByRuntimeId) {
+  if (!target || typeof target !== "object") return target;
+  const mapped = { ...target };
+  if (mapped.object != null) {
+    mapped.object = stableIdByRuntimeId.get(String(mapped.object)) ?? mapped.object;
+  }
+  if (mapped.objectId != null) {
+    mapped.objectId = stableIdByRuntimeId.get(String(mapped.objectId)) ?? mapped.objectId;
+  }
+  if (mapped.object_id != null) {
+    mapped.object_id = stableIdByRuntimeId.get(String(mapped.object_id)) ?? mapped.object_id;
+  }
+  return mapped;
+}
+
+function normalizePublicObjectIdList(ids, stableIdByRuntimeId, { sort = false } = {}) {
+  const normalized = (Array.isArray(ids) ? ids : []).map((id) =>
+    stableIdByRuntimeId.get(String(id)) ?? id
+  );
+  return sort
+    ? normalized.sort((left, right) => Number(left) - Number(right))
+    : normalized;
+}
+
+function normalizePublicCheckpointForHash(checkpoint) {
+  const stripped = stripTransientMetadata(checkpoint);
+  if (!stripped || typeof stripped !== "object" || !Array.isArray(stripped.objects)) {
+    return stripped;
+  }
+
+  const stableIdByRuntimeId = new Map();
+  for (const object of stripped.objects) {
+    const stableId = publicStableObjectId(object);
+    if (stableId != null && object?.id != null) {
+      stableIdByRuntimeId.set(String(object.id), stableId);
+    }
+  }
+
+  const normalizeObject = (object) => {
+    const stableId = publicStableObjectId(object);
+    const normalized = {
+      ...object,
+      ...(stableId != null ? { id: stableId, stableId } : {}),
+    };
+    delete normalized.stable_id;
+    if (Array.isArray(normalized.attachments)) {
+      normalized.attachments = normalizePublicObjectIdList(
+        normalized.attachments,
+        stableIdByRuntimeId,
+        { sort: true }
+      );
+    }
+    if (normalized.attachedTo) {
+      normalized.attachedTo = normalizePublicAttachmentTarget(
+        normalized.attachedTo,
+        stableIdByRuntimeId
+      );
+    }
+    if (normalized.attached_to) {
+      normalized.attached_to = normalizePublicAttachmentTarget(
+        normalized.attached_to,
+        stableIdByRuntimeId
+      );
+    }
+    return normalized;
+  };
+
+  const normalizePlayer = (player) => {
+    const normalized = { ...player };
+    for (const key of ["graveyard", "commanders"]) {
+      if (Array.isArray(normalized[key])) {
+        normalized[key] = normalizePublicObjectIdList(normalized[key], stableIdByRuntimeId);
+      }
+    }
+    return normalized;
+  };
+
+  const normalizeStackEntry = (entry) => {
+    const objectId = entry?.objectId ?? entry?.object_id;
+    const normalized = {
+      ...entry,
+      objectId:
+        objectId == null
+          ? objectId
+          : stableIdByRuntimeId.get(String(objectId)) ?? objectId,
+      targets: (entry?.targets || []).map((target) =>
+        normalizePublicAttachmentTarget(target, stableIdByRuntimeId)
+      ),
+    };
+    delete normalized.object_id;
+    return normalized;
+  };
+
+  const normalized = {
+    ...stripped,
+    players: (stripped.players || []).map(normalizePlayer),
+    objects: (stripped.objects || [])
+      .map(normalizeObject)
+      .sort((left, right) => Number(left.id ?? 0) - Number(right.id ?? 0)),
+    stack: (stripped.stack || []).map(normalizeStackEntry),
+  };
+  for (const key of ["battlefield", "publicExile", "public_exile", "command"]) {
+    if (Array.isArray(normalized[key])) {
+      normalized[key] = normalizePublicObjectIdList(normalized[key], stableIdByRuntimeId, {
+        sort: key !== "stack",
+      });
+    }
+  }
+  if (Array.isArray(normalized.public_exile) && !Array.isArray(normalized.publicExile)) {
+    normalized.publicExile = normalized.public_exile;
+  }
+  delete normalized.public_exile;
+  return normalized;
+}
+
 export async function sha256Hex(value, cryptoImpl = globalThis.crypto) {
   if (!cryptoImpl?.subtle) {
     throw new Error("WebCrypto subtle API is unavailable");
@@ -1678,7 +1800,7 @@ export async function checkpointHash(checkpoint, cryptoImpl = globalThis.crypto)
 export async function publicCheckpointHash(checkpoint, cryptoImpl = globalThis.crypto) {
   return sha256Hex(canonicalJson({
     domain: "ironsmith-public-audit-checkpoint-v1",
-    checkpoint: stripTransientMetadata(checkpoint),
+    checkpoint: normalizePublicCheckpointForHash(checkpoint),
   }), cryptoImpl);
 }
 
@@ -1795,6 +1917,66 @@ export async function transcriptActionsHash(actions = [], cryptoImpl = globalThi
   }), cryptoImpl);
 }
 
+function transcriptLastSequence(actions = []) {
+  if (!Array.isArray(actions) || actions.length === 0) return 0;
+  const lastSequence = Number(actions.at(-1)?.seq || 0);
+  if (!Number.isSafeInteger(lastSequence) || lastSequence < 0) {
+    throw new Error("Resync action log has an invalid final sequence");
+  }
+  return lastSequence;
+}
+
+export function assertResyncActionsExtendLocalTranscript({
+  actionEntries = [],
+  localActions = [],
+  localLastSequence = 0,
+} = {}) {
+  const localSequence = Number(localLastSequence || 0);
+  if (!Number.isSafeInteger(localSequence) || localSequence < 0) {
+    throw new Error("Local transcript has an invalid sequence");
+  }
+
+  const remoteActions = Array.isArray(actionEntries) ? actionEntries : [];
+  const finalSequence = transcriptLastSequence(remoteActions);
+  if (finalSequence < localSequence) {
+    throw new Error(
+      `Resync transcript is older than the local transcript. Expected at least ${localSequence}, received ${finalSequence}.`
+    );
+  }
+
+  const localPrefix = (Array.isArray(localActions) ? localActions : [])
+    .filter((entry) => {
+      const seq = Number(entry?.seq || 0);
+      return seq > 0 && seq <= localSequence;
+    })
+    .sort((left, right) => Number(left?.seq || 0) - Number(right?.seq || 0));
+
+  if (localSequence > 0 && localPrefix.length !== localSequence) {
+    throw new Error("Local transcript is incomplete; refusing resync without continuity proof");
+  }
+
+  for (let index = 0; index < localPrefix.length; index += 1) {
+    const localEntry = localPrefix[index];
+    const remoteEntry = remoteActions[index];
+    const expectedSeq = Number(localEntry?.seq || 0);
+    if (expectedSeq !== index + 1) {
+      throw new Error("Local transcript is incomplete; refusing resync without continuity proof");
+    }
+    if (!remoteEntry || Number(remoteEntry?.seq || 0) !== expectedSeq) {
+      throw new Error(`Resync transcript does not include local action ${expectedSeq}`);
+    }
+    if (canonicalJson(remoteEntry) !== canonicalJson(localEntry)) {
+      throw new Error(`Resync transcript action ${expectedSeq} does not match local transcript`);
+    }
+  }
+
+  return {
+    localSequence,
+    finalSequence,
+    checkedActions: localPrefix.length,
+  };
+}
+
 export async function buildSignedResyncEnvelope({
   keyPair,
   matchId,
@@ -1804,11 +1986,16 @@ export async function buildSignedResyncEnvelope({
   checkpoint,
   actions = [],
 }, cryptoImpl = globalThis.crypto) {
+  const actionLastSequence = transcriptLastSequence(actions);
+  const claimedLastSequence = Number(lastSequence ?? actionLastSequence);
+  if (claimedLastSequence !== actionLastSequence) {
+    throw new Error("Resync last sequence does not match action log");
+  }
   const payload = {
     domain: "ironsmith-resync-envelope-v1",
     matchId: String(matchId || ""),
     signer: Number(signer),
-    lastSequence: Number(lastSequence || 0),
+    lastSequence: actionLastSequence,
     finalStateHash: String(finalStateHash || ""),
     checkpointHash: await checkpointHash(checkpoint, cryptoImpl),
     actionsHash: await transcriptActionsHash(actions, cryptoImpl),
@@ -1841,6 +2028,10 @@ export async function verifySignedResyncEnvelope({
   const expectedCheckpointHash = await checkpointHash(checkpoint, cryptoImpl);
   if (payload.checkpointHash !== expectedCheckpointHash) {
     throw new Error("Resync checkpoint hash mismatch");
+  }
+  const expectedLastSequence = transcriptLastSequence(actions);
+  if (payload.lastSequence !== expectedLastSequence) {
+    throw new Error("Resync last sequence does not match action log");
   }
   const expectedActionsHash = await transcriptActionsHash(actions, cryptoImpl);
   if (payload.actionsHash !== expectedActionsHash) {

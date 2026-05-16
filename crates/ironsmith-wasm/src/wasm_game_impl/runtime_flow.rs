@@ -1857,6 +1857,79 @@ mod live_action_rollback_tests {
     }
 
     #[test]
+    fn hidden_reveal_without_recompute_rebuilds_stale_priority_decision() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = bob;
+        wasm.game.turn.priority_player = Some(bob);
+        wasm.game.turn.turn_number = 2;
+        wasm.game.turn.phase = Phase::Beginning;
+        wasm.game.turn.step = Some(Step::Draw);
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::DrawPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.game
+            .create_hidden_card_placeholder(bob, Zone::Hand, 7, "bob-slot-7".to_string());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {
+            owner: 1,
+            slot: 7,
+            card_name: "Mountain".to_string(),
+            commitment: Some("bob-slot-7".to_string()),
+            recompute_decision: false,
+        })
+        .expect("hidden reveal should succeed");
+
+        assert_eq!(wasm.game.turn.priority_player, Some(bob));
+        assert_eq!(wasm.game.turn.step, Some(Step::Draw));
+        assert_eq!(wasm.priority_state.priority_tracker_snapshot(), (0, 2));
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, bob),
+            other => panic!("expected rebuilt priority decision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ui_state_rebuilds_stale_priority_decision_before_exposing_actions() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = bob;
+        wasm.game.turn.priority_player = Some(bob);
+        wasm.game.turn.turn_number = 2;
+        wasm.game.turn.phase = Phase::Beginning;
+        wasm.game.turn.step = Some(Step::Draw);
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::DrawPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        wasm.ui_state()
+            .expect("uiState should repair stale priority before snapshotting");
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, bob),
+            other => panic!("expected rebuilt priority decision, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn live_action_error_restore_returns_to_pre_cast_priority_state() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();

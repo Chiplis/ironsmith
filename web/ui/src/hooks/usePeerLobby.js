@@ -3,6 +3,7 @@ import Peer from "peerjs";
 import {
   auditStateHash,
   actionQuorumThreshold,
+  assertResyncActionsExtendLocalTranscript,
   authorizeCryptoMaterialRequestRequirements,
   buildActionForkDisputeEvidence,
   buildSignedDisconnectForfeitVote,
@@ -595,6 +596,12 @@ function shouldRequestRemoteCryptoPreview(command, state, previewedRequirements 
 function commandMayProducePostApplyOpenings(command, state, previewedRequirements = []) {
   if (!command) return false;
   if (shouldRequestRemoteCryptoPreview(command, state, previewedRequirements)) return true;
+  if (command.type === "priority_action") {
+    const kind = String(command.action_ref?.kind || command.actionRef?.kind || "").toLowerCase();
+    if (/(^|_)(open|reveal|look|search|draw|mill|manifest|cloak|discover|cascade|scry|surveil)(_|$)/.test(kind)) {
+      return true;
+    }
+  }
   if (
     (previewedRequirements || []).some((requirement) =>
       ["public_open", "private_open", "public_view_window", "private_view_window"].includes(
@@ -4557,11 +4564,7 @@ export function usePeerLobby({
     seq,
     actorIndex,
     liveState,
-    previewedRequirements = [],
   }) => {
-    if (!commandMayProducePostApplyOpenings(command, liveState, previewedRequirements)) {
-      return [];
-    }
     const currentGame = gameRef.current;
     if (
       !currentGame
@@ -4685,7 +4688,6 @@ export function usePeerLobby({
         seq,
         actorIndex,
         liveState,
-        previewedRequirements,
       });
       if (postApplyRequirements.length === 0) {
         throw err;
@@ -4997,9 +4999,9 @@ export function usePeerLobby({
         peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
           : await currentGame.exportSyncCheckpoint();
-      const actions = (payload.actions || actionHistoryRef.current || [])
+      const actions = (actionHistoryRef.current || [])
         .map((entry) => cloneMultiplayerPayload(entry));
-      const lastSequence = Number(payload.lastSequence ?? actions.at(-1)?.seq ?? 0);
+      const lastSequence = Number(actions.at(-1)?.seq ?? 0);
       const resyncEnvelope = await buildSignedResyncEnvelope({
         keyPair: auditKeyPairRef.current,
         matchId: payload.match?.auditMatchId || currentAuditMatchId(),
@@ -5011,6 +5013,7 @@ export function usePeerLobby({
       });
       safeSend(conn, {
         ...payload,
+        lastSequence,
         match: redactedMatchPayloadForPeer(payload.match, conn.peer, peerIndex),
         checkpoint,
         actions,
@@ -6526,6 +6529,13 @@ export function usePeerLobby({
     const session = multiplayerRef.current;
     const dryRun = Boolean(options.dryRun);
     const throwOnFailure = Boolean(options.throwOnFailure);
+    const existingAction = actionHistoryEntryForSequence(nextSequence);
+    if (existingAction && sequencedActionsEquivalent(existingAction, message)) {
+      if (options.relay !== false) {
+        relaySequencedAction(message);
+      }
+      return { duplicate: true };
+    }
     if (awaitingStateResyncRef.current && !options.allowWhileAwaitingResync) {
       if (dryRun || options.throwOnOrderMismatch || throwOnFailure) {
         throw new Error("Cannot validate action while awaiting state resync");
@@ -6661,6 +6671,38 @@ export function usePeerLobby({
         requirements: cryptoRequirements,
         updateState: !dryRun,
       });
+      const liveStateBeforeApply = gameRef.current
+        ? await gameRef.current.uiState()
+        : liveStateForClock;
+      const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
+      if (
+        expectedActorBeforeApply !== null
+        && expectedActorBeforeApply !== undefined
+        && Number(expectedActorBeforeApply) !== Number(message.actorIndex)
+      ) {
+        const currentPostHash = await currentPublicAuditCheckpointHash();
+        if (currentPostHash === String(message.audit?.publicCheckpointHash || "")) {
+          if (dryRun) {
+            await restoreValidationSnapshot();
+            return {
+              verified: true,
+              publicCheckpointHash: String(message.audit?.publicCheckpointHash || ""),
+              nextStateHash: String(message.audit?.nextStateHash || ""),
+              alreadyAtPublicCheckpoint: true,
+            };
+          }
+          commitMatchClockAudit(message.audit?.clock, liveStateBeforeApply);
+          await appendAppliedSequencedAction(message);
+          if (options.relay !== false) {
+            relaySequencedAction(message);
+          }
+          return {
+            applied: true,
+            alreadyAtPublicCheckpoint: true,
+          };
+        }
+        throw new Error("Sequenced action actor is not the current decision player");
+      }
       const publishAppliedStateImmediately =
         !commandMayProducePostApplyOpenings(localCommand, liveStateForClock, cryptoRequirements)
         && !hasPostTimedOpenings(message.audit?.openings || []);
@@ -7298,6 +7340,26 @@ export function usePeerLobby({
     );
   }
 
+  async function waitForRevealAuthorizationSequence(sequence, debug = null, timeoutMs = 10000) {
+    const target = Number(sequence);
+    const started = Date.now();
+    let currentSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    while (
+      Number.isSafeInteger(target)
+      && target > currentSequence + 1
+      && Date.now() - started < timeoutMs
+    ) {
+      await sleep(50);
+      currentSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    }
+    if (debug) {
+      debug.currentSequence = currentSequence;
+      debug.expectedSeq = currentSequence + 1;
+      debug.sequenceWaitMs = Date.now() - started;
+    }
+    return currentSequence;
+  }
+
   async function ziffleRevealAuthorizedByAction(message, requester, owner, positions, ceremony, debug = null) {
     const auth = message?.actionAuthorization;
     const reject = (reason) => {
@@ -7311,7 +7373,7 @@ export function usePeerLobby({
     const sequence = Number(auth.seq);
     if (!Number.isSafeInteger(sequence) || sequence <= 0) return reject("invalid_sequence");
     if (!auth.command || typeof auth.command !== "object") return reject("missing_command");
-    const currentSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    const currentSequence = await waitForRevealAuthorizationSequence(sequence, debug);
     const expectedSeq = currentSequence + 1;
     if (debug) {
       debug.sequence = sequence;
@@ -9107,6 +9169,15 @@ export function usePeerLobby({
       const actionEntries = Array.isArray(message?.actions)
         ? [...message.actions].sort((left, right) => Number(left?.seq || 0) - Number(right?.seq || 0))
         : [];
+      const continuity = assertResyncActionsExtendLocalTranscript({
+        actionEntries,
+        localActions: actionHistoryRef.current,
+        localLastSequence: currentSession.lastAppliedSequence,
+      });
+      const messageLastSequence = Number(message?.lastSequence ?? continuity.finalSequence);
+      if (messageLastSequence !== continuity.finalSequence) {
+        throw new Error("Resync message last sequence does not match action transcript");
+      }
       await verifySignedMatchGenesis(matchPayload);
       const verifyTranscriptShuffleProof = async (proof) => {
         if (!currentGame || typeof currentGame.ziffleVerifyShuffle !== "function") {
@@ -9181,6 +9252,9 @@ export function usePeerLobby({
         checkpoint: message.checkpoint,
         actions: actionEntries,
       });
+      if (Number(message.resyncEnvelope?.lastSequence ?? continuity.finalSequence) !== continuity.finalSequence) {
+        throw new Error("Resync envelope last sequence does not match action transcript");
+      }
       if (
         message.resyncEnvelope
         && String(message.resyncEnvelope.finalStateHash || "") !== String(transcriptReport.finalStateHash || "")
@@ -9240,9 +9314,7 @@ export function usePeerLobby({
       setState(nextState);
       const matchClock = runtimeMatchClockSnapshot();
 
-      const lastSequence = Number(
-        message?.lastSequence ?? actionEntries.at(-1)?.seq ?? 0
-      );
+      const lastSequence = continuity.finalSequence;
       const acceptedMatchPayload = matchStartPayloadRef.current
         ? cloneMultiplayerPayload(matchStartPayloadRef.current)
         : cloneMultiplayerPayload(replayMatchPayload);
@@ -12249,7 +12321,9 @@ export function usePeerLobby({
           && expectedActor !== undefined
           && Number(expectedActor) !== Number(session.localPlayerIndex)
         ) {
-          throw new Error("It is not your turn to act");
+          updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
+          setStatus("It is not your turn to act");
+          return;
         }
         const nextSequence = Number(multiplayerRef.current.lastAppliedSequence || 0) + 1;
         const preActionStateHash = String(auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH);
@@ -12351,7 +12425,7 @@ export function usePeerLobby({
             actorIndex: session.localPlayerIndex,
             requestPreview: requestRemoteCryptoPreview,
             prevStateHash: preActionStateHash,
-            publicCheckpointHash: await ensurePreActionPublicCheckpointHash(),
+            publicCheckpointHash: preActionPublicCheckpointHash,
           }
         );
         await revealAuditOpenings(remoteCryptoMaterial.openings || [], { timing: "pre" });
@@ -12359,6 +12433,30 @@ export function usePeerLobby({
         const publishAppliedStateImmediately =
           !commandMayProducePostApplyOpenings(command, preSubmitState, cryptoRequirements)
           && !hasPostTimedOpenings(remoteCryptoMaterial.openings, preOpenings);
+        const liveStateBeforeApply = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
+        if (!isDecisionCommandCompatible(liveStateBeforeApply?.decision, command)) {
+          if (stagedMatchClockRuntime) {
+            restoreMatchClockRuntime(stagedMatchClockRuntime, stateRef.current);
+            stagedMatchClockRuntime = null;
+          }
+          updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
+          setStatus("That action is no longer available");
+          return;
+        }
+        const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
+        if (
+          expectedActorBeforeApply !== null
+          && expectedActorBeforeApply !== undefined
+          && Number(expectedActorBeforeApply) !== Number(session.localPlayerIndex)
+        ) {
+          if (stagedMatchClockRuntime) {
+            restoreMatchClockRuntime(stagedMatchClockRuntime, stateRef.current);
+            stagedMatchClockRuntime = null;
+          }
+          updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
+          setStatus("It is not your turn to act");
+          return;
+        }
         let appliedState = await applySyncedCommand(command, label || "", {
           actorIndex: session.localPlayerIndex,
           sequence: nextSequence,
@@ -12859,11 +12957,11 @@ export function usePeerLobby({
     updateMultiplayer,
   ]);
 
-  const exportAuditTranscript = useCallback(async () => {
+  const exportAuditTranscript = useCallback(async ({ includeLiveCheckpoint = true } = {}) => {
     if (!liveAuditTranscriptRef.current) return null;
     const transcript = cloneMultiplayerPayload(liveAuditTranscriptRef.current);
     const currentGame = gameRef.current;
-    const finalPublicCheckpoint = currentGame
+    const finalPublicCheckpoint = includeLiveCheckpoint && currentGame
       && typeof currentGame.exportPublicAuditCheckpoint === "function"
       ? await currentGame.exportPublicAuditCheckpoint()
       : null;

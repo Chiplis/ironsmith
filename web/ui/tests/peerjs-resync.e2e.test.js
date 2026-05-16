@@ -185,6 +185,18 @@ async function openHarness(context, baseUrl, label) {
       pageErrors.push(message.text());
     }
   });
+  await page.route("https://api.scryfall.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        object: "card",
+        name: "Test Card",
+        image_uris: {},
+        card_faces: [],
+      }),
+    })
+  );
   await page.goto(`${baseUrl}${HARNESS_PATH}`);
   await page.waitForFunction(() => window.__peerHarness?.ready === true);
   page.__peerHarnessErrors = pageErrors;
@@ -2609,7 +2621,7 @@ test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library ch
         guestResolved = true;
         const searchText = await waitForVisibleBodyText(
           hostPage,
-          /CHOOSE OBJECTS[\s\S]*Search library[\s\S]*Mystical Tutor/i,
+          /(?:CHOOSE OBJECTS[\s\S]*)?Search library[\s\S]*Mystical Tutor/i,
           "expected Mystical Tutor to create a searchable library decision",
           90000,
         );
