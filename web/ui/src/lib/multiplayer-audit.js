@@ -6,10 +6,14 @@ const ACTION_QUORUM_CERTIFICATE_TYPE = "ironsmith-action-quorum-v1";
 const ACTION_QUORUM_VOTE_DOMAIN = "ironsmith-action-quorum-vote-v1";
 const DISCONNECT_FORFEIT_CERTIFICATE_TYPE = "ironsmith-disconnect-forfeit-v1";
 const DISCONNECT_FORFEIT_VOTE_DOMAIN = "ironsmith-disconnect-forfeit-vote-v1";
+const PROTOCOL_RESPONSE_TIMEOUT_CERTIFICATE_TYPE = "ironsmith-protocol-response-timeout-v1";
+const PROTOCOL_RESPONSE_TIMEOUT_VOTE_DOMAIN = "ironsmith-protocol-response-timeout-vote-v1";
 export const LEGACY_DISCONNECT_FORFEIT_REASON = "peer_claimed_disconnect_timeout";
 export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 13;
+export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
+export const PROTOCOL_RESPONSE_TIMEOUT_MS = 60 * 1000;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 14;
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -44,6 +48,10 @@ export function isDisconnectForfeitReason(reason) {
   const normalized = String(reason || "");
   return normalized === DISCONNECT_FORFEIT_REASON
     || normalized === LEGACY_DISCONNECT_FORFEIT_REASON;
+}
+
+export function isProtocolResponseTimeoutForfeitReason(reason) {
+  return String(reason || "") === PROTOCOL_RESPONSE_TIMEOUT_REASON;
 }
 
 export function cryptoMaterialRequirementType(requirement) {
@@ -877,9 +885,19 @@ export function isDisconnectForfeitCommand(command) {
     && isDisconnectForfeitReason(command?.reason);
 }
 
+export function isProtocolResponseTimeoutForfeitCommand(command) {
+  return command?.type === "forfeit_player"
+    && isProtocolResponseTimeoutForfeitReason(command?.reason);
+}
+
 export function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
   const count = Math.max(0, Number(nonTargetPlayerCount || 0));
   return count;
+}
+
+export function protocolResponseTimeoutVoteThreshold(nonTargetPlayerCount) {
+  const count = Math.max(0, Number(nonTargetPlayerCount || 0));
+  return count < 2 ? 0 : count;
 }
 
 function actionQuorumExpected(action) {
@@ -1247,6 +1265,247 @@ export async function verifyDisconnectForfeitCertificate({
   };
 }
 
+export function protocolResponseTimeoutVotePayload({
+  matchId,
+  basisSequence,
+  forfeitedPlayer,
+  forfeitedPeerId,
+  requestType,
+  requestId,
+  requestPayloadHash,
+  responseTimeoutMs,
+  requestedAtMs,
+  eligibleAtMs,
+  signedAtMs,
+  voter,
+}) {
+  return {
+    domain: PROTOCOL_RESPONSE_TIMEOUT_VOTE_DOMAIN,
+    matchId: String(matchId || ""),
+    basisSequence: Number(basisSequence || 0),
+    forfeitedPlayer: Number(forfeitedPlayer),
+    forfeitedPeerId: String(forfeitedPeerId || ""),
+    requestType: String(requestType || ""),
+    requestId: String(requestId || ""),
+    requestPayloadHash: String(requestPayloadHash || ""),
+    responseTimeoutMs: Math.max(0, Math.floor(Number(responseTimeoutMs || 0))),
+    requestedAtMs: Math.max(0, Math.floor(Number(requestedAtMs || 0))),
+    eligibleAtMs: Math.max(0, Math.floor(Number(eligibleAtMs || 0))),
+    signedAtMs: Math.max(0, Math.floor(Number(signedAtMs || 0))),
+    voter: Number(voter),
+  };
+}
+
+export async function buildSignedProtocolResponseTimeoutVote({
+  keyPair,
+  matchId,
+  basisSequence,
+  forfeitedPlayer,
+  forfeitedPeerId,
+  requestType,
+  requestId,
+  requestPayloadHash,
+  responseTimeoutMs,
+  requestedAtMs,
+  eligibleAtMs,
+  signedAtMs,
+  voter,
+}, cryptoImpl = globalThis.crypto) {
+  const payload = protocolResponseTimeoutVotePayload({
+    matchId,
+    basisSequence,
+    forfeitedPlayer,
+    forfeitedPeerId,
+    requestType,
+    requestId,
+    requestPayloadHash,
+    responseTimeoutMs,
+    requestedAtMs,
+    eligibleAtMs,
+    signedAtMs,
+    voter,
+  });
+  return {
+    ...payload,
+    signatureAlgorithm: "ecdsa-p256-sha256",
+    signature: await signAuditPayload(keyPair, payload, cryptoImpl),
+  };
+}
+
+export async function verifyProtocolResponseTimeoutVote({
+  vote,
+  expected,
+  players = [],
+}, cryptoImpl = globalThis.crypto) {
+  const voter = Number(vote?.voter);
+  if (!Number.isInteger(voter) || voter < 0) {
+    throw new Error("Protocol response timeout vote contains an invalid voter");
+  }
+  const responseTimeoutMs = Math.max(0, Math.floor(Number(
+    expected?.responseTimeoutMs ?? vote?.responseTimeoutMs ?? PROTOCOL_RESPONSE_TIMEOUT_MS
+  )));
+  const requestedAtMs = Math.max(0, Math.floor(Number(
+    expected?.requestedAtMs ?? vote?.requestedAtMs ?? 0
+  )));
+  const eligibleAtMs = Math.max(0, Math.floor(Number(vote?.eligibleAtMs || 0)));
+  const signedAtMs = Math.max(0, Math.floor(Number(vote?.signedAtMs || 0)));
+  const nowMs = Math.max(0, Math.floor(Number(expected?.nowMs ?? Date.now())));
+  const maxFutureSkewMs = Math.max(0, Math.floor(Number(expected?.maxFutureSkewMs || 0)));
+  if (requestedAtMs <= 0) {
+    throw new Error("Protocol response timeout vote is missing the request timestamp");
+  }
+  if (responseTimeoutMs <= 0) {
+    throw new Error("Protocol response timeout vote has an invalid timeout");
+  }
+  if (eligibleAtMs !== requestedAtMs + responseTimeoutMs) {
+    throw new Error("Protocol response timeout vote has an invalid eligibility timestamp");
+  }
+  if (signedAtMs < eligibleAtMs) {
+    throw new Error("Protocol response timeout vote was signed before the response timeout elapsed");
+  }
+  if (signedAtMs > nowMs + maxFutureSkewMs) {
+    throw new Error("Protocol response timeout vote is signed in the future");
+  }
+  const payload = protocolResponseTimeoutVotePayload({
+    matchId: expected?.matchId,
+    basisSequence: expected?.basisSequence,
+    forfeitedPlayer: expected?.forfeitedPlayer,
+    forfeitedPeerId: expected?.forfeitedPeerId,
+    requestType: expected?.requestType,
+    requestId: expected?.requestId,
+    requestPayloadHash: expected?.requestPayloadHash,
+    responseTimeoutMs,
+    requestedAtMs,
+    eligibleAtMs,
+    signedAtMs,
+    voter,
+  });
+  if (
+    String(vote?.domain || "") !== PROTOCOL_RESPONSE_TIMEOUT_VOTE_DOMAIN
+    || String(vote?.matchId || "") !== payload.matchId
+    || Number(vote?.basisSequence) !== payload.basisSequence
+    || Number(vote?.forfeitedPlayer) !== payload.forfeitedPlayer
+    || String(vote?.forfeitedPeerId || "") !== payload.forfeitedPeerId
+    || String(vote?.requestType || "") !== payload.requestType
+    || String(vote?.requestId || "") !== payload.requestId
+    || String(vote?.requestPayloadHash || "") !== payload.requestPayloadHash
+    || Number(vote?.responseTimeoutMs) !== payload.responseTimeoutMs
+  ) {
+    throw new Error("Protocol response timeout vote does not match the forfeit claim");
+  }
+  if (!payload.requestType || !payload.requestId || !payload.requestPayloadHash) {
+    throw new Error("Protocol response timeout vote is missing request evidence");
+  }
+  const player = (players || []).find((entry) =>
+    Number(entry?.index ?? entry?.seat) === voter
+  );
+  if (!player?.auditPublicKey || voter === payload.forfeitedPlayer) {
+    throw new Error(`Protocol response timeout voter ${voter + 1} is not eligible`);
+  }
+  const publicKey = await importAuditPublicKey(player.auditPublicKey, cryptoImpl);
+  const valid = await verifyAuditPayload(
+    publicKey,
+    payload,
+    vote.signature || "",
+    cryptoImpl,
+  );
+  if (!valid) {
+    throw new Error("Protocol response timeout vote signature is invalid");
+  }
+  return voter;
+}
+
+export async function verifyProtocolResponseTimeoutCertificate({
+  certificate,
+  command,
+  players = [],
+  threshold: requiredThreshold = null,
+}, cryptoImpl = globalThis.crypto) {
+  if (!isProtocolResponseTimeoutForfeitCommand(command)) {
+    return { valid: true, threshold: 0, voters: [] };
+  }
+  const roster = Array.isArray(players) ? players : [];
+  const threshold = requiredThreshold == null
+    ? protocolResponseTimeoutVoteThreshold(roster.length)
+    : Math.max(0, Number(requiredThreshold || 0));
+  if (threshold <= 0) {
+    throw new Error("Protocol response timeout forfeit requires at least two non-target voters");
+  }
+  if (!certificate || typeof certificate !== "object") {
+    throw new Error("Protocol response timeout forfeit is missing its quorum certificate");
+  }
+  if (String(certificate.type || "") !== PROTOCOL_RESPONSE_TIMEOUT_CERTIFICATE_TYPE) {
+    throw new Error("Protocol response timeout forfeit has an unsupported certificate");
+  }
+  const expected = {
+    matchId: String(command.matchId || certificate.matchId || ""),
+    basisSequence: Number(command.basis_sequence ?? certificate.basisSequence ?? 0),
+    forfeitedPlayer: Number(command.player),
+    forfeitedPeerId: String(
+      command.timed_out_peer_id
+      || command.forfeited_peer_id
+      || certificate.forfeitedPeerId
+      || ""
+    ),
+    requestType: String(command.request_type || certificate.requestType || ""),
+    requestId: String(command.request_id || certificate.requestId || ""),
+    requestPayloadHash: String(command.request_payload_hash || certificate.requestPayloadHash || ""),
+    responseTimeoutMs: Math.max(
+      0,
+      Math.floor(Number(command.response_timeout_ms ?? certificate.responseTimeoutMs ?? PROTOCOL_RESPONSE_TIMEOUT_MS))
+    ),
+    requestedAtMs: Math.max(
+      0,
+      Math.floor(Number(command.requested_at_ms ?? certificate.requestedAtMs ?? 0))
+    ),
+    nowMs: Math.max(0, Math.floor(Number(command.nowMs ?? Date.now()))),
+    maxFutureSkewMs: Math.max(0, Math.floor(Number(command.maxFutureSkewMs || 0))),
+  };
+  const expectedEligibleAtMs = expected.requestedAtMs + expected.responseTimeoutMs;
+  if (
+    String(certificate.matchId || "") !== expected.matchId
+    || Number(certificate.basisSequence) !== expected.basisSequence
+    || Number(certificate.forfeitedPlayer) !== expected.forfeitedPlayer
+    || String(certificate.forfeitedPeerId || "") !== expected.forfeitedPeerId
+    || String(certificate.requestType || "") !== expected.requestType
+    || String(certificate.requestId || "") !== expected.requestId
+    || String(certificate.requestPayloadHash || "") !== expected.requestPayloadHash
+    || Number(certificate.responseTimeoutMs) !== expected.responseTimeoutMs
+    || Number(certificate.requestedAtMs) !== expected.requestedAtMs
+    || Number(certificate.eligibleAtMs) !== expectedEligibleAtMs
+  ) {
+    throw new Error("Protocol response timeout certificate does not match the command");
+  }
+  const votes = Array.isArray(certificate.votes) ? certificate.votes : [];
+  if (votes.length < threshold) {
+    throw new Error(
+      `Protocol response timeout certificate has ${votes.length} vote(s), expected at least ${threshold}`
+    );
+  }
+  const seen = new Set();
+  for (const vote of votes) {
+    const voter = await verifyProtocolResponseTimeoutVote({
+      vote,
+      expected,
+      players: roster,
+    }, cryptoImpl);
+    if (seen.has(voter)) {
+      throw new Error("Protocol response timeout certificate contains a duplicate voter");
+    }
+    seen.add(voter);
+  }
+  if (seen.size < threshold) {
+    throw new Error(
+      `Protocol response timeout certificate has ${seen.size} unique vote(s), expected at least ${threshold}`
+    );
+  }
+  return {
+    valid: true,
+    threshold,
+    voters: [...seen].sort((left, right) => left - right),
+  };
+}
+
 function sequencedActionSignedPayload(action) {
   const audit = action?.audit || {};
   const signer = Number(audit.signer ?? audit.actor);
@@ -1544,6 +1803,7 @@ async function verifyMatchClockAuditChainEntry({
 export function publicPlayerGenesisRecord(player) {
   if (!player || typeof player !== "object") return null;
   return {
+    peerId: String(player.peerId || ""),
     name: String(player.name || ""),
     index: Number(player.index ?? player.seat ?? 0),
     auditPublicKey: String(player.auditPublicKey || ""),
@@ -2722,11 +2982,134 @@ async function verifyZifflePositionOpening({
   }
 }
 
-async function verifyPrivateViewProofStructure(
+function privateViewDisclosurePayload(disclosure) {
+  return disclosure?.payload || disclosure;
+}
+
+function privateViewDisclosureField(disclosure, payload, field) {
+  if (disclosure && disclosure[field] !== undefined && disclosure[field] !== null) {
+    return disclosure[field];
+  }
+  return payload?.[field];
+}
+
+function disclosureFieldMatches(disclosure, payload, proof, field, numeric = false) {
+  const expected = proof?.[field];
+  if (expected === undefined || expected === null || expected === "") return true;
+  const actual = privateViewDisclosureField(disclosure, payload, field);
+  if (actual === undefined || actual === null || actual === "") return true;
+  return numeric
+    ? Number(actual) === Number(expected)
+    : String(actual) === String(expected);
+}
+
+function privateViewDisclosureMetadataMatches({
+  disclosure,
+  payload,
+  proof,
+  seq,
+  expectedMatchId,
+}) {
+  const disclosureSeq = disclosure?.seq ?? payload?.seq;
+  if (
+    disclosureSeq !== undefined
+    && disclosureSeq !== null
+    && Number(disclosureSeq) !== Number(seq)
+  ) {
+    return false;
+  }
+  const disclosureMatchId = disclosure?.matchId || payload?.matchId || "";
+  if (disclosureMatchId && String(disclosureMatchId) !== String(expectedMatchId || "")) {
+    return false;
+  }
+  if (!disclosureFieldMatches(disclosure, payload, proof, "requirementId")) return false;
+  if (!disclosureFieldMatches(disclosure, payload, proof, "owner", true)) return false;
+  if (!disclosureFieldMatches(disclosure, payload, proof, "viewer", true)) return false;
+  if (!disclosureFieldMatches(disclosure, payload, proof, "zone")) return false;
+  if (!disclosureFieldMatches(disclosure, payload, proof, "objectId", true)) return false;
+
+  const opening = payload?.opening || null;
+  if (opening?.owner != null && Number(opening.owner) !== Number(proof?.owner)) return false;
+  if (
+    proof?.slot != null
+    && opening?.slot != null
+    && Number(opening.slot) !== Number(proof.slot)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function findPrivateViewDisclosure({
+  proof,
+  disclosures = [],
+  seq,
+  expectedMatchId,
+}, cryptoImpl = globalThis.crypto) {
+  const expectedHash = String(proof?.encryptedOpening?.plaintextHash || "");
+  for (const disclosure of disclosures || []) {
+    const payload = privateViewDisclosurePayload(disclosure);
+    if (!payload || typeof payload !== "object") continue;
+    if (
+      disclosure?.plaintextHash
+      && String(disclosure.plaintextHash || "") !== expectedHash
+    ) {
+      continue;
+    }
+    if (!privateViewDisclosureMetadataMatches({
+      disclosure,
+      payload,
+      proof,
+      seq,
+      expectedMatchId,
+    })) {
+      continue;
+    }
+    const plaintextHash = await privateViewPlaintextHash(payload, cryptoImpl);
+    if (plaintextHash === expectedHash) {
+      return { disclosure, payload, plaintextHash };
+    }
+  }
+  return null;
+}
+
+function privateViewActionDisclosures(transcript, entry, seq) {
+  const candidates = [
+    ...(Array.isArray(transcript?.privateViewDisclosures)
+      ? transcript.privateViewDisclosures
+      : []),
+    ...(Array.isArray(entry?.privateViewDisclosures)
+      ? entry.privateViewDisclosures
+      : []),
+  ];
+  return candidates.filter((disclosure) => {
+    const disclosureSeq = disclosure?.seq ?? disclosure?.payload?.seq;
+    return disclosureSeq == null || Number(disclosureSeq) === Number(seq);
+  });
+}
+
+function encryptedPrivateOpeningKey(proof) {
+  return [
+    Number(proof?.owner),
+    Number(proof?.viewer),
+    String(proof?.zone || ""),
+    String(proof?.encryptedOpening?.plaintextHash || ""),
+  ].join(":");
+}
+
+async function verifyPrivateViewProofs(
   proofs = [],
-  players,
+  {
+    players,
+    manifests,
+    disclosures = [],
+    seq,
+    expectedMatchId,
+    requireDisclosures,
+  },
   cryptoImpl = globalThis.crypto,
 ) {
+  const openingProofsByHash = new Map();
   for (const proof of proofs || []) {
     const type = String(proof?.type || "");
     if (type !== "encrypted_private_opening" && type !== "encrypted_private_view") {
@@ -2744,6 +3127,35 @@ async function verifyPrivateViewProofStructure(
       if (viewerKey && String(proof.encryptedOpening.recipientPublicKey || "") !== viewerKey) {
         throw new Error("Private-view proof targets the wrong viewer key");
       }
+      const owner = Number(proof.owner);
+      if (!Number.isInteger(owner) || !players.has(owner)) {
+        throw new Error("Private-view proof references an unknown owner");
+      }
+      const plaintextHash = String(proof.encryptedOpening.plaintextHash || "");
+      if (openingProofsByHash.has(plaintextHash)) {
+        throw new Error("Private-view proof contains a duplicate encrypted opening hash");
+      }
+      openingProofsByHash.set(plaintextHash, proof);
+      if (requireDisclosures) {
+        const manifest = manifests.get(owner);
+        if (!manifest) {
+          throw new Error("Private-view disclosure cannot be verified without the owner's deck manifest");
+        }
+        const disclosure = await findPrivateViewDisclosure({
+          proof,
+          disclosures,
+          seq,
+          expectedMatchId,
+        }, cryptoImpl);
+        if (!disclosure) {
+          throw new Error("Private-view proof is missing its postgame disclosure");
+        }
+        await verifyPrivateViewDisclosure({
+          proof,
+          disclosure: disclosure.disclosure,
+          manifest,
+        }, cryptoImpl);
+      }
       continue;
     }
 
@@ -2757,6 +3169,24 @@ async function verifyPrivateViewProofStructure(
     }
     if (!Array.isArray(proof.openingHashes)) {
       throw new Error("Private-view proof is missing opening hashes");
+    }
+    const distinctOpeningHashes = new Set();
+    for (const hash of proof.openingHashes) {
+      const openingProof = openingProofsByHash.get(String(hash || ""));
+      if (!openingProof) {
+        throw new Error("Private-view summary references an unknown encrypted opening");
+      }
+      if (
+        Number(openingProof.owner) !== owner
+        || Number(openingProof.viewer) !== viewer
+        || String(openingProof.zone || "") !== String(proof.zone || "")
+      ) {
+        throw new Error("Private-view summary references an opening for a different view");
+      }
+      distinctOpeningHashes.add(encryptedPrivateOpeningKey(openingProof));
+    }
+    if (distinctOpeningHashes.size < count) {
+      throw new Error("Private-view summary does not disclose enough encrypted openings");
     }
     if (proof.materialHash) {
       const material = { ...proof };
@@ -2838,13 +3268,21 @@ export async function verifyLiveAuditTranscript(
   if (Number(transcript.match.protocolVersion || 0) !== CURRENT_AUDIT_PROTOCOL_VERSION) {
     throw new Error("Live audit transcript match uses an unsupported protocol version");
   }
-  await verifySignedMatchGenesis({
+  const transcriptMatch = {
     ...transcript.match,
     auditMatchId: transcript.match.auditMatchId || transcript.matchId,
     lobbyId: transcript.match.lobbyId || transcript.lobbyId,
     deckAuditManifests: transcript.match.deckAuditManifests || [],
     genesis: transcript.genesis,
-  }, cryptoImpl);
+  };
+  await verifySignedMatchGenesis(transcriptMatch, cryptoImpl);
+  const expectedMatchId = String(matchGenesisPayload(transcriptMatch).matchId || "");
+  if (!expectedMatchId) {
+    throw new Error("Live audit transcript is missing its signed match id");
+  }
+  if (transcript.matchId && String(transcript.matchId || "") !== expectedMatchId) {
+    throw new Error("Live audit transcript match id does not match signed genesis");
+  }
   const transcriptPlayers = (transcript.match.players || []).map((player) => ({
     seat: Number(player.index),
     auditPublicKey: String(player.auditPublicKey || ""),
@@ -2869,12 +3307,7 @@ export async function verifyLiveAuditTranscript(
   const expectedZiffleKeys = Array.isArray(transcript.match?.ziffleKeys)
     ? transcript.match.ziffleKeys
     : [];
-  const expectedShuffleMatchId = String(
-    transcript.match?.auditMatchId
-      || transcript.matchId
-      || transcript.match?.matchId
-      || "",
-  );
+  const expectedShuffleMatchId = expectedMatchId;
   const verifiedZiffleCeremonies = (Array.isArray(transcript.match?.ziffleCeremonies)
     ? transcript.match.ziffleCeremonies
     : []
@@ -2894,6 +3327,9 @@ export async function verifyLiveAuditTranscript(
     }
     if (Number(audit.seq) !== expectedSeq) {
       throw new Error(`Expected audit sequence ${expectedSeq}, received ${audit.seq}`);
+    }
+    if (String(audit.matchId || "") !== expectedMatchId) {
+      throw new Error(`Action ${expectedSeq} belongs to a different match`);
     }
     if (audit.prevStateHash !== stateHash) {
       throw new Error(`Audit state hash mismatch at sequence ${expectedSeq}`);
@@ -2944,6 +3380,7 @@ export async function verifyLiveAuditTranscript(
       ? Number(audit.command.player)
       : null;
     const disconnectForfeit = isDisconnectForfeitCommand(audit.command);
+    const protocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(audit.command);
     const actionQuorumPlayers = forfeitTarget == null
       ? activeQuorumPlayers
       : activeQuorumPlayers.filter((player) =>
@@ -2952,13 +3389,27 @@ export async function verifyLiveAuditTranscript(
     const actionQuorumThresholdOverride = forfeitTarget == null
       ? null
       : (
-        disconnectForfeit || activeQuorumPlayers.length < 3 || Number(audit.actor) === forfeitTarget
+        disconnectForfeit
+          || protocolTimeoutForfeit
+          || activeQuorumPlayers.length < 3
+          || Number(audit.actor) === forfeitTarget
           ? 0
           : actionQuorumPlayers.length
       );
     if (disconnectForfeit) {
       await verifyDisconnectForfeitCertificate({
         certificate: audit.command?.disconnect_certificate || audit.command?.disconnectCertificate,
+        command: {
+          ...audit.command,
+          matchId: audit.matchId,
+        },
+        players: actionQuorumPlayers,
+      }, cryptoImpl);
+    }
+    if (protocolTimeoutForfeit) {
+      await verifyProtocolResponseTimeoutCertificate({
+        certificate: audit.command?.protocol_timeout_certificate
+          || audit.command?.protocolTimeoutCertificate,
         command: {
           ...audit.command,
           matchId: audit.matchId,
@@ -2998,7 +3449,14 @@ export async function verifyLiveAuditTranscript(
       players,
       seq: expectedSeq,
     }, cryptoImpl);
-    await verifyPrivateViewProofStructure(audit.privateViewProofs || [], players, cryptoImpl);
+    await verifyPrivateViewProofs(audit.privateViewProofs || [], {
+      players,
+      manifests,
+      disclosures: privateViewActionDisclosures(transcript, entry, expectedSeq),
+      seq: expectedSeq,
+      expectedMatchId,
+      requireDisclosures: options.requirePrivateViewDisclosures !== false,
+    }, cryptoImpl);
     for (const reveal of audit.rngReveals || []) {
       await verifyFairRandomReveal({
         reveal,

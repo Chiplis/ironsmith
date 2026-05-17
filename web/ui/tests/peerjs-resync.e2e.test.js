@@ -15,6 +15,7 @@ const UI_ROOT = path.resolve(__dirname, "..");
 const HARNESS_PATH = "/tests/fixtures/peer-lobby-harness.html";
 const HOST_DECK = "60 Island";
 const GUEST_DECK = "60 Mountain";
+const FULL_UI_RECONNECT_DISCONNECT_MS = 15250;
 const HOST_ZIFFLE_PUBLIC_OPEN_DECK = "7 Island\n1 Mystical Tutor\n52 Mountain";
 const HOST_ZIFFLE_OPENED_LAND_DECK = "7 Mountain\n1 Island\n5 Mountain\n1 Mystical Tutor\n46 Mountain";
 const FOUR_PLAYER_DECKS = [
@@ -146,6 +147,7 @@ async function startHarnessServer(peerPort) {
   process.env.VITE_PEER_SECURE = "false";
   process.env.VITE_PEER_HEARTBEAT_INTERVAL_MS = "500";
   process.env.VITE_PEER_HEARTBEAT_TIMEOUT_MS = "2000";
+  process.env.VITE_E2E_TEST = "true";
 
   const vite = await createViteServer({
     root: UI_ROOT,
@@ -277,6 +279,78 @@ async function openFullUiPage(context, url, label) {
   return page;
 }
 
+async function fullUiSnapshot(page) {
+  return page.evaluate(() => window.__ironsmithE2E?.snapshot?.() || null);
+}
+
+async function waitForFullUiSnapshot(page, predicate, label, timeoutMs = 60000) {
+  const started = Date.now();
+  let lastSnapshot = null;
+  while (Date.now() - started < timeoutMs) {
+    lastSnapshot = await fullUiSnapshot(page);
+    if (lastSnapshot && predicate(lastSnapshot)) return lastSnapshot;
+    await sleep(250);
+  }
+  let body = "";
+  try {
+    body = await visibleBodyText(page);
+  } catch {
+    body = "<page unavailable>";
+  }
+  assert.fail(`${label}\nLast snapshot: ${JSON.stringify(lastSnapshot, null, 2)}\nbody:\n${body}`);
+}
+
+async function waitForFullUiSync(hostPage, guestPage, label, timeoutMs = 60000) {
+  const started = Date.now();
+  let lastHost = null;
+  let lastGuest = null;
+  while (Date.now() - started < timeoutMs) {
+    [lastHost, lastGuest] = await Promise.all([
+      fullUiSnapshot(hostPage),
+      fullUiSnapshot(guestPage),
+    ]);
+    if (
+      lastHost?.multiplayer?.matchStarted
+      && lastGuest?.multiplayer?.matchStarted
+      && lastHost?.state
+      && lastGuest?.state
+      && Number(lastHost?.multiplayer?.lastAppliedSequence) === Number(lastGuest?.multiplayer?.lastAppliedSequence)
+    ) {
+      return { host: lastHost, guest: lastGuest };
+    }
+    await sleep(250);
+  }
+  assert.fail(
+    `${label}\nhost: ${JSON.stringify(lastHost, null, 2)}\nguest: ${JSON.stringify(lastGuest, null, 2)}`
+  );
+}
+
+async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutMs = 60000) {
+  const started = Date.now();
+  let lastHost = null;
+  let lastGuest = null;
+  while (Date.now() - started < timeoutMs) {
+    [lastHost, lastGuest] = await Promise.all([
+      fullUiSnapshot(hostPage),
+      fullUiSnapshot(guestPage),
+    ]);
+    if (lastHost && lastGuest && predicate(lastHost, lastGuest)) {
+      return { host: lastHost, guest: lastGuest };
+    }
+    await sleep(250);
+  }
+  assert.fail(
+    `${label}\nhost: ${JSON.stringify(lastHost, null, 2)}\nguest: ${JSON.stringify(lastGuest, null, 2)}`
+  );
+}
+
+async function assertNoFullUiSyncFailures(...pages) {
+  const text = (await Promise.all(
+    pages.filter(Boolean).map((page) => visibleBodyText(page).catch(() => ""))
+  )).join("\n");
+  assertNoSyncFailureText(text);
+}
+
 async function clickLocalButton(page, label, textPattern = null) {
   let button = page.locator('button[data-local-action="true"]:enabled:not([aria-disabled="true"])');
   if (textPattern) {
@@ -383,6 +457,35 @@ async function buttonDebugText(page) {
   );
 }
 
+async function visibleHandCardNames(page) {
+  return page.locator(".hand-card[data-card-name]").evaluateAll((cards) =>
+    cards
+      .map((card) => String(card.getAttribute("data-card-name") || "").trim())
+      .filter(Boolean)
+  );
+}
+
+async function waitForNamedVisibleHand(page, label, timeoutMs = 60000, snapshotPredicate = null) {
+  const started = Date.now();
+  let names = [];
+  let snapshot = null;
+  while (Date.now() - started < timeoutMs) {
+    if (snapshotPredicate) {
+      snapshot = await fullUiSnapshot(page);
+      if (!snapshotPredicate(snapshot)) {
+        await sleep(250);
+        continue;
+      }
+    }
+    names = await visibleHandCardNames(page);
+    if (names.length >= 7 && names.every((name) => !/^Hidden Card$/i.test(name))) {
+      return names;
+    }
+    await sleep(250);
+  }
+  assert.fail(`${label}\nsnapshot: ${JSON.stringify(snapshot, null, 2)}\nhand: ${JSON.stringify(names, null, 2)}\nbody:\n${await visibleBodyText(page)}`);
+}
+
 async function waitForLocalButton(page, pattern, label, timeoutMs = 60000) {
   const started = Date.now();
   let buttons = [];
@@ -415,7 +518,7 @@ async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
 function assertNoSyncFailureText(text, label = "unexpected sync failure") {
   assert.doesNotMatch(
     text,
-    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Ziffle card opening proof reveals a different committed slot|hidden card commitment does not match reveal|Sequenced action public checkpoint hash does not match local state|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
+    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Ziffle card opening proof reveals a different committed slot|hidden card commitment does not match reveal|No direct ziffle route|Match clock elapsed time exceeds local observation|Sequenced action public checkpoint hash does not match local state|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
     label
   );
 }
@@ -465,6 +568,94 @@ async function captureFullUiStep(dir, index, slug, pages) {
     saved.push(filePath);
   }
   return saved;
+}
+
+async function startFullUiPeerMatch({
+  baseUrl,
+  hostContext,
+  guestContext,
+  hostDeckText = "60 Mountain",
+  guestDeckText = "60 Mountain",
+  hostName = "Chiplis",
+  guestName = "Alice",
+  hostLabel = "host-ui",
+  guestLabel = "guest-ui",
+}) {
+  const hostDeck = deckUrlParam(hostDeckText);
+  const guestDeck = deckUrlParam(guestDeckText);
+  const hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=${encodeURIComponent(hostName)}&deck=${hostDeck}`, hostLabel);
+  await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+  await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+  await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+  await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+  await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+  const lobbyCode = (await visibleBodyText(hostPage)).match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+  )?.[0];
+  assert.ok(lobbyCode, "expected the full UI to create a lobby code");
+
+  const guestPage = await openFullUiPage(
+    guestContext,
+    `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=${encodeURIComponent(guestName)}&deck=${guestDeck}`,
+    guestLabel,
+  );
+  await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+  await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+  await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+  await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+    state: "detached",
+    timeout: 60000,
+  }).catch(() => {});
+  await sleep(8000);
+  await Promise.all([
+    hostPage.keyboard.press("Escape").catch(() => {}),
+    guestPage.keyboard.press("Escape").catch(() => {}),
+  ]);
+
+  await Promise.all([
+    waitForFullUiSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.matchStarted && snap.multiplayer.localPlayerIndex === 0,
+      "host starts full UI match",
+      60000,
+    ),
+    waitForFullUiSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.matchStarted && snap.multiplayer.localPlayerIndex === 1,
+      "guest receives full UI match",
+      60000,
+    ),
+  ]);
+
+  return {
+    hostPage,
+    guestPage,
+    lobbyCode,
+    hostDeck,
+    guestDeck,
+  };
+}
+
+async function clickAnyFullUiProgressAction(pages, label, timeoutMs = 90000) {
+  const progressPattern = /PLAY MOUNTAIN|KEEP HAND|PREGAME|BEGIN GAME|CONTINUE|UNTAP|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i;
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    await assertNoFullUiSyncFailures(...pages);
+    for (const [index, page] of pages.entries()) {
+      const click = await clickLocalButton(page, `${label}-${index}`, progressPattern);
+      if (click) return { page, index, click };
+    }
+    await sleep(1000);
+  }
+
+  const debug = await Promise.all(pages.map(async (page, index) => ({
+    index,
+    buttons: await buttonDebugText(page).catch((err) => String(err?.message || err)),
+    body: await visibleBodyText(page).catch((err) => String(err?.message || err)),
+  })));
+  assert.fail(`${label}\n${JSON.stringify(debug, null, 2)}`);
 }
 
 test("PeerJS remote apply gates auto-pass until sequence append completes", { timeout: 60000 }, async () => {
@@ -1847,6 +2038,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     );
     assert.equal(promotedGuest.multiplayer.localPlayerIndex, 1);
 
+    await sleep(2500);
     hostPage = await openHarness(hostContext, baseUrl, "host-reconnect");
     await hostPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
       window.__peerHarness.joinLobby({
@@ -1881,6 +2073,36 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       (snap) => snap.multiplayer.players.some((player) => Number(player.index) === 0 && player.connected !== false),
       "promoted host marks original host reconnected",
     );
+
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
+      const action = snap.visibleState?.decision?.actions?.[0];
+      if (!action?.action_ref) {
+        throw new Error("promoted guest has no action after original host reconnect");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "promoted guest action after host reconnect");
+    });
+    const afterPromotedGuestAction = await Promise.all([
+      waitForSnapshot(
+        hostPage,
+        (snap) => snap.multiplayer.lastAppliedSequence === 2
+          && syncedCommandEvents(snap).length >= 2,
+        "original host accepts promoted host action with elapsed clock",
+        30000,
+      ),
+      waitForSnapshot(
+        guestPage,
+        (snap) => snap.multiplayer.lastAppliedSequence === 2
+          && syncedCommandEvents(snap).length >= 2,
+        "promoted host applies its delayed action",
+        30000,
+      ),
+    ]);
+    assert.equal(afterPromotedGuestAction[0].visibleState.snapshot_id, 2);
+    assert.equal(afterPromotedGuestAction[0].visibleState.players[0].battlefield.length, 2);
 
     assertNoPageErrors(hostPage, guestPage);
   } finally {
@@ -2137,6 +2359,167 @@ test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands 
       `${hostText}\n${guestText}`,
       /Private deck opening does not match slot|Sync failed|Match start failed/i
     );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS real WASM game resumes after 15s reconnects and host takeover", { timeout: 420000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const started = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Mountain",
+      guestDeckText: "60 Mountain",
+      hostName: "Host",
+      guestName: "Guest",
+      hostLabel: "host-real-reconnect-ui",
+      guestLabel: "guest-real-reconnect-ui",
+    });
+    hostPage = started.hostPage;
+    guestPage = started.guestPage;
+    const { lobbyCode, hostDeck, guestDeck } = started;
+
+    const initialMatch = await waitForFullUiSync(
+      hostPage,
+      guestPage,
+      "clients should be synced before disconnect checks",
+      120000,
+    );
+
+    await guestPage.close();
+    guestPage = null;
+    const guestDisconnectedAt = Date.now();
+    await sleep(FULL_UI_RECONNECT_DISCONNECT_MS);
+    assert.ok(Date.now() - guestDisconnectedAt >= 15000, "guest should remain disconnected for at least 15 seconds");
+    await waitForFullUiSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.role === "host"
+        && snap.multiplayer.players.some((player) => Number(player.index) === 1 && player.connected === false),
+      "host should mark the guest offline during the 15 second disconnect",
+      30000,
+    );
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Guest&deck=${guestDeck}`,
+      "guest-real-reconnect-ui-2",
+    );
+    await waitForFullUiSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.role === "client"
+        && snap.multiplayer.localPlayerIndex === 1
+        && Number(snap.multiplayer.lastAppliedSequence) >= Number(initialMatch.guest.multiplayer.lastAppliedSequence),
+      "guest should reconnect after 15 seconds and resume the real WASM match",
+      120000,
+    );
+    const afterGuestReconnect = await waitForFullUiSync(
+      hostPage,
+      guestPage,
+      "guest reconnect should converge with the host",
+      120000,
+    );
+
+    await hostPage.close();
+    hostPage = null;
+    const hostDisconnectedAt = Date.now();
+    await sleep(FULL_UI_RECONNECT_DISCONNECT_MS);
+    assert.ok(Date.now() - hostDisconnectedAt >= 15000, "host should remain disconnected for at least 15 seconds");
+    const promotedGuest = await waitForFullUiSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.role === "host"
+        && snap.multiplayer.localPlayerIndex === 1
+        && snap.multiplayer.localPeerId === lobbyCode
+        && snap.multiplayer.hostPeerId === lobbyCode,
+      "guest should take over as host after the original host disconnects",
+      60000,
+    );
+    assert.equal(promotedGuest.multiplayer.players.find((player) => Number(player.index) === 0)?.connected, false);
+
+    hostPage = await openFullUiPage(
+      hostContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Host&deck=${hostDeck}`,
+      "host-real-reconnect-ui-2",
+    );
+    await waitForFullUiSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.role === "client"
+        && snap.multiplayer.localPlayerIndex === 0
+        && Number(snap.multiplayer.lastAppliedSequence) >= Number(afterGuestReconnect.host.multiplayer.lastAppliedSequence),
+      "original host should reconnect to the promoted guest host",
+      120000,
+    );
+    const afterHostReconnect = await waitForFullUiSync(
+      hostPage,
+      guestPage,
+      "original host reconnect should converge with promoted host",
+      120000,
+    );
+    assert.equal(afterHostReconnect.guest.multiplayer.role, "host");
+    assert.equal(afterHostReconnect.host.multiplayer.role, "client");
+    const hostViewPromotedHost = afterHostReconnect.host.multiplayer.players.find(
+      (player) => Number(player.index) === 1
+    );
+    assert.equal(
+      hostViewPromotedHost?.currentPeerId || hostViewPromotedHost?.peerId,
+      lobbyCode,
+      "reconnected original host should route ziffle requests for the promoted host through the live host peer",
+    );
+    const reconnectedHostHand = await waitForNamedVisibleHand(
+      hostPage,
+      "original host should see named hand cards after reconnecting to the promoted host",
+      120000,
+      (snap) => snap?.multiplayer?.matchStarted
+        && snap.multiplayer.role === "client"
+        && Number(snap.multiplayer.localPlayerIndex) === 0
+        && Number(snap.state?.perspective) === 0,
+    );
+    assert.equal(
+      reconnectedHostHand.filter((name) => /^Hidden Card$/i.test(name)).length,
+      0,
+      `expected original host hand to be revealed after reconnect: ${JSON.stringify(reconnectedHostHand)}`
+    );
+
+    const beforeResumeSequence = Number(afterHostReconnect.host.multiplayer.lastAppliedSequence || 0);
+    const beforeResumeSnapshot = Number(afterHostReconnect.host.state.snapshot_id || 0);
+    await clickAnyFullUiProgressAction([hostPage, guestPage], "post takeover resume action", 120000);
+    const afterResume = await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) => Number(host.multiplayer.lastAppliedSequence) === Number(guest.multiplayer.lastAppliedSequence)
+        && (
+          Number(host.multiplayer.lastAppliedSequence || 0) > beforeResumeSequence
+          || Number(host.state.snapshot_id || 0) > beforeResumeSnapshot
+        ),
+      "match should accept another real action after host takeover and reconnect",
+      120000,
+    );
+    assert.ok(
+      Number(afterResume.host.multiplayer.lastAppliedSequence || 0) > beforeResumeSequence
+        || Number(afterResume.host.state.snapshot_id || 0) > beforeResumeSnapshot,
+      "expected the real WASM game to advance after host takeover reconnect",
+    );
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([
@@ -2759,23 +3142,6 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
     }
     assert.fail(
       `${label}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${lastHostText}\nguest body:\n${lastGuestText}`
-    );
-  };
-
-  const resolveUntilNoStackCard = async (cardName, label) => {
-    const cardPattern = new RegExp(`STACK[\\s\\S]*${cardName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
-    let sawStackCard = false;
-    await advanceUntil(
-      async ({ hostText, guestText }) => {
-        const hasStackCard = cardPattern.test(hostText) || cardPattern.test(guestText);
-        if (hasStackCard) {
-          sawStackCard = true;
-          return false;
-        }
-        return sawStackCard;
-      },
-      label,
-      80,
     );
   };
 

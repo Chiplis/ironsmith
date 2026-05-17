@@ -14,9 +14,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ExternalLink, Github, Menu, RefreshCw, Settings2 } from "lucide-react";
+import { ExternalLink, Github, Menu, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 import AddCardSheet from "./AddCardSheet";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
+import VerifyMatchSheet from "./VerifyMatchSheet";
 import { playerDisplayName } from "@/lib/player-display";
 
 const inputClass =
@@ -242,6 +243,18 @@ export default function TopbarMenuSheet({
                 >
                   {lobbyBusy ? "Open Lobby" : "Create Lobby"}
                 </Button>
+                <VerifyMatchSheet
+                  trigger={(
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="stone-pill justify-start"
+                    >
+                      <ShieldCheck className="size-3.5" />
+                      Verify Match
+                    </Button>
+                  )}
+                />
                 <Button
                   variant="secondary"
                   size="sm"

@@ -9,6 +9,7 @@ import {
   buildSignedDisconnectForfeitVote,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
+  buildSignedProtocolResponseTimeoutVote,
   buildDeckSlotOpening,
   buildPrivateDeckManifest,
   buildSignedMatchGenesis,
@@ -21,6 +22,8 @@ import {
   CURRENT_AUDIT_PROTOCOL_VERSION,
   DISCONNECT_AUTO_FORFEIT_MS,
   DISCONNECT_FORFEIT_REASON,
+  PROTOCOL_RESPONSE_TIMEOUT_MS,
+  PROTOCOL_RESPONSE_TIMEOUT_REASON,
   createAuditEncryptionKey,
   createAuditSessionKey,
   decryptPrivateAuditPayload,
@@ -36,6 +39,8 @@ import {
   importAuditPublicKey,
   isCurrentAuditPlayerCount,
   isDisconnectForfeitReason,
+  isProtocolResponseTimeoutForfeitReason,
+  protocolResponseTimeoutVoteThreshold,
   publicCheckpointHash,
   publicDeckManifest,
   randomAuditHex,
@@ -50,6 +55,8 @@ import {
   verifyCardOpeningAgainstManifest,
   verifyDisconnectForfeitCertificate,
   verifyDisconnectForfeitVote,
+  verifyProtocolResponseTimeoutCertificate,
+  verifyProtocolResponseTimeoutVote,
   verifySignedMatchGenesis,
   verifySignedResyncEnvelope,
 } from "@/lib/multiplayer-audit";
@@ -77,11 +84,15 @@ const PEER_HEARTBEAT_TIMEOUT_MS = 10000;
 const DEFAULT_PLAYER_CLOCK_MS = 15 * 60 * 1000;
 const MATCH_CLOCK_TICK_MS = 1000;
 const MATCH_CLOCK_CLAIM_SKEW_MS = 2000;
+const MATCH_CLOCK_ELAPSED_UNDERREPORT_SKEW_MS = 5000;
 const ACTION_SUBMISSION_IDLE_WAIT_MS = 5000;
+const PROTOCOL_RESPONSE_TIMEOUT_VOTE_WAIT_MS = 15000;
 const MATCH_CLOCK_AUDIT_TYPE = "match_clock_v1";
 const MATCH_CLOCK_POLICY_TYPE = "per_player_match_clock_v1";
 const MATCH_CLOCK_AUDIT_DOMAIN = "ironsmith-match-clock-audit-v1";
 const TIMEOUT_VOTE_DOMAIN = "ironsmith-match-timeout-vote-v1";
+const ACTION_INTENT_DOMAIN = "ironsmith-action-intent-v1";
+const RECONNECT_PROOF_DOMAIN = "ironsmith-reconnect-proof-v1";
 const AUDIT_DECK_MANIFEST_STORAGE_PREFIX = "ironsmith.auditDeckManifest.v1";
 const AUDIT_REVEALED_OPENING_STORAGE_PREFIX = "ironsmith.auditRevealedOpening.v1";
 const ACTION_QUORUM_VOTE_STORAGE_PREFIX = "ironsmith.actionQuorumVote.v1";
@@ -482,10 +493,16 @@ function isDisconnectTimeoutForfeitCommand(command) {
     && isDisconnectForfeitReason(command?.reason);
 }
 
+function isProtocolResponseTimeoutForfeitCommand(command) {
+  return isForfeitCommand(command)
+    && isProtocolResponseTimeoutForfeitReason(command?.reason);
+}
+
 function isSelfForfeitCommand(command, actorIndex) {
   return isForfeitCommand(command)
     && !isActionTimeoutForfeitCommand(command)
     && !isDisconnectTimeoutForfeitCommand(command)
+    && !isProtocolResponseTimeoutForfeitCommand(command)
     && Number(command.player) === Number(actorIndex);
 }
 
@@ -1177,6 +1194,56 @@ function canonicalMultiplayerPayload(value) {
   return canonicalJson(cloneMultiplayerPayload(value));
 }
 
+function signedActionIntentPayload(intent = {}) {
+  return {
+    domain: ACTION_INTENT_DOMAIN,
+    matchId: String(intent.matchId || ""),
+    seq: Number(intent.seq || 0),
+    actorIndex: Number(intent.actorIndex ?? intent.actor ?? 0),
+    prevStateHash: String(intent.prevStateHash || ""),
+    preActionPublicCheckpointHash: String(
+      intent.preActionPublicCheckpointHash
+      || intent.publicCheckpointHash
+      || ""
+    ),
+    command: cloneMultiplayerPayload(intent.command || null),
+  };
+}
+
+function actionIntentKey(intent = {}) {
+  const payload = signedActionIntentPayload(intent);
+  return [
+    payload.matchId,
+    payload.seq,
+    payload.actorIndex,
+  ].join(":");
+}
+
+function actionIntentFingerprint(intent = {}) {
+  return canonicalMultiplayerPayload(signedActionIntentPayload(intent));
+}
+
+function reconnectProofPayload(proof = {}) {
+  return {
+    domain: RECONNECT_PROOF_DOMAIN,
+    matchId: String(proof.matchId || ""),
+    challengeId: String(proof.challengeId || proof.requestId || ""),
+    nonce: String(proof.nonce || ""),
+    playerIndex: Number(proof.playerIndex),
+    peerId: String(proof.peerId || ""),
+    hostPeerId: String(proof.hostPeerId || ""),
+    transcriptHash: String(proof.transcriptHash || ""),
+  };
+}
+
+function isProtocolResponseWaitTimeout(err) {
+  return String(err?.message || err || "").startsWith("Timed out waiting for ");
+}
+
+function protocolResponseTimeoutClaimFromError(err) {
+  return err?.protocolResponseTimeoutClaim || null;
+}
+
 function enqueueAsync(queueRef, task) {
   const next = queueRef.current.catch(() => undefined).then(task);
   queueRef.current = next.catch(() => undefined);
@@ -1297,6 +1364,7 @@ function findLocalMatchPlayer(players, session, auditPublicKey = "", auditEncryp
   const entries = Array.isArray(players) ? players : [];
   const localPeerId = String(session?.localPeerId || "").trim();
   return entries.find((player) => String(player?.peerId || "").trim() === localPeerId)
+    || entries.find((player) => String(player?.currentPeerId || "").trim() === localPeerId)
     || entries.find((player) =>
       playerMatchesPresentedAuditIdentity(player, auditPublicKey, auditEncryptionPublicKey)
     )
@@ -1678,6 +1746,7 @@ function ensurePromotedLocalPlayer(players, session, lobbyId, localPlayerIndex) 
 function toPublicPlayer(player) {
   return {
     peerId: player.peerId,
+    currentPeerId: player.currentPeerId || undefined,
     name: player.name,
     index: player.index,
     auditPublicKey: String(player.auditPublicKey || ""),
@@ -1712,7 +1781,10 @@ function toLobbyPlayers(players) {
 function markPlayerConnectionState(players, peerId, connected, observedAtMs = Date.now()) {
   const targetPeerId = String(peerId || "").trim();
   return reindexPlayers((players || []).map((player) => {
-    if (String(player?.peerId || "").trim() !== targetPeerId) return player;
+    if (
+      String(player?.peerId || "").trim() !== targetPeerId
+      && String(player?.currentPeerId || "").trim() !== targetPeerId
+    ) return player;
     if (connected) {
       const {
         disconnectedAtMs: _disconnectedAtMs,
@@ -2015,6 +2087,10 @@ export function usePeerLobby({
   const signedActionQuorumVotesRef = useRef(new Map());
   const cryptoMaterialWaitersRef = useRef(new Map());
   const outboundCryptoMaterialRequestsRef = useRef(new Map());
+  const pendingActionIntentsRef = useRef(new Map());
+  const pendingActionIntentTimeoutsRef = useRef(new Map());
+  const reconnectChallengesRef = useRef(new Map());
+  const privateViewDisclosuresRef = useRef(new Map());
   const liveZiffleCeremoniesRef = useRef(new Map());
   const ziffleOpeningPositionsRef = useRef(new Map());
   const ziffleHandRevealKeyRef = useRef("");
@@ -2022,6 +2098,7 @@ export function usePeerLobby({
   const ziffleShufflePerfRef = useRef([]);
   const relayedActionIdsRef = useRef(new Set());
   const actionCryptoRequirementsRef = useRef(new Map());
+  const matchClockObservationExemptSequenceRef = useRef(0);
   const ensureDirectPeerConnectionsRef = useRef(() => {});
 
   useEffect(() => {
@@ -2517,6 +2594,59 @@ export function usePeerLobby({
     })
   ), [beginPeerWait, clearPeerWait]);
 
+  async function makeProtocolResponseTimeoutError(cause, claim = {}) {
+    if (!multiplayerRef.current.matchStarted) return cause;
+    const targetPlayerIndex = normalizePlayerIndex(claim.targetPlayerIndex);
+    if (targetPlayerIndex == null) return cause;
+    const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
+    const target = players.find((player) => Number(player.index) === Number(targetPlayerIndex));
+    const responseTimeoutMs = Math.max(
+      1,
+      Math.floor(Number(claim.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS))
+    );
+    const requestedAtMs = Math.max(
+      1,
+      Math.floor(Number(claim.requestedAtMs || Date.now() - responseTimeoutMs))
+    );
+    const requestPayload = cloneMultiplayerPayload(claim.requestPayload || {});
+    const requestPayloadHash = String(
+      claim.requestPayloadHash
+      || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
+    );
+    const targetLabel = target?.name || `Player ${targetPlayerIndex + 1}`;
+    const err = new Error(
+      `${targetLabel} did not respond to ${String(claim.requestType || "protocol request")} `
+      + `within ${Math.ceil(responseTimeoutMs / 1000)}s`
+    );
+    err.cause = cause;
+    err.protocolResponseTimeoutClaim = {
+      matchId: currentAuditMatchId(),
+      basisSequence: Number(claim.basisSequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      targetPlayerIndex,
+      targetPeerId: String(claim.targetPeerId || target?.peerId || ""),
+      targetName: targetLabel,
+      requesterIndex: normalizePlayerIndex(claim.requesterIndex)
+        ?? resolveLocalPlayerIndex(multiplayerRef.current),
+      requestType: String(claim.requestType || ""),
+      requestId: String(claim.requestId || ""),
+      requestPayloadHash,
+      requestPayload,
+      responseTimeoutMs,
+      requestedAtMs,
+      eligibleAtMs: requestedAtMs + responseTimeoutMs,
+    };
+    return err;
+  }
+
+  async function waitForProtocolResponse(waiter, claim) {
+    try {
+      return await waiter;
+    } catch (err) {
+      if (!isProtocolResponseWaitTimeout(err)) throw err;
+      throw await makeProtocolResponseTimeoutError(err, claim);
+    }
+  }
+
   const resolveZiffleShuffleStep = useCallback((message) => {
     const requestId = String(message?.requestId || "");
     const waiter = ziffleShuffleWaitersRef.current.get(requestId);
@@ -2627,6 +2757,29 @@ export function usePeerLobby({
         || "match"
     );
   }, []);
+
+  const rememberPrivateViewDisclosure = useCallback((disclosure) => {
+    if (!disclosure || typeof disclosure !== "object") return;
+    const payload = disclosure.payload || disclosure;
+    const matchId = String(disclosure.matchId || payload?.matchId || currentAuditMatchId());
+    const plaintextHash = String(disclosure.plaintextHash || "");
+    const requirementId = String(disclosure.requirementId || payload?.requirementId || "");
+    const key = [
+      matchId,
+      Number(disclosure.seq ?? payload?.seq ?? 0),
+      requirementId,
+      Number(disclosure.owner ?? payload?.owner ?? -1),
+      Number(disclosure.viewer ?? payload?.viewer ?? -1),
+      Number(disclosure.objectId ?? payload?.objectId ?? -1),
+      plaintextHash,
+    ].join(":");
+    privateViewDisclosuresRef.current.set(key, cloneMultiplayerPayload({
+      ...disclosure,
+      matchId,
+      type: String(disclosure.type || "private_view_opening_disclosure"),
+      payload: cloneMultiplayerPayload(payload),
+    }));
+  }, [currentAuditMatchId]);
 
   const resolveLocalCryptoPlayerIndex = useCallback((payload = matchStartPayloadRef.current) => {
     const session = multiplayerRef.current;
@@ -3202,6 +3355,280 @@ export function usePeerLobby({
     }
     return auditVerifyKeyCacheRef.current.get(normalized);
   }, []);
+
+  async function signActionIntentForCommand({
+    seq,
+    actorIndex,
+    command,
+    prevStateHash,
+    preActionPublicCheckpointHash,
+  }) {
+    const { keyPair } = await ensureAuditIdentity();
+    const payload = signedActionIntentPayload({
+      matchId: currentAuditMatchId(),
+      seq,
+      actorIndex,
+      prevStateHash,
+      preActionPublicCheckpointHash,
+      command,
+    });
+    return {
+      ...payload,
+      signatureAlgorithm: "ecdsa-p256-sha256",
+      signature: await signAuditPayload(keyPair, payload),
+    };
+  }
+
+  async function verifySignedActionIntent(intent, expected = {}) {
+    if (!intent || typeof intent !== "object") {
+      throw new Error("Cryptographic material request is missing a signed action intent");
+    }
+    const payload = signedActionIntentPayload(intent);
+    const expectedPayload = signedActionIntentPayload({
+      matchId: expected.matchId ?? currentAuditMatchId(),
+      seq: expected.seq ?? payload.seq,
+      actorIndex: expected.actorIndex ?? payload.actorIndex,
+      prevStateHash: expected.prevStateHash ?? payload.prevStateHash,
+      preActionPublicCheckpointHash:
+        expected.preActionPublicCheckpointHash
+        ?? expected.publicCheckpointHash
+        ?? payload.preActionPublicCheckpointHash,
+      command: expected.command ?? payload.command,
+    });
+    if (
+      payload.domain !== ACTION_INTENT_DOMAIN
+      || payload.matchId !== expectedPayload.matchId
+      || Number(payload.seq) !== Number(expectedPayload.seq)
+      || Number(payload.actorIndex) !== Number(expectedPayload.actorIndex)
+      || payload.prevStateHash !== expectedPayload.prevStateHash
+      || payload.preActionPublicCheckpointHash !== expectedPayload.preActionPublicCheckpointHash
+      || canonicalMultiplayerPayload(payload.command) !== canonicalMultiplayerPayload(expectedPayload.command)
+    ) {
+      throw new Error("Signed action intent does not match the requested action");
+    }
+    const publicKey = await importCachedAuditPublicKey(publicKeyForAuditSigner(payload.actorIndex));
+    const valid = await verifyAuditPayload(publicKey, payload, intent.signature || "");
+    if (!valid) {
+      throw new Error("Signed action intent signature is invalid");
+    }
+    return {
+      ...payload,
+      signatureAlgorithm: "ecdsa-p256-sha256",
+      signature: String(intent.signature || ""),
+    };
+  }
+
+  function clearPendingActionIntent(intentOrKey) {
+    const key = typeof intentOrKey === "string" ? intentOrKey : actionIntentKey(intentOrKey);
+    if (!key) return;
+    const timeoutId = pendingActionIntentTimeoutsRef.current.get(key);
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      pendingActionIntentTimeoutsRef.current.delete(key);
+    }
+    pendingActionIntentsRef.current.delete(key);
+  }
+
+  function clearAllPendingActionIntents() {
+    for (const timeoutId of pendingActionIntentTimeoutsRef.current.values()) {
+      window.clearTimeout(timeoutId);
+    }
+    pendingActionIntentTimeoutsRef.current.clear();
+    pendingActionIntentsRef.current.clear();
+  }
+
+  function matchingAppliedActionForIntent(intent) {
+    const payload = signedActionIntentPayload(intent);
+    const applied = actionHistoryEntryForSequence(payload.seq);
+    if (!applied) return null;
+    if (Number(applied.actorIndex) !== Number(payload.actorIndex)) return null;
+    if (canonicalMultiplayerPayload(applied.command) !== canonicalMultiplayerPayload(payload.command)) {
+      return null;
+    }
+    if (String(applied.audit?.prevStateHash || "") !== payload.prevStateHash) return null;
+    return applied;
+  }
+
+  async function observedMatchClockElapsedForIntent(intent) {
+    const payload = signedActionIntentPayload(intent);
+    const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
+      ? await gameRef.current.uiState()
+      : stateRef.current;
+    const snapshot = updateMatchClockForState(liveState);
+    if (!snapshot.enabled || Number(snapshot.activePlayerIndex) !== Number(payload.actorIndex)) {
+      return null;
+    }
+    if (snapshot.startedAtMs == null) return 0;
+    return Math.max(0, Math.floor(nowMonotonicMs() - Number(snapshot.startedAtMs)));
+  }
+
+  async function rememberPendingActionIntent(intent, evidence = {}) {
+    const verifiedIntent = await verifySignedActionIntent(intent);
+    const key = actionIntentKey(verifiedIntent);
+    const fingerprint = actionIntentFingerprint(verifiedIntent);
+    const existing = pendingActionIntentsRef.current.get(key);
+    if (existing && existing.fingerprint !== fingerprint) {
+      throw new Error("Refusing conflicting signed action intent for this sequence");
+    }
+    if (matchingAppliedActionForIntent(verifiedIntent)) {
+      return verifiedIntent;
+    }
+    const record = existing || {
+      intent: cloneMultiplayerPayload(verifiedIntent),
+      fingerprint,
+      evidence: null,
+      observedElapsedAtIntentMs: null,
+    };
+    const observedElapsed = await observedMatchClockElapsedForIntent(verifiedIntent);
+    if (observedElapsed != null) {
+      record.observedElapsedAtIntentMs = Math.max(
+        Number(record.observedElapsedAtIntentMs || 0),
+        Number(observedElapsed || 0)
+      );
+    }
+    if (!record.evidence && evidence?.requestPayload) {
+      record.evidence = cloneMultiplayerPayload(evidence);
+    }
+    pendingActionIntentsRef.current.set(key, record);
+    if (!pendingActionIntentTimeoutsRef.current.has(key) && record.evidence?.requestPayload) {
+      const timeoutMs = Math.max(1, Number(record.evidence.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS));
+      const timeoutId = window.setTimeout(() => {
+        pendingActionIntentTimeoutsRef.current.delete(key);
+        void handlePendingActionIntentTimeout(key).catch((err) => {
+          emitSyncFailureNotice(
+            "Action intent timeout failed",
+            err instanceof Error ? err.message : String(err)
+          );
+          setStatus(`Action intent timeout failed: ${toErrorMessage(err)}`, true);
+        });
+      }, timeoutMs + MATCH_CLOCK_CLAIM_SKEW_MS);
+      pendingActionIntentTimeoutsRef.current.set(key, timeoutId);
+    }
+    return verifiedIntent;
+  }
+
+  async function handlePendingActionIntentTimeout(key) {
+    const record = pendingActionIntentsRef.current.get(key);
+    if (!record) return;
+    const intent = record.intent || {};
+    if (matchingAppliedActionForIntent(intent)) {
+      clearPendingActionIntent(key);
+      return;
+    }
+    const seq = Number(intent.seq || 0);
+    const currentSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    if (seq <= currentSequence) {
+      clearPendingActionIntent(key);
+      return;
+    }
+    if (seq !== currentSequence + 1) {
+      return;
+    }
+    const evidence = record.evidence || {};
+    const targetPlayerIndex = normalizePlayerIndex(intent.actorIndex);
+    if (targetPlayerIndex == null) return;
+    const target = playerForProtocolResponseTimeout(targetPlayerIndex);
+    const requestPayload = cloneMultiplayerPayload(evidence.requestPayload || {});
+    const requestPayloadHash = String(
+      evidence.requestPayloadHash
+      || await sha256Hex(canonicalMultiplayerPayload(requestPayload))
+    );
+    await submitProtocolResponseTimeoutClaim({
+      matchId: currentAuditMatchId(),
+      basisSequence: currentSequence,
+      targetPlayerIndex,
+      targetPeerId: String(target?.peerId || evidence.actorPeerId || ""),
+      targetName: target?.name || `Player ${targetPlayerIndex + 1}`,
+      requesterIndex: resolveLocalPlayerIndex(multiplayerRef.current),
+      requestType: String(evidence.requestType || requestPayload.type || "action_intent"),
+      requestId: String(evidence.requestId || requestPayload.requestId || ""),
+      requestPayloadHash,
+      requestPayload,
+      responseTimeoutMs: Math.max(1, Number(evidence.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS)),
+      requestedAtMs: Math.max(1, Number(evidence.requestedAtMs || Date.now() - PROTOCOL_RESPONSE_TIMEOUT_MS)),
+    });
+  }
+
+  async function verifyActionMatchesPendingIntent(message) {
+    const audit = message?.audit || {};
+    const key = actionIntentKey({
+      matchId: audit.matchId || currentAuditMatchId(),
+      seq: audit.seq ?? message?.seq,
+      actorIndex: audit.actor ?? message?.actorIndex,
+    });
+    const record = pendingActionIntentsRef.current.get(key);
+    if (!record) return;
+    const intent = record.intent || {};
+    const expectedPreActionPublicCheckpointHash =
+      String(intent.preActionPublicCheckpointHash || "");
+    if (expectedPreActionPublicCheckpointHash) {
+      await verifyCurrentPublicCheckpointHash(
+        expectedPreActionPublicCheckpointHash,
+        "Signed action intent public checkpoint does not match local state"
+      );
+    }
+    const expected = signedActionIntentPayload(intent);
+    if (
+      String(audit.matchId || "") !== expected.matchId
+      || Number(audit.seq) !== Number(expected.seq)
+      || Number(audit.actor) !== Number(expected.actorIndex)
+      || String(audit.prevStateHash || "") !== expected.prevStateHash
+      || canonicalMultiplayerPayload(message?.command) !== canonicalMultiplayerPayload(expected.command)
+      || canonicalMultiplayerPayload(audit.command) !== canonicalMultiplayerPayload(expected.command)
+    ) {
+      throw new Error("Sequenced action conflicts with an earlier signed action intent");
+    }
+    const observedElapsed = Number(record.observedElapsedAtIntentMs || 0);
+    const clockElapsed = Number(audit.clock?.elapsedMs || 0);
+    if (
+      observedElapsed > 0
+      && clockElapsed + MATCH_CLOCK_CLAIM_SKEW_MS < observedElapsed
+    ) {
+      throw new Error("Sequenced action match clock is below its signed action intent observation");
+    }
+  }
+
+  async function signReconnectProofForChallenge(challenge) {
+    const { keyPair } = await ensureAuditIdentity();
+    const payload = reconnectProofPayload({
+      matchId: challenge.matchId,
+      challengeId: challenge.requestId || challenge.challengeId,
+      nonce: challenge.nonce,
+      playerIndex: challenge.playerIndex,
+      peerId: challenge.peerId || multiplayerRef.current.localPeerId,
+      hostPeerId: challenge.hostPeerId,
+      transcriptHash: challenge.transcriptHash,
+    });
+    return {
+      ...payload,
+      signatureAlgorithm: "ecdsa-p256-sha256",
+      signature: await signAuditPayload(keyPair, payload),
+    };
+  }
+
+  async function verifyReconnectProofForChallenge(proof, challenge, auditPublicKey) {
+    if (!proof || typeof proof !== "object") {
+      throw new Error("Reconnect response is missing audit-key proof");
+    }
+    const payload = reconnectProofPayload(proof);
+    const expected = reconnectProofPayload({
+      matchId: challenge.matchId,
+      challengeId: challenge.requestId,
+      nonce: challenge.nonce,
+      playerIndex: challenge.playerIndex,
+      peerId: challenge.peerId,
+      hostPeerId: challenge.hostPeerId,
+      transcriptHash: challenge.transcriptHash,
+    });
+    if (canonicalMultiplayerPayload(payload) !== canonicalMultiplayerPayload(expected)) {
+      throw new Error("Reconnect proof does not match the host challenge");
+    }
+    const publicKey = await importCachedAuditPublicKey(auditPublicKey);
+    const valid = await verifyAuditPayload(publicKey, payload, proof.signature || "");
+    if (!valid) {
+      throw new Error("Reconnect proof signature is invalid");
+    }
+  }
 
   function verifiedAuditOpeningKey(opening) {
     return canonicalMultiplayerPayload({
@@ -4605,7 +5032,7 @@ export function usePeerLobby({
     return remapSelectObjectsCommandForLocalHiddenOpening(priorityCommand, openings, actorIndex);
   }
 
-  async function privateOpeningFromEncryptedProof(proof, requirement = {}) {
+  async function privateOpeningFromEncryptedProof(proof, requirement = {}, options = {}) {
     const localSeat = resolveLocalCryptoPlayerIndex();
     const viewer = Number(requirement?.viewer ?? proof?.viewer);
     if (!Number.isInteger(viewer) || viewer !== Number(localSeat)) return null;
@@ -4625,6 +5052,20 @@ export function usePeerLobby({
     if (!opening || opening.owner == null || opening.slot == null || !opening.card) {
       throw new Error("Private-view opening payload is incomplete");
     }
+    if (options.persistDisclosure !== false) {
+      rememberPrivateViewDisclosure({
+        type: "private_view_opening_disclosure",
+        matchId: currentAuditMatchId(),
+        seq: Number(options.seq ?? requirement?.seq ?? proof?.seq ?? 0),
+        requirementId: String(proof.requirementId || payload.requirementId || ""),
+        owner: Number(proof.owner ?? payload.owner ?? opening.owner),
+        viewer,
+        zone: String(proof.zone || payload.zone || ""),
+        objectId: Number(proof.objectId ?? payload.objectId ?? requirement.objectId ?? -1),
+        plaintextHash: String(proof.encryptedOpening.plaintextHash || ""),
+        payload,
+      });
+    }
     return {
       ...opening,
       owner: Number(opening.owner),
@@ -4641,7 +5082,7 @@ export function usePeerLobby({
     };
   }
 
-  async function privateOpeningFromProof(requirement, audit = {}) {
+  async function privateOpeningFromProof(requirement, audit = {}, options = {}) {
     const proof = (audit.privateViewProofs || []).find((entry) =>
       String(entry?.type || "") === "encrypted_private_opening"
       && (
@@ -4653,7 +5094,10 @@ export function usePeerLobby({
         )
       )
     );
-    return privateOpeningFromEncryptedProof(proof, requirement);
+    return privateOpeningFromEncryptedProof(proof, requirement, {
+      ...options,
+      seq: options.seq ?? audit.seq,
+    });
   }
 
   async function revealPrivateAuditProofsForLocalViewer(audit = {}, options = {}) {
@@ -4667,6 +5111,10 @@ export function usePeerLobby({
         owner: proof.owner,
         viewer: proof.viewer,
         objectId: proof.objectId,
+        seq: audit.seq,
+      }, {
+        seq: options.seq ?? audit.seq,
+        persistDisclosure: options.persistDisclosure,
       });
       if (!opening) continue;
       const key = [
@@ -4822,7 +5270,7 @@ export function usePeerLobby({
       if (handledRequirements.has(requirement)) continue;
       if (String(requirement?.type || "") !== "private_open") continue;
       if (Number(requirement.viewer) !== Number(localSeat)) continue;
-      let opening = await privateOpeningFromProof(requirement, audit);
+      let opening = await privateOpeningFromProof(requirement, audit, options);
       if (!opening && Number(requirement.owner) === Number(localSeat)) {
         opening = (await buildLocalOpeningFromRequirement(requirement, null, options)).opening;
       }
@@ -4913,6 +5361,18 @@ export function usePeerLobby({
         recipientPublicKey,
         payload: openingPayload,
       });
+      rememberPrivateViewDisclosure({
+        type: "private_view_opening_disclosure",
+        matchId: currentAuditMatchId(),
+        seq: Number(options.seq ?? 0),
+        requirementId: String(requirement.id || ""),
+        owner,
+        viewer,
+        zone: String(requirement.zone || ""),
+        objectId: Number(requirement.objectId),
+        plaintextHash: String(encryptedOpening.plaintextHash || ""),
+        payload: openingPayload,
+      });
       const proof = {
         type: "encrypted_private_opening",
         requirementId: String(requirement.id || ""),
@@ -4961,6 +5421,7 @@ export function usePeerLobby({
       auditEncryptionPublicKeyForPlayer,
       buildLocalOpeningFromRequirement,
       currentAuditMatchId,
+      rememberPrivateViewDisclosure,
       resolveLocalCryptoPlayerIndex,
     ]);
 
@@ -5095,11 +5556,20 @@ export function usePeerLobby({
       )
     );
     try {
-      return authorizeCryptoMaterialRequestRequirements({
+      const authorizedRequirements = authorizeCryptoMaterialRequestRequirements({
         localSeat,
         requestedRequirements: message.requirements,
         previewedRequirements,
       });
+      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+        matchId: currentAuditMatchId(),
+        seq,
+        actorIndex,
+        prevStateHash: message.prevStateHash,
+        preActionPublicCheckpointHash: message.publicCheckpointHash,
+        command,
+      });
+      return { requirements: authorizedRequirements, actionIntent };
     } catch (err) {
       const postApplyRequirements = await derivePostApplyCryptoRequirementsForRequest({
         command,
@@ -5110,7 +5580,7 @@ export function usePeerLobby({
       if (postApplyRequirements.length === 0) {
         throw err;
       }
-      return authorizeCryptoMaterialRequestRequirements({
+      const authorizedRequirements = authorizeCryptoMaterialRequestRequirements({
         localSeat,
         requestedRequirements: message.requirements,
         previewedRequirements: [
@@ -5118,9 +5588,18 @@ export function usePeerLobby({
           ...postApplyRequirements,
         ],
       });
+      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+        matchId: currentAuditMatchId(),
+        seq,
+        actorIndex,
+        prevStateHash: message.prevStateHash,
+        preActionPublicCheckpointHash: message.publicCheckpointHash,
+        command,
+      });
+      return { requirements: authorizedRequirements, actionIntent };
     }
-	  }, [
-	    currentAuditMatchId,
+		  }, [
+		    currentAuditMatchId,
     derivePostApplyCryptoRequirementsForRequest,
 	    freshCryptoRequirementsForSequence,
 	    resolveLocalCryptoPlayerIndex,
@@ -5129,13 +5608,23 @@ export function usePeerLobby({
 
   const answerCryptoMaterialRequest = useCallback(async (conn, message) => {
     try {
-      const requirements = await authorizedCryptoMaterialRequirementsForRequest(conn, message);
+      const { requirements, actionIntent } = await authorizedCryptoMaterialRequirementsForRequest(conn, message);
+      const requestPayload = cloneMultiplayerPayload(message);
+      await rememberPendingActionIntent(actionIntent, {
+        requestType: "crypto_material_request",
+        requestId: String(message.requestId || ""),
+        requestPayload,
+        requestPayloadHash: await sha256Hex(canonicalMultiplayerPayload(requestPayload)),
+        responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+        requestedAtMs: Date.now(),
+      });
       const material = await buildLocalCryptoMaterialForRequirements(requirements, {
         cryptoMaterialRequestId: message.requestId,
         command: message.command || null,
         seq: message.seq,
         actorIndex: message.actorIndex,
         requesterIndex: message.requesterIndex,
+        actionIntent,
       });
       safeSend(conn, {
         type: "crypto_material_response",
@@ -5190,17 +5679,31 @@ export function usePeerLobby({
     const publicCheckpointHash = String(
       options.publicCheckpointHash || await currentPublicAuditCheckpointHash()
     );
+    const actionIntent = command
+      ? (
+          options.actionIntent
+          || await signActionIntentForCommand({
+            seq,
+            actorIndex,
+            command,
+            prevStateHash,
+            preActionPublicCheckpointHash: publicCheckpointHash,
+          })
+        )
+      : null;
 
     const responses = [];
     for (const [owner, ownerRequirements] of materialByOwner) {
       const player = players.find((entry) => Number(entry.index) === owner);
-      if (!player?.peerId) {
+      const routePeerId = routePeerIdForPlayer(player);
+      if (!routePeerId) {
         throw new Error(`Missing peer route for cryptographic material from player ${owner + 1}`);
       }
-      const conn = await waitForZiffleRoute(player.peerId);
+      const conn = await waitForZiffleRoute(routePeerId);
       const requestId = makeZiffleRequestId("crypto-material");
       const playerLabel = player.name || `Player ${owner + 1}`;
-      const waiter = waitForCryptoMaterial(requestId, 60000, {
+      const requestedAtMs = Date.now();
+      const waiter = waitForCryptoMaterial(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
         peerIndex: owner,
         peerName: playerLabel,
         description:
@@ -5208,17 +5711,18 @@ export function usePeerLobby({
       });
       outboundCryptoMaterialRequestsRef.current.set(requestId, {
         owner,
-        peerId: String(player.peerId || ""),
+        peerId: routePeerId,
         requirements: cloneMultiplayerPayload(ownerRequirements),
         command: command ? cloneMultiplayerPayload(command) : null,
         seq,
         actorIndex,
         prevStateHash,
         publicCheckpointHash,
-        createdAt: Date.now(),
+        actionIntent: actionIntent ? cloneMultiplayerPayload(actionIntent) : null,
+        createdAt: requestedAtMs,
       });
       setStatus(`Waiting for cryptographic material from ${playerLabel}`);
-      safeSend(conn, {
+      const requestPayload = {
         type: "crypto_material_request",
         protocolVersion: PROTOCOL_VERSION,
         requestId,
@@ -5230,9 +5734,21 @@ export function usePeerLobby({
         publicCheckpointHash,
         requirements: ownerRequirements,
         ...(command ? { command: cloneMultiplayerPayload(command) } : {}),
-      });
+        ...(actionIntent ? { actionIntent: cloneMultiplayerPayload(actionIntent) } : {}),
+      };
+      safeSend(conn, requestPayload);
       try {
-        responses.push(await waiter);
+        responses.push(await waitForProtocolResponse(waiter, {
+          basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+          targetPlayerIndex: owner,
+          targetPeerId: player.peerId,
+          requesterIndex: localSeat,
+          requestType: requestPayload.type,
+          requestId,
+          requestPayload,
+          responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+          requestedAtMs,
+        }));
       } finally {
         outboundCryptoMaterialRequestsRef.current.delete(requestId);
       }
@@ -5290,6 +5806,14 @@ export function usePeerLobby({
   const teardownPeer = useCallback(() => {
     clearAllConnectionHeartbeats();
     clearAllPeerResyncs();
+    clearAllPendingActionIntents();
+    for (const challenge of reconnectChallengesRef.current.values()) {
+      if (challenge?.timeoutId) {
+        window.clearTimeout(challenge.timeoutId);
+      }
+    }
+    reconnectChallengesRef.current.clear();
+    privateViewDisclosuresRef.current.clear();
     awaitingStateResyncRef.current = false;
     relayedActionIdsRef.current.clear();
 
@@ -5345,8 +5869,11 @@ export function usePeerLobby({
       ziffleOpeningPositionsRef.current.clear();
       localRevealedOpeningsRef.current.clear();
       localDisconnectObservationsRef.current.clear();
+      clearAllPendingActionIntents();
+      reconnectChallengesRef.current.clear();
       actionHistoryRef.current = [];
       actionCryptoRequirementsRef.current.clear();
+      matchClockObservationExemptSequenceRef.current = 0;
       initialPublicCheckpointHashRef.current = "";
       updateMultiplayer(createEmptyState());
       if (message) {
@@ -5394,24 +5921,87 @@ export function usePeerLobby({
       return null;
     }
 
+    const clockRuntime = matchClockRef.current;
+    const clockState = stateRef.current;
+    const clockPolicy = normalizeMatchClockPolicy(
+      clockRuntime.policy || matchClockConfigRef.current
+    );
+    const clockPlayerCount = Math.max(
+      0,
+      Number(
+        (session.players || []).length
+        || clockState?.players?.length
+        || clockRuntime.playerCount
+        || 0
+      )
+    );
+    const activePlayerIndex = matchClockActivePlayerFromState(clockState);
+    const clockNowMs = nowMonotonicMs();
+    const activeChanged = Number(clockRuntime.activePlayerIndex) !== Number(activePlayerIndex);
+    matchClockRef.current = {
+      policy: clockPolicy,
+      playerCount: clockPlayerCount,
+      baseRemainingMsByPlayer: normalizeMatchClockRemaining(
+        clockRuntime.baseRemainingMsByPlayer,
+        clockPlayerCount,
+        clockPolicy.initialMs
+      ),
+      activePlayerIndex,
+      epochStartedAtMs: activePlayerIndex == null
+        ? null
+        : (activeChanged ? clockNowMs : clockRuntime.epochStartedAtMs ?? clockNowMs),
+      clockHash: String(clockRuntime.clockHash || INITIAL_MATCH_CLOCK_HASH),
+      lastSequence: Number(clockRuntime.lastSequence || 0),
+    };
+    const currentMatchClock = createMatchClockSnapshot({
+      policy: matchClockRef.current.policy,
+      playerCount: matchClockRef.current.playerCount,
+      baseRemainingMsByPlayer: matchClockRef.current.baseRemainingMsByPlayer,
+      activePlayerIndex: matchClockRef.current.activePlayerIndex,
+      epochStartedAtMs: matchClockRef.current.epochStartedAtMs,
+      clockHash: matchClockRef.current.clockHash,
+      lastSequence: matchClockRef.current.lastSequence,
+      nowMs: clockNowMs,
+    });
+
+    const currentHostPeerId = session.localPeerId || session.hostPeerId || basePayload.hostPeerId || "";
+    const currentHostPlayerIndex = resolveLocalPlayerIndex(session);
+    const currentPlayers = toPublicPlayers(session.players).map((player) =>
+      currentHostPlayerIndex != null && Number(player.index) === Number(currentHostPlayerIndex)
+        ? {
+            ...player,
+            currentPeerId: currentHostPeerId || player.currentPeerId || player.peerId,
+            connected: true,
+          }
+        : player
+    );
+
     return {
       ...cloneMultiplayerPayload(basePayload),
       protocolVersion: PROTOCOL_VERSION,
-      lobbyId: session.lobbyId || basePayload.lobbyId || "",
-      hostPeerId: session.localPeerId || basePayload.hostPeerId || "",
+      lobbyId: basePayload.lobbyId || session.lobbyId || "",
+      hostPeerId: basePayload.hostPeerId || "",
+      currentHostPeerId,
+      currentHostPlayerIndex:
+        currentHostPlayerIndex == null ? undefined : Number(currentHostPlayerIndex),
+      currentPlayers,
+      currentMatchClock,
       format: normalizeMatchFormat(basePayload.format || session.format),
       startingLife: Number(basePayload.startingLife || session.startingLife || 20),
-      players: toPublicPlayers(session.players),
+      players: cloneMultiplayerPayload(basePayload.players || []),
     };
   }, []);
 
   const sendHostedStateMessage = useCallback(
     async (conn, payload) => {
       const session = multiplayerRef.current;
-      if (!session.players.some((entry) => entry.peerId === conn.peer)) {
+      const peerPlayer = session.players.find((entry) =>
+        String(entry.peerId || "") === String(conn.peer || "")
+        || String(entry.currentPeerId || "") === String(conn.peer || "")
+      );
+      if (!peerPlayer) {
         throw new Error("Cannot resync an unknown peer");
       }
-      const peerPlayer = session.players.find((entry) => entry.peerId === conn.peer);
       const peerIndex = normalizePlayerIndex(peerPlayer?.index);
       const currentGame = gameRef.current;
       if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
@@ -5421,6 +6011,7 @@ export function usePeerLobby({
         peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
           : await currentGame.exportSyncCheckpoint();
+      const serializedCheckpoint = cloneMultiplayerPayload(checkpoint);
       const actions = (actionHistoryRef.current || [])
         .map((entry) => cloneMultiplayerPayload(entry));
       const lastSequence = Number(actions.at(-1)?.seq ?? 0);
@@ -5430,14 +6021,14 @@ export function usePeerLobby({
         signer: resolveLocalPlayerIndex(session) ?? 0,
         lastSequence,
         finalStateHash: auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
-        checkpoint,
+        checkpoint: serializedCheckpoint,
         actions,
       });
       safeSend(conn, {
         ...payload,
         lastSequence,
         match: redactedMatchPayloadForPeer(payload.match, conn.peer, peerIndex),
-        checkpoint,
+        checkpoint: serializedCheckpoint,
         actions,
         resyncEnvelope,
       });
@@ -5462,7 +6053,7 @@ export function usePeerLobby({
     const session = multiplayerRef.current;
     ensureDirectPeerConnections(session.players || []);
     for (const player of session.players || []) {
-      const peerId = String(player?.peerId || "").trim();
+      const peerId = routePeerIdForPlayer(player);
       if (!peerId || peerId === session.localPeerId) continue;
       sendDirectPeerMessage(peerId, {
         ...cloneMultiplayerPayload(message),
@@ -5519,33 +6110,6 @@ export function usePeerLobby({
     return updateMatchClockForState(uiState, { reset: true, policy });
   }
 
-  function restoreMatchClockFromTranscript(matchPayload, actionEntries, uiState) {
-    const policy = matchClockPolicyFromPayload(matchPayload, matchClockConfigRef.current);
-    matchClockConfigRef.current = policy;
-    const playerCount = Math.max(
-      matchPayload?.players?.length || 0,
-      playerCountForClock(uiState)
-    );
-    const clock = [...(actionEntries || [])]
-      .reverse()
-      .map((entry) => entry?.audit?.clock)
-      .find((entry) => entry && typeof entry === "object");
-    matchClockRef.current = {
-      policy,
-      playerCount,
-      baseRemainingMsByPlayer: normalizeMatchClockRemaining(
-        clock?.remainingMsByPlayer,
-        playerCount,
-        policy.initialMs
-      ),
-      activePlayerIndex: null,
-      epochStartedAtMs: null,
-      clockHash: String(clock?.clockHash || INITIAL_MATCH_CLOCK_HASH),
-      lastSequence: Number(clock?.seq || 0),
-    };
-    return updateMatchClockForState(uiState, { policy });
-  }
-
   function updateMatchClockForState(uiState, options = {}) {
     const policy = normalizeMatchClockPolicy(options.policy || matchClockConfigRef.current);
     matchClockConfigRef.current = policy;
@@ -5594,6 +6158,7 @@ export function usePeerLobby({
     const activePlayer = snapshot.activePlayerIndex;
     const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
     const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
+    const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(command);
     const baseRemaining = normalizeMatchClockRemaining(
       runtime.baseRemainingMsByPlayer,
       runtime.playerCount,
@@ -5607,7 +6172,7 @@ export function usePeerLobby({
       );
       elapsedMs = isTimeoutForfeit
         ? Number(baseRemaining[activePlayer] || 0)
-        : isDisconnectForfeit
+        : (isDisconnectForfeit || isProtocolTimeoutForfeit)
           ? 0
           : Math.min(Number(baseRemaining[activePlayer] || 0), observedElapsed);
     }
@@ -5621,7 +6186,9 @@ export function usePeerLobby({
         ? "timeout_claim"
         : isDisconnectForfeit
           ? "disconnect_timeout_claim"
-          : "action",
+          : isProtocolTimeoutForfeit
+            ? "protocol_response_timeout_claim"
+            : "action",
       policy: matchClockPolicyPayload(runtime.policy),
       activePlayer: activePlayer == null ? null : Number(activePlayer),
       elapsedMs,
@@ -5640,6 +6207,7 @@ export function usePeerLobby({
     actorIndex,
     uiState,
     skewMs = 0,
+    enforceObservationBounds = true,
   }) {
     const snapshot = updateMatchClockForState(uiState);
     if (!snapshot.enabled) {
@@ -5705,8 +6273,21 @@ export function usePeerLobby({
       const observedElapsedMs = snapshot.startedAtMs == null
         ? 0
         : Math.max(0, Math.floor(nowMonotonicMs() - Number(snapshot.startedAtMs)));
-      if (elapsedMs > observedElapsedMs + Number(skewMs || 0)) {
+      if (
+        enforceObservationBounds
+        && elapsedMs > observedElapsedMs + Number(skewMs || 0)
+      ) {
         throw new Error("Match clock elapsed time exceeds local observation");
+      }
+      const underreportSkewMs = Math.max(
+        Number(skewMs || 0),
+        MATCH_CLOCK_ELAPSED_UNDERREPORT_SKEW_MS
+      );
+      if (
+        enforceObservationBounds
+        && elapsedMs + underreportSkewMs < observedElapsedMs
+      ) {
+        throw new Error("Match clock elapsed time is below local observation");
       }
     }
     if (canonicalJson(expectedRemaining) !== canonicalJson(actualRemaining)) {
@@ -5790,7 +6371,57 @@ export function usePeerLobby({
     });
   }
 
-  async function signTimeoutVoteForSnapshot({
+  function alignMatchClockObservationFromHostSnapshot(hostSnapshot, uiState) {
+    if (!hostSnapshot || typeof hostSnapshot !== "object") {
+      return updateMatchClockForState(uiState);
+    }
+    const runtime = matchClockRef.current;
+    const policy = normalizeMatchClockPolicy(runtime.policy || matchClockConfigRef.current);
+    const playerCount = playerCountForClock(uiState);
+    const activePlayerIndex = matchClockActivePlayerFromState(uiState);
+    const hostClockHash = String(hostSnapshot.clockHash || "");
+    const hostSequence = Number(hostSnapshot.lastSequence || 0);
+    if (
+      hostClockHash
+      && hostClockHash !== String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH)
+    ) {
+      return updateMatchClockForState(uiState);
+    }
+    if (hostSequence && hostSequence !== Number(runtime.lastSequence || 0)) {
+      return updateMatchClockForState(uiState);
+    }
+    const baseRemaining = normalizeMatchClockRemaining(
+      runtime.baseRemainingMsByPlayer,
+      playerCount,
+      policy.initialMs
+    );
+    const hostRemaining = normalizeMatchClockRemaining(
+      hostSnapshot.remainingMsByPlayer,
+      playerCount,
+      policy.initialMs
+    );
+    const nowMs = nowMonotonicMs();
+    const activeElapsed = activePlayerIndex == null
+      ? 0
+      : Math.max(
+          0,
+          Number(baseRemaining[activePlayerIndex] || 0)
+            - Number(hostRemaining[activePlayerIndex] || 0)
+        );
+    matchClockConfigRef.current = policy;
+    matchClockRef.current = {
+      policy,
+      playerCount,
+      baseRemainingMsByPlayer: baseRemaining,
+      activePlayerIndex,
+      epochStartedAtMs: activePlayerIndex == null ? null : nowMs - activeElapsed,
+      clockHash: String(runtime.clockHash || INITIAL_MATCH_CLOCK_HASH),
+      lastSequence: Number(runtime.lastSequence || 0),
+    };
+    return publishMatchClockSnapshot(runtimeMatchClockSnapshot(nowMs));
+  }
+
+	  async function signTimeoutVoteForSnapshot({
     basisSequence,
     forfeitedPlayer,
     activePlayer,
@@ -6046,10 +6677,11 @@ export function usePeerLobby({
         continue;
       }
       const player = players.find((entry) => Number(entry.index) === Number(voter));
-      if (!player?.peerId) {
+      const routePeerId = routePeerIdForPlayer(player);
+      if (!routePeerId) {
         throw new Error(`Missing peer route for timeout voter ${voter + 1}`);
       }
-      const conn = await waitForZiffleRoute(player.peerId);
+      const conn = await waitForZiffleRoute(routePeerId);
       const requestId = makeZiffleRequestId("timeout-vote");
       const voterLabel = player.name || `Player ${Number(voter) + 1}`;
       const waiter = waitForTimeoutVote(requestId, 15000, {
@@ -6336,10 +6968,11 @@ export function usePeerLobby({
       const pending = roster
         .filter((player) => Number(player.index) !== Number(localPlayer))
         .map(async (player) => {
-          if (!player?.peerId) {
+          const routePeerId = routePeerIdForPlayer(player);
+          if (!routePeerId) {
             throw new Error(`Missing peer route for disconnect voter ${Number(player.index) + 1}`);
           }
-          const conn = await waitForZiffleRoute(player.peerId);
+          const conn = await waitForZiffleRoute(routePeerId);
           if (!collectingVotes) {
             throw new Error("Disconnect-forfeit vote collection is complete");
           }
@@ -6370,7 +7003,10 @@ export function usePeerLobby({
           )
         ));
         unsettled.delete(settled.promise);
-        if (settled.err) continue;
+        if (settled.err) {
+          if (protocolResponseTimeoutClaimFromError(settled.err)) throw settled.err;
+          continue;
+        }
         await addVote(settled.vote);
       }
       collectingVotes = false;
@@ -6401,6 +7037,327 @@ export function usePeerLobby({
     };
   }
 
+  function protocolResponseTimeoutRoster(forfeitedPlayer) {
+    const target = Number(forfeitedPlayer);
+    return actionQuorumRoster()
+      .filter((player) => Number(player.index) !== target);
+  }
+
+  function playerForProtocolResponseTimeout(forfeitedPlayer) {
+    const target = Number(forfeitedPlayer);
+    return reindexPlayers(multiplayerRef.current.players || [])
+      .find((player) => Number(player.index) === target)
+      || reindexPlayers(matchStartPayloadRef.current?.players || [])
+        .find((player) => Number(player.index) === target)
+      || null;
+  }
+
+  async function signProtocolResponseTimeoutVoteForCommand(command) {
+    const { keyPair } = await ensureAuditIdentity();
+    const voter = resolveLocalPlayerIndex(multiplayerRef.current);
+    const forfeitedPlayer = normalizePlayerIndex(command?.player);
+    if (voter == null || forfeitedPlayer == null || Number(voter) === Number(forfeitedPlayer)) {
+      throw new Error("Timed-out protocol responder cannot sign their own response-timeout forfeit");
+    }
+    const target = playerForProtocolResponseTimeout(forfeitedPlayer);
+    const forfeitedPeerId = String(
+      command?.timed_out_peer_id
+      || command?.forfeited_peer_id
+      || target?.peerId
+      || ""
+    ).trim();
+    const responseTimeoutMs = Math.max(
+      1,
+      Math.floor(Number(command?.response_timeout_ms || PROTOCOL_RESPONSE_TIMEOUT_MS))
+    );
+    const requestedAtMs = Math.max(0, Math.floor(Number(command?.requested_at_ms || 0)));
+    const eligibleAtMs = requestedAtMs + responseTimeoutMs;
+    const signedAtMs = Date.now();
+    if (!forfeitedPeerId) {
+      throw new Error("Protocol response timeout is missing the timed-out peer id");
+    }
+    if (!target || String(target.peerId || "").trim() !== forfeitedPeerId) {
+      throw new Error("Protocol response timeout peer id does not match the local player record");
+    }
+    if (!String(command?.request_type || "") || !String(command?.request_id || "")) {
+      throw new Error("Protocol response timeout is missing request identity");
+    }
+    if (!String(command?.request_payload_hash || "")) {
+      throw new Error("Protocol response timeout is missing request evidence");
+    }
+    if (signedAtMs + MATCH_CLOCK_CLAIM_SKEW_MS < eligibleAtMs) {
+      throw new Error("Protocol response timeout has not elapsed");
+    }
+    return buildSignedProtocolResponseTimeoutVote({
+      keyPair,
+      matchId: currentAuditMatchId(),
+      basisSequence: Number(command?.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      forfeitedPlayer,
+      forfeitedPeerId,
+      requestType: String(command.request_type || ""),
+      requestId: String(command.request_id || ""),
+      requestPayloadHash: String(command.request_payload_hash || ""),
+      responseTimeoutMs,
+      requestedAtMs,
+      eligibleAtMs,
+      signedAtMs,
+      voter,
+    });
+  }
+
+  async function validateProtocolResponseTimeoutCommand(command, options = {}) {
+    if (!isProtocolResponseTimeoutForfeitCommand(command)) return;
+    const forfeitedPlayer = normalizePlayerIndex(command.player);
+    const actorIndex = normalizePlayerIndex(options.actorIndex);
+    if (forfeitedPlayer == null) {
+      throw new Error("Protocol response timeout targets an invalid player");
+    }
+    if (actorIndex != null && actorIndex === forfeitedPlayer) {
+      throw new Error("Timed-out protocol responder cannot claim their own response-timeout forfeit");
+    }
+    const expectedBasisSequence = Number(multiplayerRef.current.lastAppliedSequence || 0);
+    if (Number(command.basis_sequence ?? expectedBasisSequence) !== expectedBasisSequence) {
+      throw new Error("Protocol response timeout is not based on the local transcript head");
+    }
+    const certificate = command.protocol_timeout_certificate || command.protocolTimeoutCertificate;
+    const target = playerForProtocolResponseTimeout(forfeitedPlayer);
+    const forfeitedPeerId = String(
+      command.timed_out_peer_id
+      || command.forfeited_peer_id
+      || certificate?.forfeitedPeerId
+      || target?.peerId
+      || ""
+    ).trim();
+    const responseTimeoutMs = Math.max(
+      1,
+      Math.floor(Number(command.response_timeout_ms ?? certificate?.responseTimeoutMs ?? PROTOCOL_RESPONSE_TIMEOUT_MS))
+    );
+    const requestedAtMs = Math.max(
+      0,
+      Math.floor(Number(command.requested_at_ms ?? certificate?.requestedAtMs ?? 0))
+    );
+    const eligibleAtMs = requestedAtMs + responseTimeoutMs;
+    if (!target) {
+      throw new Error("Protocol response timeout target is missing from the local player record");
+    }
+    if (!forfeitedPeerId || String(target.peerId || "").trim() !== forfeitedPeerId) {
+      throw new Error("Protocol response timeout peer id does not match the local player record");
+    }
+    if (!String(command.request_type || certificate?.requestType || "")) {
+      throw new Error("Protocol response timeout is missing request type");
+    }
+    if (!String(command.request_id || certificate?.requestId || "")) {
+      throw new Error("Protocol response timeout is missing request id");
+    }
+    if (!String(command.request_payload_hash || certificate?.requestPayloadHash || "")) {
+      throw new Error("Protocol response timeout is missing request evidence");
+    }
+    if (Date.now() + MATCH_CLOCK_CLAIM_SKEW_MS < eligibleAtMs) {
+      throw new Error("Protocol response timeout has not elapsed");
+    }
+    const roster = protocolResponseTimeoutRoster(forfeitedPlayer);
+    await verifyProtocolResponseTimeoutCertificate({
+      certificate,
+      command: {
+        ...command,
+        timed_out_peer_id: forfeitedPeerId,
+        response_timeout_ms: responseTimeoutMs,
+        matchId: currentAuditMatchId(),
+        nowMs: Date.now(),
+        maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+      },
+      players: roster,
+      threshold: protocolResponseTimeoutVoteThreshold(roster.length),
+    });
+  }
+
+  async function collectProtocolResponseTimeoutCertificateForCommand(command) {
+    if (!isProtocolResponseTimeoutForfeitCommand(command)) return null;
+    const forfeitedPlayer = normalizePlayerIndex(command.player);
+    if (forfeitedPlayer == null) {
+      throw new Error("Protocol response timeout targets an invalid player");
+    }
+    const roster = protocolResponseTimeoutRoster(forfeitedPlayer);
+    const threshold = protocolResponseTimeoutVoteThreshold(roster.length);
+    if (threshold <= 0) return null;
+
+    const target = playerForProtocolResponseTimeout(forfeitedPlayer);
+    const expected = {
+      matchId: currentAuditMatchId(),
+      basisSequence: Number(command.basis_sequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+      forfeitedPlayer,
+      forfeitedPeerId: String(command.timed_out_peer_id || command.forfeited_peer_id || target?.peerId || ""),
+      requestType: String(command.request_type || ""),
+      requestId: String(command.request_id || ""),
+      requestPayloadHash: String(command.request_payload_hash || ""),
+      responseTimeoutMs: Math.max(
+        1,
+        Math.floor(Number(command.response_timeout_ms || PROTOCOL_RESPONSE_TIMEOUT_MS))
+      ),
+      requestedAtMs: Math.max(0, Math.floor(Number(command.requested_at_ms || 0))),
+      nowMs: Date.now(),
+      maxFutureSkewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+    };
+    const votes = [];
+    const seen = new Set();
+    const addVote = async (vote) => {
+      const voter = await verifyProtocolResponseTimeoutVote({
+        vote,
+        expected: {
+          ...expected,
+          nowMs: Date.now(),
+        },
+        players: roster,
+      });
+      if (seen.has(voter)) return;
+      seen.add(voter);
+      votes.push(cloneMultiplayerPayload(vote));
+    };
+
+    const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
+    if (roster.some((player) => Number(player.index) === Number(localPlayer))) {
+      await addVote(await signProtocolResponseTimeoutVoteForCommand({
+        ...command,
+        timed_out_peer_id: expected.forfeitedPeerId,
+        response_timeout_ms: expected.responseTimeoutMs,
+      }));
+    }
+
+    if (votes.length < threshold) {
+      ensureDirectPeerConnections(roster);
+      const pendingWaitRequestIds = [];
+      let collectingVotes = true;
+      const pending = roster
+        .filter((player) => Number(player.index) !== Number(localPlayer))
+        .map(async (player) => {
+          const routePeerId = routePeerIdForPlayer(player);
+          if (!routePeerId) {
+            throw new Error(`Missing peer route for protocol-timeout voter ${Number(player.index) + 1}`);
+          }
+          const conn = await waitForZiffleRoute(routePeerId);
+          if (!collectingVotes) {
+            throw new Error("Protocol-timeout vote collection is complete");
+          }
+          const requestId = makeZiffleRequestId("protocol-timeout-vote");
+          pendingWaitRequestIds.push(requestId);
+          const voterLabel = player.name || `Player ${Number(player.index) + 1}`;
+          const waiter = waitForTimeoutVote(requestId, PROTOCOL_RESPONSE_TIMEOUT_VOTE_WAIT_MS, {
+            peerIndex: Number(player.index),
+            peerName: voterLabel,
+            description:
+              `${voterLabel} must sign the protocol-timeout vote before this claim can be submitted.`,
+          });
+          const { requestId: timedOutRequestId, ...voteRequestExpected } = expected;
+          safeSend(conn, {
+            type: "protocol_timeout_vote_request",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId,
+            ...voteRequestExpected,
+            timedOutRequestId,
+            requesterIndex: localPlayer,
+          });
+          return waiter;
+        });
+      const unsettled = new Set(pending);
+      while (votes.length < threshold && unsettled.size > 0) {
+        const settled = await Promise.race([...unsettled].map((promise) =>
+          promise.then(
+            (vote) => ({ promise, vote }),
+            (err) => ({ promise, err })
+          )
+        ));
+        unsettled.delete(settled.promise);
+        if (settled.err) {
+          if (protocolResponseTimeoutClaimFromError(settled.err)) throw settled.err;
+          continue;
+        }
+        await addVote(settled.vote);
+      }
+      collectingVotes = false;
+      for (const promise of unsettled) {
+        promise.catch(() => {});
+      }
+      for (const requestId of pendingWaitRequestIds) {
+        clearPeerWait(requestId);
+      }
+    }
+
+    if (votes.length < threshold) {
+      throw new Error(
+        `Protocol response timeout certificate has ${votes.length} vote(s), expected at least ${threshold}`
+      );
+    }
+    votes.sort((left, right) => Number(left.voter) - Number(right.voter));
+    return {
+      type: "ironsmith-protocol-response-timeout-v1",
+      matchId: expected.matchId,
+      basisSequence: expected.basisSequence,
+      forfeitedPlayer: expected.forfeitedPlayer,
+      forfeitedPeerId: expected.forfeitedPeerId,
+      requestType: expected.requestType,
+      requestId: expected.requestId,
+      requestPayloadHash: expected.requestPayloadHash,
+      responseTimeoutMs: expected.responseTimeoutMs,
+      requestedAtMs: expected.requestedAtMs,
+      eligibleAtMs: expected.requestedAtMs + expected.responseTimeoutMs,
+      threshold,
+      voters: votes.map((vote) => Number(vote.voter)),
+      votes,
+    };
+  }
+
+  async function answerProtocolResponseTimeoutVoteRequest(conn, message) {
+    try {
+      const requester = playerIndexForPeerId(conn?.peer);
+      const localVoter = resolveLocalPlayerIndex(multiplayerRef.current);
+      const forfeitedPlayer = normalizePlayerIndex(message?.forfeitedPlayer);
+      const basisSequence = Number(message?.basisSequence);
+      if (requester == null) {
+        throw new Error("Protocol-timeout vote requester is not a match player");
+      }
+      if (normalizePlayerIndex(message?.requesterIndex) !== requester) {
+        throw new Error("Protocol-timeout requester index does not match the peer");
+      }
+      if (forfeitedPlayer == null) {
+        throw new Error("Protocol-timeout vote request targets an invalid player");
+      }
+      if (localVoter == null || Number(localVoter) === Number(forfeitedPlayer)) {
+        throw new Error("Timed-out protocol responder cannot vote on their own forfeit");
+      }
+      if (String(message?.matchId || "") !== currentAuditMatchId()) {
+        throw new Error("Protocol-timeout vote request belongs to a different match");
+      }
+      if (basisSequence !== Number(multiplayerRef.current.lastAppliedSequence || 0)) {
+        throw new Error("Protocol-timeout vote request is not based on the local transcript head");
+      }
+      const vote = await signProtocolResponseTimeoutVoteForCommand({
+        type: "forfeit_player",
+        player: forfeitedPlayer,
+        reason: PROTOCOL_RESPONSE_TIMEOUT_REASON,
+        basis_sequence: basisSequence,
+        timed_out_peer_id: String(message?.forfeitedPeerId || ""),
+        request_type: String(message?.requestType || ""),
+        request_id: String(message?.timedOutRequestId || message?.originalRequestId || ""),
+        request_payload_hash: String(message?.requestPayloadHash || ""),
+        response_timeout_ms: Number(message?.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS),
+        requested_at_ms: Number(message?.requestedAtMs || 0),
+      });
+      safeSend(conn, {
+        type: "protocol_timeout_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        vote,
+      });
+    } catch (err) {
+      safeSend(conn, {
+        type: "protocol_timeout_vote_response",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        error: toErrorMessage(err),
+      });
+    }
+  }
+
   function actionQuorumThresholdForMessage(message, players = actionQuorumRoster(message)) {
     const forfeited = forfeitedPlayersForQuorum();
     const activePlayerCount = reindexPlayers(
@@ -6413,6 +7370,7 @@ export function usePeerLobby({
       const target = Number(message.command.player);
       if (Number(message?.actorIndex) === target) return 0;
       if (isDisconnectTimeoutForfeitCommand(message.command)) return 0;
+      if (isProtocolResponseTimeoutForfeitCommand(message.command)) return 0;
       return players.length;
     }
     return actionQuorumThreshold(players.length);
@@ -6533,30 +7491,43 @@ export function usePeerLobby({
       const pending = players
         .filter((player) => Number(player.index) !== Number(localPlayer))
         .map(async (player) => {
-          if (!player?.peerId) {
+          const routePeerId = routePeerIdForPlayer(player);
+          if (!routePeerId) {
             throw new Error(`Missing peer route for quorum voter ${Number(player.index) + 1}`);
           }
-          const conn = await waitForZiffleRoute(player.peerId);
+          const conn = await waitForZiffleRoute(routePeerId);
           if (!collectingVotes) {
             throw new Error("Action quorum vote collection is complete");
           }
           const requestId = makeZiffleRequestId("action-quorum");
+          const requestedAtMs = Date.now();
           pendingWaitRequestIds.push(requestId);
           const voterLabel = player.name || `Player ${Number(player.index) + 1}`;
-          const waiter = waitForActionQuorumVote(requestId, 30000, {
+          const waiter = waitForActionQuorumVote(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
             peerIndex: Number(player.index),
             peerName: voterLabel,
             description:
               `${voterLabel} must validate and sign this action before the game state can advance.`,
           });
-          safeSend(conn, {
+          const requestPayload = {
             type: "action_quorum_vote_request",
             protocolVersion: PROTOCOL_VERSION,
             requestId,
             requesterIndex: localPlayer,
             action: cloneMultiplayerPayload(message),
+          };
+          safeSend(conn, requestPayload);
+          return waitForProtocolResponse(waiter, {
+            basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+            targetPlayerIndex: Number(player.index),
+            targetPeerId: player.peerId,
+            requesterIndex: localPlayer,
+            requestType: requestPayload.type,
+            requestId,
+            requestPayload,
+            responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+            requestedAtMs,
           });
-          return waiter;
         });
       const unsettled = new Set(pending);
       while (votes.length < threshold && unsettled.size > 0) {
@@ -6567,7 +7538,10 @@ export function usePeerLobby({
           )
         ));
         unsettled.delete(settled.promise);
-        if (settled.err) continue;
+        if (settled.err) {
+          if (protocolResponseTimeoutClaimFromError(settled.err)) throw settled.err;
+          continue;
+        }
         await addVote(settled.vote);
       }
       collectingVotes = false;
@@ -6876,6 +7850,11 @@ export function usePeerLobby({
         ),
       };
     }
+    clearPendingActionIntent({
+      matchId: message.audit?.matchId || currentAuditMatchId(),
+      seq: nextSequence,
+      actorIndex: message.audit?.actor ?? message.actorIndex,
+    });
     auditStateHashRef.current = message.audit.nextStateHash;
     updateMultiplayer((prev) => ({
       ...prev,
@@ -7024,6 +8003,7 @@ export function usePeerLobby({
         actorIndex: message.actorIndex,
         command: message.command,
       });
+      await verifyActionMatchesPendingIntent(message);
       if (!options.skipQuorumCertificate) {
         await verifyActionQuorumForMessage(message);
       }
@@ -7041,11 +8021,17 @@ export function usePeerLobby({
         : null;
       const isTimeoutForfeit = isActionTimeoutForfeitCommand(message.command);
       const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(message.command);
+      const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(message.command);
       const isSelfForfeit = isSelfForfeitCommand(message.command, message.actorIndex);
       if (isSelfForfeit && !isSorcerySpeedForfeitState(liveStateForClock, message.actorIndex)) {
         throw new Error("Surrender is only available at sorcery speed");
       }
-      if (isForfeitCommand(message.command) && !isTimeoutForfeit && !isDisconnectForfeit) {
+      if (
+        isForfeitCommand(message.command)
+        && !isTimeoutForfeit
+        && !isDisconnectForfeit
+        && !isProtocolTimeoutForfeit
+      ) {
         if (Number(message.command.player) !== Number(message.actorIndex)) {
           throw new Error("A player can only forfeit themselves");
         }
@@ -7058,6 +8044,10 @@ export function usePeerLobby({
         await validateDisconnectForfeitCommand(message.command, {
           actorIndex: message.actorIndex,
         });
+      } else if (isProtocolTimeoutForfeit) {
+        await validateProtocolResponseTimeoutCommand(message.command, {
+          actorIndex: message.actorIndex,
+        });
       } else if (
         expectedActor !== null
         && expectedActor !== undefined
@@ -7065,6 +8055,8 @@ export function usePeerLobby({
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
+      const skipMatchClockObservationBounds =
+        Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0);
       if (!isUnauthorizedAddCardCommand(message.command)) {
         await verifyMatchClockAuditForAction({
           clock: message.audit?.clock,
@@ -7073,6 +8065,9 @@ export function usePeerLobby({
           actorIndex: message.actorIndex,
           uiState: liveStateForClock,
           skewMs: MATCH_CLOCK_CLAIM_SKEW_MS,
+          enforceObservationBounds:
+            options.enforceMatchClockObservationBounds !== false
+            && !skipMatchClockObservationBounds,
         });
       }
       await revealAuditOpenings(message.audit?.openings || [], {
@@ -7082,6 +8077,7 @@ export function usePeerLobby({
       });
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: !dryRun,
+        persistDisclosure: !dryRun,
       });
       const localCommand = await remapCommandForLocalHiddenOpening(
         message.command,
@@ -7112,6 +8108,7 @@ export function usePeerLobby({
         actorIndex: message.actorIndex,
         requirements: cryptoRequirements,
         updateState: !dryRun,
+        persistDisclosure: !dryRun,
       });
       const liveStateBeforeApply = gameRef.current
         ? await gameRef.current.uiState()
@@ -7177,6 +8174,7 @@ export function usePeerLobby({
       });
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: !dryRun,
+        persistDisclosure: !dryRun,
       });
       await revealLocalZiffleHand(matchStartPayloadRef.current, {
         skipIfHandUnchanged: true,
@@ -7184,6 +8182,7 @@ export function usePeerLobby({
         command: localCommand,
         seq: nextSequence,
         actorIndex: message.actorIndex,
+        actionAudit: message.audit,
         requirements: actionCryptoRequirements,
       });
       await verifyCurrentPublicCheckpointHash(
@@ -7200,6 +8199,9 @@ export function usePeerLobby({
       }
       commitMatchClockAudit(message.audit?.clock, appliedState);
       await appendAppliedSequencedAction(message);
+      if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
+        matchClockObservationExemptSequenceRef.current = 0;
+      }
       if (options.relay !== false) {
         relaySequencedAction(message);
       }
@@ -7218,6 +8220,14 @@ export function usePeerLobby({
       }
       if (dryRun) {
         throw err;
+      }
+      const protocolTimeoutClaim = protocolResponseTimeoutClaimFromError(err);
+      if (protocolTimeoutClaim) {
+        if (throwOnFailure) {
+          throw err;
+        }
+        await submitProtocolResponseTimeoutClaim(protocolTimeoutClaim);
+        return;
       }
       if (isUnauthorizedAddCardCommand(message?.command)) {
         if (throwOnFailure) {
@@ -7380,7 +8390,8 @@ export function usePeerLobby({
           return { ceremony, step };
         }));
       } else {
-        if (!shuffler.peerId) {
+        const routePeerId = routePeerIdForPlayer(shuffler);
+        if (!routePeerId) {
           throw new Error(`Missing peer for ziffle shuffle player ${shufflerIndex + 1}`);
         }
         const label = shuffler.name || `Player ${shufflerIndex + 1}`;
@@ -7388,10 +8399,11 @@ export function usePeerLobby({
           `Waiting for cryptographic shuffle material from ${label} `
           + `(${ceremonies.length} shuffle${ceremonies.length === 1 ? "" : "s"})`
         );
-        const conn = await waitForZiffleRoute(shuffler.peerId);
+        const conn = await waitForZiffleRoute(routePeerId);
         results = await Promise.all(ceremonies.map(async (ceremony) => {
           const requestId = makeZiffleRequestId("ziffle-live-shuffle");
-          const waiter = waitForZiffleShuffleStep(requestId, 60000, {
+          const requestedAtMs = Date.now();
+          const waiter = waitForZiffleShuffleStep(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
             peerIndex: shufflerIndex,
             peerName: label,
             description:
@@ -7399,13 +8411,24 @@ export function usePeerLobby({
               + `shuffle${ceremonies.length === 1 ? "" : "s"} before the game can advance.`,
           });
           const stepStartedAt = nowMonotonicMs();
-          safeSend(conn, {
+          const requestPayload = {
             type: "ziffle_shuffle_step_request",
             protocolVersion: PROTOCOL_VERSION,
             requestId,
             request: ziffleShuffleRequestForCeremony(ceremony, shuffler),
+          };
+          safeSend(conn, requestPayload);
+          const step = await waitForProtocolResponse(waiter, {
+            basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+            targetPlayerIndex: shufflerIndex,
+            targetPeerId: shuffler.peerId,
+            requesterIndex: localIndex,
+            requestType: requestPayload.type,
+            requestId,
+            requestPayload,
+            responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+            requestedAtMs,
           });
-          const step = await waiter;
           ceremony.timings.stepMs.push(nowMonotonicMs() - stepStartedAt);
           return { ceremony, step };
         }));
@@ -7568,6 +8591,7 @@ export function usePeerLobby({
     const pending = outboundCryptoMaterialRequestsRef.current.get(requestId);
     if (!pending) return false;
     if (String(pending.peerId || "") !== String(message?.requesterPeerId || "")) return false;
+    if (!pending.actionIntent) return false;
     if (Number(pending.owner) !== Number(owner)) return false;
     if (Number(pending.owner) !== Number(requester)) return false;
     const requested = new Set((positions || []).map((position) => Number(position)));
@@ -7849,6 +8873,34 @@ export function usePeerLobby({
     ) {
       return reject("actor_index_mismatch");
     }
+    if (auth.actionAudit) {
+      try {
+        await verifySequencedActionAudit({
+          audit: auth.actionAudit,
+          seq: sequence,
+          actorIndex: auth.actorIndex,
+          command: auth.command,
+        });
+      } catch (err) {
+        if (debug) debug.signedActionAuditError = toErrorMessage(err);
+        return reject("signed_action_audit_invalid");
+      }
+    } else {
+      const preActionPublicCheckpointHash = await currentPublicAuditCheckpointHash();
+      try {
+        await verifySignedActionIntent(auth.actionIntent, {
+          matchId: currentAuditMatchId(),
+          seq: sequence,
+          actorIndex: auth.actorIndex,
+          prevStateHash: auth.prevStateHash || auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
+          preActionPublicCheckpointHash,
+          command: auth.command,
+        });
+      } catch (err) {
+        if (debug) debug.signedIntentError = toErrorMessage(err);
+        return reject("signed_action_intent_invalid");
+      }
+    }
 
     const previewedRequirements = await previewRequirementsForCommand(auth.command);
     if (debug) {
@@ -8030,6 +9082,17 @@ export function usePeerLobby({
         }
       }
       const tokens = await buildLocalZiffleRevealTokens(ceremony, cardPositions);
+      if (authorizedByAction && message.actionAuthorization?.actionIntent) {
+        const requestPayload = cloneMultiplayerPayload(message);
+        await rememberPendingActionIntent(message.actionAuthorization.actionIntent, {
+          requestType: "ziffle_reveal_token_request",
+          requestId: String(message.requestId || ""),
+          requestPayload,
+          requestPayloadHash: await sha256Hex(canonicalMultiplayerPayload(requestPayload)),
+          responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+          requestedAtMs: Date.now(),
+        });
+      }
       safeSend(conn, {
         type: "ziffle_reveal_token_response",
         protocolVersion: PROTOCOL_VERSION,
@@ -8093,7 +9156,15 @@ export function usePeerLobby({
   async function collectZiffleRevealTokensBatch(ceremony, cardPositions, options = {}) {
     const session = multiplayerRef.current;
     const localIndex = resolveLocalPlayerIndex(session);
-    const players = matchStartPayloadRef.current?.players || session.players || [];
+    const players = reindexPlayers(
+      (session.players || []).length > 0
+        ? session.players
+        : (
+          matchStartPayloadRef.current?.currentPlayers
+          || matchStartPayloadRef.current?.players
+          || []
+        )
+    );
     const positions = [...new Set((cardPositions || [])
       .map((position) => Number(position))
       .filter((position) => Number.isSafeInteger(position) && position >= 0))];
@@ -8106,8 +9177,16 @@ export function usePeerLobby({
         ...(options.actorIndex !== null && options.actorIndex !== undefined
           ? { actorIndex: Number(options.actorIndex) }
           : {}),
+        prevStateHash: String(options.prevStateHash || auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH),
+        preActionPublicCheckpointHash: String(
+          options.preActionPublicCheckpointHash
+          || options.publicCheckpointHash
+          || ""
+        ),
         command: cloneMultiplayerPayload(options.command),
         requirements: cloneMultiplayerPayload(options.requirements || []),
+        ...(options.actionIntent ? { actionIntent: cloneMultiplayerPayload(options.actionIntent) } : {}),
+        ...(options.actionAudit ? { actionAudit: cloneMultiplayerPayload(options.actionAudit) } : {}),
       }
       : null;
     const tokenGroups = await Promise.all((ceremony.keys || []).map(async (key) => {
@@ -8122,19 +9201,21 @@ export function usePeerLobby({
         return cachedZiffleRevealTokens(ceremony, tokenPlayer, positions) || localTokens;
       }
       const peer = players.find((player) => Number(player.index) === tokenPlayer);
-      if (!peer?.peerId) {
+      const routePeerId = routePeerIdForPlayer(peer);
+      if (!routePeerId) {
         throw new Error(`Missing peer for ziffle reveal token player ${key.player}`);
       }
       const peerLabel = peer.name || `Player ${Number(key.player) + 1}`;
       setStatus(`Waiting for cryptographic reveal material from ${peerLabel}`);
-      const conn = await waitForZiffleRoute(peer.peerId);
+      const conn = await waitForZiffleRoute(routePeerId);
       const requestId = makeZiffleRequestId("ziffle-reveal");
       const requestDiagnostics = {
         requestId,
         localPeerId: String(session.localPeerId || ""),
         localRole: String(session.role || ""),
         localMode: String(session.mode || ""),
-        targetPeerId: String(peer.peerId || ""),
+        targetPeerId: routePeerId,
+        targetStablePeerId: String(peer.peerId || ""),
         targetPlayerIndex: tokenPlayer,
         ceremony: compactZiffleCeremonyForDiagnostics(ceremony),
         cardPosition: positions.length === 1 ? positions[0] : null,
@@ -8142,14 +9223,15 @@ export function usePeerLobby({
         matchStartPayloadPresent: Boolean(matchStartPayloadRef.current),
         matchStartAuditMatchId: String(matchStartPayloadRef.current?.auditMatchId || ""),
       };
-      const waiter = waitForZiffleRevealToken(requestId, 60000, requestDiagnostics, {
+      const requestedAtMs = Date.now();
+      const waiter = waitForZiffleRevealToken(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, requestDiagnostics, {
         peerIndex: tokenPlayer,
         peerName: peerLabel,
         description:
           `${peerLabel} must provide reveal material for ${positions.length} hidden `
           + `card${positions.length === 1 ? "" : "s"} before the game can advance.`,
       });
-      safeSend(conn, {
+      const requestPayload = {
         type: "ziffle_reveal_token_request",
         protocolVersion: PROTOCOL_VERSION,
         requestId,
@@ -8163,8 +9245,19 @@ export function usePeerLobby({
         requesterIndex: localIndex,
         cryptoMaterialRequestId: options.cryptoMaterialRequestId || "",
         ...(actionAuthorization ? { actionAuthorization } : {}),
+      };
+      safeSend(conn, requestPayload);
+      const remoteTokens = await waitForProtocolResponse(waiter, {
+        basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+        targetPlayerIndex: tokenPlayer,
+        targetPeerId: routePeerId,
+        requesterIndex: localIndex,
+        requestType: requestPayload.type,
+        requestId,
+        requestPayload,
+        responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+        requestedAtMs,
       });
-      const remoteTokens = await waiter;
       rememberZiffleRevealTokens(ceremony, remoteTokens, positions);
       return cachedZiffleRevealTokens(ceremony, tokenPlayer, positions) || remoteTokens;
     }));
@@ -8513,9 +9606,67 @@ export function usePeerLobby({
 
   function playerIndexForPeerId(peerId) {
     const peer = String(peerId || "");
-    const players = matchStartPayloadRef.current?.players || multiplayerRef.current.players || [];
-    const player = players.find((entry) => String(entry?.peerId || "") === peer);
+    const players = (multiplayerRef.current.players || []).length > 0
+      ? multiplayerRef.current.players
+      : (
+        matchStartPayloadRef.current?.currentPlayers
+        || matchStartPayloadRef.current?.players
+        || []
+      );
+    const player = players.find((entry) =>
+      String(entry?.peerId || "") === peer
+      || String(entry?.currentPeerId || "") === peer
+    );
     return player?.index == null ? null : Number(player.index);
+  }
+
+  function routePeerIdForPlayer(player) {
+    const index = normalizePlayerIndex(player?.index);
+    const session = multiplayerRef.current;
+    const livePlayers = (multiplayerRef.current.players || []).length > 0
+      ? multiplayerRef.current.players
+      : (
+        matchStartPayloadRef.current?.currentPlayers
+        || matchStartPayloadRef.current?.players
+        || []
+      );
+    const livePlayer = index == null
+      ? null
+      : livePlayers.find((entry) => Number(entry?.index) === index);
+    const hostPeerId = String(session.hostPeerId || "").trim();
+    const liveStablePeerId = String(livePlayer?.peerId || "").trim();
+    const liveCurrentPeerId = String(livePlayer?.currentPeerId || "").trim();
+    const stablePeerId = String(player?.peerId || "").trim();
+    const currentPeerId = String(player?.currentPeerId || "").trim();
+    const currentHostPlayerIndex = normalizePlayerIndex(
+      matchStartPayloadRef.current?.currentHostPlayerIndex
+    );
+    if (
+      session.role === "client"
+      && hostPeerId
+      && currentHostPlayerIndex != null
+      && index === currentHostPlayerIndex
+    ) {
+      return hostPeerId;
+    }
+    if (
+      hostPeerId
+      && (
+        liveStablePeerId === hostPeerId
+        || liveCurrentPeerId === hostPeerId
+        || stablePeerId === hostPeerId
+        || currentPeerId === hostPeerId
+      )
+    ) {
+      return hostPeerId;
+    }
+    return String(
+      liveCurrentPeerId
+      || liveStablePeerId
+      || currentPeerId
+      || stablePeerId
+      || ""
+    ).trim();
   }
 
   function fairRandomRequirementId(requirement) {
@@ -8658,6 +9809,14 @@ export function usePeerLobby({
       publicCheckpointHash,
       `${label} public checkpoint does not match local state`
     );
+    const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+      matchId: currentAuditMatchId(),
+      seq,
+      actorIndex,
+      prevStateHash,
+      preActionPublicCheckpointHash: publicCheckpointHash,
+      command,
+    });
     const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
       ? await gameRef.current.uiState()
       : stateRef.current;
@@ -8698,6 +9857,7 @@ export function usePeerLobby({
       actorIndex,
       prevStateHash,
       publicCheckpointHash,
+      actionIntent,
       requesterPeerId: String(conn?.peer || ""),
       requesterPlayer: Number(requester),
     };
@@ -8783,6 +9943,15 @@ export function usePeerLobby({
         throw new Error("Random reveal request conflicts with the locked commitment set");
       }
       rngRevealCommitSetLocksRef.current.set(lockKey, commitSetHash);
+      const requestPayload = cloneMultiplayerPayload(message);
+      await rememberPendingActionIntent(request.actionIntent, {
+        requestType: "rng_reveal_request",
+        requestId: String(message.requestId || ""),
+        requestPayload,
+        requestPayloadHash: await sha256Hex(canonicalMultiplayerPayload(requestPayload)),
+        responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+        requestedAtMs: Date.now(),
+      });
       safeSend(conn, {
         type: "rng_reveal_response",
         protocolVersion: PROTOCOL_VERSION,
@@ -8834,6 +10003,13 @@ export function usePeerLobby({
     const publicCheckpointHash = String(
       options.publicCheckpointHash || await currentPublicAuditCheckpointHash()
     );
+    const actionIntent = options.actionIntent || await signActionIntentForCommand({
+      seq,
+      actorIndex,
+      command,
+      prevStateHash,
+      preActionPublicCheckpointHash: publicCheckpointHash,
+    });
     const requestContext = {
       matchId,
       seq: Number(seq),
@@ -8844,6 +10020,7 @@ export function usePeerLobby({
       publicCheckpointHash,
       command: cloneMultiplayerPayload(command),
       requirement: cloneMultiplayerPayload(requirement),
+      actionIntent: cloneMultiplayerPayload(actionIntent),
     };
     const contextKey = await fairRandomRequestContextKey({
       matchId,
@@ -8881,23 +10058,36 @@ export function usePeerLobby({
         }));
         revealRequests.push({ player, commitRequestId, local: contribution });
       } else {
-        const conn = await waitForZiffleRoute(player.peerId);
+        const routePeerId = routePeerIdForPlayer(player);
+        const conn = await waitForZiffleRoute(routePeerId);
         const requestId = makeZiffleRequestId("rng-commit");
+        const requestedAtMs = Date.now();
         const playerLabel = player.name || `Player ${Number(player.index) + 1}`;
-        const waiter = waitForRngCommit(requestId, 60000, {
+        const waiter = waitForRngCommit(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
           peerIndex: Number(player.index),
           peerName: playerLabel,
           description:
             `${playerLabel} must sign a random commitment before the shared random value can be generated.`,
         });
         setStatus(`Waiting for random commitment from ${playerLabel}`);
-        safeSend(conn, {
+        const requestPayload = {
           type: "rng_commit_request",
           protocolVersion: PROTOCOL_VERSION,
           requestId,
           ...requestContext,
+        };
+        safeSend(conn, requestPayload);
+        const commitment = await waitForProtocolResponse(waiter, {
+          basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+          targetPlayerIndex: Number(player.index),
+          targetPeerId: routePeerId,
+          requesterIndex: localIndex,
+          requestType: requestPayload.type,
+          requestId,
+          requestPayload,
+          responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+          requestedAtMs,
         });
-        const commitment = await waiter;
         if (Number(commitment?.player) !== Number(player.index)) {
           throw new Error("Random commitment response came from the wrong player");
         }
@@ -8939,25 +10129,38 @@ export function usePeerLobby({
           commitmentHex: request.local.commitmentHex,
         }));
       } else {
-        const conn = await waitForZiffleRoute(request.player.peerId);
+        const routePeerId = routePeerIdForPlayer(request.player);
+        const conn = await waitForZiffleRoute(routePeerId);
         const requestId = makeZiffleRequestId("rng-reveal");
+        const requestedAtMs = Date.now();
         const playerLabel = request.player.name || `Player ${Number(request.player.index) + 1}`;
-        const waiter = waitForRngReveal(requestId, 60000, {
+        const waiter = waitForRngReveal(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
           peerIndex: Number(request.player.index),
           peerName: playerLabel,
           description:
             `${playerLabel} must reveal their committed random contribution before the game can use it.`,
         });
         setStatus(`Waiting for random reveal from ${playerLabel}`);
-        safeSend(conn, {
+        const requestPayload = {
           type: "rng_reveal_request",
           protocolVersion: PROTOCOL_VERSION,
           requestId,
           commitRequestId: request.commitRequestId,
           ...requestContext,
           commits,
+        };
+        safeSend(conn, requestPayload);
+        const reveal = await waitForProtocolResponse(waiter, {
+          basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+          targetPlayerIndex: Number(request.player.index),
+          targetPeerId: routePeerId,
+          requesterIndex: localIndex,
+          requestType: requestPayload.type,
+          requestId,
+          requestPayload,
+          responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+          requestedAtMs,
         });
-        const reveal = await waiter;
         if (Number(reveal?.player) !== Number(request.player.index)) {
           throw new Error("Random reveal response came from the wrong player");
         }
@@ -9558,6 +10761,7 @@ export function usePeerLobby({
       ziffleRevealTokenCacheRef.current.clear();
       verifiedAuditOpeningsRef.current.clear();
       localRevealedOpeningsRef.current.clear();
+      privateViewDisclosuresRef.current.clear();
       clearStoredRevealedOpeningsForMatch(payload.auditMatchId || currentAuditMatchId());
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       ensureDirectPeerConnections(payload.players || []);
@@ -9687,8 +10891,11 @@ export function usePeerLobby({
       }
 
       const currentSession = multiplayerRef.current;
+      const resyncPlayers = Array.isArray(matchPayload.currentPlayers)
+        ? matchPayload.currentPlayers
+        : matchPayload.players || [];
       const localEntry = findLocalMatchPlayer(
-        matchPayload.players,
+        resyncPlayers,
         currentSession,
         auditPublicKeyRef.current || "",
         auditEncryptionPublicKeyRef.current || ""
@@ -9758,16 +10965,23 @@ export function usePeerLobby({
         verifyShuffleProof: verifyTranscriptShuffleProof,
         verifyZiffleOpening: verifyTranscriptZiffleOpening,
         requireEngineReplay: false,
+        requirePrivateViewDisclosures: false,
       });
-      const payloadHostPeerId = String(matchPayload.hostPeerId || "").trim();
+      const payloadHostPeerId = String(
+        matchPayload.currentHostPeerId
+        || matchPayload.hostPeerId
+        || ""
+      ).trim();
       const expectedHostPeerId = String(currentSession.hostPeerId || "").trim();
       if (payloadHostPeerId && expectedHostPeerId && payloadHostPeerId !== expectedHostPeerId) {
         throw new Error("Resync payload was not sent by the current match host");
       }
-      const currentHostPlayer = (matchPayload.players || []).find(
+      const currentHostPlayer = (resyncPlayers || []).find(
         (player) => String(player?.peerId || "").trim() === (payloadHostPeerId || expectedHostPeerId)
+          || String(player?.currentPeerId || "").trim() === (payloadHostPeerId || expectedHostPeerId)
       );
-      const expectedHostSeat = normalizePlayerIndex(currentHostPlayer?.index)
+      const expectedHostSeat = normalizePlayerIndex(matchPayload.currentHostPlayerIndex)
+        ?? normalizePlayerIndex(currentHostPlayer?.index)
         ?? normalizePlayerIndex(matchPayload.genesis?.hostSeat)
         ?? 0;
       const resyncSigner = normalizePlayerIndex(message?.resyncEnvelope?.signer) ?? expectedHostSeat;
@@ -9811,7 +11025,9 @@ export function usePeerLobby({
       const replayMatchPayload = cloneMultiplayerPayload(matchPayload);
       let nextState;
       try {
-        await applyMatchStart(replayMatchPayload);
+        await applyMatchStart(replayMatchPayload, {
+          deferLocalZiffleReveal: true,
+        });
         for (const action of actionEntries) {
           await applySequencedActionMessage(cloneMultiplayerPayload(action), {
             relay: false,
@@ -9819,6 +11035,7 @@ export function usePeerLobby({
             throwOnOrderMismatch: true,
             throwOnFailure: true,
             failureResyncReason: "",
+            enforceMatchClockObservationBounds: false,
           });
         }
         nextState = typeof currentGame.uiState === "function"
@@ -9844,13 +11061,33 @@ export function usePeerLobby({
         throw err;
       }
       setState(nextState);
-      const matchClock = runtimeMatchClockSnapshot();
+      const matchClock = alignMatchClockObservationFromHostSnapshot(
+        matchPayload.currentMatchClock,
+        nextState
+      );
 
       const lastSequence = continuity.finalSequence;
+      matchClockObservationExemptSequenceRef.current = lastSequence + 1;
       const acceptedMatchPayload = matchStartPayloadRef.current
         ? cloneMultiplayerPayload(matchStartPayloadRef.current)
         : cloneMultiplayerPayload(replayMatchPayload);
+      const acceptedSessionPlayersBase = Array.isArray(matchPayload.currentPlayers)
+        ? cloneMultiplayerPayload(matchPayload.currentPlayers)
+        : acceptedMatchPayload.players || [];
+      const acceptedSessionPlayers = acceptedSessionPlayersBase.map((player) =>
+        expectedHostSeat != null && Number(player?.index) === Number(expectedHostSeat)
+          ? {
+              ...player,
+              currentPeerId: payloadHostPeerId || expectedHostPeerId || player.currentPeerId,
+              connected: true,
+            }
+          : player
+      );
       matchStartPayloadRef.current = cloneMultiplayerPayload(acceptedMatchPayload);
+      matchStartPayloadRef.current.currentHostPeerId =
+        payloadHostPeerId || expectedHostPeerId || acceptedMatchPayload.currentHostPeerId || "";
+      matchStartPayloadRef.current.currentHostPlayerIndex = expectedHostSeat;
+      matchStartPayloadRef.current.currentPlayers = cloneMultiplayerPayload(acceptedSessionPlayers);
       actionHistoryRef.current = actionEntries.map((entry) => cloneMultiplayerPayload(entry));
       relayedActionIdsRef.current.clear();
       auditStateHashRef.current =
@@ -9872,6 +11109,7 @@ export function usePeerLobby({
         initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
         actions: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
       };
+      clearAllPendingActionIntents();
       writeStoredPlayerIndex(
         acceptedMatchPayload.lobbyId || acceptedMatchPayload.hostPeerId,
         localEntry.index
@@ -9880,12 +11118,12 @@ export function usePeerLobby({
         ...prev,
         role: acceptedMatchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
         lobbyId: acceptedMatchPayload.lobbyId || prev.lobbyId,
-        hostPeerId: acceptedMatchPayload.hostPeerId || prev.hostPeerId,
+        hostPeerId: matchPayload.currentHostPeerId || acceptedMatchPayload.hostPeerId || prev.hostPeerId,
         desiredPlayers: acceptedMatchPayload.players?.length ?? prev.desiredPlayers,
         startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
         format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
         localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
-        players: acceptedMatchPayload.players || prev.players,
+        players: acceptedSessionPlayers.length > 0 ? acceptedSessionPlayers : prev.players,
         lastAppliedSequence: lastSequence,
         submittingAction: false,
         matchStarted: true,
@@ -9893,6 +11131,7 @@ export function usePeerLobby({
         matchClock,
         actionTimer: actionTimerSnapshotFromMatchClock(matchClock),
       }));
+      ensureDirectPeerConnections(acceptedSessionPlayers);
       setStatus(
         actionEntries.length > 0
           ? `Resynced with host at action ${lastSequence}`
@@ -9909,12 +11148,14 @@ export function usePeerLobby({
     },
     [
       assertZiffleShuffleProofBoundToSignedMatch,
+      alignMatchClockObservationFromHostSnapshot,
       currentAuditMatchId,
       setState,
       setStatus,
       updateMultiplayer,
       verifyCurrentPublicCheckpointHash,
       applyMatchStart,
+      ensureDirectPeerConnections,
     ]
   );
 
@@ -10707,6 +11948,30 @@ export function usePeerLobby({
             isError: true,
           });
           return;
+        case "reconnect_challenge": {
+          const conn = hostConnectionRef.current;
+          if (!conn || conn.open === false) {
+            setStatus("Reconnect challenge arrived without an open host connection", true);
+            return;
+          }
+          const {
+            publicKey: auditPublicKey,
+            encryptionPublicKey: auditEncryptionPublicKey,
+          } = await ensureAuditIdentity();
+          const proof = await signReconnectProofForChallenge(message);
+          safeSend(conn, {
+            type: "join_request",
+            protocolVersion: PROTOCOL_VERSION,
+            name: multiplayerRef.current.localName || "Player",
+            requestedPlayerIndex: Number(message.playerIndex),
+            auditPublicKey,
+            auditEncryptionPublicKey,
+            reconnectChallengeId: message.requestId,
+            reconnectProof: proof,
+          });
+          setStatus("Proving reconnect identity to host");
+          return;
+        }
         case "action_error":
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           if (message.rollbackSynced) {
@@ -10762,6 +12027,12 @@ export function usePeerLobby({
           await answerDisconnectForfeitVoteRequest(hostConnectionRef.current, message);
           return;
         case "disconnect_forfeit_vote_response":
+          resolveTimeoutVote(message);
+          return;
+        case "protocol_timeout_vote_request":
+          await answerProtocolResponseTimeoutVoteRequest(hostConnectionRef.current, message);
+          return;
+        case "protocol_timeout_vote_response":
           resolveTimeoutVote(message);
           return;
         case "action_quorum_vote_request":
@@ -10861,6 +12132,7 @@ export function usePeerLobby({
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
       answerDisconnectForfeitVoteRequest,
+      answerProtocolResponseTimeoutVoteRequest,
       applyMatchStart,
       applyStateResync,
       applySyncedCommand,
@@ -10971,6 +12243,12 @@ export function usePeerLobby({
       case "disconnect_forfeit_vote_response":
         resolveTimeoutVote(message);
         return;
+      case "protocol_timeout_vote_request":
+        await answerProtocolResponseTimeoutVoteRequest(conn, message);
+        return;
+      case "protocol_timeout_vote_response":
+        resolveTimeoutVote(message);
+        return;
       case "action_quorum_vote_request":
         await answerActionQuorumVoteRequest(conn, message);
         return;
@@ -10991,6 +12269,7 @@ export function usePeerLobby({
     answerActionQuorumVoteRequest,
     answerTimeoutVoteRequest,
     answerDisconnectForfeitVoteRequest,
+    answerProtocolResponseTimeoutVoteRequest,
     resolveActionQuorumVote,
     resolveCryptoMaterial,
     resolveRngCommit,
@@ -11064,22 +12343,24 @@ export function usePeerLobby({
           });
           return;
         }
-	        if (
-	          message?.type === "ziffle_shuffle_step_request"
-	          || message?.type === "ziffle_shuffle_step_response"
-	          || message?.type === "ziffle_reveal_token_request"
-	          || message?.type === "ziffle_reveal_token_response"
-	          || message?.type === "rng_commit_request"
-	          || message?.type === "rng_commit_response"
-	          || message?.type === "rng_reveal_request"
-		          || message?.type === "rng_reveal_response"
-		          || message?.type === "timeout_vote_request"
-		          || message?.type === "timeout_vote_response"
-		          || message?.type === "disconnect_forfeit_vote_request"
-		          || message?.type === "disconnect_forfeit_vote_response"
-		          || message?.type === "action_quorum_vote_request"
-		          || message?.type === "action_quorum_vote_response"
-		        ) {
+        if (
+          message?.type === "ziffle_shuffle_step_request"
+          || message?.type === "ziffle_shuffle_step_response"
+          || message?.type === "ziffle_reveal_token_request"
+          || message?.type === "ziffle_reveal_token_response"
+          || message?.type === "rng_commit_request"
+          || message?.type === "rng_commit_response"
+          || message?.type === "rng_reveal_request"
+          || message?.type === "rng_reveal_response"
+          || message?.type === "timeout_vote_request"
+          || message?.type === "timeout_vote_response"
+          || message?.type === "disconnect_forfeit_vote_request"
+          || message?.type === "disconnect_forfeit_vote_response"
+          || message?.type === "protocol_timeout_vote_request"
+          || message?.type === "protocol_timeout_vote_response"
+          || message?.type === "action_quorum_vote_request"
+          || message?.type === "action_quorum_vote_response"
+        ) {
           void handlePeerMessage(conn, message).catch((err) => {
             setStatus(`Peer message failed: ${toErrorMessage(err)}`, true);
           });
@@ -11150,14 +12431,14 @@ export function usePeerLobby({
   ensureDirectPeerConnectionsRef.current = (players = multiplayerRef.current.players) => {
     const session = multiplayerRef.current;
     const localPeerId = String(session.localPeerId || "").trim();
-    const hostPeerId = String(session.hostPeerId || "").trim();
-    if (!localPeerId || !peerRef.current || peerRef.current.destroyed) return;
-    for (const player of players || []) {
-      const peerId = String(player?.peerId || "").trim();
-      if (!peerId || peerId === localPeerId || peerId === hostPeerId) continue;
-      // Deterministic initiator prevents duplicate client-client channels.
-      if (localPeerId < peerId) {
-        connectDirectPeer(peerId);
+	    const hostPeerId = String(session.hostPeerId || "").trim();
+	    if (!localPeerId || !peerRef.current || peerRef.current.destroyed) return;
+	    for (const player of players || []) {
+	      const peerId = routePeerIdForPlayer(player);
+	      if (!peerId || peerId === localPeerId || peerId === hostPeerId) continue;
+	      // Deterministic initiator prevents duplicate client-client channels.
+	      if (localPeerId < peerId) {
+	        connectDirectPeer(peerId);
       }
     }
   };
@@ -11190,6 +12471,44 @@ export function usePeerLobby({
     },
     [connectDirectPeer]
   );
+
+  function reconnectChallengeMapKey(peerId, requestId) {
+    return [String(peerId || ""), String(requestId || "")].join(":");
+  }
+
+  function clearReconnectChallenge(peerId, requestId) {
+    const key = reconnectChallengeMapKey(peerId, requestId);
+    const challenge = reconnectChallengesRef.current.get(key);
+    if (challenge?.timeoutId) {
+      window.clearTimeout(challenge.timeoutId);
+    }
+    reconnectChallengesRef.current.delete(key);
+  }
+
+  function issueReconnectChallenge(conn, playerIndex) {
+    const session = multiplayerRef.current;
+    const requestId = makeZiffleRequestId("reconnect-proof");
+    const challenge = {
+      type: "reconnect_challenge",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      matchId: currentAuditMatchId(),
+      playerIndex: Number(playerIndex),
+      peerId: String(conn?.peer || ""),
+      hostPeerId: String(session.localPeerId || session.hostPeerId || ""),
+      transcriptHash: String(auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH),
+      nonce: randomAuditHex(32),
+    };
+    const key = reconnectChallengeMapKey(conn?.peer, requestId);
+    const timeoutId = window.setTimeout(() => {
+      reconnectChallengesRef.current.delete(key);
+    }, PEER_CONNECT_TIMEOUT_MS);
+    reconnectChallengesRef.current.set(key, {
+      ...challenge,
+      timeoutId,
+    });
+    safeSend(conn, challenge);
+  }
 
   const handleClientMessage = useCallback(
     async (conn, message) => {
@@ -11243,6 +12562,12 @@ export function usePeerLobby({
         return;
       case "disconnect_forfeit_vote_request":
         await answerDisconnectForfeitVoteRequest(conn, message);
+        return;
+      case "protocol_timeout_vote_request":
+        await answerProtocolResponseTimeoutVoteRequest(conn, message);
+        return;
+      case "protocol_timeout_vote_response":
+        resolveTimeoutVote(message);
         return;
       case "action_quorum_vote_request":
         await answerActionQuorumVoteRequest(conn, message);
@@ -11339,10 +12664,45 @@ export function usePeerLobby({
 		                protocolVersion: PROTOCOL_VERSION,
 		                reason: "Reconnect audit identity does not match the player slot",
 	              });
-	              conn.close();
-	              return;
-	            }
-	          }
+		              conn.close();
+		              return;
+		            }
+            const proof = message.reconnectProof || null;
+            const challengeId = String(
+              proof?.challengeId
+              || proof?.requestId
+              || message.reconnectChallengeId
+              || ""
+            );
+            if (!challengeId) {
+              issueReconnectChallenge(conn, targetPlayerIndex);
+              return;
+            }
+            const challengeKey = reconnectChallengeMapKey(conn.peer, challengeId);
+            const challenge = reconnectChallengesRef.current.get(challengeKey);
+            if (!challenge) {
+              safeSend(conn, {
+                type: "reject",
+                protocolVersion: PROTOCOL_VERSION,
+                reason: "Reconnect challenge expired; retry reconnect",
+              });
+              conn.close();
+              return;
+            }
+            try {
+              await verifyReconnectProofForChallenge(proof, challenge, expectedAuditKey);
+            } catch (err) {
+              clearReconnectChallenge(conn.peer, challengeId);
+              safeSend(conn, {
+                type: "reject",
+                protocolVersion: PROTOCOL_VERSION,
+                reason: toErrorMessage(err, "Reconnect audit proof is invalid"),
+              });
+              conn.close();
+              return;
+            }
+            clearReconnectChallenge(conn.peer, challengeId);
+		          }
 
 	          clientConnectionsRef.current.set(conn.peer, conn);
           const name = sanitizePlayerName(
@@ -11364,7 +12724,8 @@ export function usePeerLobby({
 	            const nextPlayer = prev.matchStarted
 	              ? {
 	                  ...basePlayer,
-	                  peerId: conn.peer,
+	                  peerId: basePlayer.peerId || conn.peer,
+	                  currentPeerId: conn.peer,
 	                  connected: true,
 	                }
               : {
@@ -11401,6 +12762,12 @@ export function usePeerLobby({
               players: reindexPlayers(replaced),
             };
           });
+          const stablePeerId = nextSession.players.find(
+            (player) => Number(player.index) === targetPlayerIndex
+          )?.peerId;
+          if (stablePeerId && stablePeerId !== conn.peer) {
+            clientConnectionsRef.current.set(stablePeerId, conn);
+          }
 
           clearLocalDisconnectObservation(conn.peer, targetPlayerIndex);
 
@@ -11464,7 +12831,10 @@ export function usePeerLobby({
             return;
           }
 
-          const existingPlayer = session.players.find((player) => player.peerId === conn.peer);
+          const existingPlayer = session.players.find((player) =>
+            String(player.peerId || "") === String(conn.peer || "")
+            || String(player.currentPeerId || "") === String(conn.peer || "")
+          );
           if (!existingPlayer) {
             safeSend(conn, {
               type: "reject",
@@ -11474,6 +12844,46 @@ export function usePeerLobby({
             conn.close();
             return;
           }
+
+          if (!message.reconnectProof) {
+            issueReconnectChallenge(conn, existingPlayer.index);
+            return;
+          }
+          const challengeId = String(
+            message.reconnectProof?.challengeId
+            || message.reconnectProof?.requestId
+            || message.reconnectChallengeId
+            || ""
+          );
+          const challenge = reconnectChallengesRef.current.get(
+            reconnectChallengeMapKey(conn.peer, challengeId)
+          );
+          if (!challenge) {
+            safeSend(conn, {
+              type: "reject",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "Reconnect challenge expired; retry reconnect",
+            });
+            conn.close();
+            return;
+          }
+          try {
+            await verifyReconnectProofForChallenge(
+              message.reconnectProof,
+              challenge,
+              String(existingPlayer.auditPublicKey || "")
+            );
+          } catch (err) {
+            clearReconnectChallenge(conn.peer, challengeId);
+            safeSend(conn, {
+              type: "reject",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: toErrorMessage(err, "Reconnect audit proof is invalid"),
+            });
+            conn.close();
+            return;
+          }
+          clearReconnectChallenge(conn.peer, challengeId);
 
           clientConnectionsRef.current.set(conn.peer, conn);
           clearLocalDisconnectObservation(conn.peer, existingPlayer?.index);
@@ -11632,6 +13042,7 @@ export function usePeerLobby({
       answerActionQuorumVoteRequest,
       answerTimeoutVoteRequest,
       answerDisconnectForfeitVoteRequest,
+      answerProtocolResponseTimeoutVoteRequest,
       buildHostedResyncPayload,
       broadcastMatchPresence,
       broadcastLobbyState,
@@ -11692,15 +13103,17 @@ export function usePeerLobby({
           || message?.type === "ziffle_reveal_token_response"
           || message?.type === "rng_commit_request"
           || message?.type === "rng_commit_response"
-	          || message?.type === "rng_reveal_request"
-	          || message?.type === "rng_reveal_response"
-	          || message?.type === "timeout_vote_request"
-	          || message?.type === "timeout_vote_response"
-	          || message?.type === "disconnect_forfeit_vote_request"
-	          || message?.type === "disconnect_forfeit_vote_response"
-	          || message?.type === "action_quorum_vote_request"
-	          || message?.type === "action_quorum_vote_response"
-	        ) {
+          || message?.type === "rng_reveal_request"
+          || message?.type === "rng_reveal_response"
+          || message?.type === "timeout_vote_request"
+          || message?.type === "timeout_vote_response"
+          || message?.type === "disconnect_forfeit_vote_request"
+          || message?.type === "disconnect_forfeit_vote_response"
+          || message?.type === "protocol_timeout_vote_request"
+          || message?.type === "protocol_timeout_vote_response"
+          || message?.type === "action_quorum_vote_request"
+          || message?.type === "action_quorum_vote_response"
+        ) {
           void handleClientMessage(conn, message).catch(handleError);
           return;
         }
@@ -11749,19 +13162,26 @@ export function usePeerLobby({
         return false;
       }
 
-      // Older clients did not preserve a stable hostPeerId in every payload.
-      // If the host id no longer matches any slot, treat player 1 as the
-      // disconnected original host so the remaining clients can still elect.
-      const reclaimingOriginalHost = localPlayerIndex === 0;
-      const fallbackHostIndex = reclaimingOriginalHost ? null : 0;
-      const playersWithHostOffline = reclaimingOriginalHost
-        ? ensurePromotedLocalPlayer(session.players, session, lobbyId, localPlayerIndex)
-        : markHostPeerDisconnected(
-            session.players,
-            session.hostPeerId || lobbyId,
-            lobbyId,
-            fallbackHostIndex
-          );
+	      // Older clients did not preserve a stable hostPeerId in every payload.
+	      // If the host id no longer matches any slot, treat player 1 as the
+	      // disconnected original host so the remaining clients can still elect.
+	      const reclaimingOriginalHost = localPlayerIndex === 0;
+	      if (reclaimingOriginalHost) {
+	        updateMultiplayer((prev) => ({
+	          ...prev,
+	          mode: prev.matchStarted ? "in_match" : "joining",
+	          hostPeerId: lobbyId,
+	          submittingAction: false,
+	        }));
+	        return false;
+	      }
+	      const fallbackHostIndex = 0;
+	      const playersWithHostOffline = markHostPeerDisconnected(
+	        session.players,
+	        session.hostPeerId || lobbyId,
+	        lobbyId,
+	        fallbackHostIndex
+	      );
       const nextHost = findNextHostPlayer(playersWithHostOffline);
       if (!nextHost || Number(nextHost.index) !== localPlayerIndex) {
         updateMultiplayer((prev) => ({
@@ -11910,17 +13330,18 @@ export function usePeerLobby({
           const nextPlayers = reindexPlayers(
             current.players.map((player) => {
               if (Number(player.index) === localPlayerIndex) {
-	                const nextPlayer = {
-	                  ...player,
-	                  peerId,
-		                  auditPublicKey: current.matchStarted
-		                    ? player.auditPublicKey
-		                    : auditPublicKeyRef.current || player.auditPublicKey || "",
-		                  auditEncryptionPublicKey: current.matchStarted
-		                    ? player.auditEncryptionPublicKey
-		                    : auditEncryptionPublicKeyRef.current || player.auditEncryptionPublicKey || "",
-		                  connected: true,
-	                };
+                const nextPlayer = {
+                  ...player,
+                  peerId,
+                  currentPeerId: peerId,
+                  auditPublicKey: current.matchStarted
+                    ? player.auditPublicKey
+                    : auditPublicKeyRef.current || player.auditPublicKey || "",
+                  auditEncryptionPublicKey: current.matchStarted
+                    ? player.auditEncryptionPublicKey
+                    : auditEncryptionPublicKeyRef.current || player.auditEncryptionPublicKey || "",
+                  connected: true,
+                };
                 return current.matchStarted
                   ? nextPlayer
                   : withDeckState(
@@ -11963,9 +13384,9 @@ export function usePeerLobby({
           if (matchStartPayloadRef.current) {
             matchStartPayloadRef.current = {
               ...cloneMultiplayerPayload(matchStartPayloadRef.current),
-              lobbyId,
-              hostPeerId: peerId,
-              players: toPublicPlayers(nextSession.players),
+              currentLobbyId: lobbyId,
+              currentHostPeerId: peerId,
+              currentPlayers: toPublicPlayers(nextSession.players),
             };
           }
 
@@ -12501,15 +13922,17 @@ export function usePeerLobby({
             || message?.type === "ziffle_reveal_token_response"
             || message?.type === "rng_commit_request"
             || message?.type === "rng_commit_response"
-	            || message?.type === "rng_reveal_request"
-	            || message?.type === "rng_reveal_response"
-	            || message?.type === "timeout_vote_request"
-	            || message?.type === "timeout_vote_response"
-	            || message?.type === "disconnect_forfeit_vote_request"
-	            || message?.type === "disconnect_forfeit_vote_response"
-	            || message?.type === "action_quorum_vote_request"
-	            || message?.type === "action_quorum_vote_response"
-	          ) {
+            || message?.type === "rng_reveal_request"
+            || message?.type === "rng_reveal_response"
+            || message?.type === "timeout_vote_request"
+            || message?.type === "timeout_vote_response"
+            || message?.type === "disconnect_forfeit_vote_request"
+            || message?.type === "disconnect_forfeit_vote_response"
+            || message?.type === "protocol_timeout_vote_request"
+            || message?.type === "protocol_timeout_vote_response"
+            || message?.type === "action_quorum_vote_request"
+            || message?.type === "action_quorum_vote_response"
+          ) {
             void handleHostMessage(message).catch((err) => {
               emitZiffleDiagnosticNotice("Ziffle message failed", err, {
                 phase: "host_ziffle_message",
@@ -12758,6 +14181,74 @@ export function usePeerLobby({
     ]
   );
 
+  async function submitProtocolResponseTimeoutClaim(claim) {
+    if (!claim || typeof claim !== "object") return false;
+    const targetPlayerIndex = normalizePlayerIndex(claim.targetPlayerIndex);
+    if (targetPlayerIndex == null) return false;
+    const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
+    const roster = protocolResponseTimeoutRoster(targetPlayerIndex);
+    const threshold = protocolResponseTimeoutVoteThreshold(roster.length);
+    const target = players.find((player) => Number(player.index) === Number(targetPlayerIndex));
+    const targetName = String(claim.targetName || target?.name || `Player ${targetPlayerIndex + 1}`);
+    if (threshold <= 0) {
+      markMatchDisputed(
+        `Protocol response timeout from ${targetName}; two-player matches require external arbitration.`,
+        {
+          type: "protocol_response_timeout",
+          accusedPlayers: [targetPlayerIndex],
+          claim: cloneMultiplayerPayload(claim),
+        }
+      );
+      return true;
+    }
+    const responseTimeoutMs = Math.max(
+      1,
+      Math.floor(Number(claim.responseTimeoutMs || PROTOCOL_RESPONSE_TIMEOUT_MS))
+    );
+    const requestedAtMs = Math.max(1, Math.floor(Number(claim.requestedAtMs || Date.now() - responseTimeoutMs)));
+    const command = {
+      type: "forfeit_player",
+      player: targetPlayerIndex,
+      reason: PROTOCOL_RESPONSE_TIMEOUT_REASON,
+      timed_out_peer_id: String(claim.targetPeerId || target?.peerId || ""),
+      request_type: String(claim.requestType || ""),
+      request_id: String(claim.requestId || ""),
+      request_payload_hash: String(claim.requestPayloadHash || ""),
+      response_timeout_ms: responseTimeoutMs,
+      requested_at_ms: requestedAtMs,
+      eligible_at_ms: requestedAtMs + responseTimeoutMs,
+      claimed_at_ms: Date.now(),
+      basis_sequence: Number(claim.basisSequence ?? multiplayerRef.current.lastAppliedSequence ?? 0),
+    };
+    try {
+      await submitMultiplayerCommand(
+        command,
+        `${targetName} forfeited by protocol response timeout`
+      );
+    } catch (err) {
+      const failureReason = toErrorMessage(err);
+      if (
+        failureReason.includes("Protocol response timeout certificate")
+        || failureReason.includes("Protocol-timeout vote")
+        || failureReason.includes("protocol-timeout voter")
+      ) {
+        markMatchDisputed(
+          `Protocol response timeout from ${targetName}; certificate quorum could not be completed.`,
+          {
+            type: "protocol_response_timeout_certificate_failed",
+            accusedPlayers: [targetPlayerIndex],
+            claim: cloneMultiplayerPayload(claim),
+            command: cloneMultiplayerPayload(command),
+            error: failureReason,
+          }
+        );
+        return true;
+      }
+      throw err;
+    }
+    return true;
+  }
+
   const submitMultiplayerCommand = useCallback(
     async (command, label = "") => {
       let session = multiplayerRef.current;
@@ -12809,11 +14300,17 @@ export function usePeerLobby({
         const expectedActor = preSubmitState?.decision?.player;
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
         const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
+        const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(command);
         const isSelfForfeit = isSelfForfeitCommand(command, session.localPlayerIndex);
         if (isSelfForfeit && !isSorcerySpeedForfeitState(preSubmitState, session.localPlayerIndex)) {
           throw new Error("Surrender is only available at sorcery speed");
         }
-        if (isForfeitCommand(command) && !isTimeoutForfeit && !isDisconnectForfeit) {
+        if (
+          isForfeitCommand(command)
+          && !isTimeoutForfeit
+          && !isDisconnectForfeit
+          && !isProtocolTimeoutForfeit
+        ) {
           if (Number(command.player) !== Number(session.localPlayerIndex)) {
             throw new Error("A player can only forfeit themselves");
           }
@@ -12848,6 +14345,22 @@ export function usePeerLobby({
           await validateDisconnectForfeitCommand(command, {
             actorIndex: session.localPlayerIndex,
           });
+        } else if (isProtocolTimeoutForfeit) {
+          if (!command.protocol_timeout_certificate && !command.protocolTimeoutCertificate) {
+            const certificate = await collectProtocolResponseTimeoutCertificateForCommand(command);
+            if (certificate) {
+              command = {
+                ...command,
+                timed_out_peer_id: command.timed_out_peer_id || certificate.forfeitedPeerId,
+                response_timeout_ms: certificate.responseTimeoutMs,
+                requested_at_ms: certificate.requestedAtMs,
+                protocol_timeout_certificate: certificate,
+              };
+            }
+          }
+          await validateProtocolResponseTimeoutCommand(command, {
+            actorIndex: session.localPlayerIndex,
+          });
         } else if (
           expectedActor !== null
           && expectedActor !== undefined
@@ -12866,20 +14379,34 @@ export function usePeerLobby({
           }
           return preActionPublicCheckpointHash;
         };
+        let signedActionIntent = null;
+        const ensureSignedActionIntent = async () => {
+          if (!signedActionIntent) {
+            signedActionIntent = await signActionIntentForCommand({
+              seq: nextSequence,
+              actorIndex: session.localPlayerIndex,
+              command,
+              prevStateHash: preActionStateHash,
+              preActionPublicCheckpointHash: await ensurePreActionPublicCheckpointHash(),
+            });
+          }
+          return signedActionIntent;
+        };
         const clock = await buildMatchClockAuditForCommand({
           command,
           seq: nextSequence,
           actorIndex: session.localPlayerIndex,
           uiState: preSubmitState,
         });
-        await verifyMatchClockAuditForAction({
-          clock,
-          command,
-          seq: nextSequence,
-          actorIndex: session.localPlayerIndex,
-          uiState: preSubmitState,
-          skewMs: 0,
-        });
+	        await verifyMatchClockAuditForAction({
+	          clock,
+	          command,
+	          seq: nextSequence,
+	          actorIndex: session.localPlayerIndex,
+	          uiState: preSubmitState,
+	          skewMs: 0,
+	          enforceObservationBounds: false,
+	        });
         stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
         let cryptoRequirements = filterCryptoRequirementsForCommand(
           command,
@@ -12899,7 +14426,7 @@ export function usePeerLobby({
           cryptoRequirements.length > 0
           || commandMayProducePostApplyOpenings(command, preSubmitState, cryptoRequirements)
         ) {
-          await ensurePreActionPublicCheckpointHash();
+          await ensureSignedActionIntent();
         }
         if (cryptoRequirements.length > 0) {
           setStatus("Preparing cryptographic material for action");
@@ -12916,12 +14443,17 @@ export function usePeerLobby({
             actorIndex: session.localPlayerIndex,
             prevStateHash: preActionStateHash,
             publicCheckpointHash: preActionPublicCheckpointHash,
+            actionIntent: signedActionIntent,
           }
         );
         let actionCryptoOptions = {
           command,
           seq: nextSequence,
           actorIndex: session.localPlayerIndex,
+          prevStateHash: preActionStateHash,
+          publicCheckpointHash: preActionPublicCheckpointHash,
+          preActionPublicCheckpointHash,
+          actionIntent: signedActionIntent,
           requirements: cryptoRequirements,
         };
         await injectCryptoMaterialForRequirements(cryptoRequirements, {
@@ -12958,6 +14490,7 @@ export function usePeerLobby({
             requestPreview: requestRemoteCryptoPreview,
             prevStateHash: preActionStateHash,
             publicCheckpointHash: preActionPublicCheckpointHash,
+            actionIntent: signedActionIntent,
           }
         );
         await revealAuditOpenings(remoteCryptoMaterial.openings || [], { timing: "pre" });
@@ -13047,6 +14580,7 @@ export function usePeerLobby({
           command,
           seq: nextSequence,
           actorIndex: session.localPlayerIndex,
+          actionIntent: signedActionIntent,
           requirements: [...cryptoRequirements, ...appliedRequirements],
         });
         const openingRequirements = appliedRequirements.length > 0
@@ -13066,6 +14600,7 @@ export function usePeerLobby({
               actorIndex: session.localPlayerIndex,
               prevStateHash: preActionStateHash,
               publicCheckpointHash: await ensurePreActionPublicCheckpointHash(),
+              actionIntent: await ensureSignedActionIntent(),
             }
           );
           remoteCryptoMaterial = {
@@ -13119,13 +14654,15 @@ export function usePeerLobby({
           remoteCryptoMaterial.openings
         );
         const localPrivateViewProofs = await buildLocalPrivateViewProofsForRequirements(
-          appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements
+          appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements,
+          actionCryptoOptions
         );
         const privateViewProofs = mergePrivateViewProofs(
           localPrivateViewProofs,
           remoteCryptoMaterial.privateViewProofs
         );
-        await revealPrivateAuditProofsForLocalViewer({ privateViewProofs }, {
+        await revealPrivateAuditProofsForLocalViewer({ seq: nextSequence, privateViewProofs }, {
+          seq: nextSequence,
           updateState: true,
         });
         const localPublicCheckpointHash = await currentPublicAuditCheckpointHash();
@@ -13180,6 +14717,11 @@ export function usePeerLobby({
         }
         updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
         const failureReason = toErrorMessage(err);
+        const protocolTimeoutClaim = protocolResponseTimeoutClaimFromError(err);
+        if (protocolTimeoutClaim) {
+          await submitProtocolResponseTimeoutClaim(protocolTimeoutClaim);
+          return;
+        }
         if (
           failureReason.includes("Action quorum certificate")
           || failureReason.includes("action quorum vote")
@@ -13503,9 +15045,16 @@ export function usePeerLobby({
       : String(actions.at(-1)?.audit?.publicCheckpointHash || transcript.initialPublicCheckpointHash || "");
     const finalStateHash = auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH;
     const disputes = Array.isArray(transcript.disputes) ? transcript.disputes : [];
+    const matchId = String(transcript.matchId || transcript.match?.auditMatchId || currentAuditMatchId());
+    const privateViewDisclosures = [...privateViewDisclosuresRef.current.values()]
+      .filter((disclosure) =>
+        String(disclosure?.matchId || disclosure?.payload?.matchId || "") === matchId
+      )
+      .map((disclosure) => cloneMultiplayerPayload(disclosure));
     return {
       ...transcript,
       exportedAt: new Date().toISOString(),
+      privateViewDisclosures,
       finalStateHash,
       finalPublicCheckpoint,
       finalPublicCheckpointHash,
@@ -13519,7 +15068,7 @@ export function usePeerLobby({
         disputes,
       }),
     };
-  }, []);
+  }, [currentAuditMatchId]);
 
   useEffect(
     () => () => {

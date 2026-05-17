@@ -936,6 +936,9 @@ export default function GameCard({
     && variant !== "stack"
     && debugSimilarityLabel != null
   );
+  const showBattlefieldHeaderOverlay = variant === "battlefield"
+    && !useTokenBattlefield
+    && (groupSize > 1 || showDebugSimilarityBadge);
   const debouncedOnClick = debounceClick(onClick);
   const debouncedOnPointerDown = debouncePointerDown(onPointerDown);
 
@@ -1207,9 +1210,6 @@ export default function GameCard({
     };
   }, [card.mana_cost, card.oracle_text, card.produced_mana, name, variant]);
 
-  const visibleBattlefieldManaCost = variant === "battlefield"
-    ? (resolvedBattlefieldCard.mana_cost ?? null)
-    : null;
   const memberStableIds = Array.isArray(card?.member_stable_ids) && card.member_stable_ids.length > 0
     ? card.member_stable_ids
     : [stableId].filter(Boolean);
@@ -1258,7 +1258,7 @@ export default function GameCard({
       data-stable-id={stableId}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
-      title={suppressTooltip ? undefined : (groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name)}
+      title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name)}
       onClick={debouncedOnClick}
       onContextMenu={onContextMenu}
       onPointerDown={debouncedOnPointerDown}
@@ -1494,12 +1494,9 @@ export default function GameCard({
               </span>
             )}
           </div>
-        ) : (
+        ) : showBattlefieldHeaderOverlay ? (
           <div className="battlefield-header">
             <span className="battlefield-header-copy">
-              <span className="battlefield-nameplate text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
-                {name}
-              </span>
               {groupSize > 1 && (
                 <span className="battlefield-group-badge">
                   x{groupSize}
@@ -1515,14 +1512,9 @@ export default function GameCard({
                   {debugSimilarityLabel}
                 </span>
               )}
-              {visibleBattlefieldManaCost && (
-                <span className="battlefield-mana-rack">
-                  <ManaCostIcons cost={visibleBattlefieldManaCost} size={compact ? 10 : 11} />
-                </span>
-              )}
             </span>
           </div>
-        )}
+        ) : null}
 
         {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
           <div className="battlefield-counter-rail">

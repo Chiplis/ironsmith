@@ -1,11 +1,12 @@
-import { useRef, useState } from "react";
-import { Download, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { Download } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
-import { verifyLiveAuditTranscript } from "@/lib/multiplayer-audit";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import AddCardSheet from "./AddCardSheet";
+import AuditReplayControls from "./AuditReplayControls";
+import VerifyMatchSheet from "./VerifyMatchSheet";
 
 const triggerPill = "stone-pill table-zone-action-button inline-flex items-center justify-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
@@ -19,7 +20,6 @@ export default function TableActionControls({
   puzzleSetupMode = false,
 }) {
   const {
-    game,
     state,
     multiplayer,
     setStatus,
@@ -28,7 +28,6 @@ export default function TableActionControls({
   const [zone, setZone] = useState("hand");
   const [playerIndex, setPlayerIndex] = useState(null);
   const [skipTriggers, setSkipTriggers] = useState(false);
-  const verifyInputRef = useRef(null);
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
@@ -39,59 +38,6 @@ export default function TableActionControls({
     typeof exportAuditTranscript === "function"
     && (state?.game_over || multiplayer?.matchDisputed || multiplayer?.mode === "disputed")
   );
-  const canVerifyMatch = Boolean(game);
-
-  const verifyExportedShuffleProof = async (proof) => {
-    if (!game || typeof game.ziffleVerifyShuffle !== "function") {
-      throw new Error("Ziffle mental-poker backend is not available");
-    }
-    const verified = await game.ziffleVerifyShuffle({
-      deckCount: Number(proof.deckCount),
-      context: String(proof.context || ""),
-      keyContext: String(proof.keyContext || proof.context || ""),
-      keys: proof.keys || [],
-      steps: proof.steps || [],
-    });
-    if (String(verified.deckHash || "") !== String(proof.deckHash || "")) {
-      throw new Error(`Ziffle shuffle proof mismatch for player ${Number(proof.owner) + 1}`);
-    }
-  };
-
-  const verifyExportedZiffleOpening = async ({ proof, ceremony }) => {
-    if (!game || typeof game.ziffleRevealCard !== "function") {
-      throw new Error("Ziffle mental-poker backend is not available");
-    }
-    const reveal = await game.ziffleRevealCard({
-      deckCount: Number(ceremony.deckCount),
-      context: String(ceremony.context || ""),
-      keyContext: String(ceremony.keyContext || ceremony.context || ""),
-      keys: ceremony.keys || [],
-      steps: ceremony.steps || [],
-      cardPosition: Number(proof.position),
-      tokens: proof.tokens || [],
-    });
-    return { originalSlot: Number(reveal.originalSlot) };
-  };
-
-  const describeVerificationReport = (report) => {
-    const actions = Number(report?.verifiedActions || 0);
-    const suffix = `${actions} action${actions === 1 ? "" : "s"}`;
-    const outcome = report?.outcome || {};
-    if (outcome.status === "winner") {
-      const winner = outcome.winnerName || `Player ${Number(outcome.winner) + 1}`;
-      return `Match verified: ${winner} wins (${suffix})`;
-    }
-    if (outcome.status === "draw") {
-      return `Match verified: draw (${suffix})`;
-    }
-    if (outcome.status === "disputed") {
-      const accused = (outcome.accusedPlayers || [])
-        .map((player) => `Player ${Number(player) + 1}`)
-        .join(", ");
-      return `Match verified: disputed${accused ? `; evidence implicates ${accused}` : ""} (${suffix})`;
-    }
-    return `Match verified: stalled or incomplete (${suffix})`;
-  };
 
   const handleShareCurrentTable = async () => {
     const shareUrl = buildPuzzleUrlFromGameState(state);
@@ -136,48 +82,10 @@ export default function TableActionControls({
     }
   };
 
-  const handleVerifyMatchClick = () => {
-    verifyInputRef.current?.click();
-  };
-
-  const handleVerifyMatchFile = async (event) => {
-    const file = event.target.files?.[0] || null;
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const transcript = JSON.parse(await file.text());
-      const report = await verifyLiveAuditTranscript(
-        transcript,
-        globalThis.crypto,
-        {
-          verifyShuffleProof: verifyExportedShuffleProof,
-          verifyZiffleOpening: verifyExportedZiffleOpening,
-        }
-      );
-      setStatus(describeVerificationReport(report));
-    } catch (err) {
-      setStatus(`Verify match failed: ${err?.message || err}`, true);
-    }
-  };
-
   return (
     <div className="table-zone-action-controls" aria-label="Table actions">
-      <input
-        ref={verifyInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={handleVerifyMatchFile}
-      />
-      <button
-        type="button"
-        className={triggerPill}
-        disabled={!canVerifyMatch}
-        onClick={handleVerifyMatchClick}
-      >
-        <ShieldCheck className="size-3.5" aria-hidden="true" />
-        Verify match
-      </button>
+      <VerifyMatchSheet />
+      <AuditReplayControls />
       {canExportMatch ? (
         <button
           type="button"

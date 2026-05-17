@@ -4231,6 +4231,24 @@ mod native_tests {
     }
 
     #[test]
+    fn crypto_requirements_include_journaled_fair_random_output() {
+        let mut wasm = WasmGame::new();
+        let before = wasm.capture_crypto_audit_state();
+        let mut values = vec![1, 2, 3, 4];
+
+        wasm.game.shuffle_slice(&mut values);
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "fair_random"
+                && requirement.zone == "game"
+                && requirement.count == Some(1)
+                && requirement.random_count_before == Some(0)
+                && requirement.random_count_after == Some(1)
+        }));
+    }
+
+    #[test]
     fn crypto_requirements_include_hidden_order_update_for_nonrandom_library_reorder() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);

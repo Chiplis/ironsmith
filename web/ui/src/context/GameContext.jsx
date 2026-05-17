@@ -1,13 +1,21 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
+import {
+  applyAuditReplayActionWithGame,
+  replayAuditTranscriptWithGame,
+  startAuditTranscriptReplayWithGame,
+} from "@/lib/audit-replay";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 import {
   buildMultiplayerSmartAutoPass,
   priorityHoldReason,
 } from "@/lib/priority-automation";
-import { createWasmInteractionGate } from "@/lib/wasmInteractionGate";
+import {
+  DEFAULT_WASM_INTERACTION_DEBOUNCE_MS,
+  createWasmInteractionGate,
+} from "@/lib/wasmInteractionGate";
 import {
   describeDecisionCommandMismatch,
   findPriorityActionForCommand,
@@ -26,10 +34,82 @@ import { samePlayerId } from "@/lib/player-display";
 
 const GameContext = createContext(null);
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
+const AUDIT_REPLAY_GATE_WAIT_ATTEMPTS = 8;
 const UI_FONT_STORAGE_KEY = "ironsmith.uiFont";
 const PLAYER_ACCENTS_STORAGE_KEY = "ironsmith.playerAccentOverrides";
 const DEFAULT_PHASE_ACCENT = "#876221";
 const PHASE_ACCENT_STORAGE_KEY = "ironsmith.phaseAccent";
+
+const emptyAuditReplayState = {
+  available: false,
+  active: false,
+  sourceLabel: "",
+  currentActionIndex: 0,
+  currentActionLabel: "",
+  actionCount: 0,
+  busy: false,
+  error: "",
+};
+
+function cloneJson(value) {
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function waitForAuditReplayGate(gate) {
+  for (
+    let attempt = 0;
+    attempt < AUDIT_REPLAY_GATE_WAIT_ATTEMPTS && gate?.isBlocked?.();
+    attempt += 1
+  ) {
+    await delay(DEFAULT_WASM_INTERACTION_DEBOUNCE_MS);
+  }
+}
+
+function auditReplayActionLabel(action, index) {
+  if (!action || Number(index) <= 0) return "Match start";
+  const command = action.command || action.audit?.command || {};
+  const actor = Number(action.actorIndex ?? action.audit?.actor);
+  const actorLabel = Number.isInteger(actor) ? `P${actor + 1}` : "Player";
+  if (action.label) return `${index}. ${actorLabel}: ${action.label}`;
+  if (command.type === "priority_action") {
+    const kind = String(command.action_ref?.kind || "");
+    if (kind === "cast_spell") return `${index}. ${actorLabel}: Cast spell`;
+    if (kind === "play_land") return `${index}. ${actorLabel}: Play land`;
+    if (kind === "pass_priority") return `${index}. ${actorLabel}: Pass priority`;
+    if (kind === "keep_opening_hand") return `${index}. ${actorLabel}: Keep hand`;
+    if (kind === "continue_pregame" || kind === "begin_game") {
+      return `${index}. ${actorLabel}: Pregame`;
+    }
+    return `${index}. ${actorLabel}: ${kind || "Priority action"}`;
+  }
+  if (command.type === "select_targets") return `${index}. ${actorLabel}: Select targets`;
+  if (command.type === "select_options") return `${index}. ${actorLabel}: Select option`;
+  if (command.type === "declare_attackers") return `${index}. ${actorLabel}: Declare attackers`;
+  if (command.type === "declare_blockers") return `${index}. ${actorLabel}: Declare blockers`;
+  return `${index}. ${actorLabel}: ${command.type || "Action"}`;
+}
+
+function auditReplayStateForPrepared(prepared, overrides = {}) {
+  if (!prepared) return { ...emptyAuditReplayState, ...overrides };
+  return {
+    available: true,
+    active: false,
+    sourceLabel: prepared.sourceLabel,
+    currentActionIndex: 0,
+    currentActionLabel: "Match start",
+    actionCount: prepared.actionCount,
+    busy: false,
+    error: "",
+    ...overrides,
+  };
+}
 
 function normalizeHexColor(color) {
   const raw = String(color || "").trim();
@@ -556,11 +636,14 @@ export function GameProvider({ children }) {
   const [semanticThreshold, setSemanticThresholdRaw] = useState(96);
   const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
   const [semanticStats, setSemanticStats] = useState(null);
+  const [auditReplayState, setAuditReplayState] = useState(emptyAuditReplayState);
   const logRef = useRef([]);
   const [logEntries, setLogEntries] = useState([]);
   const gameRef = useRef(game);
   const semanticThresholdRef = useRef(semanticThreshold);
   const stateRef = useRef(state);
+  const auditReplaySessionRef = useRef(null);
+  const auditReplayPreparedRef = useRef(null);
   const multiplayerActiveRef = useRef(false);
   const multiplayerAutoPassAttemptRef = useRef("");
   const stickyViewedCardsRef = useRef(null);
@@ -1834,6 +1917,388 @@ export function GameProvider({ children }) {
     ]
   );
 
+  const replayAuditTranscript = useCallback(
+    async (args = {}) => runWasmInteraction(async () => {
+      const currentGame = gameRef.current;
+      if (!currentGame) {
+        throw new Error("WASM game is not ready");
+      }
+      return replayAuditTranscriptWithGame({
+        game: currentGame,
+        transcript: args.transcript,
+        perspectiveIndex: stateRef.current?.perspective ?? 0,
+        cryptoImpl: globalThis.crypto,
+      });
+    }),
+    [runWasmInteraction]
+  );
+
+  const runAuditReplayWasmInteraction = useCallback(
+    async (task, failurePrefix = "Replay failed") => {
+      await waitForAuditReplayGate(wasmInteractionGateRef.current);
+      const result = await runWasmInteraction(task);
+      if (result !== undefined) return result;
+      const message = "Game engine is busy";
+      setAuditReplayState((current) => ({
+        ...current,
+        busy: false,
+        error: message,
+      }));
+      setStatus(`${failurePrefix}: ${message}`, true);
+      throw new Error(message);
+    },
+    [runWasmInteraction, setStatus]
+  );
+
+  const replayTranscriptToPosition = useCallback(async (currentGame, session, position) => {
+    const transcript = session?.transcript;
+    const actions = Array.isArray(transcript?.actions) ? transcript.actions : [];
+    const targetPosition = Math.max(0, Math.min(Number(position) || 0, actions.length));
+    const startReport = await startAuditTranscriptReplayWithGame({
+      game: currentGame,
+      transcript,
+      perspectiveIndex: session.restorePerspective,
+      cryptoImpl: globalThis.crypto,
+    });
+    let replayState = startReport.state;
+    for (let index = 0; index < targetPosition; index += 1) {
+      const action = actions[index];
+      const actionReport = await applyAuditReplayActionWithGame({
+        game: currentGame,
+        action,
+        actionIndex: index,
+        cryptoImpl: globalThis.crypto,
+      });
+      const expectedHash = String(action?.audit?.publicCheckpointHash || "");
+      if (
+        expectedHash
+        && String(actionReport.publicCheckpointHash || "") !== expectedHash
+      ) {
+        throw new Error(`Replay public checkpoint hash mismatch at action ${index + 1}`);
+      }
+      replayState = actionReport.state || replayState;
+    }
+    if (!replayState && typeof currentGame.uiState === "function") {
+      replayState = await currentGame.uiState();
+    }
+    return {
+      position: targetPosition,
+      state: replayState,
+    };
+  }, []);
+
+  const prepareAuditReplaySession = useCallback(
+    ({ transcript, sourceLabel = "Verified match" } = {}) => {
+      if (!transcript || typeof transcript !== "object") {
+        throw new Error("Missing audit transcript");
+      }
+      const prepared = {
+        transcript: cloneJson(transcript),
+        sourceLabel,
+        actionCount: Array.isArray(transcript.actions) ? transcript.actions.length : 0,
+      };
+      auditReplayPreparedRef.current = prepared;
+      setAuditReplayState((current) => {
+        if (current.active) {
+          return {
+            ...current,
+            available: true,
+            sourceLabel: prepared.sourceLabel,
+            actionCount: prepared.actionCount,
+            error: "",
+          };
+        }
+        return auditReplayStateForPrepared(prepared);
+      });
+      return prepared;
+    },
+    []
+  );
+
+  const beginAuditReplaySession = useCallback(
+    async ({ transcript, sourceLabel = "Verified match" } = {}) => {
+      const prepared = transcript
+        ? prepareAuditReplaySession({ transcript, sourceLabel })
+        : auditReplayPreparedRef.current;
+      if (!prepared?.transcript || typeof prepared.transcript !== "object") {
+        throw new Error("Missing audit transcript");
+      }
+      setAuditReplayState((current) => ({
+        ...current,
+        available: true,
+        busy: true,
+        error: "",
+      }));
+      return runAuditReplayWasmInteraction(async () => {
+        const currentGame = gameRef.current;
+        if (!currentGame) {
+          throw new Error("WASM game is not ready");
+        }
+        if (typeof currentGame.exportSyncCheckpoint !== "function") {
+          throw new Error("Game engine cannot start replay mode");
+        }
+        const existingSession = auditReplaySessionRef.current;
+        const restoreCheckpoint = existingSession?.restoreCheckpoint
+          || await currentGame.exportSyncCheckpoint();
+        const restorePerspective = Number(
+          existingSession?.restorePerspective ?? stateRef.current?.perspective ?? 0
+        );
+        const session = {
+          transcript: cloneJson(prepared.transcript),
+          sourceLabel: prepared.sourceLabel || sourceLabel,
+          restoreCheckpoint,
+          restorePerspective,
+          actionCount: prepared.actionCount,
+        };
+        try {
+          const replay = await replayTranscriptToPosition(currentGame, session, 0);
+          auditReplaySessionRef.current = session;
+          if (replay.state) {
+            stateRef.current = replay.state;
+            setState(replay.state);
+          }
+          const nextReplayState = {
+            available: true,
+            active: true,
+            sourceLabel: session.sourceLabel,
+            currentActionIndex: 0,
+            currentActionLabel: "Match start",
+            actionCount: session.actionCount,
+            busy: false,
+            error: "",
+          };
+          setAuditReplayState(nextReplayState);
+          setStatus(`Replay loaded: action 0 of ${session.actionCount}`);
+          return nextReplayState;
+        } catch (err) {
+          auditReplaySessionRef.current = existingSession || null;
+          if (!existingSession && typeof currentGame.importSyncCheckpoint === "function") {
+            try {
+              await currentGame.importSyncCheckpoint(restoreCheckpoint, restorePerspective);
+              const restored = typeof currentGame.uiState === "function"
+                ? await currentGame.uiState()
+                : stateRef.current;
+              if (restored) {
+                stateRef.current = restored;
+                setState(restored);
+              }
+            } catch {
+              // Preserve the replay error as the actionable failure.
+            }
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          setAuditReplayState((current) => ({
+            ...current,
+            busy: false,
+            error: message,
+          }));
+          setStatus(`Replay failed: ${message}`, true);
+          throw err;
+        }
+      });
+    },
+    [prepareAuditReplaySession, replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
+  );
+
+  const setAuditReplayPosition = useCallback(
+    async (position) => {
+      const session = auditReplaySessionRef.current;
+      if (!session) {
+        throw new Error("No audit replay is loaded");
+      }
+      const targetPosition = Math.max(
+        0,
+        Math.min(Number(position) || 0, session.actionCount)
+      );
+      setAuditReplayState((current) => ({
+        ...current,
+        busy: true,
+        error: "",
+      }));
+      return runAuditReplayWasmInteraction(async () => {
+        const currentGame = gameRef.current;
+        if (!currentGame) {
+          throw new Error("WASM game is not ready");
+        }
+        try {
+          const replay = await replayTranscriptToPosition(currentGame, session, targetPosition);
+          if (replay.state) {
+            stateRef.current = replay.state;
+            setState(replay.state);
+          }
+          const action = replay.position > 0
+            ? session.transcript?.actions?.[replay.position - 1]
+            : null;
+          const nextReplayState = {
+            available: true,
+            active: true,
+            sourceLabel: session.sourceLabel,
+            currentActionIndex: replay.position,
+            currentActionLabel: auditReplayActionLabel(action, replay.position),
+            actionCount: session.actionCount,
+            busy: false,
+            error: "",
+          };
+          setAuditReplayState(nextReplayState);
+          setStatus(`Replay action ${replay.position} of ${session.actionCount}`);
+          return nextReplayState;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          setAuditReplayState((current) => ({
+            ...current,
+            busy: false,
+            error: message,
+          }));
+          setStatus(`Replay failed: ${message}`, true);
+          throw err;
+        }
+      });
+    },
+    [replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
+  );
+
+  const exitAuditReplaySession = useCallback(
+    async () => {
+      const session = auditReplaySessionRef.current;
+      if (!session) {
+        const prepared = auditReplayPreparedRef.current;
+        const nextReplayState = prepared
+          ? auditReplayStateForPrepared(prepared)
+          : emptyAuditReplayState;
+        setAuditReplayState(nextReplayState);
+        return nextReplayState;
+      }
+      setAuditReplayState((current) => ({
+        ...current,
+        busy: true,
+        error: "",
+      }));
+      return runAuditReplayWasmInteraction(async () => {
+        const currentGame = gameRef.current;
+        try {
+          if (
+            currentGame
+            && session.restoreCheckpoint
+            && typeof currentGame.importSyncCheckpoint === "function"
+          ) {
+            await currentGame.importSyncCheckpoint(
+              session.restoreCheckpoint,
+              session.restorePerspective,
+            );
+            const restored = typeof currentGame.uiState === "function"
+              ? await currentGame.uiState()
+              : stateRef.current;
+            if (restored) {
+              stateRef.current = restored;
+              setState(restored);
+            }
+          }
+          auditReplaySessionRef.current = null;
+          const prepared = auditReplayPreparedRef.current;
+          const nextReplayState = prepared
+            ? auditReplayStateForPrepared(prepared)
+            : emptyAuditReplayState;
+          setAuditReplayState(nextReplayState);
+          setStatus("Replay closed");
+          return nextReplayState;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          setAuditReplayState((current) => ({
+            ...current,
+            busy: false,
+            error: message,
+          }));
+          setStatus(`Replay restore failed: ${message}`, true);
+          throw err;
+        }
+      }, "Replay restore failed");
+    },
+    [runAuditReplayWasmInteraction, setStatus]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || import.meta.env?.VITE_E2E_TEST !== "true") {
+      return undefined;
+    }
+
+    const snapshot = () => cloneJson({
+      loading,
+      wasmError: wasmError ? String(wasmError?.message || wasmError) : "",
+      wasmPhase,
+      wasmProgress,
+      canStartHostedMatch,
+      status: status
+        ? {
+            msg: String(status.msg || ""),
+            isError: Boolean(status.isError),
+          }
+        : null,
+      multiplayer: {
+        mode: multiplayer.mode,
+        role: multiplayer.role,
+        localPeerId: multiplayer.localPeerId,
+        hostPeerId: multiplayer.hostPeerId,
+        lobbyId: multiplayer.lobbyId,
+        localPlayerIndex: multiplayer.localPlayerIndex,
+        desiredPlayers: multiplayer.desiredPlayers,
+        matchStarted: multiplayer.matchStarted,
+        lastAppliedSequence: multiplayer.lastAppliedSequence,
+        submittingAction: multiplayer.submittingAction,
+        connectionWarnings: (multiplayer.connectionWarnings || []).map((warning) => ({
+          peerId: warning.peerId,
+          name: warning.name,
+          local: Boolean(warning.local),
+          remainingMs: warning.remainingMs,
+          kind: warning.kind,
+        })),
+        players: (multiplayer.players || []).map((player) => ({
+          index: player.index,
+          name: player.name,
+          peerId: player.peerId,
+          currentPeerId: player.currentPeerId,
+          connected: player.connected,
+          ready: player.ready,
+          disconnectedAtMs: player.disconnectedAtMs,
+          autoForfeitAtMs: player.autoForfeitAtMs,
+          disconnectRemainingMs: player.disconnectRemainingMs,
+        })),
+      },
+      state: state
+        ? {
+            snapshot_id: state.snapshot_id,
+            perspective: state.perspective,
+            decision: summarizeDecision(state.decision || null),
+            players: (state.players || []).map((player) => ({
+              id: player.id,
+              name: player.name,
+              life: player.life,
+              battlefield: (player.battlefield || []).map((card) => ({
+                id: card.id,
+                name: card.name,
+                tapped: card.tapped,
+              })),
+            })),
+          }
+        : null,
+    });
+
+    window.__ironsmithE2E = { snapshot };
+    return () => {
+      if (window.__ironsmithE2E?.snapshot === snapshot) {
+        delete window.__ironsmithE2E;
+      }
+    };
+  }, [
+    canStartHostedMatch,
+    loading,
+    multiplayer,
+    state,
+    status,
+    wasmError,
+    wasmPhase,
+    wasmProgress,
+  ]);
+
   const value = useMemo(
     () => ({
       game,
@@ -1881,6 +2346,12 @@ export function GameProvider({ children }) {
       updateRematchDecks,
       readyForRematch,
       exportAuditTranscript,
+      replayAuditTranscript,
+      auditReplay: auditReplayState,
+      prepareAuditReplaySession,
+      beginAuditReplaySession,
+      setAuditReplayPosition,
+      exitAuditReplaySession,
       submitMultiplayerCommand,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
@@ -1905,6 +2376,12 @@ export function GameProvider({ children }) {
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
       startRematchSideboarding, updateRematchDecks, readyForRematch,
       exportAuditTranscript,
+      replayAuditTranscript,
+      auditReplayState,
+      prepareAuditReplaySession,
+      beginAuditReplaySession,
+      setAuditReplayPosition,
+      exitAuditReplaySession,
       submitMultiplayerCommand,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,

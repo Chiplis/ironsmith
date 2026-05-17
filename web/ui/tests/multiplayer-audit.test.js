@@ -9,6 +9,7 @@ import {
   authorizeCryptoMaterialRequestRequirements,
   buildActionForkDisputeEvidence,
   buildSignedDisconnectForfeitVote,
+  buildSignedProtocolResponseTimeoutVote,
   buildSignedMatchGenesis,
   buildSignedActionEnvelope,
   buildSignedActionQuorumVote,
@@ -29,6 +30,8 @@ import {
   fairRandomCombinedSeedHex,
   disconnectForfeitVoteThreshold,
   DISCONNECT_FORFEIT_REASON,
+  protocolResponseTimeoutVoteThreshold,
+  PROTOCOL_RESPONSE_TIMEOUT_REASON,
   importAuditPublicKey,
   rngCommitmentPayload,
   rngRevealPayload,
@@ -39,6 +42,7 @@ import {
   verifyAuditPayload,
   verifyActionQuorumCertificate,
   verifyDisconnectForfeitCertificate,
+  verifyProtocolResponseTimeoutCertificate,
   verifyLiveAuditTranscript,
   verifyPrivateViewDisclosure,
   verifySignedMatchGenesis,
@@ -97,6 +101,7 @@ async function buildCurrentProtocolTranscript({
   players,
   actions,
   deckAuditManifests = [],
+  privateViewDisclosures = [],
   initialPublicCheckpointHash = "initial-public-checkpoint",
   playerCount = null,
 }) {
@@ -254,6 +259,7 @@ async function buildCurrentProtocolTranscript({
     genesis: match.genesis,
     initialStateHash: "0".repeat(64),
     initialPublicCheckpointHash,
+    privateViewDisclosures,
     actions: actionsWithQuorum,
   };
 }
@@ -820,6 +826,131 @@ test("disconnect timeout policy forfeits require unanimous non-target consent", 
   const transcript = await buildCurrentProtocolTranscript({
     matchId,
     players: players.slice(0, 3),
+    playerCount: 3,
+    actions: [{ seq: 1, actorIndex: 0, command, audit }],
+  });
+
+  assert.equal((await verifyEnvelopeOnlyTranscript(transcript)).valid, true);
+});
+
+test("protocol response timeout forfeits require non-target quorum", async () => {
+  assert.equal(protocolResponseTimeoutVoteThreshold(0), 0);
+  assert.equal(protocolResponseTimeoutVoteThreshold(1), 0);
+  assert.equal(protocolResponseTimeoutVoteThreshold(2), 2);
+  assert.equal(protocolResponseTimeoutVoteThreshold(3), 3);
+
+  const matchId = "m-protocol-response-timeout";
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    peerId: `peer-${index}`,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const baseVote = {
+    matchId,
+    basisSequence: 0,
+    forfeitedPlayer: 1,
+    forfeitedPeerId: "peer-1",
+    requestType: "crypto_material_request",
+    requestId: "crypto-material:test",
+    requestPayloadHash: "a".repeat(64),
+    responseTimeoutMs: 60000,
+    requestedAtMs: 100000,
+    eligibleAtMs: 160000,
+  };
+  const votes = await Promise.all([0, 2].map((voter) =>
+    buildSignedProtocolResponseTimeoutVote({
+      keyPair: keys[voter],
+      ...baseVote,
+      signedAtMs: 160500,
+      voter,
+    }, webcrypto)
+  ));
+  const certificate = {
+    type: "ironsmith-protocol-response-timeout-v1",
+    ...baseVote,
+    threshold: 2,
+    voters: [0, 2],
+    votes,
+  };
+  const command = {
+    type: "forfeit_player",
+    player: 1,
+    reason: PROTOCOL_RESPONSE_TIMEOUT_REASON,
+    timed_out_peer_id: "peer-1",
+    request_type: baseVote.requestType,
+    request_id: baseVote.requestId,
+    request_payload_hash: baseVote.requestPayloadHash,
+    response_timeout_ms: baseVote.responseTimeoutMs,
+    requested_at_ms: baseVote.requestedAtMs,
+    eligible_at_ms: baseVote.eligibleAtMs,
+    claimed_at_ms: 161000,
+    basis_sequence: 0,
+    protocol_timeout_certificate: certificate,
+  };
+
+  assert.equal(
+    (await verifyProtocolResponseTimeoutCertificate({
+      certificate,
+      command: { ...command, matchId },
+      players: [players[0], players[2]],
+    }, webcrypto)).valid,
+    true,
+  );
+  await assert.rejects(
+    () => verifyProtocolResponseTimeoutCertificate({
+      certificate: {
+        ...certificate,
+        votes: votes.slice(0, 1),
+      },
+      command: { ...command, matchId },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /expected at least 2/,
+  );
+  await assert.rejects(
+    () => verifyProtocolResponseTimeoutCertificate({
+      certificate,
+      command: { ...command, matchId, request_payload_hash: "b".repeat(64) },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /does not match the command/,
+  );
+  const earlyVote = await buildSignedProtocolResponseTimeoutVote({
+    keyPair: keys[2],
+    ...baseVote,
+    signedAtMs: 159999,
+    voter: 2,
+  }, webcrypto);
+  await assert.rejects(
+    () => verifyProtocolResponseTimeoutCertificate({
+      certificate: {
+        ...certificate,
+        votes: [votes[0], earlyVote],
+      },
+      command: { ...command, matchId },
+      players: [players[0], players[2]],
+    }, webcrypto),
+    /before the response timeout elapsed/,
+  );
+
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId,
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-after-protocol-timeout",
+  }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId,
+    players,
     playerCount: 3,
     actions: [{ seq: 1, actorIndex: 0, command, audit }],
   });
@@ -1550,45 +1681,84 @@ test("private-view encrypted disclosure binds signed proof to committed deck slo
   );
 });
 
-test("live audit transcript verifier accepts encrypted private-view summary proofs", async () => {
+test("live audit transcript verifier requires postgame disclosures for encrypted private views", async () => {
+  const matchId = "m-private-view-summary";
   const keys = await Promise.all([
     createAuditSessionKey(webcrypto),
     createAuditSessionKey(webcrypto),
   ]);
+  const encryptionKeys = await Promise.all([
+    createAuditEncryptionKey(webcrypto),
+    createAuditEncryptionKey(webcrypto),
+  ]);
   const players = await Promise.all(keys.map(async (keyPair, index) => ({
     index,
     keyPair,
+    encryptionKeyPair: encryptionKeys[index],
     auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+    auditEncryptionPublicKey: await exportAuditEncryptionPublicKey(encryptionKeys[index], webcrypto),
   })));
-  const privateViewProof = {
+  const ownerManifest = await buildPrivateDeckManifest({
+    matchId,
+    owner: 1,
+    deck: ["Ponder"],
+    saltForSlot: () => "private-view-summary-salt",
+  }, webcrypto);
+  const opening = await buildDeckSlotOpening({ manifest: ownerManifest, slot: 0 }, webcrypto);
+  const requirementId = "private_open:1:library:0:7";
+  const disclosurePayload = {
+    type: "private_view_opening",
+    matchId,
+    requirementId,
+    owner: 1,
+    viewer: 0,
+    zone: "library",
+    objectId: 7,
+    opening,
+  };
+  const encryptedOpening = await encryptPrivateAuditPayload({
+    recipientPublicKey: players[0].auditEncryptionPublicKey,
+    payload: disclosurePayload,
+  }, webcrypto);
+  const openingProof = {
+    type: "encrypted_private_opening",
+    requirementId,
+    owner: 1,
+    viewer: 0,
+    zone: "library",
+    objectId: 7,
+    slot: 0,
+    commitment: opening.commitment,
+    encryptedOpening,
+    disclosurePolicy: "postgame_or_dispute",
+  };
+  const summaryProof = {
     type: "encrypted_private_view",
     requirementId: "private_view:1:0:library:2",
     owner: 1,
     viewer: 0,
     zone: "library",
-    count: 2,
+    count: 1,
     reason: "look_at_top_two",
-    openingHashes: [
-      "a".repeat(64),
-      "b".repeat(64),
-    ],
+    openingHashes: [encryptedOpening.plaintextHash],
     disclosurePolicy: "postgame_or_dispute",
   };
-  privateViewProof.materialHash = await sha256Hex(canonicalJson(privateViewProof), webcrypto);
+  summaryProof.materialHash = await sha256Hex(canonicalJson(summaryProof), webcrypto);
   const command = { type: "priority_action", action_index: 0 };
   const audit = await buildSignedActionEnvelope({
     keyPair: keys[0],
-    matchId: "m-private-view-summary",
+    matchId,
     seq: 1,
     actor: 0,
     prevStateHash: "0".repeat(64),
     command,
-    privateViewProofs: [privateViewProof],
+    privateViewProofs: [openingProof, summaryProof],
     publicCheckpointHash: "public-checkpoint-after-private-view",
   }, webcrypto);
   const transcript = await buildCurrentProtocolTranscript({
-    matchId: "m-private-view-summary",
+    matchId,
     players,
+    deckAuditManifests: [null, ownerManifest],
     playerCount: 2,
     actions: [{
       seq: 1,
@@ -1598,24 +1768,70 @@ test("live audit transcript verifier accepts encrypted private-view summary proo
     }],
   });
 
-  assert.equal((await verifyEnvelopeOnlyTranscript(transcript)).valid, true);
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(transcript),
+    /missing its postgame disclosure/,
+  );
+  assert.equal(
+    (await verifyEnvelopeOnlyTranscript(transcript, {
+      requirePrivateViewDisclosures: false,
+    })).valid,
+    true,
+  );
+
+  const disclosedTranscript = {
+    ...transcript,
+    privateViewDisclosures: [{
+      type: "private_view_opening_disclosure",
+      matchId,
+      seq: 1,
+      requirementId,
+      owner: 1,
+      viewer: 0,
+      zone: "library",
+      objectId: 7,
+      plaintextHash: encryptedOpening.plaintextHash,
+      payload: disclosurePayload,
+    }],
+  };
+  assert.equal((await verifyEnvelopeOnlyTranscript(disclosedTranscript)).valid, true);
+
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript({
+      ...disclosedTranscript,
+      privateViewDisclosures: [{
+        ...disclosedTranscript.privateViewDisclosures[0],
+        payload: {
+          ...disclosurePayload,
+          opening: {
+            ...disclosurePayload.opening,
+            card: "Black Lotus",
+          },
+        },
+      }],
+    }),
+    /missing its postgame disclosure/,
+  );
+
   const badProof = {
-    ...privateViewProof,
+    ...summaryProof,
     materialHash: "0".repeat(64),
   };
   const badAudit = await buildSignedActionEnvelope({
     keyPair: keys[0],
-    matchId: "m-private-view-summary",
+    matchId,
     seq: 1,
     actor: 0,
     prevStateHash: "0".repeat(64),
     command,
-    privateViewProofs: [badProof],
+    privateViewProofs: [openingProof, badProof],
     publicCheckpointHash: "public-checkpoint-after-private-view",
   }, webcrypto);
   const badTranscript = await buildCurrentProtocolTranscript({
-    matchId: "m-private-view-summary",
+    matchId,
     players,
+    deckAuditManifests: [null, ownerManifest],
+    privateViewDisclosures: disclosedTranscript.privateViewDisclosures,
     playerCount: 2,
     actions: [{
       seq: 1,
@@ -2150,6 +2366,17 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     }, webcrypto),
     /genesis payload hash mismatch|genesis signature|host peer id/,
   );
+  const peerIdTamperedMatch = cloneTestPayload(match);
+  peerIdTamperedMatch.players[1].peerId = "peer-attacker";
+  peerIdTamperedMatch.genesis = await buildSignedMatchGenesis({
+    keyPair: hostKey,
+    match: peerIdTamperedMatch,
+    hostSeat: 0,
+  }, webcrypto);
+  await assert.rejects(
+    () => verifySignedMatchGenesis(peerIdTamperedMatch, webcrypto),
+    /genesis payload hash mismatch/,
+  );
 
   const checkpoint = { players: [{ id: 0, hand: [] }], objects: [] };
   const actions = [];
@@ -2227,6 +2454,46 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       actions: [],
     }, webcrypto),
     /last sequence/,
+  );
+});
+
+test("live audit transcript verifier rejects cross-match replayed actions", async () => {
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+  const command = {
+    type: "priority_action",
+    action_ref: { kind: "test_priority_action", actor: 0 },
+  };
+  const audit = await buildSignedActionEnvelope({
+    keyPair: keys[0],
+    matchId: "m-other-match",
+    seq: 1,
+    actor: 0,
+    prevStateHash: "0".repeat(64),
+    command,
+    publicCheckpointHash: "public-checkpoint-cross-match",
+  }, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "m-cross-match",
+    players,
+    actions: [{
+      seq: 1,
+      actorIndex: 0,
+      command,
+      audit,
+    }],
+  });
+
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(transcript),
+    /belongs to a different match/,
   );
 });
 

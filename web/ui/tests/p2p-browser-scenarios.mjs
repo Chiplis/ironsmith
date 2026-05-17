@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -11,7 +11,7 @@ const auditModulePath = resolve(repoRoot, "web/ui/src/lib/multiplayer-audit.js")
 
 const MATCH_ID_PREFIX = "browser-p2p-audit";
 const INITIAL_AUDIT_STATE_HASH = "0".repeat(64);
-const PROTOCOL_VERSION = 12;
+const PROTOCOL_VERSION = 14;
 
 function playerDeck(seat) {
   return [
@@ -273,6 +273,14 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     if (timeoutForfeit && Number((clock.remainingMsByPlayer || [])[activePlayer] || 0) !== 0) {
       throw new Error("Match clock has not expired");
     }
+    const observedElapsed = Math.max(0, Date.now() - state.timerStartedAt);
+    const underreportSkewMs = Math.max(1000, Number(state.clockGraceMs || 0));
+    const remainingBeforeAction = Number(state.remainingMsByPlayer[activePlayer] || 0);
+    const signedElapsed = Number(clock.elapsedMs || 0);
+    const consumedRemainingClock = signedElapsed >= remainingBeforeAction;
+    if (!timeoutForfeit && !consumedRemainingClock && signedElapsed + underreportSkewMs < observedElapsed) {
+      throw new Error("Match clock elapsed time is below local observation");
+    }
     state.remainingMsByPlayer = (clock.remainingMsByPlayer || []).map((value) => Math.max(0, Number(value || 0)));
     state.clockHash = String(clock.clockHash || "");
   }
@@ -416,8 +424,8 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     }
   }
 
-  async function signedMessage({ command, actor = seat, signer = actor, seq = state.lastSeq + 1, prevStateHash = state.stateHash, openings = [], rngReveals = [], shuffleProofs = [], privateViewProofs = [] }) {
-    const clock = await buildMatchClockAudit({ command, actor, seq });
+  async function signedMessage({ command, actor = seat, signer = actor, seq = state.lastSeq + 1, prevStateHash = state.stateHash, openings = [], rngReveals = [], shuffleProofs = [], privateViewProofs = [], clock: providedClock = null }) {
+    const clock = providedClock || await buildMatchClockAudit({ command, actor, seq });
     const envelope = await audit.buildSignedActionEnvelope({
       keyPair,
       matchId,
@@ -531,6 +539,43 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         },
       });
     },
+    async forgeUnderreportedClock() {
+      const actor = seat;
+      const seq = state.lastSeq + 1;
+      const activePlayer = Number(state.expectedActor);
+      const remaining = state.remainingMsByPlayer.slice();
+      const command = {
+        kind: "pass_priority",
+        actor,
+        nextActor: (actor + 1) % playerCount,
+      };
+      const clock = {
+        type: "match_clock_v1",
+        version: 1,
+        matchId,
+        seq,
+        actor,
+        reason: "action",
+        policy: {
+          type: "per_player_match_clock_v1",
+          initialMs: state.timeoutMs,
+          graceMs: state.clockGraceMs,
+        },
+        activePlayer,
+        elapsedMs: 0,
+        remainingMsByPlayer: remaining,
+        previousClockHash: state.clockHash,
+        basisSequence: state.lastSeq,
+      };
+      clock.clockHash = await matchClockHash(clock);
+      return signedMessage({
+        actor,
+        signer: actor,
+        seq,
+        command,
+        clock,
+      });
+    },
     async forgeFutureSequence() {
       const actor = seat;
       return signedMessage({
@@ -633,8 +678,8 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
     async receive(message) {
       return receive(message);
     },
-    async verifyTranscript() {
-      return audit.verifyLiveAuditTranscript({
+    exportTranscript() {
+      return {
         version: 1,
         kind: "ironsmith-live-browser-audit-v1",
         match: state.matchPayload,
@@ -646,7 +691,14 @@ window.installIronsmithP2PClient = async function installIronsmithP2PClient(conf
         initialStateHash: "${INITIAL_AUDIT_STATE_HASH}",
         initialPublicCheckpointHash: state.matchPayload?.initialPublicCheckpointHash || "",
         actions: state.transcript,
-      }, globalThis.crypto, { requireEngineReplay: false });
+      };
+    },
+    async verifyTranscript() {
+      return audit.verifyLiveAuditTranscript(
+        window.client.exportTranscript(),
+        globalThis.crypto,
+        { requireEngineReplay: false }
+      );
     },
     snapshot() {
       return {
@@ -937,6 +989,10 @@ async function runScenarios(env) {
     assertSameHash(state);
     const verified = await verifyAllTranscripts(table);
     assert.deepEqual(verified.map((entry) => entry.verifiedActions), [4, 4, 4, 4]);
+    if (env.transcriptOut) {
+      const transcript = await table.pages[0].evaluate(() => window.client.exportTranscript());
+      await writeFile(env.transcriptOut, `${JSON.stringify(transcript, null, 2)}\n`);
+    }
     return {
       name: "honest-four-player-play",
       outcome: "All four browser peers accepted the same signed action log and ended on one audit hash.",
@@ -1007,6 +1063,24 @@ async function runScenarios(env) {
     return {
       name: "cheat-early-timeout-forfeit",
       outcome: "A peer cannot falsely forfeit the priority holder before the locally verified match clock has expired.",
+      rejection,
+    };
+  }));
+
+  results.push(await withTable(env, "cheat-underreported-match-clock", async (table) => {
+    await broadcast(table, 0, await sign(table, 0, "signPass"));
+    await sleep(1200);
+    const forged = await sign(table, 1, "forgeUnderreportedClock");
+    const rejection = await expectReject(
+      deliver(table, 0, forged),
+      /below local observation/
+    );
+    const state = await snapshots(table);
+    assert.deepEqual(state.map((entry) => entry.lastSeq), [1, 1, 1, 1]);
+    assertSameHash(state);
+    return {
+      name: "cheat-underreported-match-clock",
+      outcome: "An acting player cannot preserve their match clock by signing a materially lower elapsed time than peers observed.",
       rejection,
     };
   }));
@@ -1144,7 +1218,12 @@ async function main() {
   const auditBundle = await loadAuditBrowserBundle();
   const browser = await launchChromium();
   try {
-    const results = await runScenarios({ browser, url: server.url, auditBundle });
+    const results = await runScenarios({
+      browser,
+      url: server.url,
+      auditBundle,
+      transcriptOut: process.env.IRONSIM_TRANSCRIPT_OUT || "",
+    });
     console.log(JSON.stringify({
       ok: true,
       environment: {
