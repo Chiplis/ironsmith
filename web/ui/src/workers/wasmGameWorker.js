@@ -2,6 +2,25 @@ import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import wasmUrl from "../../../wasm_demo/pkg/ironsmith_bg.wasm?url";
 
 const WASM_ESTIMATED_SIZE = 12_500_000; // ~12MB fallback estimate
+const DEMO_CARD_NAMES = [
+  "Plains",
+  "Island",
+  "Swamp",
+  "Mountain",
+  "Forest",
+  "Lightning Bolt",
+  "Counterspell",
+  "Giant Growth",
+  "Opt",
+  "Divination",
+  "Llanowar Elves",
+  "Grizzly Bears",
+  "Ornithopter",
+  "Serra Angel",
+  "Doom Blade",
+  "Raise Dead",
+  "Unsummon",
+];
 
 let game = null;
 let callQueue = Promise.resolve();
@@ -10,6 +29,10 @@ let backgroundCompileDone = false;
 let backgroundCompileTimer = null;
 let lastRegistryLoaded = -1;
 let lastRegistryTotal = -1;
+let cardAssetsBaseUrl = null;
+let cardIndexPromise = null;
+const registeredCardRoutes = new Set();
+const missingCardRoutes = new Set();
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",
@@ -78,6 +101,258 @@ function normalizeRegistryStatus(raw) {
     total: Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0,
     done,
   };
+}
+
+function cardRouteKey(name) {
+  const normalized = String(name || "")
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "";
+}
+
+function cardAssetUrl(route) {
+  if (!cardAssetsBaseUrl) {
+    return null;
+  }
+  return new URL(`${route}.json`, cardAssetsBaseUrl).href;
+}
+
+function compactCardNameList(names) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of names || []) {
+    const name = String(raw || "").trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase("en-US");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+function collectDeckNames(payload, out = []) {
+  if (Array.isArray(payload)) {
+    if (payload.every((entry) => typeof entry === "string")) {
+      out.push(...payload);
+      return out;
+    }
+    for (const entry of payload) collectDeckNames(entry, out);
+    return out;
+  }
+  if (!payload || typeof payload !== "object") {
+    return out;
+  }
+  collectDeckNames(payload.decks, out);
+  collectDeckNames(payload.sideboards, out);
+  collectDeckNames(payload.commanders, out);
+  return out;
+}
+
+function collectCheckpointCardNames(checkpoint, out = []) {
+  if (!checkpoint || typeof checkpoint !== "object") {
+    return out;
+  }
+  const objects = Array.isArray(checkpoint.objects) ? checkpoint.objects : [];
+  for (const object of objects) {
+    if (!object || typeof object !== "object") continue;
+    const name = String(object.name || "").trim();
+    const isToken = Boolean(object.token);
+    const hidden = object.hiddenCard || object.hidden_card || null;
+    if (name && !isToken && !hidden && name.toLocaleLowerCase("en-US") !== "hidden card") {
+      out.push(name);
+    }
+  }
+  return out;
+}
+
+function collectNamesForMethod(method, args) {
+  const names = [];
+  switch (method) {
+    case "reset":
+    case "loadDemoDecks":
+      names.push(...DEMO_CARD_NAMES);
+      break;
+    case "startMatch": {
+      const config = args?.[0] || {};
+      collectDeckNames(config, names);
+      if (!config?.decks) names.push(...DEMO_CARD_NAMES);
+      break;
+    }
+    case "validateMatchConfig":
+      collectDeckNames(args?.[0] || {}, names);
+      break;
+    case "loadDecks":
+      collectDeckNames(args?.[0], names);
+      break;
+    case "addCardToHand":
+    case "addCardToZone":
+      names.push(args?.[1]);
+      break;
+    case "revealHiddenObject":
+    case "revealHiddenSlot":
+    case "revealHiddenPosition":
+      names.push(args?.[0]?.cardName || args?.[0]?.card_name);
+      break;
+    case "cardLoadDiagnostics":
+    case "getCardSemanticScore":
+    case "isKnownCardName":
+      names.push(args?.[0]);
+      break;
+    case "importSyncCheckpoint":
+      collectCheckpointCardNames(args?.[0], names);
+      break;
+    case "dispatch": {
+      const command = args?.[0] || {};
+      if (command?.type === "text_choice") {
+        names.push(command.value);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return compactCardNameList(names);
+}
+
+async function loadCardIndex() {
+  if (!cardAssetsBaseUrl) {
+    return null;
+  }
+  if (!cardIndexPromise) {
+    cardIndexPromise = fetch(new URL("index.json", cardAssetsBaseUrl).href, {
+      cache: "force-cache",
+    }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`Card index fetch failed: HTTP ${response.status}`);
+      }
+      const index = await response.json();
+      const cards = Array.isArray(index.cards) ? index.cards : [];
+      const normalizedCards = cards.map((card) => {
+        const name = String(card?.name || "").trim();
+        return {
+          name,
+          lower: name.toLocaleLowerCase("en-US"),
+          route: String(card?.route || cardRouteKey(name)),
+          score: Number.isFinite(Number(card?.score)) ? Number(card.score) : null,
+        };
+      }).filter((card) => card.name);
+      return {
+        ...index,
+        cards: normalizedCards,
+      };
+    });
+  }
+  return cardIndexPromise;
+}
+
+async function fetchCardSource(name) {
+  const route = cardRouteKey(name);
+  if (!route || registeredCardRoutes.has(route) || missingCardRoutes.has(route)) {
+    return null;
+  }
+  const url = cardAssetUrl(route);
+  if (!url) return null;
+  const response = await fetch(url, { cache: "force-cache" });
+  if (response.status === 404) {
+    missingCardRoutes.add(route);
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`Card source fetch failed for "${name}": HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  registeredCardRoutes.add(route);
+  const sourceNames = [
+    payload?.canonicalName,
+    payload?.group?.name,
+    payload?.group?.combinedName,
+    ...(Array.isArray(payload?.group?.faces)
+      ? payload.group.faces.map((face) => face?.name)
+      : []),
+    ...(Array.isArray(payload?.aliases)
+      ? payload.aliases.flatMap((alias) => [alias?.alias, alias?.canonical])
+      : []),
+  ];
+  for (const sourceName of sourceNames) {
+    const sourceRoute = cardRouteKey(sourceName);
+    if (sourceRoute) registeredCardRoutes.add(sourceRoute);
+  }
+  return payload;
+}
+
+async function ensureCardSourcesForNames(names) {
+  if (!game || typeof game.registerExternalCardSources !== "function") {
+    return;
+  }
+  const uniqueNames = compactCardNameList(names);
+  if (uniqueNames.length === 0) return;
+  const sources = (await Promise.all(uniqueNames.map(fetchCardSource))).filter(Boolean);
+  if (sources.length === 0) return;
+  await game.registerExternalCardSources(sources);
+}
+
+async function currentSemanticThreshold() {
+  if (!game || typeof game.getSemanticThreshold !== "function") return 0;
+  const raw = await game.getSemanticThreshold();
+  const percent = Number(raw);
+  return Number.isFinite(percent) ? Math.max(0, percent / 100) : 0;
+}
+
+async function autocompleteFromCardIndex(query, limit) {
+  const trimmed = String(query || "").trim();
+  if (!trimmed) return [];
+  const index = await loadCardIndex();
+  if (!index) return [];
+  const queryLower = trimmed.toLocaleLowerCase("en-US");
+  const cappedLimit = Math.max(1, Math.min(25, Math.floor(Number(limit) || 5)));
+  const threshold = await currentSemanticThreshold();
+  const matches = [];
+  for (const card of index.cards) {
+    if (threshold > 0 && card.score !== null && card.score < threshold) continue;
+    let rank = null;
+    if (card.lower === queryLower) {
+      rank = 0;
+    } else if (card.lower.startsWith(queryLower)) {
+      rank = 1;
+    } else if (card.lower.split(/\s+/).some((word) => word.startsWith(queryLower))) {
+      rank = 2;
+    } else if (card.lower.includes(queryLower)) {
+      rank = 3;
+    }
+    if (rank === null) continue;
+    matches.push([rank, card.name.length, card.name]);
+  }
+  matches.sort((left, right) => (
+    left[0] - right[0]
+    || left[1] - right[1]
+    || left[2].localeCompare(right[2])
+  ));
+  return matches.slice(0, cappedLimit).map((entry) => entry[2]);
+}
+
+async function semanticScoreFromCardIndex(cardName) {
+  const route = cardRouteKey(cardName);
+  if (!route) return -1;
+  const index = await loadCardIndex();
+  const card = index?.cards?.find((entry) => entry.route === route);
+  return card && card.score !== null ? card.score : -1;
+}
+
+async function cardsMeetingThresholdFromCardIndex() {
+  const index = await loadCardIndex();
+  if (!index) return 0;
+  const threshold = await currentSemanticThreshold();
+  if (threshold <= 0) {
+    return Number(index.scoredCount || 0);
+  }
+  const thresholdCounts = Array.isArray(index.thresholdCounts) ? index.thresholdCounts : [];
+  const thresholdIndex = Math.max(0, Math.min(99, Math.ceil(threshold * 100) - 1));
+  return Number(thresholdCounts[thresholdIndex] || 0);
 }
 
 function postRegistryStatus(raw, force = false) {
@@ -189,7 +464,7 @@ async function fetchWasmWithProgress(url, onProgress) {
   };
 }
 
-async function handleInit() {
+async function handleInit(msg = {}) {
   try {
     clearBackgroundTimer();
     game = null;
@@ -197,6 +472,11 @@ async function handleInit() {
     backgroundCompileDone = false;
     lastRegistryLoaded = -1;
     lastRegistryTotal = -1;
+    cardIndexPromise = null;
+    registeredCardRoutes.clear();
+    missingCardRoutes.clear();
+    const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
+    cardAssetsBaseUrl = assetBaseUrl ? new URL("cards/", assetBaseUrl).href : null;
     postProgress("module", 0);
 
     postProgress("download", 0);
@@ -238,6 +518,31 @@ function handleCall(msg) {
     if (!game) throw new Error("Game is not initialized yet");
     const startedAt = nowMs();
     const queueWaitMs = startedAt - enqueuedAt;
+    await ensureCardSourcesForNames(collectNamesForMethod(method, args));
+    if (method === "autocompleteCardNames") {
+      return {
+        result: await autocompleteFromCardIndex(args[0], args[1]),
+        registryStatus: typeof game.preloadRegistryStatus === "function"
+          ? await game.preloadRegistryStatus()
+          : null,
+      };
+    }
+    if (method === "getCardSemanticScore") {
+      return {
+        result: await semanticScoreFromCardIndex(args[0]),
+        registryStatus: typeof game.preloadRegistryStatus === "function"
+          ? await game.preloadRegistryStatus()
+          : null,
+      };
+    }
+    if (method === "cardsMeetingThreshold") {
+      return {
+        result: await cardsMeetingThresholdFromCardIndex(),
+        registryStatus: typeof game.preloadRegistryStatus === "function"
+          ? await game.preloadRegistryStatus()
+          : null,
+      };
+    }
     const fn = game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);

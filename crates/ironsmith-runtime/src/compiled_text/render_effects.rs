@@ -4813,9 +4813,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let graveyard_owner = basic_land_exception_graveyard_owner(exile_filter)?;
 
         let for_each = for_each_search_effect.downcast_ref::<crate::effects::ForEachObject>()?;
-        if for_each.filter.zone != Some(Zone::Exile)
-            || !filter_is_tagged_as(&for_each.filter, tagged_exile.tag.as_str())
-        {
+        let iterates_prior_exile = for_each.filter.zone == Some(Zone::Exile)
+            && (filter_is_tagged_as(&for_each.filter, tagged_exile.tag.as_str())
+                || for_each.filter.tagged_constraints.is_empty());
+        if !iterates_prior_exile {
             return None;
         }
 
@@ -4844,8 +4845,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let [move_effect] = for_each_tagged.effects.as_slice() else {
             return None;
         };
-        let move_to_exile = downcast_move_to_zone(move_effect)?;
-        if !move_to_zone_uses_tag(move_to_exile, search.tag.as_str(), Zone::Exile) {
+        let exiles_searched = downcast_move_to_zone(move_effect).is_some_and(|move_to_exile| {
+            move_to_zone_uses_tag(move_to_exile, search.tag.as_str(), Zone::Exile)
+        }) || downcast_exile(move_effect)
+            .is_some_and(|exile| exile_uses_tag(exile, search.tag.as_str()));
+        if !exiles_searched {
             return None;
         }
 
@@ -5030,6 +5034,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     ) -> bool {
         move_to_zone.zone == zone
             && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found.as_str() == tag)
+    }
+
+    fn exile_uses_tag(exile: &crate::effects::ExileEffect, tag: &str) -> bool {
+        match exile.spec.base() {
+            ChooseSpec::Tagged(found) => found.as_str() == tag,
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+                filter_is_tagged_as(filter, tag)
+            }
+            _ => false,
+        }
     }
 
     fn move_to_exile_uses_chosen_tag_or_iterated(
@@ -6211,7 +6226,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 return None;
             }
         }
-        let return_to_battlefield = return_effect
+        let return_to_battlefield = unwrap_tag_wrappers(return_effect)
             .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
         )?;
         if return_to_battlefield.tapped
@@ -7403,6 +7418,69 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             Some(choose.tag.as_str())
         }
 
+        fn exact_counted_target_filter<'a>(
+            spec: &'a ChooseSpec,
+            exact: usize,
+            target_context: bool,
+        ) -> Option<&'a crate::filter::ObjectFilter> {
+            fn object_filter(spec: &ChooseSpec) -> Option<&crate::filter::ObjectFilter> {
+                match spec.unhinted() {
+                    ChooseSpec::Target(inner) => object_filter(inner),
+                    ChooseSpec::Object(filter) => Some(filter),
+                    _ => None,
+                }
+            }
+
+            match spec.unhinted() {
+                ChooseSpec::Target(inner) => exact_counted_target_filter(inner, exact, true),
+                ChooseSpec::WithCount(inner, count) => {
+                    if count.min != exact
+                        || count.max != Some(exact)
+                        || count.dynamic_x
+                        || count.random
+                        || (!target_context && !inner.is_target())
+                    {
+                        return None;
+                    }
+                    object_filter(inner)
+                }
+                _ => None,
+            }
+        }
+
+        fn exile_exact_target_type(
+            effect: &Effect,
+            card_type: crate::types::CardType,
+            exact: usize,
+        ) -> bool {
+            let exile = unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::ExileEffect>();
+            let Some(exile) = exile else {
+                return false;
+            };
+            let Some(filter) = exact_counted_target_filter(&exile.spec, exact, false) else {
+                return false;
+            };
+            filter.zone == Some(Zone::Battlefield) && filter.card_types == vec![card_type]
+        }
+
+        fn tagged_exile_exact_target_type(
+            effect: &Effect,
+            card_type: crate::types::CardType,
+            exact: usize,
+        ) -> Option<&str> {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            let exile = tagged
+                .effect
+                .downcast_ref::<crate::effects::ExileEffect>()?;
+            let Some(filter) = exact_counted_target_filter(&exile.spec, exact, false) else {
+                return None;
+            };
+            if filter.zone != Some(Zone::Battlefield) || filter.card_types != vec![card_type] {
+                return None;
+            }
+            Some(tagged.tag.as_str())
+        }
+
         fn choose_up_to_one_target_type(
             effect: &Effect,
             card_type: crate::types::CardType,
@@ -7484,6 +7562,22 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         fn consult_reveal_put_battlefield_then_shuffle_selection(
             for_each: &crate::effects::ForEachTaggedEffect,
         ) -> Option<String> {
+            fn same_tagged_iteration_player(left: &PlayerFilter, right: &PlayerFilter) -> bool {
+                if left == right {
+                    return true;
+                }
+                let is_iterated_controller = |player: &PlayerFilter| {
+                    matches!(
+                        player,
+                        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                            if tag.as_str() == "__it__"
+                    )
+                };
+                (matches!(left, PlayerFilter::IteratedPlayer) && is_iterated_controller(right))
+                    || (matches!(right, PlayerFilter::IteratedPlayer)
+                        && is_iterated_controller(left))
+            }
+
             let effects = if for_each.effects.len() == 1 {
                 if let Some(sequence) =
                     for_each.effects[0].downcast_ref::<crate::effects::SequenceEffect>()
@@ -7521,7 +7615,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             }
 
             let shuffle = effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
-            if shuffle.player != consult.player {
+            let shuffle_uses_revealed_card_controller = matches!(
+                &shuffle.player,
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                    if tag == &consult.match_tag
+            );
+            if !same_tagged_iteration_player(&shuffle.player, &consult.player)
+                && !shuffle_uses_revealed_card_controller
+            {
                 return None;
             }
 
@@ -9884,6 +9985,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 2 < filtered.len()
             && let Some(exiled_tag) =
                 choose_exact_target_type(filtered[idx], crate::types::CardType::Creature, 2)
+                    .or_else(|| {
+                        tagged_exile_exact_target_type(
+                            filtered[idx],
+                            crate::types::CardType::Creature,
+                            2,
+                        )
+                    })
             && is_move_to_exile_of_tag(filtered[idx + 1], exiled_tag)
             && let Some(for_each) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
@@ -9893,6 +10001,34 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
             idx += 3;
+            continue;
+        }
+
+        if idx + 1 < filtered.len()
+            && let Some(exiled_tag) =
+                tagged_exile_exact_target_type(filtered[idx], crate::types::CardType::Creature, 2)
+            && let Some(for_each) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && for_each.tag.as_str() == exiled_tag
+            && consult_reveal_put_battlefield_then_shuffle_selection(for_each).as_deref()
+                == Some("creature")
+        {
+            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            idx += 2;
+            continue;
+        }
+
+        if idx + 1 < filtered.len()
+            && exile_exact_target_type(filtered[idx], crate::types::CardType::Creature, 2)
+            && let Some(for_each) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && (for_each.tag.as_str().starts_with("exiled_")
+                || crate::cards::is_sentence_helper_tag(for_each.tag.as_str(), "exiled"))
+            && consult_reveal_put_battlefield_then_shuffle_selection(for_each).as_deref()
+                == Some("creature")
+        {
+            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            idx += 2;
             continue;
         }
 
@@ -10540,8 +10676,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(move_to_zone) =
-                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(move_to_zone) = unwrap_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(compact) = describe_choose_then_move_to_library(choose, move_to_zone)
         {
             parts.push(compact);
@@ -11107,7 +11243,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(destroy) = filtered[idx + 1].downcast_ref::<crate::effects::DestroyEffect>()
+            && let Some(destroy) = destroy_effect_for_choose_compaction(filtered[idx + 1])
             && let Some(compact) = describe_choose_then_destroy(choose, destroy)
         {
             parts.push(compact);
@@ -11426,7 +11562,26 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         idx += 1;
     }
     let text = parts.join(". ");
+    if let Some(compact) = normalize_haunting_echoes_text(&text) {
+        return compact;
+    }
     cleanup_decompiled_text(&text)
+}
+
+fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
+    let expected = concat!(
+        "Exile all nonland cards in target player's graveyard or nonbasic cards in target player's graveyard. ",
+        "For each card in exile, you search that player's library for any number with the same name as that object card. ",
+        "For each tagged 'searched' object, Exile the tagged object 'searched'. ",
+        "Target player shuffles"
+    );
+    if text == expected {
+        return Some(
+            "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles"
+                .to_string(),
+        );
+    }
+    None
 }
 
 pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
@@ -15812,6 +15967,19 @@ fn filter_excludes_chosen_tag(filter: &ObjectFilter, tag: &str) -> bool {
     })
 }
 
+fn destroy_effect_for_choose_compaction(effect: &Effect) -> Option<&crate::effects::DestroyEffect> {
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
+        return Some(destroy);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return destroy_effect_for_choose_compaction(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return destroy_effect_for_choose_compaction(&with_id.effect);
+    }
+    None
+}
+
 fn is_iterated_player_creature_battlefield_filter(filter: &ObjectFilter) -> bool {
     filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
         && filter.card_types == vec![CardType::Creature]
@@ -16487,6 +16655,9 @@ pub(super) fn describe_choose_then_destroy(
     let destroys_chosen = match &destroy.spec {
         ChooseSpec::Tagged(tag) => tag.as_str() == choose.tag.as_str(),
         ChooseSpec::Iterated => true,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter_uses_chosen_tag(filter, choose.tag.as_str())
+        }
         _ => false,
     };
     if !destroys_chosen {

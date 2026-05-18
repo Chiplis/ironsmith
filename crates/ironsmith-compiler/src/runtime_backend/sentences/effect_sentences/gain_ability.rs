@@ -712,16 +712,18 @@ fn parse_simple_ability_modifier_clause_lexed(
         });
     let ability_end_token_idx =
         lexed_token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
-    let ability_tokens = trim_lexed_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
+    let ability_tokens = trim_edge_punctuation(trim_lexed_commas(
+        &tokens[verb_token_idx + 1..ability_end_token_idx],
+    ));
     if ability_tokens.is_empty() {
         return Ok(None);
     }
 
-    let ability_word_refs = GainAbilityWordView::new(ability_tokens).to_word_refs();
+    let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
     let (abilities, _) = if losing && matches!(ability_word_refs.as_slice(), ["this", "ability"]) {
         (vec![GrantedAbilityAst::ThisAbility], false)
     } else {
-        parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?
+        parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?
     };
     let removes_all_abilities =
         losing && matches!(ability_word_refs.as_slice(), ["all", "abilities"]);
@@ -912,7 +914,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         .unwrap_or(clause_words.len());
     let ability_end_token_idx =
         token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
-    let ability_tokens = trim_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
+    let ability_token_storage = trim_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
+    let ability_tokens = trim_edge_punctuation(&ability_token_storage);
     if ability_tokens.is_empty() {
         return Ok(None);
     }

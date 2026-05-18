@@ -685,6 +685,11 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only once each turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only twice each turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs ->  rather than pay the equip cost of the first equip ability you activate",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this creature enters",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this object enters",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this permanent enters",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> becomes day",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> neither day nor night",
     ]
     .into_iter()
     .map(String::from)

@@ -398,7 +398,7 @@ fn eye_of_doom_keeps_doom_counter_choice_and_destroy_filter() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission() {
-    let trigger = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.";
+    let trigger = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Dream-Thief's Bandana Variant")
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
@@ -12465,7 +12465,11 @@ fn parse_prevent_all_combat_damage_by_target_source_clause() {
     let effects = def.spell_effect.expect("expected spell effects");
     let debug = format!("{effects:?}");
     assert!(
-        debug.contains("PreventAllCombatDamageEffect") && debug.contains("target: From("),
+        (debug.contains("PreventAllCombatDamageEffect") && debug.contains("target: From("))
+            || (debug.contains("PreventAllDamageEffect")
+                && debug.contains("combat_only: true")
+                && debug.contains("from_source: Some")
+                && debug.contains("Creature")),
         "expected source-scoped combat prevention runtime effect, got {debug}"
     );
     assert!(
@@ -12737,7 +12741,22 @@ fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
     let destroy_chosen = effects[3]
         .downcast_ref::<DestroyEffect>()
         .expect("fourth effect should destroy the chosen creature");
-    assert!(matches!(destroy_chosen.spec, ChooseSpec::Iterated));
+    let destroys_chosen = match &destroy_chosen.spec {
+        ChooseSpec::Iterated => true,
+        ChooseSpec::Tagged(tag) => tag == &choose_creature.tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == choose_creature.tag
+                    && constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
+            })
+        }
+        _ => false,
+    };
+    assert!(
+        destroys_chosen,
+        "destroy should reference the creature chosen by target opponent, got {:?}",
+        destroy_chosen.spec
+    );
 
     let score_path = crate::compiled_text::compile_effect_list(effects);
     assert_eq!(
@@ -21606,24 +21625,19 @@ fn parse_fatal_push_exposes_single_target_requirement() {
         panic!("fatal push should compile spell effects");
     };
 
+    fn is_cast_time_target_prelude(effect: &crate::effect::Effect) -> bool {
+        if effect.downcast_ref::<TargetOnlyEffect>().is_some() {
+            return true;
+        }
+        if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+            return is_cast_time_target_prelude(&tagged.effect);
+        }
+        false
+    }
+
     let targeting_requirements = effects
         .iter()
-        .filter_map(|effect| effect.0.get_target_spec())
-        .filter(|spec| match spec {
-            crate::target::ChooseSpec::Target(inner)
-            | crate::target::ChooseSpec::WithCount(inner, _) => matches!(
-                inner.as_ref(),
-                crate::target::ChooseSpec::AnyTarget
-                    | crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
-                    | crate::target::ChooseSpec::Player(_)
-                    | crate::target::ChooseSpec::Object(_)
-            ),
-            crate::target::ChooseSpec::AnyTarget
-            | crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
-            | crate::target::ChooseSpec::Player(_)
-            | crate::target::ChooseSpec::Object(_) => true,
-            _ => false,
-        })
+        .filter(|effect| is_cast_time_target_prelude(effect))
         .count();
 
     assert_eq!(
@@ -25404,7 +25418,14 @@ fn parse_haunting_echoes_exception_and_target_library_search() {
     let search = for_each.effects[0]
         .downcast_ref::<ChooseObjectsEffect>()
         .expect("iterated effect should search the target player's library");
-    assert_eq!(search.filter.owner, Some(PlayerFilter::target_player()));
+    assert!(
+        matches!(
+            search.filter.owner,
+            Some(PlayerFilter::IteratedPlayer) | Some(PlayerFilter::Target(_))
+        ),
+        "expected the search owner to remain linked to the exiled target player's cards, got {:?}",
+        search.filter.owner
+    );
     assert_eq!(
         search.search_mode,
         crate::effect::SearchSelectionMode::AllMatching
@@ -25581,7 +25602,7 @@ fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mnemonic Betrayal")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
-            "Exile all opponents' graveyards. You may cast spells from among those cards this turn, and mana of any type can be spent to cast them. At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.\nExile Mnemonic Betrayal.",
+            "Exile all opponents' graveyards. You may cast spells from among those cards this turn, and you may spend mana as though it were mana of any color to cast them. At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.\nExile Mnemonic Betrayal.",
         )
         .expect("Mnemonic Betrayal text should parse");
 
@@ -25591,7 +25612,8 @@ fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
     let spell_debug = format!("{:#?}", def.spell_effect);
     assert!(
         rendered.contains("you may cast spells from among those cards this turn")
-            && rendered.contains("mana of any type can be spent to cast them"),
+            && rendered
+                .contains("you may spend mana as though it were mana of any color to cast them"),
         "expected temporary cast permission with any-color mana spend text, got {rendered}"
     );
     assert!(
@@ -35467,18 +35489,21 @@ fn parse_convert_with_followup_sentence_preserves_convert_action() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_craft_keyword_line_as_marker() {
-    let result = CardDefinitionBuilder::new(CardId::new(), "Craft Variant")
+fn parse_craft_keyword_line_as_activated_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Craft Variant")
         .card_types(vec![CardType::Artifact])
         .parse_text_allow_unsupported(
             "Craft with artifact {3}{W}{W} ({3}{W}{W}, Exile this artifact, Exile another artifact you control or an artifact card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
-        );
+        )
+        .expect("craft should parse as a supported activated keyword ability");
 
-    let err = result.expect_err("craft should fail loudly as fallback text");
-    let debug = format!("{err:?}");
+    let debug = format!("{def:#?}");
     assert!(
-        debug.contains("KeywordFallbackText") && debug.to_ascii_lowercase().contains("craft"),
-        "craft should fail as fallback text, got {debug}"
+        debug.contains("Activated")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("Craft")
+            && debug.contains("TransformEffect"),
+        "craft should lower to an activated ability, got {debug}"
     );
 }
 

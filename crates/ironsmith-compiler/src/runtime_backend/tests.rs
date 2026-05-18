@@ -6930,16 +6930,22 @@ fn rewrite_keyword_static_reveal_first_card_probe_uses_parser_text_words() {
 }
 
 #[test]
-fn rewrite_keyword_static_craft_marker_uses_shared_marker_text_rendering() {
+fn rewrite_keyword_craft_line_uses_supported_activated_keyword_lowering() {
     let tokens = lex_line("Craft with artifact {3}{W}{W}", 0)
-        .expect("rewrite lexer should classify craft marker line");
+        .expect("rewrite lexer should classify craft line");
 
-    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
-        .expect("craft marker line should parse")
-        .expect("craft marker line should produce abilities");
+    let parsed = super::activation_and_restrictions::parse_craft_line_lexed(&tokens)
+        .expect("craft line should parse")
+        .expect("craft line should produce an activated ability");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("Craft with artifact {3}{W}{W}"), "{debug}");
+    assert!(
+        debug.contains("Activated")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("Craft")
+            && debug.contains("Craft with artifact {3}{W}{W}"),
+        "{debug}"
+    );
 }
 
 #[test]

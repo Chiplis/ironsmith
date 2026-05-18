@@ -293,15 +293,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
         }
         EffectAst::ForEachObject { filter, effects } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let (inner_effects, inner_choices) = with_preserved_lowering_context(
-                ctx,
-                |ctx| {
-                    ctx.last_effect_id = None;
-                    ctx.last_object_tag = Some(IT_TAG.to_string());
-                    ctx.last_it_choice_is_set = false;
-                },
-                |ctx| compile_effects(effects, ctx),
-            )?;
+            let (inner_effects, inner_choices) =
+                compile_effects_in_iterated_object_context(effects, ctx)?;
             let effect = Effect::for_each(resolved_filter, inner_effects);
             (vec![effect], inner_choices)
         }

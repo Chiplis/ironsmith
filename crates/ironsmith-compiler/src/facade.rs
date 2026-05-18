@@ -529,13 +529,13 @@ mod tests {
     }
 
     #[test]
-    fn compile_definition_rejects_keyword_fallback_text_even_when_allowed() {
+    fn compile_definition_accepts_supported_craft_keyword_even_when_allowed() {
         let facade = CompilerFacade::new();
         let builder =
             crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Craft Variant")
                 .card_types(vec![crate::types::CardType::Artifact]);
 
-        let err = facade
+        let compiled = facade
             .compile_definition(
                 builder,
                 "Craft with artifact {3}{W}{W}",
@@ -543,15 +543,15 @@ mod tests {
                     allow_unsupported: true,
                 },
             )
-            .expect_err("unsupported keyword markers should fail loudly");
+            .expect("craft is now a supported activated keyword ability");
 
+        let debug = format!("{:#?}", compiled.definition);
         assert!(
-            matches!(
-                err,
-                CardTextError::UnsupportedLine(ref message)
-                    if message.contains("KeywordFallbackText") && message.contains("craft")
-            ),
-            "expected KeywordFallbackText parse error, got {err:?}"
+            debug.contains("Activated")
+                && debug.contains("EmitKeywordActionEffect")
+                && debug.contains("Craft")
+                && debug.contains("TransformEffect"),
+            "expected supported craft activated ability, got {debug}"
         );
     }
 

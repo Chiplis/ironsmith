@@ -3553,6 +3553,18 @@ impl GameState {
     }
 
     fn prime_linked_face_lookup(&mut self, name: Option<&str>, id: Option<crate::ids::CardId>) {
+        if let Some(face_name) = name
+            && self.linked_face_definitions_by_name.contains_key(face_name)
+        {
+            return;
+        }
+
+        if let Some(card_id) = id
+            && self.linked_face_definitions_by_id.contains_key(&card_id)
+        {
+            return;
+        }
+
         if let Some(other_def) = self.load_linked_face_definition(name, id) {
             self.cache_linked_face_definition(&other_def);
         }

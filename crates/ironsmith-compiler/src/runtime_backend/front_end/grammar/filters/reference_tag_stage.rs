@@ -224,6 +224,13 @@ pub(super) fn parse_object_filter_inner(
 
         let tail_words_view = GrammarFilterNormalizedWords::new(&base_tokens[idx + 2..]);
         let tail_words = tail_words_view.to_word_refs();
+        if tail_words.starts_with(&["enchanted"])
+            || tail_words.starts_with(&["equipped"])
+            || tail_words.starts_with(&["basic", "land"])
+        {
+            idx += 1;
+            continue;
+        }
         let mut excluded_card_types = Vec::new();
         let mut excluded_subtypes = Vec::new();
         let mut excluded_supertypes = Vec::new();

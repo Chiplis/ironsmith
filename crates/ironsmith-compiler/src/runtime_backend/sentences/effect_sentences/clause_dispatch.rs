@@ -34,7 +34,9 @@ use super::super::util::{
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
-use super::dispatch_inner::{parse_additional_phase_sentence, parse_take_extra_turn_sentence};
+use super::dispatch_inner::{
+    parse_additional_phase_sentence, parse_take_extra_turn_sentence, trim_edge_punctuation,
+};
 use super::for_each_helpers::{
     has_demonstrative_object_reference, is_mana_replacement_clause_words,
     is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,
@@ -1108,6 +1110,45 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         && let Some(effect) = parse_simple_lose_ability_clause(tokens)?
     {
         return Ok(effect);
+    }
+    if matches!(verb, Verb::Lose) {
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
+        let rest_words = rest_word_view.to_word_refs();
+        let duration_phrase = super::gain_ability::parse_simple_ability_duration(&rest_words);
+        let duration = duration_phrase
+            .as_ref()
+            .map(|(_, _, duration)| duration.clone())
+            .unwrap_or(Until::Forever);
+        let ability_end_word_idx = duration_phrase
+            .as_ref()
+            .map(|(start, _, _)| verb_idx + 1 + *start)
+            .unwrap_or(clause_words.len());
+        let ability_end_token_idx =
+            token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
+        let ability_token_storage = trim_commas(&tokens[verb_idx + 1..ability_end_token_idx]);
+        let ability_tokens = trim_edge_punctuation(&ability_token_storage);
+        let trailing_tokens = trim_edge_punctuation(&trim_commas(&tokens[ability_end_token_idx..]));
+        let parsed_actions = parse_ability_line(&ability_tokens).or_else(|| {
+            let ability_word_view = ClauseDispatchCompatWords::new(&ability_tokens);
+            let ability_words = ability_word_view.to_word_refs();
+            if ability_words.len() == 1 {
+                parse_single_word_keyword_action(ability_words[0]).map(|action| vec![action])
+            } else {
+                None
+            }
+        });
+        if !ability_tokens.is_empty()
+            && trailing_tokens.is_empty()
+            && let Some(actions) = parsed_actions
+            && !actions.is_empty()
+            && subject_words.first().copied() == Some("target")
+        {
+            let target = parse_target_phrase(subject_tokens)?;
+            let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
+            return Ok(EffectAst::subject_verb_remove_abilities_from_target(
+                target, abilities, duration,
+            ));
+        }
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
     let rest = &tokens[verb_idx + 1..];

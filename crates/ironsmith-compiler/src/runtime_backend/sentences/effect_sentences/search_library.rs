@@ -1052,7 +1052,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
                 tag: IT_TAG.into(),
                 effects: vec![
                     EffectAst::subject_verb_consult_top_of_library(
-                        PlayerAst::Implicit,
+                        PlayerAst::ItsController,
                         LibraryConsultModeAst::Reveal,
                         filter,
                         LibraryConsultStopRuleAst::FirstMatch,
@@ -1069,7 +1069,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
                     ),
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::LibraryOwner,
-                        PlayerAst::Implicit,
+                        PlayerAst::ItsController,
                         SubjectVerbActionAst::ShuffleLibrary,
                     ),
                 ],
@@ -1100,7 +1100,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
                 tag: IT_TAG.into(),
                 effects: vec![
                     EffectAst::subject_verb_consult_top_of_library(
-                        PlayerAst::Implicit,
+                        PlayerAst::ItsController,
                         LibraryConsultModeAst::Reveal,
                         filter,
                         LibraryConsultStopRuleAst::FirstMatch,
@@ -1119,7 +1119,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
                         revealed_tag,
                         Some(matched_tag),
                         LibraryBottomOrderAst::Random,
-                        PlayerAst::Implicit,
+                        PlayerAst::ItsController,
                     ),
                 ],
             }]));

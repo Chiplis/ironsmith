@@ -154,6 +154,7 @@ export class WasmGame {
     preloadRegistryStatus(): any;
     previewCryptoRequirements(command: any): any;
     previewCustomCard(draft_js: any): any;
+    registerExternalCardSources(sources: any): any;
     /**
      * Number of cards currently available in the registry.
      */
@@ -228,6 +229,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly wasmgame_registerExternalCardSources: (a: number, b: any) => [number, number, number];
     readonly wasm_start: () => void;
     readonly wasmgame_new: () => number;
     readonly wasmgame_setAutoChooseSingleObjectDecisions: (a: number, b: number) => void;

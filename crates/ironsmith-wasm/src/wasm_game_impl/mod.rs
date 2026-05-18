@@ -1,6 +1,7 @@
 use super::*;
 
 include!("helpers.rs");
+include!("external_registry.rs");
 include!("dispatch.rs");
 include!("undo.rs");
 include!("pregame.rs");

@@ -449,8 +449,9 @@ impl WasmGame {
         self.game.irreversible_random_count() != checkpoint.game.irreversible_random_count()
     }
 
-    pub(super) fn semantic_score_for_name(card_name: &str) -> Option<f32> {
-        CardRegistry::generated_parser_semantic_score(card_name)
+    pub(super) fn semantic_score_for_name(&self, card_name: &str) -> Option<f32> {
+        self.external_semantic_score_for_name(card_name)
+            .or_else(|| CardRegistry::generated_parser_semantic_score(card_name))
     }
 
     fn is_known_card_name_query(&mut self, query: &str) -> bool {
@@ -558,7 +559,7 @@ impl WasmGame {
 
         for candidate in DEMO_SPELL_POOL {
             if self.semantic_threshold > 0.0
-                && let Some(score) = Self::semantic_score_for_name(candidate)
+                && let Some(score) = self.semantic_score_for_name(candidate)
                 && score < self.semantic_threshold
             {
                 continue;
@@ -733,8 +734,9 @@ impl WasmGame {
         })
     }
 
-    fn generated_parse_source_for_name(query: &str) -> Option<(String, String)> {
-        CardRegistry::generated_parser_card_parse_source(query)
+    fn generated_parse_source_for_name(&self, query: &str) -> Option<(String, String)> {
+        self.external_parse_source_for_name(query)
+            .or_else(|| CardRegistry::generated_parser_card_parse_source(query))
     }
 
     fn extract_oracle_text_from_parse_block(block: &str) -> Option<String> {
@@ -767,6 +769,14 @@ impl WasmGame {
             false,
         )
         .map_err(|err| err.to_string())
+    }
+
+    fn card_lookup_error_for_query(query: &str, err: String) -> String {
+        if err == "generated registry not available" {
+            format!("unknown card name: {query}")
+        } else {
+            err
+        }
     }
 
     fn compiled_ability_lines(definition: &CardDefinition) -> Vec<String> {
@@ -1282,7 +1292,7 @@ impl WasmGame {
         let parse_source = if query.is_empty() {
             None
         } else {
-            Self::generated_parse_source_for_name(query)
+            self.generated_parse_source_for_name(query)
         };
         let source_compile_result = parse_source.as_ref().map(|(source_name, parse_block)| {
             Self::compile_definition_from_parse_source(source_name, parse_block)
@@ -1324,8 +1334,8 @@ impl WasmGame {
             .unwrap_or_default();
         let semantic_score = canonical_name
             .as_deref()
-            .and_then(Self::semantic_score_for_name)
-            .or_else(|| Self::semantic_score_for_name(query));
+            .and_then(|name| self.semantic_score_for_name(name))
+            .or_else(|| self.semantic_score_for_name(query));
         let threshold_percent =
             (self.semantic_threshold > 0.0).then_some(self.semantic_threshold * 100.0);
         let parse_error = if query.is_empty() {
@@ -1334,9 +1344,11 @@ impl WasmGame {
             result
                 .clone()
                 .err()
+                .or_else(|| self.external_compile_error_for_name(query))
                 .or_else(|| CardRegistry::try_compile_card(query).err())
         } else {
-            CardRegistry::try_compile_card(query).err()
+            self.external_compile_error_for_name(query)
+                .or_else(|| CardRegistry::try_compile_card(query).err())
         };
         let error = explicit_error
             .map(str::trim)
@@ -1540,9 +1552,13 @@ impl WasmGame {
             return ironsmith::cards::unsupported_generated_definition_error(&definition);
         }
 
+        if let Some(error) = self.external_compile_error_for_name(trimmed) {
+            return Some(error);
+        }
+
         match ironsmith::cards::CardRegistry::try_compile_card(trimmed) {
             Ok(_) => Some(format!("unknown card name: {trimmed}")),
-            Err(err) => Some(err),
+            Err(err) => Some(Self::card_lookup_error_for_query(trimmed, err)),
         }
     }
 
@@ -1550,12 +1566,6 @@ impl WasmGame {
         &mut self,
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, JsValue> {
-        if let Ok(definition) = ironsmith::cards::CardRegistry::try_compile_card(query)
-            && ironsmith::cards::unsupported_generated_definition_error(&definition).is_none()
-        {
-            return Ok(definition);
-        }
-
         if let Some(definition) = self.find_card_definition(query).cloned() {
             if let Some(error) =
                 ironsmith::cards::unsupported_generated_definition_error(&definition)
@@ -1565,9 +1575,21 @@ impl WasmGame {
             return Ok(definition);
         }
 
+        if let Ok(definition) = ironsmith::cards::CardRegistry::try_compile_card(query)
+            && ironsmith::cards::unsupported_generated_definition_error(&definition).is_none()
+        {
+            return Ok(definition);
+        }
+
+        if let Some(error) = self.external_compile_error_for_name(query) {
+            return Err(JsValue::from_str(&error));
+        }
+
         match ironsmith::cards::CardRegistry::try_compile_card(query) {
             Ok(_) => Err(JsValue::from_str(&format!("unknown card name: {query}"))),
-            Err(err) => Err(JsValue::from_str(&err)),
+            Err(err) => Err(JsValue::from_str(&Self::card_lookup_error_for_query(
+                query, err,
+            ))),
         }
     }
 }

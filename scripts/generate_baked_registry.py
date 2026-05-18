@@ -6,10 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import sqlite3
 import struct
+import unicodedata
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 from stream_scryfall_blocks import (
     build_block,
@@ -24,6 +27,7 @@ DEFAULT_DB_PATH = ROOT / "reports" / "engine-status.sqlite3"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 PAYLOAD_FILE_NAME = "generated_registry_payload.bin"
 REGISTRY_DB_PATH_ENV = "IRONSMITH_REGISTRY_DB_PATH"
+FRONTEND_CARD_ASSET_VERSION = 1
 
 
 def iter_registry_cards(db_path: Path):
@@ -120,6 +124,15 @@ SingleEntry = Tuple[str, str, float]
 FlipPair = Tuple[str, str, float, str, str, float, str]
 SplitPair = Tuple[str, str, float, str, str, float, str, bool]
 AliasEntry = Tuple[str, str]
+
+
+def frontend_card_route_key(name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", name.strip().casefold())
+    without_marks = "".join(
+        char for char in normalized if not unicodedata.combining(char)
+    )
+    slug = re.sub(r"[^a-z0-9]+", "-", without_marks).strip("-")
+    return slug or "card"
 
 
 def collect_unique_blocks(
@@ -1156,6 +1169,267 @@ def write_generated_payload(
     payload_path.write_bytes(payload)
 
 
+def frontend_score(score: float) -> float | None:
+    if score <= UNSCORED_SENTINEL:
+        return None
+    return max(0.0, min(1.0, float(score)))
+
+
+def frontend_aliases_for(
+    aliases_by_canonical: Dict[str, List[str]],
+    *canonical_names: str,
+) -> List[dict]:
+    out: List[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for canonical in canonical_names:
+        for alias in aliases_by_canonical.get(canonical.casefold(), []):
+            key = (alias.casefold(), canonical.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"alias": alias, "canonical": canonical})
+    out.sort(key=lambda entry: entry["alias"].casefold())
+    return out
+
+
+def frontend_asset_payload_for_single(
+    entry: SingleEntry,
+    aliases_by_canonical: Dict[str, List[str]],
+) -> dict:
+    name, block, score = entry
+    return {
+        "version": FRONTEND_CARD_ASSET_VERSION,
+        "canonicalName": name,
+        "aliases": frontend_aliases_for(aliases_by_canonical, name),
+        "group": {
+            "kind": "single",
+            "name": name,
+            "block": block,
+            "score": frontend_score(score),
+        },
+    }
+
+
+def frontend_asset_payload_for_linked(
+    *,
+    layout: str,
+    front_name: str,
+    front_block: str,
+    front_score: float,
+    back_name: str,
+    back_block: str,
+    back_score: float,
+    combined_name: str,
+    has_fuse: bool,
+    aliases_by_canonical: Dict[str, List[str]],
+) -> dict:
+    aliases = frontend_aliases_for(aliases_by_canonical, front_name, back_name)
+    aliases.append({"alias": combined_name, "canonical": front_name})
+    aliases.sort(key=lambda entry: (entry["alias"].casefold(), entry["canonical"].casefold()))
+    deduped_aliases = []
+    seen: set[tuple[str, str]] = set()
+    for alias in aliases:
+        key = (alias["alias"].casefold(), alias["canonical"].casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_aliases.append(alias)
+
+    return {
+        "version": FRONTEND_CARD_ASSET_VERSION,
+        "canonicalName": front_name,
+        "aliases": deduped_aliases,
+        "group": {
+            "kind": "linked",
+            "layout": layout,
+            "combinedName": combined_name,
+            "hasFuse": has_fuse,
+            "faces": [
+                {
+                    "name": front_name,
+                    "block": front_block,
+                    "score": frontend_score(front_score),
+                },
+                {
+                    "name": back_name,
+                    "block": back_block,
+                    "score": frontend_score(back_score),
+                },
+            ],
+        },
+    }
+
+
+def frontend_payload_key(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def add_frontend_route(
+    routes: Dict[str, dict],
+    route_name: str,
+    payload: dict,
+) -> None:
+    slug = frontend_card_route_key(route_name)
+    existing = routes.get(slug)
+    if existing is None:
+        routes[slug] = payload
+        return
+    if frontend_payload_key(existing) == frontend_payload_key(payload):
+        return
+    raise RuntimeError(
+        "[generate_baked_registry] frontend card route collision for "
+        f"{slug!r}: {existing.get('canonicalName')!r} vs {payload.get('canonicalName')!r}"
+    )
+
+
+def threshold_counts_for_scores(scores: Iterable[float]) -> List[int]:
+    threshold_counts = [0] * 100
+    for raw_score in scores:
+        score = max(0.0, min(1.0, float(raw_score)))
+        for idx in range(100):
+            threshold = (idx + 1) / 100.0
+            if score >= threshold:
+                threshold_counts[idx] += 1
+    return threshold_counts
+
+
+def write_frontend_card_assets(
+    cards: Dict[str, SingleEntry],
+    flips: List[FlipPair],
+    splits: List[SplitPair],
+    aliases: List[AliasEntry],
+    cards_dir: Path,
+) -> None:
+    ordered = sorted(cards.values(), key=lambda pair: pair[0].casefold())
+    flips_ordered = sorted(flips, key=lambda pair: pair[0].casefold())
+    splits_ordered = sorted(splits, key=lambda pair: pair[0].casefold())
+    aliases_ordered = sorted(aliases, key=lambda pair: pair[0].casefold())
+
+    aliases_by_canonical: Dict[str, List[str]] = {}
+    for alias, canonical in aliases_ordered:
+        aliases_by_canonical.setdefault(canonical.casefold(), []).append(alias)
+
+    routes: Dict[str, dict] = {}
+    index_cards: List[dict] = []
+
+    for entry in ordered:
+        name, _block, score = entry
+        payload = frontend_asset_payload_for_single(entry, aliases_by_canonical)
+        add_frontend_route(routes, name, payload)
+        for alias in aliases_by_canonical.get(name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        index_cards.append(
+            {
+                "name": name,
+                "route": frontend_card_route_key(name),
+                "score": frontend_score(score),
+            }
+        )
+
+    for entry in flips_ordered:
+        (
+            front_name,
+            front_block,
+            front_score,
+            back_name,
+            back_block,
+            back_score,
+            combined_name,
+        ) = entry
+        payload = frontend_asset_payload_for_linked(
+            layout="transform_like",
+            front_name=front_name,
+            front_block=front_block,
+            front_score=front_score,
+            back_name=back_name,
+            back_block=back_block,
+            back_score=back_score,
+            combined_name=combined_name,
+            has_fuse=False,
+            aliases_by_canonical=aliases_by_canonical,
+        )
+        for route_name in (front_name, back_name, combined_name):
+            add_frontend_route(routes, route_name, payload)
+        for alias in aliases_by_canonical.get(front_name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        for alias in aliases_by_canonical.get(back_name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        index_cards.append(
+            {
+                "name": front_name,
+                "route": frontend_card_route_key(front_name),
+                "score": frontend_score(front_score),
+            }
+        )
+
+    for entry in splits_ordered:
+        (
+            front_name,
+            front_block,
+            front_score,
+            back_name,
+            back_block,
+            back_score,
+            combined_name,
+            has_fuse,
+        ) = entry
+        payload = frontend_asset_payload_for_linked(
+            layout="split",
+            front_name=front_name,
+            front_block=front_block,
+            front_score=front_score,
+            back_name=back_name,
+            back_block=back_block,
+            back_score=back_score,
+            combined_name=combined_name,
+            has_fuse=has_fuse,
+            aliases_by_canonical=aliases_by_canonical,
+        )
+        for route_name in (front_name, back_name, combined_name):
+            add_frontend_route(routes, route_name, payload)
+        for alias in aliases_by_canonical.get(front_name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        for alias in aliases_by_canonical.get(back_name.casefold(), []):
+            add_frontend_route(routes, alias, payload)
+        index_cards.append(
+            {
+                "name": front_name,
+                "route": frontend_card_route_key(front_name),
+                "score": frontend_score(front_score),
+            }
+        )
+
+    if cards_dir.exists():
+        shutil.rmtree(cards_dir)
+    cards_dir.mkdir(parents=True, exist_ok=True)
+
+    for route, payload in sorted(routes.items()):
+        (cards_dir / f"{route}.json").write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+
+    index_cards.sort(key=lambda entry: entry["name"].casefold())
+    scored_scores = [
+        entry["score"]
+        for entry in index_cards
+        if isinstance(entry.get("score"), (int, float))
+    ]
+    index_payload = {
+        "version": FRONTEND_CARD_ASSET_VERSION,
+        "routeFormat": "ironsmith-card-route-key-v1",
+        "cardCount": len(index_cards),
+        "routeCount": len(routes),
+        "scoredCount": len(scored_scores),
+        "thresholdCounts": threshold_counts_for_scores(scored_scores),
+        "cards": index_cards,
+    }
+    (cards_dir / "index.json").write_text(
+        json.dumps(index_payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate baked parser registry source from the registry SQLite DB"
@@ -1172,6 +1446,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get(REGISTRY_DB_PATH_ENV, str(DEFAULT_DB_PATH)),
         help="Path to the registry SQLite DB",
     )
+    parser.add_argument(
+        "--frontend-cards-dir",
+        dest="frontend_cards_dir",
+        default=None,
+        help="Optional output directory for browser-loaded per-card compilation JSON assets",
+    )
     return parser.parse_args()
 
 
@@ -1186,10 +1466,20 @@ def main() -> None:
     semantic_scores = load_latest_semantic_scores(db_path)
     cards, flips, splits, aliases = collect_unique_blocks(db_path, semantic_scores)
     write_generated_source(cards, flips, splits, aliases, output_path)
+    if args.frontend_cards_dir:
+        write_frontend_card_assets(
+            cards,
+            flips,
+            splits,
+            aliases,
+            Path(args.frontend_cards_dir),
+        )
     print(
         f"wrote {output_path} with {len(cards) + 2 * len(flips) + 2 * len(splits)} source cards "
         f"(semantic scores loaded from DB: {len(semantic_scores)})"
     )
+    if args.frontend_cards_dir:
+        print(f"wrote frontend card assets to {Path(args.frontend_cards_dir)}")
 
 
 if __name__ == "__main__":

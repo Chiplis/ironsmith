@@ -4772,7 +4772,7 @@ mod tests {
             .expect("damage amount replacement should generate a replacement effect");
         game.effect_store
             .replacement_effects
-            .add_static_ability_effect(replacement);
+            .add_resolution_effect(replacement);
 
         let before_max_speed = process_damage_assignments_with_event(
             &mut game,

@@ -919,6 +919,15 @@ pub(crate) fn parse_subject_loses_keywords_line(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
+    if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("target"))
+        || subject_tokens
+            .iter()
+            .any(|token| token.is_word("get") || token.is_word("gets"))
+    {
+        return Ok(None);
+    }
     let filter = match parse_object_filter(&subject_tokens, false) {
         Ok(filter) => filter,
         Err(_) => return Ok(None),
@@ -5149,7 +5158,8 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             .first()
             .is_some_and(|word| *word == "lose" || *word == "loses")
         {
-            let ability_tokens = trim_commas(&segment[1..]);
+            let ability_token_storage = trim_commas(&segment[1..]);
+            let ability_tokens = trim_edge_punctuation(&ability_token_storage);
             if ability_tokens.is_empty() {
                 return Ok(None);
             }

@@ -22,8 +22,27 @@ pub fn gemstone_caverns() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
+    use crate::decision::{SelectFirstDecisionMaker, compute_potential_mana};
+    use crate::ids::PlayerId;
     use crate::object::CounterType;
+    use crate::special_actions::perform_activate_mana_ability;
     use crate::static_abilities::PregameActionKind;
+    use crate::zone::Zone;
+
+    fn setup_game() -> crate::game_state::GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn mana_ability_index(card: &CardDefinition) -> usize {
+        card.abilities
+            .iter()
+            .position(|ability| ability.is_mana_ability())
+            .expect("Gemstone Caverns should have a mana ability")
+    }
+
+    fn colored_mana_total(pool: &crate::player::ManaPool) -> u32 {
+        pool.white + pool.blue + pool.black + pool.red + pool.green
+    }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
@@ -101,5 +120,71 @@ mod tests {
             ),
             "expected mana ability to render as 'Add {{C}}. If <cond>, instead add ...', got {compiled}"
         );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn test_gemstone_caverns_luck_counter_replaces_colorless_mana_at_runtime() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = gemstone_caverns();
+        let ability_index = mana_ability_index(&card);
+        let gemstone = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        game.object_mut(gemstone)
+            .expect("Gemstone Caverns should exist")
+            .add_counters(CounterType::Luck, 1);
+
+        let potential = compute_potential_mana(&game, alice);
+        assert_eq!(
+            potential.colorless, 0,
+            "a luck counter should make potential mana use the self-replacement branch"
+        );
+        assert!(
+            potential.white > 0
+                && potential.blue > 0
+                && potential.black > 0
+                && potential.red > 0
+                && potential.green > 0,
+            "Gemstone Caverns with a luck counter should be treated as able to add any color, got {potential:?}"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform_activate_mana_ability(&mut game, alice, gemstone, ability_index, &mut dm)
+            .expect("Gemstone Caverns mana ability should activate");
+
+        let pool = &game.player(alice).expect("alice should exist").mana_pool;
+        assert_eq!(
+            pool.colorless, 0,
+            "the default colorless mana must not be added when the luck-counter replacement applies"
+        );
+        assert_eq!(
+            colored_mana_total(pool),
+            1,
+            "the replacement branch should add exactly one colored mana, got {pool:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn test_gemstone_caverns_without_luck_counter_adds_colorless_mana() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = gemstone_caverns();
+        let ability_index = mana_ability_index(&card);
+        let gemstone = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+
+        let potential = compute_potential_mana(&game, alice);
+        assert_eq!(
+            potential.colorless, 1,
+            "without a luck counter Gemstone Caverns should still be treated as a colorless source"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform_activate_mana_ability(&mut game, alice, gemstone, ability_index, &mut dm)
+            .expect("Gemstone Caverns mana ability should activate");
+
+        let pool = &game.player(alice).expect("alice should exist").mana_pool;
+        assert_eq!(pool.colorless, 1);
+        assert_eq!(colored_mana_total(pool), 0);
     }
 }

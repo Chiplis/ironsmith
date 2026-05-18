@@ -3659,7 +3659,12 @@ fn mana_ability_output_options(
     };
 
     let mut outputs = vec![Vec::new()];
-    for effect in mana_ability.effects.flattened_default_effects() {
+    for effect in crate::ability::selected_resolution_effects_for_current_state(
+        &mana_ability.effects,
+        game,
+        source,
+        player,
+    ) {
         let effect_outputs = if let Some(add_mana) = effect.downcast_ref::<AddManaEffect>() {
             vec![add_mana.mana.clone()]
         } else if let Some(add_colorless) = effect.downcast_ref::<AddColorlessManaEffect>() {
@@ -4375,7 +4380,12 @@ pub(crate) fn inferred_potential_mana_symbols_for_ability(
     };
 
     let mut inferred = Vec::new();
-    for effect in &mana_ability.effects {
+    for effect in crate::ability::selected_resolution_effects_for_current_state(
+        &mana_ability.effects,
+        game,
+        source,
+        controller,
+    ) {
         if let Some(add_mana) = effect.downcast_ref::<AddManaEffect>() {
             inferred.extend(add_mana.mana.iter().copied());
             continue;

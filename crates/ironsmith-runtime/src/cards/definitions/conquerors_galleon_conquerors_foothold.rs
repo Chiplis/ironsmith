@@ -168,7 +168,10 @@ mod tests {
             })
             .expect("foothold should return to the battlefield");
         let foothold = game.object(foothold_id).expect("foothold should exist");
-        assert!(game.is_face_down(foothold_id));
+        assert!(
+            !game.is_face_down(foothold_id),
+            "transforming into the back face should not mark the permanent face down"
+        );
         assert_eq!(foothold.card_types, vec![CardType::Land]);
         assert_eq!(foothold.abilities.len(), 4);
     }

@@ -105,6 +105,21 @@ function createGameProxy(callWorker, callZiffleWorker) {
   return proxy;
 }
 
+function resolveAssetBaseUrl() {
+  const configuredBase = import.meta.env.BASE_URL || "/";
+  if (configuredBase !== "./") {
+    return new URL(configuredBase, window.location.href).href;
+  }
+
+  const current = new URL(window.location.href);
+  if (!current.pathname.endsWith("/") && !/\.[^/]+$/.test(current.pathname)) {
+    current.pathname = `${current.pathname}/`;
+  }
+  current.search = "";
+  current.hash = "";
+  return new URL("./", current.href).href;
+}
+
 export function useWasmGame() {
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -348,7 +363,8 @@ export function useWasmGame() {
     setRegistryCount(0);
     setRegistryTotal(0);
 
-    worker.postMessage({ type: "init" });
+    const assetBaseUrl = resolveAssetBaseUrl();
+    worker.postMessage({ type: "init", assetBaseUrl });
 
     return () => {
       disposed = true;

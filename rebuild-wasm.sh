@@ -7,11 +7,14 @@ PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
 DEFAULT_DB_PATH="$ROOT_DIR/reports/engine-status.sqlite3"
 DEFAULT_FRONTEND_SCORES_FILE="$ROOT_DIR/web/ui/public/ironsmith_semantic_scores.json"
+DEFAULT_FRONTEND_CARDS_DIR="$ROOT_DIR/web/ui/public/cards"
 
-FEATURES="wasm,generated-registry"
+FEATURES="wasm-lean"
 OPTIMIZE_WASM=0
 DB_PATH="${IRONSMITH_REGISTRY_DB_PATH:-$DEFAULT_DB_PATH}"
 FRONTEND_SCORES_FILE="${IRONSMITH_FRONTEND_SEMANTIC_SCORES_FILE:-$DEFAULT_FRONTEND_SCORES_FILE}"
+FRONTEND_CARDS_DIR="${IRONSMITH_FRONTEND_CARDS_DIR:-$DEFAULT_FRONTEND_CARDS_DIR}"
+NO_DEFAULT_FEATURES=1
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -28,12 +31,13 @@ feature_enabled() {
 
 usage() {
   cat <<USAGE
-Usage: ./rebuild-wasm.sh [--features <csv>] [--frontend-scores-file <path>]
+Usage: ./rebuild-wasm.sh [--features <csv>] [--frontend-scores-file <path>] [--frontend-cards-dir <path>]
 
 Examples:
   ./rebuild-wasm.sh
   ./rebuild-wasm.sh --release
   ./rebuild-wasm.sh --frontend-scores-file web/ui/public/ironsmith_semantic_scores.json
+  ./rebuild-wasm.sh --features wasm,generated-registry --default-features
 
 Notes:
   - Cargo always builds the WASM crate in release mode.
@@ -41,7 +45,8 @@ Notes:
   - Canonical card data and per-card semantic scores are loaded from the registry SQLite DB (default: $DEFAULT_DB_PATH).
   - Run sync_card_status_db separately when latest_card_compilation needs to be refreshed.
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
-  - Default features are "wasm,generated-registry".
+  - Frontend card assets default to $DEFAULT_FRONTEND_CARDS_DIR and are copied by Vite into dist/cards/.
+  - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in ironsmith_bg.wasm.
 USAGE
 }
 
@@ -65,6 +70,19 @@ while [[ $# -gt 0 ]]; do
       FRONTEND_SCORES_FILE="$2"
       shift 2
       ;;
+    --frontend-cards-dir)
+      [[ $# -ge 2 ]] || { echo "missing value for --frontend-cards-dir" >&2; exit 1; }
+      FRONTEND_CARDS_DIR="$2"
+      shift 2
+      ;;
+    --default-features)
+      NO_DEFAULT_FEATURES=0
+      shift
+      ;;
+    --no-default-features)
+      NO_DEFAULT_FEATURES=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -81,21 +99,20 @@ cd "$ROOT_DIR"
 require_cmd cargo
 require_cmd wasm-pack
 
-if feature_enabled "generated-registry"; then
-  if [[ ! -f "$DB_PATH" ]]; then
-    cat >&2 <<EOF
+if [[ ! -f "$DB_PATH" ]]; then
+  cat >&2 <<EOF
 [ERROR] registry DB not found: $DB_PATH
 
 Run the registry sync first, for example:
   cargo run --release -p ironsmith-tools --bin sync_registry_db -- --cards cards.json --db-path $DB_PATH
 EOF
-    exit 1
-  fi
+  exit 1
+fi
 
-  echo "[INFO] using latest strict card compilation snapshots from DB..."
+echo "[INFO] using latest strict card compilation snapshots from DB..."
 
-  mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
-  python3 - "$DB_PATH" "$FRONTEND_SCORES_FILE" <<'PY'
+mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
+python3 - "$DB_PATH" "$FRONTEND_SCORES_FILE" <<'PY'
 import json
 import sqlite3
 import sys
@@ -143,14 +160,27 @@ summary = {
 
 target.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
 PY
-  echo "[INFO] synced semantic threshold cache for frontend: $FRONTEND_SCORES_FILE"
+echo "[INFO] synced semantic threshold cache for frontend: $FRONTEND_SCORES_FILE"
 
+mkdir -p "$ROOT_DIR/target"
+python3 "$ROOT_DIR/scripts/generate_baked_registry.py" \
+  --db-path "$DB_PATH" \
+  --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
+  --frontend-cards-dir "$FRONTEND_CARDS_DIR"
+echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
+
+if feature_enabled "generated-registry"; then
   export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
   echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
 else
-  echo "[INFO] generated registry disabled; skipping DB-backed semantic score cache"
+  echo "[INFO] generated registry disabled; WASM will load card compilation assets from frontend cards/"
 fi
 echo "[INFO] wasm build profile: release"
+if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
+  echo "[INFO] cargo default features: disabled"
+else
+  echo "[INFO] cargo default features: enabled"
+fi
 if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
   echo "[INFO] wasm-opt: enabled"
 else
@@ -175,6 +205,9 @@ WASM_PACK_ARGS=(
 )
 if [[ "$OPTIMIZE_WASM" -eq 0 ]]; then
   WASM_PACK_ARGS+=(--no-opt)
+fi
+if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
+  WASM_PACK_ARGS+=(--no-default-features)
 fi
 WASM_PACK_ARGS+=(--features "$FEATURES")
 
@@ -229,17 +262,24 @@ find_cached_wasm_opt() {
 build_wasm_with_cached_bindgen() {
   local bindgen
   local wasm_opt
+  local cargo_args
   bindgen="$(find_cached_wasm_bindgen)" || {
     echo "[ERROR] wasm-pack failed and no cached wasm-bindgen binary was found" >&2
     return 1
   }
 
   echo "[WARN] wasm-pack failed; falling back to cargo build with cached wasm-bindgen: $bindgen" >&2
-  cargo build \
-    -p ironsmith-wasm \
-    --target wasm32-unknown-unknown \
-    --release \
-    --features "$FEATURES"
+  cargo_args=(
+    build
+    -p ironsmith-wasm
+    --target wasm32-unknown-unknown
+    --release
+  )
+  if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
+    cargo_args+=(--no-default-features)
+  fi
+  cargo_args+=(--features "$FEATURES")
+  cargo "${cargo_args[@]}"
 
   mkdir -p "$PKG_DIR"
   "$bindgen" \

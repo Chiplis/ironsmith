@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
+use ironsmith::cards::CardRegistry;
 use ironsmith::combat_state::AttackTarget;
 use ironsmith::decision::GameResult;
 use ironsmith::decisions::context::DecisionContext;
@@ -1295,7 +1296,7 @@ pub(super) fn build_object_details_snapshot(
             .chosen_color(obj.id)
             .map(|color| color.name().to_string()),
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
-        semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
+        semantic_score: CardRegistry::generated_parser_semantic_score(obj.name.as_str()),
     })
 }
 

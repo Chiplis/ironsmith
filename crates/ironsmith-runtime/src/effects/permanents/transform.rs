@@ -120,6 +120,10 @@ fn execute_transform_like_action(
         return Ok(EffectOutcome::resolved());
     }
 
+    if !game.can_transform(target_id) {
+        return Ok(EffectOutcome::resolved());
+    }
+
     game.refresh_continuous_state();
     if !game.can_transform(target_id) {
         return Ok(EffectOutcome::resolved());

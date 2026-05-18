@@ -3444,6 +3444,12 @@ pub struct WasmGame {
     active_resolving_stack_object: Option<StackObjectSnapshot>,
     /// Last decklists loaded into the current session, indexed by player.
     loaded_decks: Vec<Vec<String>>,
+    /// Browser-loaded card source parse blocks, keyed by normalized lookup name.
+    external_parse_sources: HashMap<String, (String, String)>,
+    /// Browser-loaded compile errors for card groups that were present but not usable.
+    external_compile_errors: HashMap<String, String>,
+    /// Browser-loaded semantic scores for card names and aliases.
+    external_semantic_scores: HashMap<String, f32>,
     /// Timing breakdown for the most recent snapshot build/encode pass.
     last_snapshot_perf: Option<SnapshotPerfMetrics>,
     /// Timing breakdown for the most recent replay execution inside dispatch.
@@ -3460,6 +3466,71 @@ struct RegistryPreloadStatus {
     cursor: usize,
     total: usize,
     done: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalCardSourceFile {
+    #[serde(default)]
+    canonical_name: String,
+    #[serde(default)]
+    aliases: Vec<ExternalCardAliasSource>,
+    group: ExternalCardSourceGroup,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalCardAliasSource {
+    alias: String,
+    canonical: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ExternalCardSourceGroup {
+    Single {
+        name: String,
+        block: String,
+        #[serde(default)]
+        score: Option<f32>,
+    },
+    Linked {
+        layout: String,
+        combined_name: String,
+        #[serde(default)]
+        has_fuse: bool,
+        faces: Vec<ExternalCardFaceSource>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalCardFaceSource {
+    name: String,
+    block: String,
+    #[serde(default)]
+    score: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ExternalCardSourcesInput {
+    Single(ExternalCardSourceFile),
+    Many(Vec<ExternalCardSourceFile>),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalCardRegistrationSummary {
+    loaded: usize,
+    failed: Vec<ExternalCardRegistrationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalCardRegistrationFailure {
+    name: String,
+    error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

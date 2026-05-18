@@ -3143,7 +3143,7 @@ mod tests {
                 TurnFaceUpMethod::DisguiseAbility,
             )
             .is_ok(),
-            "disguise cost reduction should make {5}{R} payable as {2}{R}"
+            "disguise cost reduction should make {{5}}{{R}} payable as {{2}}{{R}}"
         );
 
         let mut dm = SelectFirstDecisionMaker;

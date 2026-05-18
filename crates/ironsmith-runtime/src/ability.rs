@@ -70,12 +70,14 @@ impl ActivatedAbilityRuntimeExt for ActivatedAbility {
         controller: crate::ids::PlayerId,
     ) -> bool {
         self.mana_output.is_some()
-            || effects_could_add_mana(
+            || selected_resolution_effects_for_current_state(
+                &self.effects,
                 game,
                 source,
                 controller,
-                self.effects.flattened_default_effects(),
             )
+            .into_iter()
+            .any(|effect| effect.could_produce_mana(game, source, controller))
     }
 
     fn is_runtime_mana_ability(
@@ -101,11 +103,54 @@ impl ActivatedAbilityRuntimeExt for ActivatedAbility {
         }
 
         let mut inferred = Vec::new();
-        for effect in self.effects.flattened_default_effects() {
+        for effect in
+            selected_resolution_effects_for_current_state(&self.effects, game, source, controller)
+        {
             effect.collect_producible_mana_symbols(game, source, controller, &mut inferred);
         }
         canonical_mana_symbols(inferred)
     }
+}
+
+pub fn selected_resolution_effects_for_current_state<'a>(
+    program: &'a ResolutionProgram,
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+) -> Vec<&'a crate::effect::Effect> {
+    let mut selected = Vec::new();
+
+    for segment in &program.segments {
+        if segment.self_replacements.is_empty() {
+            selected.extend(segment.default_effects.iter());
+            continue;
+        }
+
+        let mut applicable: Option<&[crate::effect::Effect]> = None;
+        for branch in &segment.self_replacements {
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
+            let condition_matches =
+                crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, &ctx)
+                    .unwrap_or(false);
+            if !condition_matches {
+                continue;
+            }
+            if applicable.is_some() {
+                applicable = Some(&[]);
+                break;
+            }
+            applicable = Some(branch.replacement_effects.as_slice());
+        }
+
+        selected.extend(
+            applicable
+                .unwrap_or(segment.default_effects.as_slice())
+                .iter(),
+        );
+    }
+
+    selected
 }
 
 pub fn effects_could_add_mana(

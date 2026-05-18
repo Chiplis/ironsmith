@@ -8258,6 +8258,26 @@ fn test_root_greevil_activation_reaches_stack_and_resolves_with_color_choice() {
                 )
                 .expect("Root Greevil cost choice should continue activation")
             }
+            crate::decisions::context::DecisionContext::Modes(ctx) => {
+                let choice = ctx
+                    .spec
+                    .modes
+                    .iter()
+                    .find(|mode| {
+                        mode.legal && mode.description.to_ascii_lowercase().contains("blue")
+                    })
+                    .or_else(|| ctx.spec.modes.iter().find(|mode| mode.legal))
+                    .map(|mode| mode.index)
+                    .expect("Root Greevil should offer a legal color mode");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Modes(vec![choice]),
+                    &mut dm,
+                )
+                .expect("Root Greevil mode choice should continue activation")
+            }
             crate::decisions::context::DecisionContext::Priority(_) => break,
             other => panic!(
                 "unexpected decision while activating Root Greevil: {:?}",
@@ -18438,21 +18458,21 @@ fn test_adventure_pair_definitions() -> (crate::cards::CardDefinition, crate::ca
 
 fn test_land_adventure_pair_definitions()
 -> (crate::cards::CardDefinition, crate::cards::CardDefinition) {
-    let front_id = CardId::from_raw(88_110);
-    let adventure_id = CardId::from_raw(88_111);
+    let front_id = CardId::from_raw(9_888_110);
+    let adventure_id = CardId::from_raw(9_888_111);
 
-    let front = CardDefinitionBuilder::new(front_id, "Zanarkand, Ancient Metropolis")
+    let front = CardDefinitionBuilder::new(front_id, "Test Adventure Land")
         .card_types(vec![CardType::Land])
         .other_face(adventure_id)
-        .other_face_name("Lasting Fayth")
+        .other_face_name("Test Land Adventure")
         .linked_face_layout(LinkedFaceLayout::TransformLike)
         .build();
-    let adventure = CardDefinitionBuilder::new(adventure_id, "Lasting Fayth")
+    let adventure = CardDefinitionBuilder::new(adventure_id, "Test Land Adventure")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
         .card_types(vec![CardType::Sorcery])
         .subtypes(vec![Subtype::Adventure])
         .other_face(front_id)
-        .other_face_name("Zanarkand, Ancient Metropolis")
+        .other_face_name("Test Adventure Land")
         .linked_face_layout(LinkedFaceLayout::TransformLike)
         .build();
 
@@ -18597,7 +18617,7 @@ fn test_linked_front_land_stays_front_face_when_played() {
         .copied()
         .find(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Zanarkand, Ancient Metropolis")
+                .is_some_and(|obj| obj.name == "Test Adventure Land")
         })
         .expect("front-face land should remain on the battlefield");
     let land = game
@@ -18650,7 +18670,7 @@ fn test_adventure_exiled_land_can_be_played_from_exile() {
         .copied()
         .find(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Zanarkand, Ancient Metropolis")
+                .is_some_and(|obj| obj.name == "Test Adventure Land")
         })
         .expect("exiled Adventure land should enter as the front face");
     assert!(
@@ -20908,8 +20928,7 @@ fn test_force_of_will_both_options_available() {
     // Compute legal actions
     let actions = compute_legal_actions(&game, alice);
 
-    // When both Normal and Alternative are available, only Normal should appear in actions
-    // The ChooseCastingMethod decision will present both options when the spell is selected
+    // Legal-action generation now exposes each available native casting method directly.
     let normal_cast = actions.iter().find(|a| {
         matches!(
             a,
@@ -20934,8 +20953,8 @@ fn test_force_of_will_both_options_available() {
 
     assert!(normal_cast.is_some(), "Should be able to cast normally");
     assert!(
-        alt_cast.is_none(),
-        "Alternative should NOT be a separate action when Normal is also available"
+        alt_cast.is_some(),
+        "Alternative should be exposed as a separate legal action when available"
     );
 
     // Count total CastSpell actions for Force of Will from hand
@@ -20953,8 +20972,8 @@ fn test_force_of_will_both_options_available() {
         })
         .count();
     assert_eq!(
-        fow_cast_count, 1,
-        "Should only have one CastSpell action for Force of Will"
+        fow_cast_count, 2,
+        "Should have normal and alternative CastSpell actions for Force of Will"
     );
 }
 

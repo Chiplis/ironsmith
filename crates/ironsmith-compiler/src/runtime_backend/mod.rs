@@ -209,6 +209,7 @@ pub(crate) fn compile_card_text(
                 CompilePolicy { allow_unsupported },
             )?;
             normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
+            normalize_kicked_counter_spell_mana_value_replacement(&text, &mut compiled.definition);
             Ok(compiled)
         })
     })
@@ -273,6 +274,65 @@ fn normalize_do_this_trigger_frequency_conditions(text: &str, definition: &mut C
         if twice && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(2)) {
             triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(2));
         }
+    }
+}
+
+fn normalize_kicked_counter_spell_mana_value_replacement(
+    text: &str,
+    definition: &mut CardDefinition,
+) {
+    let normalized = text.to_ascii_lowercase();
+    if !normalized.contains("counter target spell if its mana value is 2 or less")
+        || !normalized.contains("if this spell was kicked")
+        || !normalized.contains("counter that spell if its mana value is 4 or less instead")
+    {
+        return;
+    }
+
+    let Some(spell_effect) = definition.spell_effect.as_ref() else {
+        return;
+    };
+    let [segment] = spell_effect.segments.as_slice() else {
+        return;
+    };
+    let [base_branch] = segment.self_replacements.as_slice() else {
+        return;
+    };
+    let crate::effect::Condition::TaggedObjectMatches(tag, base_filter) = &base_branch.condition
+    else {
+        return;
+    };
+    if !matches!(
+        base_filter.mana_value.as_ref(),
+        Some(crate::target::Comparison::LessThanOrEqual(value)) if *value == 2
+    ) {
+        return;
+    }
+
+    let mut kicked_filter = base_filter.clone();
+    kicked_filter.mana_value = Some(crate::target::Comparison::LessThanOrEqual(4));
+
+    let mut default_effects = segment.default_effects.clone();
+    default_effects.push(crate::effect::Effect::conditional(
+        base_branch.condition.clone(),
+        base_branch.replacement_effects.clone(),
+        Vec::new(),
+    ));
+
+    let kicked_effect = crate::effect::Effect::conditional(
+        crate::effect::Condition::TaggedObjectMatches(tag.clone(), kicked_filter),
+        base_branch.replacement_effects.clone(),
+        Vec::new(),
+    );
+    let mut program = crate::resolution::ResolutionProgram::from_effects(default_effects);
+    if let Some(segment) = program.last_segment_mut() {
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                crate::effect::Condition::ThisSpellWasKicked,
+                vec![kicked_effect],
+            ));
+        definition.spell_effect = Some(program);
     }
 }
 

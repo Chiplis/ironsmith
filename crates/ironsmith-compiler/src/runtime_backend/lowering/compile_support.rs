@@ -128,12 +128,12 @@ pub(crate) use choose_effect_helpers::{
 };
 pub(crate) use control_flow_handlers::{
     choose_spec_for_targeted_player_filter, collect_targeted_player_specs_from_filter,
-    compile_effects_in_iterated_player_context, compile_effects_preserving_last_effect,
-    compile_if_do_with_opponent_did, compile_if_do_with_opponent_doesnt,
-    compile_if_do_with_player_did, compile_if_do_with_player_doesnt, compile_repeat_process_body,
-    compile_vote_sequence, effect_predicate_from_if_result,
-    force_implicit_vote_token_controller_you, target_context_prelude_for_filter,
-    with_preserved_lowering_context,
+    compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
+    compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
+    compile_if_do_with_opponent_doesnt, compile_if_do_with_player_did,
+    compile_if_do_with_player_doesnt, compile_repeat_process_body, compile_vote_sequence,
+    effect_predicate_from_if_result, force_implicit_vote_token_controller_you,
+    target_context_prelude_for_filter, with_preserved_lowering_context,
 };
 pub(crate) use effect_dispatch::compile_effect;
 pub(crate) use iterated_player_validation::validate_iterated_player_bindings_in_lowered_effects;

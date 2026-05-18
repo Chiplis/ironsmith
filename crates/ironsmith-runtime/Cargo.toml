@@ -47,3 +47,12 @@ wasm = [
     "dep:getrandom",
     "dep:js-sys",
 ]
+wasm-lean = [
+    "serialization",
+    "runtime-parser-tests",
+    "dep:wasm-bindgen",
+    "dep:serde-wasm-bindgen",
+    "dep:console_error_panic_hook",
+    "dep:getrandom",
+    "dep:js-sys",
+]

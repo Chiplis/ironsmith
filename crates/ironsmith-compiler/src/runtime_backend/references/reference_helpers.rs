@@ -96,7 +96,13 @@ pub(crate) fn resolve_non_target_player_filter(
             }
         }
         PlayerAst::Implicit => {
-            if refs.iterated_player {
+            if refs.iterated_player
+                && refs
+                    .known_last_object_tag()
+                    .is_some_and(|tag| tag.as_str() == IT_TAG)
+            {
+                Ok(PlayerFilter::You)
+            } else if refs.iterated_player {
                 Ok(PlayerFilter::IteratedPlayer)
             } else {
                 Ok(PlayerFilter::You)

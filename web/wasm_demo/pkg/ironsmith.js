@@ -488,6 +488,17 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {any} sources
+     * @returns {any}
+     */
+    registerExternalCardSources(sources) {
+        const ret = wasm.wasmgame_registerExternalCardSources(this.__wbg_ptr, sources);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Number of cards currently available in the registry.
      * @returns {number}
      */

@@ -97,31 +97,37 @@ impl WasmGame {
             return;
         };
         continuation.speculative_progress = None;
-        let target = continuation
-            .checkpoint
-            .game
-            .hidden_cards
-            .iter()
-            .find_map(|(object_id, info)| {
-                if info.owner != owner {
-                    return None;
-                }
-                let slot_matches = slots.iter().any(|slot| {
-                    info.slot == *slot || info.public_slot.is_some_and(|public_slot| public_slot == *slot)
+        let target =
+            continuation
+                .checkpoint
+                .game
+                .hidden_cards
+                .iter()
+                .find_map(|(object_id, info)| {
+                    if info.owner != owner {
+                        return None;
+                    }
+                    let slot_matches = slots.iter().any(|slot| {
+                        info.slot == *slot
+                            || info
+                                .public_slot
+                                .is_some_and(|public_slot| public_slot == *slot)
+                    });
+                    if !slot_matches {
+                        return None;
+                    }
+                    let commitment_matches =
+                        commitments.iter().all(|commitment| commitment.is_empty())
+                            || commitments
+                                .iter()
+                                .filter(|commitment| !commitment.is_empty())
+                                .any(|commitment| {
+                                    info.commitment == *commitment
+                                        || info.public_commitment.as_deref()
+                                            == Some(commitment.as_str())
+                                });
+                    commitment_matches.then_some(*object_id)
                 });
-                if !slot_matches {
-                    return None;
-                }
-                let commitment_matches =
-                    commitments.iter().all(|commitment| commitment.is_empty())
-                        || commitments.iter().filter(|commitment| !commitment.is_empty()).any(
-                            |commitment| {
-                                info.commitment == *commitment
-                                    || info.public_commitment.as_deref() == Some(commitment.as_str())
-                            },
-                        );
-                commitment_matches.then_some(*object_id)
-            });
         if let Some(object_id) = target {
             continuation
                 .checkpoint
@@ -246,6 +252,9 @@ impl WasmGame {
             pending_crypto_audit_before: None,
             active_resolving_stack_object: None,
             loaded_decks: Vec::new(),
+            external_parse_sources: HashMap::new(),
+            external_compile_errors: HashMap::new(),
+            external_semantic_scores: HashMap::new(),
             last_snapshot_perf: None,
             last_replay_execution_perf: None,
             last_advance_until_decision_perf: None,
@@ -400,7 +409,10 @@ impl WasmGame {
         self.reveal_hidden_slot_input(input)
     }
 
-    fn reveal_hidden_slot_input(&mut self, input: RevealHiddenSlotInput) -> Result<JsValue, JsValue> {
+    fn reveal_hidden_slot_input(
+        &mut self,
+        input: RevealHiddenSlotInput,
+    ) -> Result<JsValue, JsValue> {
         let owner = PlayerId::from_index(input.owner);
         let Some((&object_id, info)) = self
             .game
@@ -444,16 +456,11 @@ impl WasmGame {
         let input: RevealHiddenPositionInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
         let owner = PlayerId::from_index(input.owner);
-        let Some((&object_id, info)) = self
-            .game
-            .hidden_cards
-            .iter()
-            .find(|(object_id, info)| {
-                info.owner == owner
-                    && info.slot == input.position
-                    && self.game.is_hidden_card_placeholder(**object_id)
-            })
-        else {
+        let Some((&object_id, info)) = self.game.hidden_cards.iter().find(|(object_id, info)| {
+            info.owner == owner
+                && info.slot == input.position
+                && self.game.is_hidden_card_placeholder(**object_id)
+        }) else {
             return Err(JsValue::from_str(
                 "hidden ziffle position is not present in this engine",
             ));
@@ -622,7 +629,9 @@ impl WasmGame {
                 return Err(JsValue::from_str("hidden shuffle library is too large"));
             }
             if !seen.insert(object_id) {
-                return Err(JsValue::from_str("hidden shuffle order contains duplicate cards"));
+                return Err(JsValue::from_str(
+                    "hidden shuffle order contains duplicate cards",
+                ));
             }
             let Some(zone) = self.game.object(object_id).map(|object| object.zone) else {
                 return Err(JsValue::from_str("hidden shuffle card is not present"));
@@ -944,7 +953,7 @@ impl WasmGame {
                 };
 
                 if threshold > 0.0
-                    && let Some(score) = Self::semantic_score_for_name(name.as_str())
+                    && let Some(score) = self.semantic_score_for_name(name.as_str())
                     && score < threshold
                 {
                     return None;
@@ -1124,11 +1133,13 @@ impl WasmGame {
             let mana_cost = ironsmith::mana::ManaCost::from_symbols(vec![
                 ironsmith::mana::ManaSymbol::Generic(ward_generic_cost),
             ]);
-            object.abilities.push(ironsmith::ability::Ability::static_ability(
-                ironsmith::static_abilities::StaticAbility::ward(
-                    ironsmith::cost::TotalCost::mana(mana_cost),
-                ),
-            ));
+            object
+                .abilities
+                .push(ironsmith::ability::Ability::static_ability(
+                    ironsmith::static_abilities::StaticAbility::ward(
+                        ironsmith::cost::TotalCost::mana(mana_cost),
+                    ),
+                ));
         }
         self.recompute_ui_decision()?;
         Ok(new_id.0)
@@ -1138,11 +1149,7 @@ impl WasmGame {
     /// enumeration. Ported tests use this when the UI has not exposed the
     /// special action because mana was supplied out of band.
     #[wasm_bindgen(js_name = forceTurnFaceUp)]
-    pub fn force_turn_face_up(
-        &mut self,
-        player_index: u8,
-        object_id: u64,
-    ) -> Result<(), JsValue> {
+    pub fn force_turn_face_up(&mut self, player_index: u8, object_id: u64) -> Result<(), JsValue> {
         let player_id = PlayerId::from_index(player_index);
         let id = ObjectId(object_id);
         let controller = self
@@ -1151,7 +1158,9 @@ impl WasmGame {
             .map(|object| (self.game.controller_of(object), object.zone))
             .ok_or_else(|| JsValue::from_str("object not found"))?;
         if controller.0 != player_id || controller.1 != Zone::Battlefield {
-            return Err(JsValue::from_str("object is not a battlefield permanent controlled by that player"));
+            return Err(JsValue::from_str(
+                "object is not a battlefield permanent controlled by that player",
+            ));
         }
         let object = self
             .game
@@ -1177,8 +1186,9 @@ impl WasmGame {
             ),
         );
         ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
-        ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)
-            .map_err(|err| JsValue::from_str(&format!("failed to put triggers on stack: {err:?}")))?;
+        ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue).map_err(
+            |err| JsValue::from_str(&format!("failed to put triggers on stack: {err:?}")),
+        )?;
         self.recompute_ui_decision()?;
         Ok(())
     }
@@ -1567,7 +1577,7 @@ impl WasmGame {
             for name in deck {
                 if let Some(definition) = self.find_card_definition(name).cloned() {
                     if self.semantic_threshold > 0.0
-                        && let Some(score) = Self::semantic_score_for_name(definition.name())
+                        && let Some(score) = self.semantic_score_for_name(definition.name())
                         && score < self.semantic_threshold
                     {
                         failed.push(name.clone());
@@ -1591,7 +1601,7 @@ impl WasmGame {
                 for name in sideboard {
                     if let Some(definition) = self.find_card_definition(name).cloned() {
                         if self.semantic_threshold > 0.0
-                            && let Some(score) = Self::semantic_score_for_name(definition.name())
+                            && let Some(score) = self.semantic_score_for_name(definition.name())
                             && score < self.semantic_threshold
                         {
                             failed.push(name.clone());
@@ -1755,7 +1765,7 @@ impl WasmGame {
     /// Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
     #[wasm_bindgen(js_name = getCardSemanticScore)]
     pub fn get_card_semantic_score(&self, card_name: &str) -> f32 {
-        Self::semantic_score_for_name(card_name).unwrap_or(-1.0)
+        self.semantic_score_for_name(card_name).unwrap_or(-1.0)
     }
 
     /// Get the count of scored cards meeting the current threshold.

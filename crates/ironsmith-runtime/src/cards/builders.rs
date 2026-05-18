@@ -6852,7 +6852,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_daybound_keyword_line_builds_typed_trigger() {
+    fn parse_daybound_keyword_line_builds_static_keyword() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Daybound Probe")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -6861,12 +6861,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let debug = format!("{:?}", def.abilities);
         assert!(
-            debug.contains("BeginningOfUpkeepTrigger")
-                && debug.contains("NoSpellsWereCastLastTurn")
-                && debug.contains("SpellsWereCastLastTurnOrMore(2)")
-                && debug.contains("SourceIsFaceDown")
-                && debug.contains("TransformEffect"),
-            "expected daybound to lower into upkeep transform trigger, got {debug}"
+            def.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Daybound
+                )
+            }),
+            "expected daybound to lower into the static daybound keyword, got {debug}"
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
@@ -6879,26 +6882,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn daybound_runtime_transforms_source_for_day_and_night_spell_count_windows() {
-        use crate::effects::{ExecutionContext, execute_effect};
+    fn daybound_runtime_transforms_source_for_day_night_designation() {
         use crate::ids::PlayerId;
 
         crate::cards::clear_runtime_custom_cards();
-
-        let def = CardDefinitionBuilder::new(CardId::new(), "Daybound Runtime Probe")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .parse_text("Daybound")
-            .expect("daybound keyword line should parse");
-
-        let ability = def
-            .abilities
-            .iter()
-            .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
-            .expect("expected daybound triggered ability");
-        let AbilityKind::Triggered(triggered) = &ability.kind else {
-            panic!("expected daybound to compile as triggered ability");
-        };
 
         let mut game =
             crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -6908,7 +6895,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .card_types(vec![CardType::Creature])
                 .subtypes(vec![Subtype::Werewolf])
                 .power_toughness(PowerToughness::fixed(4, 4))
-                .parse_text("Trample")
+                .parse_text("Nightbound\nTrample")
                 .expect("night face should parse");
         back_def.card.other_face = Some(CardId::from_raw(70140));
         back_def.card.other_face_name = Some("Daybound Runtime Probe".to_string());
@@ -6927,15 +6914,22 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         crate::cards::register_runtime_custom_card(source_def.clone());
         let source = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
 
-        // Day side: no spells last turn transforms to night side.
-        let mut exec_ctx = ExecutionContext::new_default(source, alice);
-        for effect in &triggered.effects {
-            execute_effect(&mut game, effect, &mut exec_ctx)
-                .expect("daybound transform effect should execute");
-        }
+        assert!(
+            game.has_day_night(),
+            "daybound entering should start day/night"
+        );
+        assert!(game.is_daytime(), "daybound should start the game at day");
+        assert_eq!(
+            game.object(source)
+                .expect("daybound source should exist")
+                .name,
+            "Daybound Runtime Probe"
+        );
+
+        game.set_daytime(false);
         assert!(
             !game.is_face_down(source),
-            "daybound runtime should transform the source to a visible back face"
+            "daybound runtime should transform the source to a visible night face"
         );
         assert_eq!(
             game.object(source)
@@ -6944,34 +6938,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "Nightbound Runtime Probe"
         );
 
-        // Night side: one spell does not transform back.
-        game.turn_store.spells_cast_last_turn_total = 1;
-        let mut exec_ctx = ExecutionContext::new_default(source, alice);
-        for effect in &triggered.effects {
-            execute_effect(&mut game, effect, &mut exec_ctx)
-                .expect("daybound/nightbound transform effect should execute");
-        }
+        game.set_daytime(true);
         assert!(
             !game.is_face_down(source),
-            "night side should stay visible when fewer than two spells were cast last turn"
-        );
-        assert_eq!(
-            game.object(source)
-                .expect("night source should still exist")
-                .name,
-            "Nightbound Runtime Probe"
-        );
-
-        // Night side: two spells last turn transforms back to day side.
-        game.turn_store.spells_cast_last_turn_total = 2;
-        let mut exec_ctx = ExecutionContext::new_default(source, alice);
-        for effect in &triggered.effects {
-            execute_effect(&mut game, effect, &mut exec_ctx)
-                .expect("daybound/nightbound transform effect should execute");
-        }
-        assert!(
-            !game.is_face_down(source),
-            "night side should transform back when two or more spells were cast last turn"
+            "nightbound runtime should transform the source back to a visible day face"
         );
         assert_eq!(
             game.object(source)
@@ -6983,7 +6953,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_nightbound_keyword_line_builds_typed_trigger() {
+    fn parse_nightbound_keyword_line_builds_static_keyword() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nightbound Probe")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -6992,10 +6962,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let debug = format!("{:?}", def.abilities);
         assert!(
-            debug.contains("SpellsWereCastLastTurnOrMore(2)")
-                && debug.contains("NoSpellsWereCastLastTurn")
-                && !debug.contains("StaticAbilityId::KeywordMarker"),
-            "expected nightbound to lower into typed upkeep transform behavior, got {debug}"
+            def.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Nightbound
+                )
+            }) && !debug.contains("StaticAbilityId::KeywordMarker"),
+            "expected nightbound to lower into the static nightbound keyword, got {debug}"
         );
     }
 

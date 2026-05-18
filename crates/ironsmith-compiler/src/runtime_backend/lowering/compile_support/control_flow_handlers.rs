@@ -770,6 +770,29 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     Ok((compiled, choices))
 }
 
+pub(crate) fn compile_effects_in_iterated_object_context(
+    effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let saved_frame = ctx.lowering_frame();
+    let mut iterated_frame = saved_frame.clone();
+    iterated_frame.iterated_player = true;
+    iterated_frame.last_effect_id = None;
+    iterated_frame.last_object_tag = Some(IT_TAG.to_string());
+    iterated_frame.last_it_choice_is_set = false;
+
+    let mut id_gen = ctx.id_gen_context();
+    let (compiled, choices, _frame_out) =
+        compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
+    let choices = choices
+        .into_iter()
+        .filter(|choice| !format!("{choice:?}").contains("IteratedPlayer"))
+        .collect();
+    ctx.apply_id_gen_context(id_gen);
+    ctx.apply_lowering_frame(saved_frame);
+    Ok((compiled, choices))
+}
+
 pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
