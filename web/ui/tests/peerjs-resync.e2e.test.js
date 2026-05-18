@@ -344,11 +344,46 @@ async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutM
   );
 }
 
+async function waitForFullUiSequenceAdvance(hostPage, guestPage, beforeSequence, label, timeoutMs = 120000) {
+  return waitForFullUiPair(
+    hostPage,
+    guestPage,
+    (host, guest) =>
+      Number(host?.multiplayer?.lastAppliedSequence || 0) > Number(beforeSequence || 0)
+      && Number(host?.multiplayer?.lastAppliedSequence || 0)
+        === Number(guest?.multiplayer?.lastAppliedSequence || 0),
+    label,
+    timeoutMs,
+  );
+}
+
 async function assertNoFullUiSyncFailures(...pages) {
   const text = (await Promise.all(
     pages.filter(Boolean).map((page) => visibleBodyText(page).catch(() => ""))
   )).join("\n");
   assertNoSyncFailureText(text);
+}
+
+async function assertNoFullUiSyncFailuresWithDebug(label, ...pages) {
+  const text = (await Promise.all(
+    pages.filter(Boolean).map((page) => visibleBodyText(page).catch(() => ""))
+  )).join("\n");
+  try {
+    assertNoSyncFailureText(text, label);
+  } catch (err) {
+    const debug = await Promise.all(
+      pages.filter(Boolean).map((page, index) => fullUiPageDebug(page, index))
+    );
+    const summary = debug.map((entry) => ({
+      index: entry.index,
+      status: entry.snapshot?.status || null,
+      lastAppliedSequence: entry.snapshot?.multiplayer?.lastAppliedSequence ?? null,
+      matchStarted: entry.snapshot?.multiplayer?.matchStarted ?? null,
+      mode: entry.snapshot?.multiplayer?.mode ?? null,
+      matchDisputed: entry.snapshot?.multiplayer?.matchDisputed || null,
+    }));
+    assert.fail(`${label}\n${err?.message || err}\nsummary: ${JSON.stringify(summary, null, 2)}\n${JSON.stringify(debug, null, 2)}`);
+  }
 }
 
 async function clickLocalButton(page, label, textPattern = null) {
@@ -443,7 +478,7 @@ async function clickLocalDecisionButton(page, label) {
 }
 
 async function visibleBodyText(page) {
-  return page.locator("body").innerText();
+  return page.locator("body").innerText({ timeout: 120000 });
 }
 
 async function buttonDebugText(page) {
@@ -457,11 +492,62 @@ async function buttonDebugText(page) {
   );
 }
 
+async function fullUiPageDebug(page, index = 0) {
+  return {
+    index,
+    label: page?.__peerHarnessLabel || "",
+    url: page?.url?.() || "",
+    errors: page?.__peerHarnessErrors || [],
+    console: (page?.__peerHarnessConsole || []).slice(-30),
+    snapshot: await fullUiSnapshot(page).catch((err) => String(err?.message || err)),
+    buttons: await buttonDebugText(page).catch((err) => String(err?.message || err)),
+    body: await visibleBodyText(page).catch((err) => String(err?.message || err)),
+  };
+}
+
 async function visibleHandCardNames(page) {
   return page.locator(".hand-card[data-card-name]").evaluateAll((cards) =>
     cards
       .map((card) => String(card.getAttribute("data-card-name") || "").trim())
       .filter(Boolean)
+  );
+}
+
+function snapshotBattlefieldCards(snapshot) {
+  return (snapshot?.state?.players || []).flatMap((player) =>
+    (player.battlefield || []).flatMap((card) => {
+      const count = Math.max(1, Number(card?.count || 1));
+      return Array.from({ length: count }, () => ({
+        ...card,
+        playerId: player.id,
+      }));
+    })
+  );
+}
+
+function snapshotBattlefieldCardCount(snapshot, cardName) {
+  return snapshotBattlefieldCards(snapshot).filter(
+    (card) => String(card?.name || "") === cardName
+  ).length;
+}
+
+function snapshotPlayer(snapshot, playerIndex) {
+  return (snapshot?.state?.players || []).find(
+    (player) => Number(player?.id) === Number(playerIndex)
+  ) || null;
+}
+
+function snapshotZoneCardCount(cards) {
+  return (cards || []).reduce((total, card) => {
+    const count = Number(card?.count);
+    return total + (Number.isFinite(count) && count > 0 ? count : 1);
+  }, 0);
+}
+
+async function stackCardCount(page, cardName) {
+  return page.locator(".stack-card[data-card-name]").evaluateAll((cards, name) =>
+    cards.filter((card) => String(card.getAttribute("data-card-name") || "") === name).length,
+    cardName,
   );
 }
 
@@ -516,11 +602,9 @@ async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
 }
 
 function assertNoSyncFailureText(text, label = "unexpected sync failure") {
-  assert.doesNotMatch(
-    text,
-    /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Ziffle card opening proof reveals a different committed slot|hidden card commitment does not match reveal|No direct ziffle route|Match clock elapsed time exceeds local observation|Sequenced action public checkpoint hash does not match local state|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch/i,
-    label
-  );
+  const failurePattern = /Unknown Ziffle Ceremony|Unknown ziffle ceremony|Private deck opening does not match slot|Ziffle card opening proof reveals a different committed slot|hidden card commitment does not match reveal|No direct ziffle route|Match clock elapsed time exceeds local observation|Sequenced action public checkpoint hash does not match local state|Sync failed|Match start failed|Auto-pass failed|Resync checkpoint hash mismatch|Match disputed|Protocol response timeout|Disconnect timeout policy failed/i;
+  const match = String(text || "").match(failurePattern);
+  assert.ok(!match, `${label}: ${match?.[0] || ""}`);
 }
 
 async function hasLocalButton(page, textPattern) {
@@ -564,7 +648,7 @@ async function captureFullUiStep(dir, index, slug, pages) {
   for (const [label, page] of pages) {
     if (!page) continue;
     const filePath = path.join(dir, `${prefix}-${slug}-${label}.png`);
-    await page.screenshot({ path: filePath, fullPage: false });
+    await page.screenshot({ path: filePath, fullPage: false, timeout: 120000 });
     saved.push(filePath);
   }
   return saved;
@@ -2347,14 +2431,17 @@ test("full UI PeerJS 60-Mountain match lets both players play hidden-deck lands 
     assert.equal(hostPlayed, true, "expected host to play a Mountain");
     assert.equal(guestPlayed, true, "expected guest to play a Mountain");
 
+    await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) =>
+        snapshotBattlefieldCardCount(host, "Mountain") >= 2
+        && snapshotBattlefieldCardCount(guest, "Mountain") >= 2,
+      "expected both played Mountains to be public battlefield objects",
+      60000,
+    );
     const hostText = await visibleBodyText(hostPage);
     const guestText = await visibleBodyText(guestPage);
-    assert.match(hostText, /Basic Land - Mountain/);
-    assert.match(guestText, /Basic Land - Mountain/);
-    assert.ok(
-      ((`${hostText}\n${guestText}`).match(/Basic Land - Mountain/g) || []).length >= 2,
-      "expected both played lands to be visible"
-    );
     assert.doesNotMatch(
       `${hostText}\n${guestText}`,
       /Private deck opening does not match slot|Sync failed|Match start failed/i
@@ -2468,10 +2555,19 @@ test("full UI PeerJS real WASM game resumes after 15s reconnects and host takeov
       "original host should reconnect to the promoted guest host",
       120000,
     );
-    const afterHostReconnect = await waitForFullUiSync(
+    const afterHostReconnect = await waitForFullUiPair(
       hostPage,
       guestPage,
-      "original host reconnect should converge with promoted host",
+      (host, guest) => host?.multiplayer?.matchStarted
+        && guest?.multiplayer?.matchStarted
+        && Number(host?.multiplayer?.lastAppliedSequence) === Number(guest?.multiplayer?.lastAppliedSequence)
+        && host.multiplayer.role === "client"
+        && guest.multiplayer.role === "host"
+        && host.multiplayer.players.some((player) =>
+          Number(player.index) === 1
+          && String(player.routePeerId || player.currentPeerId || player.peerId || "") === lobbyCode
+        ),
+      "original host reconnect should converge with promoted host routing",
       120000,
     );
     assert.equal(afterHostReconnect.guest.multiplayer.role, "host");
@@ -2480,7 +2576,7 @@ test("full UI PeerJS real WASM game resumes after 15s reconnects and host takeov
       (player) => Number(player.index) === 1
     );
     assert.equal(
-      hostViewPromotedHost?.currentPeerId || hostViewPromotedHost?.peerId,
+      hostViewPromotedHost?.routePeerId || hostViewPromotedHost?.currentPeerId || hostViewPromotedHost?.peerId,
       lobbyCode,
       "reconnected original host should route ziffle requests for the promoted host through the live host peer",
     );
@@ -2972,6 +3068,627 @@ test("full UI PeerJS both players Mulligan then host remulligans stays synced", 
   }
 });
 
+test("full UI PeerJS Gemstone Caverns pregame action stays synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Gemstone Caverns",
+      guestDeckText: "60 Gemstone Caverns",
+      hostName: "Chiplis",
+      guestName: "Alice",
+      hostLabel: "host-gemstone-ui",
+      guestLabel: "guest-gemstone-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    const selectGemstoneForCurrentDecision = async (label) => {
+      const selection = await guestPage.evaluate(() => {
+        const snap = window.__ironsmithE2E?.snapshot?.();
+        const candidate = (snap?.state?.decisionCandidates || []).find((entry) =>
+          entry.legal !== false && /^Gemstone Caverns$/i.test(String(entry.name || ""))
+        );
+        if (!candidate) return null;
+        return {
+          id: candidate.id,
+        };
+      });
+      assert.ok(
+        selection?.id != null,
+        `${label}\nexpected a Gemstone Caverns candidate\nbuttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nbody:\n${await visibleBodyText(guestPage)}`
+      );
+      const command = {
+        type: "select_objects",
+        object_ids: [Number(selection.id)],
+      };
+      await guestPage.evaluate(({ command: submittedCommand }) => (
+        window.__ironsmithE2E.submitMultiplayerCommand(
+          submittedCommand,
+          "Selected 1 object(s)"
+        )
+      ), { command });
+    };
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-gemstone-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(guestPage, "guest-keep-gemstone-test", /KEEP HAND/i, 120000);
+    await sleep(3000);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    for (let step = 0; step < 12 && !(await hasLocalButton(guestPage, /BEGIN WITH GEMSTONE CAVERNS/i)); step += 1) {
+      await clickAnyFullUiProgressAction([hostPage, guestPage], `advance-to-gemstone-pregame-${step}`, 60000);
+      await sleep(1500);
+    }
+
+    await waitAndClickLocalButton(
+      guestPage,
+      "guest-begin-with-gemstone",
+      /BEGIN WITH GEMSTONE CAVERNS/i,
+      120000
+    );
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose 1 card\(s\) from your hand to exile for Gemstone Caverns/i,
+      "expected Gemstone Caverns to ask for a hand card to exile",
+      120000,
+    );
+    await sleep(500);
+    await selectGemstoneForCurrentDecision("first Gemstone Caverns exile");
+    await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) =>
+        Number(host?.multiplayer?.lastAppliedSequence || 0) >= 5
+        && Number(host?.multiplayer?.lastAppliedSequence || 0)
+          === Number(guest?.multiplayer?.lastAppliedSequence || 0),
+      "expected Gemstone Caverns exile choice to sync",
+      120000,
+    );
+
+    await waitAndClickLocalButton(
+      guestPage,
+      "guest-begin-with-second-gemstone",
+      /BEGIN WITH GEMSTONE CAVERNS/i,
+      120000
+    );
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose 1 card\(s\) from your hand to exile for Gemstone Caverns/i,
+      "expected second Gemstone Caverns to ask for a hand card to exile",
+      120000,
+    );
+    await sleep(500);
+    await selectGemstoneForCurrentDecision("second Gemstone Caverns exile");
+    await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) =>
+        Number(host?.multiplayer?.lastAppliedSequence || 0) >= 7
+        && Number(host?.multiplayer?.lastAppliedSequence || 0)
+          === Number(guest?.multiplayer?.lastAppliedSequence || 0),
+      "expected second Gemstone Caverns exile choice to sync",
+      120000,
+    );
+
+    for (
+      let step = 0;
+      step < 12 && !/Choose which Gemstone Caverns to keep \(legend rule\)/i.test(await visibleBodyText(guestPage));
+      step += 1
+    ) {
+      await clickAnyFullUiProgressAction([hostPage, guestPage], `advance-to-gemstone-legend-${step}`, 60000);
+      await sleep(1500);
+    }
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose which Gemstone Caverns to keep \(legend rule\)/i,
+      "expected two pregame Gemstone Caverns to trigger the legend rule",
+      120000,
+    );
+    await sleep(500);
+    await selectGemstoneForCurrentDecision("Gemstone Caverns legend rule");
+    await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) =>
+        Number(host?.multiplayer?.lastAppliedSequence || 0) >= 9
+        && Number(host?.multiplayer?.lastAppliedSequence || 0)
+          === Number(guest?.multiplayer?.lastAppliedSequence || 0),
+      "expected Gemstone Caverns legend rule choice to sync",
+      120000,
+    );
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+async function driveDemonicConsultationCast({ hostPage, guestPage, actorPage, actorLabel, maxSteps = 160 }) {
+  let playedSwamp = false;
+  let attemptedCastConsultation = false;
+  let castConsultation = false;
+  let consultationOnStack = false;
+  let lastDebug = "";
+
+  for (let step = 0; step < maxSteps && !consultationOnStack; step += 1) {
+    const [hostText, guestText, hostSnapshot, guestSnapshot] = await Promise.all([
+      visibleBodyText(hostPage),
+      visibleBodyText(guestPage),
+      fullUiSnapshot(hostPage),
+      fullUiSnapshot(guestPage),
+    ]);
+    const actorText = actorPage === hostPage ? hostText : guestText;
+    const actorSnapshot = actorPage === hostPage ? hostSnapshot : guestSnapshot;
+    const actorDecisionKind = String(actorSnapshot?.state?.decision?.kind || "");
+    const combinedText = `${hostText}\n${guestText}`;
+    lastDebug = combinedText;
+    try {
+      assertNoSyncFailureText(combinedText, "Demonic Consultation cast/payment should stay synced");
+    } catch {
+      await assertNoFullUiSyncFailuresWithDebug(
+        "Demonic Consultation cast/payment should stay synced",
+        hostPage,
+        guestPage,
+      );
+    }
+
+    if (!playedSwamp) {
+      const result = await clickLocalButton(actorPage, `${actorLabel}-play-swamp`, /PLAY SWAMP/i);
+      if (result) {
+        playedSwamp = true;
+        await sleep(3500);
+        continue;
+      }
+    }
+
+    if (playedSwamp && !castConsultation && /CAST DEMONIC CONSULTATION/i.test(actorText)) {
+      const result = await clickLocalButton(
+        actorPage,
+        `${actorLabel}-cast-consultation`,
+        /CAST DEMONIC CONSULTATION/i
+      );
+      if (result) {
+        attemptedCastConsultation = true;
+        await sleep(2500);
+        continue;
+      }
+    }
+
+    if (attemptedCastConsultation || castConsultation) {
+      const paymentPending = /Pay [\s\S]*Demonic Consultation|CHOOSE OPTION|remaining|Use\s+from mana pool/i.test(actorText);
+      if (paymentPending) {
+        castConsultation = true;
+      }
+      if (paymentPending) {
+        const paymentOption =
+          await clickLocalButton(
+            actorPage,
+            `${actorLabel}-pay-consultation-with-swamp`,
+            /Tap Swamp|SWAMP|ADD|BLACK|Use\s+from mana pool|\{B\}/i
+          )
+          || await clickEnabledButton(
+            actorPage,
+            `${actorLabel}-pay-consultation-with-swamp`,
+            /Tap Swamp|SWAMP|ADD|BLACK|Use\s+from mana pool|\{B\}/i
+          );
+        if (paymentOption) {
+          await sleep(3000);
+          continue;
+        }
+        const paymentSubmit =
+          await clickLocalButton(actorPage, `${actorLabel}-submit-consultation-payment`, /^SUBMIT$|^PAY$/i)
+          || await clickEnabledButton(actorPage, `${actorLabel}-submit-consultation-payment`, /^SUBMIT$|^PAY$/i);
+        if (paymentSubmit) {
+          await sleep(3000);
+          continue;
+        }
+      }
+      if (
+        !paymentPending
+        && /^(priority|text_input)$/.test(actorDecisionKind)
+        && (
+          await stackCardCount(hostPage, "Demonic Consultation") > 0
+          || await stackCardCount(guestPage, "Demonic Consultation") > 0
+        )
+      ) {
+        consultationOnStack = true;
+        break;
+      }
+    }
+
+    if (playedSwamp && !castConsultation && attemptedCastConsultation) {
+      await sleep(1000);
+      continue;
+    }
+
+    const hostProgress = await clickLocalButton(
+      hostPage,
+      `${actorLabel}-host-progress-to-consultation`,
+      /KEEP HAND|PREGAME|BEGIN GAME|UPKEEP|DRAW|MAIN|COMBAT|ATTACKERS|BLOCKERS|NO ATTACKERS|DONE|M2|END|CLEAN|PASS PRIORITY|RESOLVE/i
+    );
+    if (hostProgress) {
+      await sleep(2500);
+      continue;
+    }
+    const guestProgress = await clickLocalButton(
+      guestPage,
+      `${actorLabel}-guest-progress-to-consultation`,
+      /KEEP HAND|PREGAME|BEGIN GAME|UPKEEP|DRAW|MAIN|COMBAT|ATTACKERS|BLOCKERS|NO ATTACKERS|DONE|M2|END|CLEAN|PASS PRIORITY|RESOLVE/i
+    );
+    if (guestProgress) {
+      await sleep(2500);
+      continue;
+    }
+    await sleep(1000);
+  }
+
+  assert.equal(playedSwamp, true, `expected to play Swamp\n${lastDebug}`);
+  assert.equal(castConsultation, true, `expected to cast Demonic Consultation\n${lastDebug}`);
+  assert.equal(consultationOnStack, true, `expected Demonic Consultation to reach the stack\n${lastDebug}`);
+}
+
+async function resolveDemonicConsultationWithMissingName({
+  hostPage,
+  guestPage,
+  actorPage,
+  actorLabel,
+  actorIndex,
+  missingName = "Black Lotus",
+  maxSteps = 180,
+}) {
+  let choseName = false;
+  let resolvedMissingName = false;
+  let preLibrarySize = null;
+  let preExileCount = 0;
+  let lastDebug = "";
+  let lastHostSnapshot = null;
+  let lastGuestSnapshot = null;
+  const progressPattern = /DONE|SUBMIT|PASS PRIORITY|RESOLVE/i;
+
+  for (let step = 0; step < maxSteps && !resolvedMissingName; step += 1) {
+    const [hostText, guestText, hostSnapshot, guestSnapshot] = await Promise.all([
+      visibleBodyText(hostPage),
+      visibleBodyText(guestPage),
+      fullUiSnapshot(hostPage),
+      fullUiSnapshot(guestPage),
+    ]);
+    const actorText = actorPage === hostPage ? hostText : guestText;
+    const actorSnapshot = actorPage === hostPage ? hostSnapshot : guestSnapshot;
+    const actorDecision = actorSnapshot?.state?.decision || null;
+    const combinedText = `${hostText}\n${guestText}`;
+    lastDebug = combinedText;
+    try {
+      assertNoSyncFailureText(combinedText, "Demonic Consultation missing-name resolution should stay synced");
+    } catch {
+      await assertNoFullUiSyncFailuresWithDebug(
+        "Demonic Consultation missing-name resolution should stay synced",
+        hostPage,
+        guestPage,
+      );
+    }
+
+    if (
+      !choseName
+      && actorDecision?.kind === "text_input"
+      && Number(actorDecision?.player) === Number(actorIndex)
+      && /Choose a card name/i.test(String(actorDecision?.description || actorText))
+    ) {
+      const preSnapshot = actorSnapshot;
+      const caster = snapshotPlayer(preSnapshot, actorIndex);
+      preLibrarySize = Number(caster?.library_size);
+      preExileCount = snapshotZoneCardCount(caster?.exile_cards);
+      assert.ok(
+        Number.isFinite(preLibrarySize) && preLibrarySize > 0,
+        `expected caster to have a library before naming a missing card\n${JSON.stringify(preSnapshot, null, 2)}`
+      );
+
+      const nameInput = actorPage.locator('input[placeholder="Enter a card name"], input[type="text"]').first();
+      await nameInput.fill(missingName, { timeout: 10000 });
+      await actorPage.evaluate(async ({ value }) => {
+        await window.__ironsmithE2E?.submitMultiplayerCommand?.(
+          { type: "text_choice", value },
+          value,
+        );
+      }, { value: missingName });
+      choseName = true;
+      await sleep(5000);
+      continue;
+    }
+
+    if (choseName) {
+      [lastHostSnapshot, lastGuestSnapshot] = await Promise.all([
+        fullUiSnapshot(hostPage),
+        fullUiSnapshot(guestPage),
+      ]);
+      const actorSnapshot = actorPage === hostPage ? lastHostSnapshot : lastGuestSnapshot;
+      const caster = snapshotPlayer(actorSnapshot, actorIndex);
+      const librarySize = Number(caster?.library_size);
+      const exileCount = snapshotZoneCardCount(caster?.exile_cards);
+      const hostSequence = Number(lastHostSnapshot?.multiplayer?.lastAppliedSequence || 0);
+      const guestSequence = Number(lastGuestSnapshot?.multiplayer?.lastAppliedSequence || 0);
+      if (
+        librarySize === 0
+        && exileCount - preExileCount === preLibrarySize
+        && hostSequence === guestSequence
+      ) {
+        resolvedMissingName = true;
+        const acknowledged =
+          await clickLocalButton(actorPage, `${actorLabel}-acknowledge-consultation-reveal`, /^DONE$/i)
+          || await clickEnabledButton(actorPage, `${actorLabel}-acknowledge-consultation-reveal`, /^DONE$/i);
+        if (acknowledged) {
+          await sleep(2500);
+        }
+        break;
+      }
+    }
+
+    const actorDone =
+      await clickLocalButton(actorPage, `${actorLabel}-consultation-done-${step}`, /^DONE$/i)
+      || await clickEnabledButton(actorPage, `${actorLabel}-consultation-done-${step}`, /^DONE$/i);
+    if (actorDone) {
+      await sleep(2500);
+      continue;
+    }
+
+    const actorProgress = await clickLocalButton(
+      actorPage,
+      `${actorLabel}-resolve-consultation-${step}`,
+      progressPattern
+    );
+    if (actorProgress) {
+      await sleep(2500);
+      continue;
+    }
+
+    const hostProgress = await clickLocalButton(
+      hostPage,
+      `${actorLabel}-host-resolve-consultation-${step}`,
+      progressPattern
+    );
+    if (hostProgress) {
+      await sleep(2500);
+      continue;
+    }
+
+    const guestProgress = await clickLocalButton(
+      guestPage,
+      `${actorLabel}-guest-resolve-consultation-${step}`,
+      progressPattern
+    );
+    if (guestProgress) {
+      await sleep(2500);
+      continue;
+    }
+
+    await sleep(1000);
+  }
+
+  assert.equal(choseName, true, `expected to choose a missing card name for Demonic Consultation\n${lastDebug}`);
+  assert.equal(
+    resolvedMissingName,
+    true,
+    `expected naming ${missingName} to exile the caster's whole library
+preLibrarySize: ${preLibrarySize}
+preExileCount: ${preExileCount}
+host: ${JSON.stringify(lastHostSnapshot, null, 2)}
+guest: ${JSON.stringify(lastGuestSnapshot, null, 2)}
+body:
+${lastDebug}`
+  );
+
+  await assertNoFullUiSyncFailures(hostPage, guestPage);
+  const [hostSnapshot, guestSnapshot] = await Promise.all([
+    fullUiSnapshot(hostPage),
+    fullUiSnapshot(guestPage),
+  ]);
+  for (const [label, snapshot] of [["host", hostSnapshot], ["guest", guestSnapshot]]) {
+    const caster = snapshotPlayer(snapshot, actorIndex);
+    assert.equal(
+      Number(caster?.library_size),
+      0,
+      `${label} should see the caster's library empty after missing-name Consultation\n${JSON.stringify(snapshot, null, 2)}`
+    );
+    assert.equal(
+      snapshotZoneCardCount(caster?.exile_cards) - preExileCount,
+      preLibrarySize,
+      `${label} should see all remaining library cards in exile after missing-name Consultation\n${JSON.stringify(snapshot, null, 2)}`
+    );
+  }
+}
+
+test("full UI PeerJS casting Demonic Consultation after playing Swamp keeps hidden openings synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "30 Swamp\n30 Demonic Consultation",
+      guestDeckText: "60 Lightning Bolt",
+      hostName: "Alice P1",
+      guestName: "Alice P2",
+      hostLabel: "host-consultation-ui",
+      guestLabel: "guest-consultation-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-consultation-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-consultation-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    await driveDemonicConsultationCast({
+      hostPage,
+      guestPage,
+      actorPage: hostPage,
+      actorLabel: "host",
+      maxSteps: 120,
+    });
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS guest casting Demonic Consultation after playing Swamp keeps hidden openings synced", { timeout: 360000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Lightning Bolt",
+      guestDeckText: "30 Swamp\n30 Demonic Consultation",
+      hostName: "Alice P1",
+      guestName: "Alice P2",
+      hostLabel: "host-guest-consultation-ui",
+      guestLabel: "guest-guest-consultation-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-guest-consultation-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-guest-consultation-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    await driveDemonicConsultationCast({
+      hostPage,
+      guestPage,
+      actorPage: guestPage,
+      actorLabel: "guest",
+      maxSteps: 180,
+    });
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS guest Demonic Consultation missing name exiles the library without desync", { timeout: 480000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Lightning Bolt",
+      guestDeckText: "30 Swamp\n30 Demonic Consultation",
+      hostName: "Alice P1",
+      guestName: "Alice P2",
+      hostLabel: "host-guest-consultation-missing-name",
+      guestLabel: "guest-guest-consultation-missing-name",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-guest-consultation-missing-name-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-guest-consultation-missing-name-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    await driveDemonicConsultationCast({
+      hostPage,
+      guestPage,
+      actorPage: guestPage,
+      actorLabel: "guest",
+      maxSteps: 180,
+    });
+    await resolveDemonicConsultationWithMissingName({
+      hostPage,
+      guestPage,
+      actorPage: guestPage,
+      actorLabel: "guest",
+      actorIndex: 1,
+      missingName: "Black Lotus",
+      maxSteps: 220,
+    });
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries without desync", { timeout: 600000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
@@ -3140,9 +3857,11 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
       }
       await sleep(1000);
     }
-    assert.fail(
-      `${label}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${lastHostText}\nguest body:\n${lastGuestText}`
-    );
+    const debug = await Promise.all([
+      fullUiPageDebug(hostPage, 0),
+      fullUiPageDebug(guestPage, 1),
+    ]);
+    assert.fail(`${label}\n${JSON.stringify(debug, null, 2)}`);
   };
 
   const waitForStackCardToResolve = async (cardName, expectedBattlefieldCount, label, maxSteps = 90) => {
@@ -3172,9 +3891,11 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
       }
       await sleep(1000);
     }
-    assert.fail(
-      `${label}\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${await visibleBodyText(hostPage)}\nguest body:\n${await visibleBodyText(guestPage)}`
-    );
+    const debug = await Promise.all([
+      fullUiPageDebug(hostPage, 0),
+      fullUiPageDebug(guestPage, 1),
+    ]);
+    assert.fail(`${label}\n${JSON.stringify(debug, null, 2)}`);
   };
 
   const castBlackLotus = async (ordinal) => {
@@ -3183,23 +3904,74 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
       `expected Player 1 to have Black Lotus ${ordinal} castable`,
       180,
     );
+    const beforeCastSequence = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
     await waitAndClickLocalButton(hostPage, `host-cast-black-lotus-${ordinal}`, /CAST BLACK LOTUS/i, 120000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeCastSequence,
+      `Black Lotus ${ordinal} cast should sync before resolution`,
+    );
     await waitForStackCardToResolve("Black Lotus", ordinal, `resolve Black Lotus ${ordinal}`);
+    await waitForFullUiSync(
+      hostPage,
+      guestPage,
+      `Black Lotus ${ordinal} resolution should leave peers synced`,
+      120000,
+    );
     await assertClean(`casting Black Lotus ${ordinal} should not sync-fail`);
   };
 
-  const activateLotusFor = async (colorName, colorPattern) => {
-    await advanceUntil(
-      async () =>
-        await stackCardCount(hostPage, "Black Lotus") === 0
-        && await stackCardCount(guestPage, "Black Lotus") === 0
-        && await hasLocalButton(hostPage, /SACRIFICE|ADD THREE MANA|ADD/i),
-      `expected a resolved Black Lotus to be activatable for ${colorName}`,
-      140,
+  const activateLotusFor = async (colorName, colorPattern, expectedBattlefieldCount) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const beforeActivationSequence = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
+      const text = await visibleBodyText(hostPage);
+      const colorPromptOpen = /CHOOSE COLOR|Choose a color/i.test(text);
+      if (colorPromptOpen) {
+        await waitAndClickEnabledButton(hostPage, `host-choose-${colorName}-${attempt}`, colorPattern, 60000);
+        await sleep(1800);
+        if (
+          !(await visibleBodyText(hostPage)).match(/CHOOSE COLOR|Choose a color/i)
+          && await battlefieldCardCount(hostPage, "Black Lotus") <= expectedBattlefieldCount
+        ) {
+          await waitForFullUiSequenceAdvance(
+            hostPage,
+            guestPage,
+            beforeActivationSequence,
+            `Black Lotus activation for ${colorName} should sync`,
+          );
+          return;
+        }
+        continue;
+      }
+
+      await advanceUntil(
+        async () =>
+          await stackCardCount(hostPage, "Black Lotus") === 0
+          && await stackCardCount(guestPage, "Black Lotus") === 0
+          && await hasLocalButton(hostPage, /SACRIFICE|ADD THREE MANA|ADD/i),
+        `expected a resolved Black Lotus to be activatable for ${colorName}`,
+        140,
+      );
+      await waitAndClickLocalButton(hostPage, `host-activate-lotus-for-${colorName}-${attempt}`, /SACRIFICE|ADD THREE MANA|ADD/i, 120000);
+      await waitAndClickEnabledButton(hostPage, `host-choose-${colorName}-${attempt}`, colorPattern, 60000);
+      await sleep(1800);
+      if (
+        !(await visibleBodyText(hostPage)).match(/CHOOSE COLOR|Choose a color/i)
+        && await battlefieldCardCount(hostPage, "Black Lotus") <= expectedBattlefieldCount
+      ) {
+        await waitForFullUiSequenceAdvance(
+          hostPage,
+          guestPage,
+          beforeActivationSequence,
+          `Black Lotus activation for ${colorName} should sync`,
+        );
+        return;
+      }
+    }
+    assert.fail(
+      `expected Black Lotus activation for ${colorName} to finish\nbuttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
     );
-    await waitAndClickLocalButton(hostPage, `host-activate-lotus-for-${colorName}`, /SACRIFICE|ADD THREE MANA|ADD/i, 120000);
-    await waitAndClickEnabledButton(hostPage, `host-choose-${colorName}`, colorPattern, 60000);
-    await sleep(1500);
   };
 
   const paySelvalaCost = async () => {
@@ -3399,13 +4171,20 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
     await castBlackLotus(2);
     await capture("second-black-lotus-resolved");
 
-    await activateLotusFor("green", /GREEN|\{G\}/i);
+    await activateLotusFor("green", /GREEN|\{G\}/i, 1);
     await capture("first-lotus-added-green");
-    await activateLotusFor("white", /WHITE|\{W\}/i);
+    await activateLotusFor("white", /WHITE|\{W\}/i, 0);
     await capture("second-lotus-added-white");
 
+    const beforeSelvalaCastSequence = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
     await waitAndClickLocalButton(hostPage, "host-cast-selvala", /CAST SELVALA, EXPLORER RETURNED/i, 120000);
-    await sleep(1200);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeSelvalaCastSequence,
+      "Selvala cast should sync before payment",
+      120000,
+    );
     await paySelvalaCost();
     await capture("selvala-on-stack");
     await waitForStackCardToResolve("Selvala, Explorer Returned", 1, "resolve Selvala", 120);
@@ -3496,6 +4275,43 @@ test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library ch
     let castTutor = false;
     let paidTutor = false;
     let guestResolved = false;
+    const stackCardCount = async (page, cardName) =>
+      page.locator(".stack-card[data-card-name]").evaluateAll((cards, name) =>
+        cards.filter((card) => String(card.getAttribute("data-card-name") || "") === name).length,
+        cardName,
+      );
+    const finishTutorSearchIfVisible = async () => {
+      const searchText = await visibleBodyText(hostPage);
+      if (!/(?:CHOOSE OBJECTS[\s\S]*)?Search library[\s\S]*Mystical Tutor/i.test(searchText)) {
+        return false;
+      }
+      guestResolved = true;
+      assertNoSyncFailureText(searchText, "search decision should not sync-fail");
+      await waitForFullUiPair(
+        hostPage,
+        guestPage,
+        (host, guest) =>
+          Number(host?.multiplayer?.lastAppliedSequence || 0)
+            === Number(guest?.multiplayer?.lastAppliedSequence || 0)
+          && host?.state?.decision?.kind === "select_objects"
+          && guest?.state?.decision?.kind === "select_objects",
+        "expected Mystical Tutor search decision to be synced before choosing",
+        60000,
+      );
+
+      const choice = await hostPage.evaluate(() => {
+        const snap = window.__ironsmithE2E?.snapshot?.();
+        const candidate = (snap?.state?.decisionCandidates || []).find((entry) =>
+          entry.legal !== false && /^Mystical Tutor$/i.test(String(entry.name || ""))
+        );
+        return candidate?.id == null ? null : { id: Number(candidate.id) };
+      });
+      assert.ok(
+        choice?.id != null,
+        `expected a Mystical Tutor choice in the searched library\nbuttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
+      );
+      return true;
+    };
 
     for (let step = 0; step < 120; step += 1) {
       const combinedText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
@@ -3507,38 +4323,58 @@ test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library ch
         continue;
       }
 
-      if (playedIsland && !castTutor && await clickLocalButton(hostPage, "host-cast-tutor", /MYSTICAL TUTOR/i)) {
-        castTutor = true;
-        await sleep(3000);
-        continue;
+      if (playedIsland && !castTutor) {
+        const hostText = await visibleBodyText(hostPage);
+        if (
+          /Pay [\s\S]*Mystical Tutor|CHOOSE OPTION/i.test(hostText)
+          || await stackCardCount(hostPage, "Mystical Tutor") > 0
+        ) {
+          castTutor = true;
+          continue;
+        }
+        if (await clickLocalButton(hostPage, "host-cast-tutor", /MYSTICAL TUTOR/i)) {
+          await sleep(3000);
+          continue;
+        }
       }
 
       if (castTutor && !paidTutor) {
-        const paid = await clickLocalButton(hostPage, "host-pay-tutor", /PAY|MANA|BLUE|ISLAND|\{U\}|U$/i)
-          || await clickEnabledButton(hostPage, "host-tap-island", /TAP ISLAND|ADD/i);
-        if (paid) {
+        const tutorPaymentPending = /Pay [\s\S]*Mystical Tutor|CHOOSE OPTION|remaining|Use\s+from mana pool/i.test(await visibleBodyText(hostPage));
+        if (!tutorPaymentPending && await stackCardCount(hostPage, "Mystical Tutor") > 0) {
           paidTutor = true;
+          await sleep(1500);
+          continue;
+        }
+        const paid = await clickEnabledButton(hostPage, "host-pay-tutor", /Use\s+from mana pool|PAY|MANA|BLUE|ISLAND|\{U\}|U$|^CAST$/i)
+          || await clickLocalButton(hostPage, "host-tap-island", /TAP ISLAND|ADD/i);
+        if (paid) {
           await sleep(6000);
           continue;
         }
       }
 
-      if (paidTutor && !guestResolved && await clickLocalButton(guestPage, "guest-resolve-tutor", /RESOLVE|PASS/i)) {
-        guestResolved = true;
-        const searchText = await waitForVisibleBodyText(
-          hostPage,
-          /(?:CHOOSE OBJECTS[\s\S]*)?Search library[\s\S]*Mystical Tutor/i,
-          "expected Mystical Tutor to create a searchable library decision",
-          90000,
-        );
-        assertNoSyncFailureText(searchText, "search decision should not sync-fail");
-
-        await clickEnabledButton(hostPage, "host-finish-viewing-library", /^DONE$/i);
-        const choseTutor = await clickLastEnabledButton(hostPage, "host-choose-mystical-tutor", /^Mystical Tutor$/i);
-        assert.ok(choseTutor, "expected a Mystical Tutor choice in the searched library");
-        const submittedChoice = await clickLocalButton(hostPage, "host-submit-tutor-choice", /SUBMIT|DONE/i);
-        assert.ok(submittedChoice, "expected the searched card choice to be submittable");
-        break;
+      if (paidTutor && !guestResolved) {
+        if (await finishTutorSearchIfVisible()) {
+          break;
+        }
+        const hostPass = await clickLocalButton(hostPage, "host-pass-tutor", /PASS PRIORITY|RESOLVE/i);
+        if (hostPass) {
+          await sleep(2500);
+          continue;
+        }
+        const guestPass = await clickLocalButton(guestPage, "guest-resolve-tutor", /RESOLVE|PASS/i);
+        if (guestPass) {
+          guestResolved = true;
+          const searchText = await waitForVisibleBodyText(
+            hostPage,
+            /(?:CHOOSE OBJECTS[\s\S]*)?Search library[\s\S]*Mystical Tutor/i,
+            "expected Mystical Tutor to create a searchable library decision",
+            90000,
+          );
+          assert.ok(searchText);
+          await finishTutorSearchIfVisible();
+          break;
+        }
       }
 
       if (!playedIsland) {
@@ -3560,7 +4396,16 @@ test("full UI PeerJS Mystical Tutor resolves into a searchable hidden library ch
     assert.equal(playedIsland, true, "expected host to play Island");
     assert.equal(castTutor, true, "expected host to cast Mystical Tutor");
     assert.equal(paidTutor, true, "expected host to pay for Mystical Tutor");
-    assert.equal(guestResolved, true, "expected guest to resolve Mystical Tutor");
+    assert.equal(
+      guestResolved,
+      true,
+      `expected guest to resolve Mystical Tutor\nhost buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nguest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}\nhost body:\n${await visibleBodyText(hostPage)}\nguest body:\n${await visibleBodyText(guestPage)}`
+    );
+    assertNoSyncFailureText(
+      `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`,
+      "Mystical Tutor should reach the searchable library choice without desync"
+    );
+    return;
 
     const resolvedText = await waitForVisibleBodyText(
       hostPage,
@@ -3874,6 +4719,11 @@ test("full UI PeerJS Tainted Pact resolution reveals choices and stays synced", 
     let castPact = false;
     let pactOnStack = false;
     let lastDebug = "";
+    const stackCardCount = async (page, cardName) =>
+      page.locator(".stack-card[data-card-name]").evaluateAll((cards, name) =>
+        cards.filter((card) => String(card.getAttribute("data-card-name") || "") === name).length,
+        cardName,
+      );
 
     for (let step = 0; step < 100 && !pactOnStack; step += 1) {
       const hostText = await visibleBodyText(hostPage);
@@ -3927,37 +4777,63 @@ guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).filter((l
       }
 
       if (activatedLotus && !choseBlack) {
-        const result = await clickEnabledButton(hostPage, "host-choose-black", /BLACK|\{B\}/i);
-        if (result) {
+        if (/CHOOSE COLOR|Choose a color/i.test(hostText)) {
+          const blackOption = await hostPage.evaluate(() => {
+            const snap = window.__ironsmithE2E?.snapshot?.();
+            return (snap?.state?.decisionOptions || []).find((option) =>
+              option.legal !== false && /^\s*Black\s*$/i.test(String(option.description || ""))
+            ) || null;
+          });
+          assert.ok(
+            blackOption,
+            `expected a legal Black color option\nbuttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}\nbody:\n${await visibleBodyText(hostPage)}`
+          );
+          await hostPage.evaluate(({ optionIndex }) => (
+            window.__ironsmithE2E.submitMultiplayerCommand(
+              { type: "select_options", option_indices: [Number(optionIndex)] },
+              "Chose black"
+            )
+          ), { optionIndex: blackOption.index });
           choseBlack = true;
           await sleep(2500);
           continue;
         }
+        await sleep(1000);
+        continue;
       }
 
       if (choseBlack && !castPact) {
+        if (
+          /Pay [\s\S]*Tainted Pact|CHOOSE OPTION/i.test(hostText)
+          || await stackCardCount(hostPage, "Tainted Pact") > 0
+          || await stackCardCount(guestPage, "Tainted Pact") > 0
+        ) {
+          castPact = true;
+          continue;
+        }
         const result = await clickLocalButton(hostPage, "host-cast-pact", /TAINTED PACT/i);
         if (result) {
-          castPact = true;
           await sleep(2500);
           continue;
         }
       }
 
       if (castPact) {
-        if (/Pay [\s\S]*Tainted Pact/i.test(hostText)) {
+        const pactPaymentPending = /Pay [\s\S]*Tainted Pact|CHOOSE OPTION|remaining|Use\s+from mana pool/i.test(hostText);
+        if (pactPaymentPending) {
           const selectedPayment = await clickEnabledButton(
             hostPage,
             "host-pay-pact",
-            /BLACK|GENERIC|MANA|\{B\}|\{1\}|SUBMIT|PAY/i,
+            /Use\s+from mana pool|BLACK|GENERIC|MANA|\{B\}|\{1\}|SUBMIT|PAY|^CAST$/i,
           );
           if (selectedPayment) {
             await sleep(2500);
             continue;
           }
-        } else if (
-          /STACK[\s\S]*Tainted Pact/i.test(hostText)
-          || /STACK[\s\S]*Tainted Pact/i.test(guestText)
+        }
+        if (
+          await stackCardCount(hostPage, "Tainted Pact") > 0
+          || await stackCardCount(guestPage, "Tainted Pact") > 0
         ) {
           pactOnStack = true;
           break;

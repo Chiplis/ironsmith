@@ -22,7 +22,8 @@ use ironsmith::decision::{
     AttackerDeclaration, BlockerDeclaration, DecisionMaker, GameProgress, GameResult, LegalAction,
 };
 use ironsmith::decisions::context::{
-    DecisionContext, DecisionHiddenCardVisibility, ViewCardsContext,
+    DecisionContext, DecisionHiddenCardVisibility, SelectionIdentity, SelectionRevealPolicy,
+    ViewCardsContext,
 };
 use ironsmith::game_loop::{
     ActivationStage, CastStage, PendingPriorityContinuation, PriorityActionPerfMetrics,
@@ -1903,12 +1904,26 @@ struct OptionView {
     related_object_ids: Option<Vec<u64>>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct HiddenObjectRef {
+    owner: Option<u8>,
+    zone: Option<String>,
+    slot: Option<u16>,
+    commitment: Option<String>,
+    public_slot: Option<u16>,
+    public_commitment: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ObjectChoiceView {
     id: u64,
     name: String,
     legal: bool,
     object_controller: Option<u8>,
+    selection_identity: String,
+    reveal_policy: String,
+    stable_id: Option<u64>,
+    hidden_ref: Option<HiddenObjectRef>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2004,6 +2019,8 @@ enum DecisionView {
         min: usize,
         max: Option<usize>,
         allow_partial_completion: bool,
+        selection_identity: String,
+        reveal_policy: String,
         candidates: Vec<ObjectChoiceView>,
         source_id: Option<u64>,
         source_name: Option<String>,
@@ -2029,6 +2046,103 @@ enum DecisionView {
         player: u8,
         blocker_options: Vec<BlockerOptionView>,
     },
+}
+
+fn selection_reveal_policy_name(policy: SelectionRevealPolicy) -> String {
+    policy.as_str().to_string()
+}
+
+fn selection_identity_name(identity: SelectionIdentity) -> String {
+    identity.as_str().to_string()
+}
+
+fn decision_zone_name(zone: Zone) -> String {
+    match zone {
+        Zone::Library => "library",
+        Zone::Hand => "hand",
+        Zone::Battlefield => "battlefield",
+        Zone::Graveyard => "graveyard",
+        Zone::Exile => "exile",
+        Zone::Stack => "stack",
+        Zone::Command => "command",
+        Zone::OutsideGame => "outside_game",
+    }
+    .to_string()
+}
+
+fn hidden_ref_for_object(game: &GameState, id: ObjectId) -> Option<HiddenObjectRef> {
+    let object = game.object(id)?;
+    let hidden = game.hidden_card_info(id);
+    Some(HiddenObjectRef {
+        owner: Some(hidden.map(|info| info.owner.0).unwrap_or(object.owner.0)),
+        zone: Some(decision_zone_name(object.zone)),
+        slot: hidden.map(|info| info.slot),
+        commitment: hidden.map(|info| info.commitment.clone()),
+        public_slot: hidden.and_then(|info| info.public_slot),
+        public_commitment: hidden.and_then(|info| info.public_commitment.clone()),
+    })
+}
+
+fn object_needs_hidden_reference(game: &GameState, id: ObjectId) -> bool {
+    let Some(object) = game.object(id) else {
+        return false;
+    };
+    game.hidden_card_info(id).is_some()
+        || object.name.eq_ignore_ascii_case("hidden card")
+        || game.is_foretold(id)
+        || (object.zone == Zone::Exile && game.is_face_down(id))
+}
+
+fn effective_selection_identity(
+    game: &GameState,
+    id: ObjectId,
+    requested: SelectionIdentity,
+) -> SelectionIdentity {
+    if game.object(id).is_none() {
+        return SelectionIdentity::ObjectId;
+    }
+    if object_needs_hidden_reference(game, id) {
+        return SelectionIdentity::HiddenReference;
+    }
+    requested
+}
+
+fn object_choice_view(
+    game: &GameState,
+    id: ObjectId,
+    name: &str,
+    legal: bool,
+    visible: bool,
+    selection_identity: SelectionIdentity,
+    reveal_policy: SelectionRevealPolicy,
+    redacted_id: u64,
+) -> ObjectChoiceView {
+    let effective_identity = effective_selection_identity(game, id, selection_identity);
+    let object = game.object(id);
+    ObjectChoiceView {
+        id: if visible { id.0 } else { redacted_id },
+        name: if visible {
+            name.to_string()
+        } else {
+            hidden_object_label()
+        },
+        legal,
+        object_controller: visible
+            .then(|| {
+                game.current_controller(id)
+                    .or_else(|| object.map(|object| object.owner))
+            })
+            .flatten()
+            .map(|controller| controller.0),
+        selection_identity: selection_identity_name(effective_identity),
+        reveal_policy: selection_reveal_policy_name(reveal_policy),
+        stable_id: (visible && effective_identity == SelectionIdentity::StableId)
+            .then(|| object.map(|object| object.stable_id.0.0))
+            .flatten(),
+        hidden_ref: (effective_identity == SelectionIdentity::HiddenReference)
+            .then(|| hidden_ref_for_object(game, id))
+            .flatten(),
+    }
 }
 
 impl DecisionView {
@@ -2506,6 +2620,8 @@ impl DecisionView {
                 min: 0,
                 max: Some(partition.cards.len()),
                 allow_partial_completion: false,
+                selection_identity: selection_identity_name(SelectionIdentity::ObjectId),
+                reveal_policy: selection_reveal_policy_name(SelectionRevealPolicy::None),
                 candidates: partition
                     .cards
                     .iter()
@@ -2517,6 +2633,10 @@ impl DecisionView {
                             .current_controller(*id)
                             .or_else(|| game.object(*id).map(|obj| obj.owner))
                             .map(|controller| controller.0),
+                        selection_identity: selection_identity_name(SelectionIdentity::ObjectId),
+                        reveal_policy: selection_reveal_policy_name(SelectionRevealPolicy::None),
+                        stable_id: None,
+                        hidden_ref: None,
                     })
                     .collect(),
                 source_id: resolve_source_id(partition.source),
@@ -2579,32 +2699,24 @@ impl DecisionView {
                 min: objects.min,
                 max: objects.max,
                 allow_partial_completion: objects.allow_partial_completion,
+                selection_identity: selection_identity_name(objects.selection_identity),
+                reveal_policy: selection_reveal_policy_name(objects.reveal_policy),
                 candidates: objects
                     .candidates
                     .iter()
                     .enumerate()
                     .map(|(index, obj)| {
                         let visible = decision_object_visible(obj.id);
-                        ObjectChoiceView {
-                            id: if visible {
-                                obj.id.0
-                            } else {
-                                redacted_choice_id(index)
-                            },
-                            name: if visible {
-                                obj.name.clone()
-                            } else {
-                                hidden_object_label()
-                            },
-                            legal: obj.legal,
-                            object_controller: visible
-                                .then(|| {
-                                    game.current_controller(obj.id)
-                                        .or_else(|| game.object(obj.id).map(|object| object.owner))
-                                })
-                                .flatten()
-                                .map(|controller| controller.0),
-                        }
+                        object_choice_view(
+                            game,
+                            obj.id,
+                            &obj.name,
+                            obj.legal,
+                            visible,
+                            obj.selection_identity.unwrap_or(objects.selection_identity),
+                            obj.reveal_policy.unwrap_or(objects.reveal_policy),
+                            redacted_choice_id(index),
+                        )
                     })
                     .collect(),
                 source_id: resolve_source_id(objects.source),
@@ -2733,6 +2845,10 @@ enum UiCommand {
     },
     SelectObjects {
         object_ids: Vec<u64>,
+        #[serde(default)]
+        object_stable_ids: Vec<Option<u64>>,
+        #[serde(default)]
+        object_hidden_refs: Vec<Option<HiddenObjectRef>>,
     },
     SelectTargets {
         targets: Vec<TargetInput>,
@@ -3589,6 +3705,8 @@ struct HiddenCardOpeningExport {
     slot: u16,
     card: String,
     commitment: String,
+    public_slot: Option<u16>,
+    public_commitment: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3890,6 +4008,197 @@ mod native_tests {
             "Pregame"
         );
         assert_eq!(describe_action(&game, &LegalAction::BeginGame), "Pregame");
+    }
+
+    #[test]
+    fn select_object_view_exports_stable_identity_for_public_object() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let object_id = wasm.game.create_object_from_definition(
+            &ironsmith_registry::cards::definitions::basic_forest(),
+            alice,
+            Zone::Battlefield,
+        );
+        let stable_id = wasm.game.object(object_id).expect("object").stable_id.0.0;
+        let decision = DecisionContext::SelectObjects(
+            ironsmith::decisions::context::SelectObjectsContext::new(
+                alice,
+                None,
+                "Choose a permanent",
+                vec![ironsmith::decisions::context::SelectableObject::new(
+                    object_id, "Forest",
+                )],
+                1,
+                Some(1),
+            ),
+        );
+
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            alice,
+            Some(&decision),
+            None,
+            wasm.game_over.as_ref(),
+            None,
+            None,
+            Vec::new(),
+            None,
+            wasm.is_cancelable(),
+            None,
+            0,
+        );
+        let candidates = match snapshot.decision.as_ref().expect("decision") {
+            DecisionView::SelectObjects { candidates, .. } => candidates,
+            other => panic!("expected select_objects, got {other:?}"),
+        };
+
+        assert_eq!(candidates[0].selection_identity, "stable_id");
+        assert_eq!(candidates[0].stable_id, Some(stable_id));
+        assert_eq!(candidates[0].reveal_policy, "none");
+        assert!(candidates[0].hidden_ref.is_none());
+    }
+
+    #[test]
+    fn select_object_view_exports_hidden_reference_for_hidden_card() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let hidden = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            7,
+            "alice-hand-slot-7".to_string(),
+        );
+        let decision = DecisionContext::SelectObjects(
+            ironsmith::decisions::context::SelectObjectsContext::new(
+                alice,
+                None,
+                "Choose a hidden card",
+                vec![ironsmith::decisions::context::SelectableObject::new(
+                    hidden,
+                    "Hidden card",
+                )],
+                1,
+                Some(1),
+            ),
+        );
+
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            alice,
+            Some(&decision),
+            None,
+            wasm.game_over.as_ref(),
+            None,
+            None,
+            Vec::new(),
+            None,
+            wasm.is_cancelable(),
+            None,
+            0,
+        );
+        let candidates = match snapshot.decision.as_ref().expect("decision") {
+            DecisionView::SelectObjects { candidates, .. } => candidates,
+            other => panic!("expected select_objects, got {other:?}"),
+        };
+        let hidden_ref = candidates[0].hidden_ref.as_ref().expect("hidden ref");
+
+        assert_eq!(candidates[0].selection_identity, "hidden_reference");
+        assert_eq!(candidates[0].stable_id, None);
+        assert_eq!(hidden_ref.owner, Some(alice.0));
+        assert_eq!(hidden_ref.zone.as_deref(), Some("hand"));
+        assert_eq!(hidden_ref.slot, Some(7));
+        assert_eq!(hidden_ref.commitment.as_deref(), Some("alice-hand-slot-7"));
+        assert!(candidates[0].name.eq_ignore_ascii_case("hidden card"));
+    }
+
+    #[test]
+    fn select_object_command_normalizes_stable_and_hidden_refs_to_legal_candidates() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let public_object = wasm.game.create_object_from_definition(
+            &ironsmith_registry::cards::definitions::basic_forest(),
+            alice,
+            Zone::Battlefield,
+        );
+        let stable_id = wasm
+            .game
+            .object(public_object)
+            .expect("public object")
+            .stable_id
+            .0
+            .0;
+        let hidden = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            4,
+            "alice-hidden-slot-4".to_string(),
+        );
+        let ctx = ironsmith::decisions::context::SelectObjectsContext::new(
+            alice,
+            None,
+            "Choose an object",
+            vec![
+                ironsmith::decisions::context::SelectableObject::new(public_object, "Forest"),
+                ironsmith::decisions::context::SelectableObject::new(hidden, "Hidden card"),
+            ],
+            1,
+            Some(1),
+        );
+
+        let by_stable = normalize_select_object_choice_ids(
+            &wasm.game,
+            &ctx,
+            &[999_999],
+            &[Some(stable_id)],
+            &[],
+        )
+        .expect("stable id should remap");
+        assert_eq!(by_stable, vec![public_object.0]);
+
+        let by_hidden = normalize_select_object_choice_ids(
+            &wasm.game,
+            &ctx,
+            &[999_999],
+            &[],
+            &[Some(HiddenObjectRef {
+                owner: Some(alice.0),
+                zone: Some("hand".to_string()),
+                slot: Some(4),
+                commitment: Some("alice-hidden-slot-4".to_string()),
+                public_slot: None,
+                public_commitment: None,
+            })],
+        )
+        .expect("hidden ref should remap");
+        assert_eq!(by_hidden, vec![hidden.0]);
+
+        wasm.game.set_hidden_card_info(
+            hidden,
+            ironsmith::game_state::HiddenCardInfo {
+                owner: alice,
+                zone: Zone::Hand,
+                slot: 4,
+                commitment: "alice-private-slot-4".to_string(),
+                public_slot: Some(8),
+                public_commitment: Some("alice-public-position-8".to_string()),
+            },
+        );
+        let by_public_commitment = normalize_select_object_choice_ids(
+            &wasm.game,
+            &ctx,
+            &[999_999],
+            &[],
+            &[Some(HiddenObjectRef {
+                owner: Some(alice.0),
+                zone: Some("hand".to_string()),
+                slot: Some(4),
+                commitment: Some("alice-public-position-8".to_string()),
+                public_slot: None,
+                public_commitment: None,
+            })],
+        )
+        .expect("hidden ref commitment should match public commitment");
+        assert_eq!(by_public_commitment, vec![hidden.0]);
     }
 
     #[test]

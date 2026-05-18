@@ -21,6 +21,8 @@ import {
   findPriorityActionForCommand,
   isDecisionCommandCompatible,
   priorityCommandForAction,
+  normalizeSelectObjectHiddenRef,
+  selectObjectSyncMetadataForCommand,
 } from "@/lib/sync-commands";
 import {
   buildTriggerOrderingKey,
@@ -329,12 +331,20 @@ function serializeMultiplayerCommand(command, _currentState) {
     if (!action?.action_ref) {
       throw new Error("Priority action is no longer available");
     }
+    const rawObjectId = action.object_id == null ? null : Number(action.object_id);
+    const objectId = Number.isSafeInteger(rawObjectId) && rawObjectId > 0 ? rawObjectId : null;
+    const stableId = objectId == null
+      ? null
+      : objectStableIdMapFromState(_currentState).get(objectId);
     const syncedCommand = {
       type: "priority_action",
       action_ref: action.action_ref,
     };
-    if (action.object_id != null) {
-      syncedCommand.object_id = Number(action.object_id);
+    if (objectId != null) {
+      syncedCommand.object_id = objectId;
+    }
+    if (stableId != null) {
+      syncedCommand.object_stable_id = stableId;
     }
     return syncedCommand;
   }
@@ -347,10 +357,22 @@ function serializeMultiplayerCommand(command, _currentState) {
   }
 
   if (command.type === "select_objects") {
-    return {
+    const objectIds = (command.object_ids || []).map((objectId) => Number(objectId));
+    const { stableIds, hiddenRefs } = selectObjectSyncMetadataForCommand(
+      { ...command, object_ids: objectIds },
+      _currentState
+    );
+    const syncedCommand = {
       type: "select_objects",
-      object_ids: (command.object_ids || []).map((objectId) => Number(objectId)),
+      object_ids: objectIds,
     };
+    if (stableIds.some((stableId) => stableId != null)) {
+      syncedCommand.object_stable_ids = stableIds;
+    }
+    if (hiddenRefs.some((hiddenRef) => hiddenRef != null)) {
+      syncedCommand.object_hidden_refs = hiddenRefs;
+    }
+    return syncedCommand;
   }
 
   if (command.type === "select_targets") {
@@ -431,10 +453,20 @@ function resolveSyncedCommand(command) {
   if (!command || typeof command !== "object") return command;
 
   if (command.type === "priority_action" && command.action_ref) {
-    return {
+    const syncedCommand = {
       type: "priority_action",
       action_ref: command.action_ref,
     };
+    if (command.object_id != null || command.objectId != null) {
+      syncedCommand.object_id = Number(command.object_id ?? command.objectId);
+    }
+    if (command.object_stable_id != null || command.objectStableId != null) {
+      const stableId = Number(command.object_stable_id ?? command.objectStableId);
+      if (Number.isSafeInteger(stableId) && stableId > 0) {
+        syncedCommand.object_stable_id = stableId;
+      }
+    }
+    return syncedCommand;
   }
 
   if (command.type === "priority_action" && command.action_index != null) {
@@ -452,10 +484,30 @@ function resolveSyncedCommand(command) {
   }
 
   if (command.type === "select_objects" && Array.isArray(command.object_ids)) {
-    return {
+    const syncedCommand = {
       type: "select_objects",
       object_ids: command.object_ids.map((objectId) => Number(objectId)),
     };
+    const stableIds = Array.isArray(command.object_stable_ids)
+      ? command.object_stable_ids
+      : Array.isArray(command.objectStableIds)
+        ? command.objectStableIds
+        : [];
+    if (stableIds.length > 0) {
+      syncedCommand.object_stable_ids = stableIds.map((stableId) => {
+        const normalized = Number(stableId);
+        return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
+      });
+    }
+    const hiddenRefs = Array.isArray(command.object_hidden_refs)
+      ? command.object_hidden_refs
+      : Array.isArray(command.objectHiddenRefs)
+        ? command.objectHiddenRefs
+        : [];
+    if (hiddenRefs.length > 0) {
+      syncedCommand.object_hidden_refs = hiddenRefs.map(normalizeSelectObjectHiddenRef);
+    }
+    return syncedCommand;
   }
 
   if (command.type === "select_targets" && Array.isArray(command.targets)) {
@@ -531,6 +583,9 @@ function summarizeDecision(decision) {
   const summary = {
     kind: String(decision.kind || ""),
     player: decision.player == null ? null : Number(decision.player),
+    description: decision.description ? String(decision.description) : null,
+    placeholder: decision.placeholder ? String(decision.placeholder) : null,
+    require_known_value: Boolean(decision.require_known_value),
     source_name: decision.source_name ? String(decision.source_name) : null,
     reason: decision.reason ? String(decision.reason) : null,
   };
@@ -549,6 +604,51 @@ function summarizeDecision(decision) {
   }
 
   return summary;
+}
+
+function rememberCardStableId(map, card) {
+  if (!card || typeof card !== "object") return;
+  const id = Number(card.id);
+  const stableId = Number(card.stable_id ?? card.stableId);
+  if (Number.isSafeInteger(id) && id > 0 && Number.isSafeInteger(stableId) && stableId > 0) {
+    map.set(id, stableId);
+  }
+  const memberIds = Array.isArray(card.member_ids) ? card.member_ids : [];
+  const memberStableIds = Array.isArray(card.member_stable_ids) ? card.member_stable_ids : [];
+  for (let index = 0; index < memberIds.length; index += 1) {
+    const memberId = Number(memberIds[index]);
+    const memberStableId = Number(memberStableIds[index]);
+    if (
+      Number.isSafeInteger(memberId)
+      && memberId > 0
+      && Number.isSafeInteger(memberStableId)
+      && memberStableId > 0
+    ) {
+      map.set(memberId, memberStableId);
+    }
+  }
+}
+
+function objectStableIdMapFromState(state) {
+  const map = new Map();
+  const zoneKeys = [
+    "battlefield",
+    "hand_cards",
+    "graveyard_cards",
+    "exile_cards",
+    "command_cards",
+  ];
+  for (const player of state?.players || []) {
+    for (const zoneKey of zoneKeys) {
+      for (const card of player?.[zoneKey] || []) {
+        rememberCardStableId(map, card);
+      }
+    }
+  }
+  for (const stackEntry of state?.stack_preview || []) {
+    rememberCardStableId(map, stackEntry);
+  }
+  return map;
 }
 
 function readDispatchPerf(state) {
@@ -1521,6 +1621,7 @@ export function GameProvider({ children }) {
     submitMultiplayerCommand,
     submitMultiplayerAddCardCheat,
     exportAuditTranscript,
+    routePeerIdForPlayer,
   } = usePeerLobby({
     game,
     state,
@@ -2221,12 +2322,17 @@ export function GameProvider({ children }) {
       return undefined;
     }
 
-    const snapshot = () => cloneJson({
+    const snapshot = () => {
+      const stableIdByObjectId = objectStableIdMapFromState(state);
+      return cloneJson({
       loading,
       wasmError: wasmError ? String(wasmError?.message || wasmError) : "",
       wasmPhase,
       wasmProgress,
       canStartHostedMatch,
+      perfEvents: Array.isArray(window.__ironsmithPerfEvents)
+        ? window.__ironsmithPerfEvents.slice(-100)
+        : [],
       status: status
         ? {
             msg: String(status.msg || ""),
@@ -2256,6 +2362,9 @@ export function GameProvider({ children }) {
           name: player.name,
           peerId: player.peerId,
           currentPeerId: player.currentPeerId,
+          routePeerId: typeof routePeerIdForPlayer === "function"
+            ? routePeerIdForPlayer(player)
+            : (player.currentPeerId || player.peerId || ""),
           connected: player.connected,
           ready: player.ready,
           disconnectedAtMs: player.disconnectedAtMs,
@@ -2268,32 +2377,78 @@ export function GameProvider({ children }) {
             snapshot_id: state.snapshot_id,
             perspective: state.perspective,
             decision: summarizeDecision(state.decision || null),
+            decisionCandidates: state.decision?.kind === "select_objects"
+              ? (state.decision.candidates || []).map((candidate) => ({
+                  id: candidate.id,
+                  stable_id: candidate.stable_id ?? candidate.stableId ?? stableIdByObjectId.get(Number(candidate.id)) ?? null,
+                  selection_identity: candidate.selection_identity ?? candidate.selectionIdentity ?? null,
+                  reveal_policy: candidate.reveal_policy ?? candidate.revealPolicy ?? null,
+                  hidden_ref: candidate.hidden_ref ?? candidate.hiddenRef ?? null,
+                  name: candidate.name,
+                  legal: candidate.legal,
+                }))
+              : undefined,
+            decisionOptions: state.decision?.kind === "select_options"
+              ? (state.decision.options || []).map((option, optionIndex) => ({
+                  index: Number.isFinite(Number(option.index))
+                    ? Number(option.index)
+                    : optionIndex,
+                  description: option.description,
+                  legal: option.legal,
+                }))
+              : undefined,
             players: (state.players || []).map((player) => ({
               id: player.id,
               name: player.name,
               life: player.life,
+              hand_size: Number.isFinite(Number(player.hand_size))
+                ? Number(player.hand_size)
+                : (player.hand_cards || []).length,
+              library_size: Number.isFinite(Number(player.library_size))
+                ? Number(player.library_size)
+                : null,
+              graveyard_size: Number.isFinite(Number(player.graveyard_size))
+                ? Number(player.graveyard_size)
+                : (player.graveyard_cards || []).length,
+              exile_cards: (player.exile_cards || []).map((card) => ({
+                id: card.id,
+                stable_id: card.stable_id ?? card.stableId ?? null,
+                name: card.name,
+                count: card.count,
+              })),
               battlefield: (player.battlefield || []).map((card) => ({
                 id: card.id,
+                stable_id: card.stable_id ?? card.stableId ?? null,
                 name: card.name,
                 tapped: card.tapped,
+                count: card.count,
               })),
             })),
           }
         : null,
-    });
+      });
+    };
 
-    window.__ironsmithE2E = { snapshot };
+    const e2eApi = {
+      snapshot,
+      dispatch: (command, label) => dispatch(command, label),
+      submitMultiplayerCommand: (command, label) => submitMultiplayerCommand(command, label),
+    };
+    window.__ironsmithE2E = e2eApi;
     return () => {
-      if (window.__ironsmithE2E?.snapshot === snapshot) {
+      if (window.__ironsmithE2E === e2eApi) {
         delete window.__ironsmithE2E;
       }
     };
   }, [
     canStartHostedMatch,
+    dispatch,
     loading,
     multiplayer,
+    routePeerIdForPlayer,
     state,
     status,
+    submitMultiplayerCommand,
     wasmError,
     wasmPhase,
     wasmProgress,

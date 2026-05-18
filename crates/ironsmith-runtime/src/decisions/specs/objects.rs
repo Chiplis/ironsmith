@@ -6,7 +6,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::context::{
     DecisionContext, DecisionHiddenCardVisibility, ProliferateContext, SelectObjectsContext,
-    SelectableObject,
+    SelectableObject, SelectionRevealPolicy,
 };
 use crate::decisions::spec::{DecisionPrimitive, DecisionSpec};
 use crate::game_state::GameState;
@@ -84,14 +84,17 @@ impl DecisionSpec for SacrificeSpec {
             })
             .collect();
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
-            player,
-            Some(self.source),
-            format!("Choose {} to sacrifice", self.description),
-            candidates,
-            1,
-            Some(1),
-        ))
+        DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                player,
+                Some(self.source),
+                format!("Choose {} to sacrifice", self.description),
+                candidates,
+                1,
+                Some(1),
+            )
+            .with_reveal_policy(SelectionRevealPolicy::Public),
+        )
     }
 }
 
@@ -214,6 +217,7 @@ impl DecisionSpec for ChooseObjectsSpec {
         } else {
             ctx
         };
+        let ctx = ctx.with_reveal_policy(SelectionRevealPolicy::from(self.hidden_card_visibility));
         let ctx = ctx.with_hidden_card_view(
             self.candidates.clone(),
             self.hidden_card_visibility,
@@ -324,14 +328,17 @@ impl DecisionSpec for DiscardSpec {
             self.description.clone()
         };
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
-            player,
-            Some(self.source),
-            description,
-            candidates,
-            if self.optional { 0 } else { 1 },
-            Some(1),
-        ))
+        DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                player,
+                Some(self.source),
+                description,
+                candidates,
+                if self.optional { 0 } else { 1 },
+                Some(1),
+            )
+            .with_reveal_policy(SelectionRevealPolicy::Public),
+        )
     }
 }
 
@@ -405,14 +412,17 @@ impl DecisionSpec for ExileSpec {
             })
             .collect();
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
-            player,
-            Some(self.source),
-            self.description.clone(),
-            candidates,
-            1,
-            Some(1),
-        ))
+        DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                player,
+                Some(self.source),
+                self.description.clone(),
+                candidates,
+                1,
+                Some(1),
+            )
+            .with_reveal_policy(SelectionRevealPolicy::Public),
+        )
     }
 }
 
@@ -526,6 +536,11 @@ impl DecisionSpec for SearchSpec {
         } else {
             ctx
         };
+        let ctx = ctx.with_reveal_policy(if self.reveal {
+            SelectionRevealPolicy::Public
+        } else {
+            SelectionRevealPolicy::from(self.hidden_card_visibility)
+        });
         let ctx = ctx.with_hidden_card_view(
             self.matching_cards.clone(),
             self.hidden_card_visibility,
@@ -593,14 +608,17 @@ impl DecisionSpec for DiscardToHandSizeSpec {
             })
             .collect();
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
-            player,
-            None,
-            format!("Discard {} card(s) to reach maximum hand size", self.count),
-            candidates,
-            self.count,
-            Some(self.count),
-        ))
+        DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                player,
+                None,
+                format!("Discard {} card(s) to reach maximum hand size", self.count),
+                candidates,
+                self.count,
+                Some(self.count),
+            )
+            .with_reveal_policy(SelectionRevealPolicy::Public),
+        )
     }
 }
 

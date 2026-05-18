@@ -1160,29 +1160,145 @@ pub(super) fn validate_object_selection(
     Ok(())
 }
 
+fn hidden_ref_matches_object(game: &GameState, id: ObjectId, hidden_ref: &HiddenObjectRef) -> bool {
+    let Some(object) = game.object(id) else {
+        return false;
+    };
+    let hidden = game.hidden_card_info(id);
+    let owner = hidden.map(|info| info.owner).unwrap_or(object.owner);
+    if hidden_ref
+        .owner
+        .is_some_and(|expected| owner.0 != expected)
+    {
+        return false;
+    }
+    if hidden_ref
+        .zone
+        .as_ref()
+        .is_some_and(|expected| zone_name(object.zone) != *expected)
+    {
+        return false;
+    }
+    if let Some(expected_slot) = hidden_ref.slot {
+        if hidden.is_none_or(|info| info.slot != expected_slot) {
+            return false;
+        }
+    }
+    if let Some(expected_slot) = hidden_ref.public_slot {
+        if hidden.is_none_or(|info| info.public_slot != Some(expected_slot)) {
+            return false;
+        }
+    }
+    if let Some(expected_commitment) = hidden_ref.commitment.as_deref() {
+        if hidden.is_none_or(|info| {
+            info.commitment != expected_commitment
+                && info.public_commitment.as_deref() != Some(expected_commitment)
+        }) {
+            return false;
+        }
+    }
+    if let Some(expected_commitment) = hidden_ref.public_commitment.as_deref() {
+        if hidden.is_none_or(|info| {
+            info.commitment != expected_commitment
+                && info.public_commitment.as_deref() != Some(expected_commitment)
+        }) {
+            return false;
+        }
+    }
+    true
+}
+
+fn unique_legal_candidate_by_stable_id(
+    game: &GameState,
+    ctx: &ironsmith::decisions::context::SelectObjectsContext,
+    stable_id: u64,
+) -> Result<ObjectId, JsValue> {
+    let mut matches = ctx
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.legal)
+        .filter_map(|candidate| {
+            game.object(candidate.id)
+                .is_some_and(|object| object.stable_id.0.0 == stable_id)
+                .then_some(candidate.id)
+        });
+    let Some(first) = matches.next() else {
+        return Err(JsValue::from_str(&format!(
+            "stable object id {stable_id} is not legal"
+        )));
+    };
+    if matches.next().is_some() {
+        return Err(JsValue::from_str(&format!(
+            "stable object id {stable_id} matches multiple legal candidates"
+        )));
+    }
+    Ok(first)
+}
+
+fn unique_legal_candidate_by_hidden_ref(
+    game: &GameState,
+    ctx: &ironsmith::decisions::context::SelectObjectsContext,
+    hidden_ref: &HiddenObjectRef,
+) -> Result<ObjectId, JsValue> {
+    let mut matches = ctx
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.legal)
+        .filter(|candidate| hidden_ref_matches_object(game, candidate.id, hidden_ref))
+        .map(|candidate| candidate.id);
+    let Some(first) = matches.next() else {
+        return Err(JsValue::from_str("hidden object reference is not legal"));
+    };
+    if matches.next().is_some() {
+        return Err(JsValue::from_str(
+            "hidden object reference matches multiple legal candidates",
+        ));
+    }
+    Ok(first)
+}
+
 pub(super) fn normalize_select_object_choice_ids(
+    game: &GameState,
     ctx: &ironsmith::decisions::context::SelectObjectsContext,
     selected: &[u64],
-) -> Vec<u64> {
+    stable_ids: &[Option<u64>],
+    hidden_refs: &[Option<HiddenObjectRef>],
+) -> Result<Vec<u64>, JsValue> {
     selected
         .iter()
-        .map(|selected_id| {
+        .enumerate()
+        .map(|(choice_index, selected_id)| {
             if ctx
                 .candidates
                 .iter()
                 .any(|candidate| candidate.legal && candidate.id.0 == *selected_id)
             {
-                return *selected_id;
+                return Ok(*selected_id);
             }
 
-            ctx.candidates
+            if let Some(mapped_id) = ctx
+                .candidates
                 .iter()
                 .enumerate()
                 .find(|(index, candidate)| {
                     candidate.legal && redacted_choice_id(*index) == *selected_id
                 })
                 .map(|(_, candidate)| candidate.id.0)
-                .unwrap_or(*selected_id)
+            {
+                return Ok(mapped_id);
+            }
+
+            if let Some(Some(stable_id)) = stable_ids.get(choice_index) {
+                return unique_legal_candidate_by_stable_id(game, ctx, *stable_id)
+                    .map(|id| id.0);
+            }
+
+            if let Some(Some(hidden_ref)) = hidden_refs.get(choice_index) {
+                return unique_legal_candidate_by_hidden_ref(game, ctx, hidden_ref)
+                    .map(|id| id.0);
+            }
+
+            Ok(*selected_id)
         })
         .collect()
 }

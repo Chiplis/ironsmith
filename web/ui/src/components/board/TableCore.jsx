@@ -1,9 +1,10 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
 import MyZone, { ZoneCountInline } from "./MyZone";
 import DeckLoadingView from "./DeckLoadingView";
+import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
@@ -20,6 +21,11 @@ function playerAccentStyle(accent) {
     "--panel-accent": accent?.hex || "#b98946",
     "--player-accent-rgb": accent?.rgb || "216, 191, 106",
   };
+}
+
+function sanitizeDeckCards(cards) {
+  if (!Array.isArray(cards)) return [];
+  return cards.map((card) => String(card || "").trim()).filter(Boolean);
 }
 
 export default function TableCore({
@@ -49,9 +55,10 @@ export default function TableCore({
   zoneActionControls = null,
   middleInspectorDock = null,
 }) {
-  const { state, playerAccentOverrides } = useGame();
+  const { state, playerAccentOverrides, multiplayer } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
+  const [openDecklist, setOpenDecklist] = useState(null);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -126,6 +133,24 @@ export default function TableCore({
     dispatchPlayerTargetChoice();
   }, [dispatchPlayerTargetChoice, shouldHandleClick]);
 
+  const handleOpenDecklist = useCallback((player) => {
+    const seat = Number(player?.index ?? player?.id);
+    const matchPlayer = (multiplayer?.players || []).find((candidate) =>
+      Number(candidate?.index) === seat
+      || samePlayerId(candidate?.index, player?.id)
+    );
+    const deck = sanitizeDeckCards(matchPlayer?.deck);
+    const sideboard = sanitizeDeckCards(matchPlayer?.sideboard);
+    const commanders = sanitizeDeckCards(matchPlayer?.commanders);
+    if (deck.length === 0 && sideboard.length === 0 && commanders.length === 0) return;
+    setOpenDecklist({
+      playerName: playerDisplayName(state?.players || [], player),
+      deck,
+      sideboard,
+      commanders,
+    });
+  }, [multiplayer?.players, state?.players]);
+
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
   }
@@ -195,7 +220,7 @@ export default function TableCore({
           className="player-name-mana battlefield-header-mana"
         />
         <div className="battlefield-header-zone-counts ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
-          <ZoneCountInline player={me} />
+          <ZoneCountInline player={me} onOpenDecklist={handleOpenDecklist} />
         </div>
       </div>
       {!dockStackRailInBoard ? (
@@ -275,6 +300,7 @@ export default function TableCore({
         opponents={opponents}
         selectedObjectId={selectedObjectId}
         onInspect={onInspect}
+        onOpenDecklist={handleOpenDecklist}
         zoneViews={zoneViews}
         zoneActivityByPlayer={zoneActivityByPlayer}
         legalTargetPlayerIds={legalTargetPlayerIds}
@@ -294,6 +320,7 @@ export default function TableCore({
         player={me}
         selectedObjectId={selectedObjectId}
         onInspect={onInspect}
+        onOpenDecklist={handleOpenDecklist}
         zoneViews={zoneViews}
         zoneActivity={zoneActivityByPlayer[String(me?.id ?? me?.index ?? "")] || {}}
         legalTargetPlayerIds={legalTargetPlayerIds}
@@ -303,6 +330,10 @@ export default function TableCore({
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
         zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
         hideHeader={Boolean(sharedMiddleElement)}
+      />
+      <OpenDecklistModal
+        decklist={openDecklist}
+        onClose={() => setOpenDecklist(null)}
       />
     </main>
   );

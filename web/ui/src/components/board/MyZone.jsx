@@ -145,24 +145,50 @@ function buildActivatableMap(decision) {
   return activatableMap;
 }
 
-export function ZoneCountInline({ player }) {
+export function ZoneCountInline({ player, onOpenDecklist = null }) {
   const counts = zoneCounts(player);
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
     <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
       {counts.map((entry) => {
         const showLibraryTop = entry.label === "Deck" && libraryTopName;
+        const deckEntry = entry.label === "Deck" && typeof onOpenDecklist === "function";
+        const content = (
+          <>
+            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{entry.label}</span>
+            <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
+            {showLibraryTop && (
+              <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
+            )}
+          </>
+        );
+        if (deckEntry) {
+          return (
+            <button
+              key={entry.label}
+              type="button"
+              className={cn(
+                "battlefield-count-item cursor-pointer text-left transition-colors hover:border-[#6d8ead] hover:text-[#e5f2ff]",
+                showLibraryTop && "battlefield-count-item--with-top"
+              )}
+              title="Open decklist"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenDecklist(player);
+              }}
+            >
+              {content}
+            </button>
+          );
+        }
         return (
           <span
             key={entry.label}
             className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
             title={showLibraryTop ? `Top card: ${libraryTopName}` : entry.title}
           >
-            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{entry.label}</span>
-            <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
-            {showLibraryTop && (
-              <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
-            )}
+            {content}
           </span>
         );
       })}
@@ -221,6 +247,7 @@ export default function MyZone({
   hideHeader = false,
   mobileBattleScene = false,
   playerAccent: explicitPlayerAccent = null,
+  onOpenDecklist = null,
   onMobileCardActionMenu = null,
   onMobileCardLongPress = null,
 }) {
@@ -675,7 +702,7 @@ export default function MyZone({
                     <span className="text-[#efe0bb]">{player.graveyard_size ?? 0}</span>
                   </div>
                 ) : (
-                  <ZoneCountInline player={player} />
+                  <ZoneCountInline player={player} onOpenDecklist={onOpenDecklist} />
                 )}
                 {headerControls}
               </div>

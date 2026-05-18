@@ -69,6 +69,7 @@ export function isDecisionCommandCompatible(decision, command) {
     case "select_options":
     case "modes":
     case "hybrid_choice":
+    case "colors":
       return command.type === "select_options";
     case "select_objects":
       return command.type === "select_objects";
@@ -161,14 +162,100 @@ function normalizeBlockerDeclaration(declaration) {
   };
 }
 
+export function normalizeSelectObjectHiddenRef(hiddenRef) {
+  if (!hiddenRef || typeof hiddenRef !== "object") return null;
+  const normalized = {};
+  const owner = Number(hiddenRef.owner);
+  if (Number.isSafeInteger(owner) && owner >= 0) normalized.owner = owner;
+  const zone = String(hiddenRef.zone || "").trim();
+  if (zone) normalized.zone = zone;
+  const slot = Number(hiddenRef.slot);
+  if (Number.isSafeInteger(slot) && slot >= 0) normalized.slot = slot;
+  const commitment = String(hiddenRef.commitment || "").trim();
+  if (commitment) normalized.commitment = commitment;
+  const publicSlot = Number(hiddenRef.public_slot ?? hiddenRef.publicSlot);
+  if (Number.isSafeInteger(publicSlot) && publicSlot >= 0) normalized.public_slot = publicSlot;
+  const publicCommitment = String(
+    hiddenRef.public_commitment ?? hiddenRef.publicCommitment ?? ""
+  ).trim();
+  if (publicCommitment) normalized.public_commitment = publicCommitment;
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+export function selectObjectCandidateForId(decision, objectId) {
+  if (!decision || String(decision.kind || "") !== "select_objects") return null;
+  const selected = String(objectId);
+  return (decision.candidates || []).find((candidate) =>
+    String(candidate?.id) === selected
+  ) || null;
+}
+
+export function selectObjectCandidateIdentity(decision, candidate) {
+  return String(
+    candidate?.selection_identity
+    ?? candidate?.selectionIdentity
+    ?? decision?.selection_identity
+    ?? decision?.selectionIdentity
+    ?? "object_id"
+  );
+}
+
+export function selectObjectCandidateRevealPolicy(decision, candidate) {
+  return String(
+    candidate?.reveal_policy
+    ?? candidate?.revealPolicy
+    ?? decision?.reveal_policy
+    ?? decision?.revealPolicy
+    ?? "none"
+  );
+}
+
+export function selectObjectSyncMetadataForCommand(command, stateOrDecision) {
+  const decision = stateOrDecision?.kind === "select_objects"
+    ? stateOrDecision
+    : stateOrDecision?.decision;
+  const objectIds = Array.isArray(command?.object_ids) ? command.object_ids : [];
+  if (!decision || String(decision.kind || "") !== "select_objects" || objectIds.length === 0) {
+    return { stableIds: [], hiddenRefs: [] };
+  }
+  const stableIds = [];
+  const hiddenRefs = [];
+  for (const objectId of objectIds) {
+    const candidate = selectObjectCandidateForId(decision, objectId);
+    const identity = selectObjectCandidateIdentity(decision, candidate);
+    const stableId = Number(candidate?.stable_id ?? candidate?.stableId);
+    stableIds.push(
+      identity === "stable_id" && Number.isSafeInteger(stableId) && stableId > 0
+        ? stableId
+        : null
+    );
+    hiddenRefs.push(
+      identity === "hidden_reference"
+        ? normalizeSelectObjectHiddenRef(candidate?.hidden_ref ?? candidate?.hiddenRef)
+        : null
+    );
+  }
+  return { stableIds, hiddenRefs };
+}
+
 export function resolveSyncedCommand(command) {
   if (!command || typeof command !== "object") return command;
 
   if (command.type === "priority_action" && command.action_ref) {
-    return {
+    const syncedCommand = {
       type: "priority_action",
       action_ref: command.action_ref,
     };
+    if (command.object_id != null || command.objectId != null) {
+      syncedCommand.object_id = Number(command.object_id ?? command.objectId);
+    }
+    if (command.object_stable_id != null || command.objectStableId != null) {
+      const stableId = Number(command.object_stable_id ?? command.objectStableId);
+      if (Number.isSafeInteger(stableId) && stableId > 0) {
+        syncedCommand.object_stable_id = stableId;
+      }
+    }
+    return syncedCommand;
   }
 
   if (command.type === "priority_action" && command.action_index != null) {
@@ -186,10 +273,30 @@ export function resolveSyncedCommand(command) {
   }
 
   if (command.type === "select_objects" && Array.isArray(command.object_ids)) {
-    return {
+    const syncedCommand = {
       type: "select_objects",
       object_ids: command.object_ids.map((objectId) => Number(objectId)),
     };
+    const stableIds = Array.isArray(command.object_stable_ids)
+      ? command.object_stable_ids
+      : Array.isArray(command.objectStableIds)
+        ? command.objectStableIds
+        : [];
+    if (stableIds.length > 0) {
+      syncedCommand.object_stable_ids = stableIds.map((stableId) => {
+        const normalized = Number(stableId);
+        return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
+      });
+    }
+    const hiddenRefs = Array.isArray(command.object_hidden_refs)
+      ? command.object_hidden_refs
+      : Array.isArray(command.objectHiddenRefs)
+        ? command.objectHiddenRefs
+        : [];
+    if (hiddenRefs.length > 0) {
+      syncedCommand.object_hidden_refs = hiddenRefs.map(normalizeSelectObjectHiddenRef);
+    }
+    return syncedCommand;
   }
 
   if (command.type === "select_targets" && Array.isArray(command.targets)) {

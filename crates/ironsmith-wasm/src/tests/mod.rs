@@ -2,8 +2,8 @@ use super::WasmReplayDecisionMaker;
 use super::ui_snapshot::grouped_battlefield_for_player;
 use super::{
     ActiveViewedCards, CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
-    MatchFormatInput, MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome,
-    ReplayRoot, TargetChoiceView, TargetInput, WasmGame, action_drag_metadata,
+    HiddenObjectRef, MatchFormatInput, MatchSetupInput, PendingReplayAction, PregameState,
+    ReplayOutcome, ReplayRoot, TargetChoiceView, TargetInput, WasmGame, action_drag_metadata,
     build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
     normalize_select_object_choice_ids, stable_ids_for_viewed_cards,
 };
@@ -2329,6 +2329,7 @@ fn snapshot_redacts_hidden_opponent_select_object_candidates() {
 
 #[test]
 fn redacted_select_object_choice_ids_resolve_to_real_candidates() {
+    let wasm = WasmGame::new();
     let card_a = ObjectId::from_raw(101);
     let card_b = ObjectId::from_raw(102);
     let ctx = SelectObjectsContext::new(
@@ -2343,9 +2344,291 @@ fn redacted_select_object_choice_ids_resolve_to_real_candidates() {
         Some(1),
     );
 
-    let selected = normalize_select_object_choice_ids(&ctx, &[super::redacted_choice_id(1)]);
+    let selected = normalize_select_object_choice_ids(
+        &wasm.game,
+        &ctx,
+        &[super::redacted_choice_id(1)],
+        &[],
+        &[],
+    )
+    .expect("redacted choice should normalize");
 
     assert_eq!(selected, vec![card_b.0]);
+}
+
+#[test]
+fn select_object_view_exposes_stable_identity_for_public_candidates() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let card = wasm
+        .add_card_to_zone(0, "Forest".to_string(), "battlefield".to_string(), true)
+        .expect("card should be added");
+    let card_id = ObjectId::from_raw(card);
+    let stable_id = wasm.game.object(card_id).expect("object").stable_id.0.0;
+    let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a permanent",
+        vec![SelectableObject::new(card_id, "Forest")],
+        1,
+        Some(1),
+    ));
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        alice,
+        Some(&decision),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        None,
+        Vec::new(),
+        None,
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let candidates = match snapshot.decision.as_ref().expect("decision") {
+        super::DecisionView::SelectObjects { candidates, .. } => candidates,
+        other => panic!("expected select_objects view, got {other:?}"),
+    };
+
+    assert_eq!(candidates[0].selection_identity, "stable_id");
+    assert_eq!(candidates[0].reveal_policy, "none");
+    assert_eq!(candidates[0].stable_id, Some(stable_id));
+    assert!(candidates[0].hidden_ref.is_none());
+}
+
+#[test]
+fn select_object_view_keeps_synthetic_candidates_on_object_ids() {
+    let wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let synthetic = ObjectId::from_raw(0x8000_0001);
+    let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a player",
+        vec![SelectableObject::new(synthetic, "Alice")],
+        1,
+        Some(1),
+    ));
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        alice,
+        Some(&decision),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        None,
+        Vec::new(),
+        None,
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let candidates = match snapshot.decision.as_ref().expect("decision") {
+        super::DecisionView::SelectObjects { candidates, .. } => candidates,
+        other => panic!("expected select_objects view, got {other:?}"),
+    };
+
+    assert_eq!(candidates[0].selection_identity, "object_id");
+    assert_eq!(candidates[0].stable_id, None);
+    assert!(candidates[0].hidden_ref.is_none());
+}
+
+#[test]
+fn select_object_view_uses_hidden_reference_without_card_identity_for_hidden_candidates() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let hidden = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Hand,
+        7,
+        "alice-hand-slot-7".to_string(),
+    );
+    let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a hidden card",
+        vec![SelectableObject::new(hidden, "Hidden card")],
+        1,
+        Some(1),
+    ));
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        alice,
+        Some(&decision),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        None,
+        Vec::new(),
+        None,
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let candidates = match snapshot.decision.as_ref().expect("decision") {
+        super::DecisionView::SelectObjects { candidates, .. } => candidates,
+        other => panic!("expected select_objects view, got {other:?}"),
+    };
+    let hidden_ref = candidates[0].hidden_ref.as_ref().expect("hidden ref");
+
+    assert_eq!(candidates[0].selection_identity, "hidden_reference");
+    assert_eq!(candidates[0].stable_id, None);
+    assert_eq!(hidden_ref.owner, Some(alice.0));
+    assert_eq!(hidden_ref.zone.as_deref(), Some("hand"));
+    assert_eq!(hidden_ref.slot, Some(7));
+    assert_eq!(hidden_ref.commitment.as_deref(), Some("alice-hand-slot-7"));
+    assert!(
+        candidates[0].name.eq_ignore_ascii_case("hidden card"),
+        "hidden refs must not reveal a card name"
+    );
+}
+
+#[test]
+fn select_object_view_uses_hidden_reference_for_face_down_exile() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let hidden = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Exile,
+        2,
+        "alice-exile-slot-2".to_string(),
+    );
+    wasm.game.set_face_down(hidden);
+    let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a face-down exiled card",
+        vec![SelectableObject::new(hidden, "Hidden card")],
+        1,
+        Some(1),
+    ));
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        alice,
+        Some(&decision),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        None,
+        Vec::new(),
+        None,
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let candidates = match snapshot.decision.as_ref().expect("decision") {
+        super::DecisionView::SelectObjects { candidates, .. } => candidates,
+        other => panic!("expected select_objects view, got {other:?}"),
+    };
+
+    assert_eq!(candidates[0].selection_identity, "hidden_reference");
+    assert_eq!(
+        candidates[0]
+            .hidden_ref
+            .as_ref()
+            .and_then(|hidden_ref| hidden_ref.commitment.as_deref()),
+        Some("alice-exile-slot-2")
+    );
+}
+
+#[test]
+fn select_object_choice_ids_remap_by_stable_id_and_reject_invalid_stable_id() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let first = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Forest".to_string(), "battlefield".to_string(), true)
+            .expect("first card should be added"),
+    );
+    let second = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Mountain".to_string(), "battlefield".to_string(), true)
+            .expect("second card should be added"),
+    );
+    let second_stable = wasm.game.object(second).expect("second").stable_id.0.0;
+    let ctx = SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a permanent",
+        vec![
+            SelectableObject::new(first, "Forest"),
+            SelectableObject::new(second, "Mountain"),
+        ],
+        1,
+        Some(1),
+    );
+
+    let selected = normalize_select_object_choice_ids(
+        &wasm.game,
+        &ctx,
+        &[999_999],
+        &[Some(second_stable)],
+        &[],
+    )
+    .expect("stable id should remap to legal candidate");
+    assert_eq!(selected, vec![second.0]);
+
+    let invalid =
+        normalize_select_object_choice_ids(&wasm.game, &ctx, &[999_999], &[Some(123_456_789)], &[]);
+    assert!(invalid.is_err());
+}
+
+#[test]
+fn select_object_choice_ids_remap_by_hidden_ref_only_for_legal_candidates() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let hidden = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Hand,
+        4,
+        "alice-hidden-slot-4".to_string(),
+    );
+    let other = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Hand,
+        5,
+        "alice-hidden-slot-5".to_string(),
+    );
+    let hidden_ref = HiddenObjectRef {
+        owner: Some(alice.0),
+        zone: Some("hand".to_string()),
+        slot: Some(4),
+        commitment: Some("alice-hidden-slot-4".to_string()),
+        public_slot: None,
+        public_commitment: None,
+    };
+    let ctx = SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a hidden card",
+        vec![SelectableObject::new(hidden, "Hidden card")],
+        1,
+        Some(1),
+    );
+
+    let selected = normalize_select_object_choice_ids(
+        &wasm.game,
+        &ctx,
+        &[999_999],
+        &[],
+        &[Some(hidden_ref.clone())],
+    )
+    .expect("hidden ref should remap to legal candidate");
+    assert_eq!(selected, vec![hidden.0]);
+
+    let illegal_ref = HiddenObjectRef {
+        slot: Some(5),
+        commitment: Some("alice-hidden-slot-5".to_string()),
+        ..hidden_ref
+    };
+    let invalid =
+        normalize_select_object_choice_ids(&wasm.game, &ctx, &[999_999], &[], &[Some(illegal_ref)]);
+    assert!(invalid.is_err());
+    assert_ne!(hidden, other);
 }
 
 #[test]

@@ -1559,6 +1559,23 @@ test("ziffle public openings must prove shuffled position to committed slot", as
     verifyZiffleOpening: async ({ proof }) => ({ originalSlot: Number(proof.originalSlot) }),
   });
   assert.equal(report.valid, true);
+  const compactProofOpening = {
+    ...baseOpening,
+    ziffleReveal: buildZiffleOpeningProof({
+      opening: baseOpening,
+      ceremony,
+      position: 0,
+      originalSlot: 1,
+      positionCommitment: baseOpening.positionCommitment,
+      tokens,
+      compact: true,
+    }),
+  };
+  assert.equal(compactProofOpening.ziffleReveal.keys, undefined);
+  assert.equal(compactProofOpening.ziffleReveal.steps, undefined);
+  assert.equal((await verifyEnvelopeOnlyTranscript(await buildTranscript([compactProofOpening]), {
+    verifyZiffleOpening: async ({ proof }) => ({ originalSlot: Number(proof.originalSlot) }),
+  })).valid, true);
   await assert.rejects(
     () => verifyEnvelopeOnlyTranscript(transcript, {
       verifyZiffleOpening: async () => ({ originalSlot: 0 }),
@@ -2208,6 +2225,17 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
   });
   assert.equal(report.valid, true);
 
+  const rematerializedOrderTranscript = await buildTranscriptForProof({
+    ...shuffleProof,
+    afterOrder: [2002, 2001],
+  });
+  const rematerializedReport = await verifyEnvelopeOnlyTranscript(rematerializedOrderTranscript, {
+    verifyShuffleProof: async (proof) => {
+      assert.equal(proof.deckHash, "deck-hash");
+    },
+  });
+  assert.equal(rematerializedReport.valid, true);
+
   const missingOrderTranscript = await buildTranscriptForProof({
     ...shuffleProof,
     beforeOrder: undefined,
@@ -2454,6 +2482,130 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       actions: [],
     }, webcrypto),
     /last sequence/,
+  );
+});
+
+test("open decklist match genesis verifies committed slot openings", async () => {
+  const matchId = "open-decklists";
+  const playerKeys = [
+    await createAuditSessionKey(webcrypto),
+    await createAuditSessionKey(webcrypto),
+  ];
+  const encryptionKeys = [
+    await createAuditEncryptionKey(webcrypto),
+    await createAuditEncryptionKey(webcrypto),
+  ];
+  const publicKeys = await Promise.all(
+    playerKeys.map((keyPair) => exportAuditPublicKey(keyPair, webcrypto))
+  );
+  const encryptionPublicKeys = await Promise.all(
+    encryptionKeys.map((keyPair) => exportAuditEncryptionPublicKey(keyPair, webcrypto))
+  );
+  const decks = [
+    ["Island", "Mountain"],
+    ["Forest", "Forest"],
+  ];
+  const manifests = await Promise.all(decks.map((deck, index) =>
+    buildPrivateDeckManifest({
+      matchId,
+      owner: index,
+      deck,
+      saltForSlot: (slot) => `open-decklist-salt-${index}-${slot}`,
+    }, webcrypto)
+  ));
+  const buildPlayers = async (slotOpeningOverrides = {}) => Promise.all(
+    playerKeys.map(async (keyPair, index) => {
+      const openings = await Promise.all(decks[index].map((card, slot) =>
+        buildDeckSlotOpening({ manifest: manifests[index], slot, card }, webcrypto)
+      ));
+      const player = {
+        peerId: `peer-${index}`,
+        name: `Player ${index + 1}`,
+        index,
+        auditPublicKey: publicKeys[index],
+        auditEncryptionPublicKey: encryptionPublicKeys[index],
+        deckAuditManifest: publicDeckManifest(manifests[index]),
+        ziffleKey: {
+          player: index,
+          publicKeyHex: `open-ziffle-key-${index}`,
+          ownershipProofHex: `open-ziffle-proof-${index}`,
+        },
+        deck: decks[index],
+        sideboard: [],
+        commanders: [],
+        deckSlotOpenings: slotOpeningOverrides[index] || openings,
+        deckCount: decks[index].length,
+        sideboardCount: 0,
+        commanderCount: 0,
+      };
+      player.playerGenesisSignature = await buildSignedPlayerGenesis({
+        keyPair,
+        matchId,
+        protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+        timeoutMs: 300000,
+        player,
+      }, webcrypto);
+      return player;
+    })
+  );
+  const buildMatch = async (players) => {
+    const ziffleKeys = players.map((player) => player.ziffleKey);
+    const match = {
+      protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+      auditMatchId: matchId,
+      lobbyId: matchId,
+      hostPeerId: "peer-0",
+      format: "normal",
+      openDecklists: true,
+      startingLife: 20,
+      openingHandSize: 7,
+      seed: 123,
+      timeoutMs: 300000,
+      matchClockPolicy: {
+        type: "per_player_match_clock_v1",
+        initialMs: 300000,
+        graceMs: 2000,
+      },
+      initialPublicCheckpointHash: "initial-public-checkpoint",
+      players,
+      deckAuditManifests: manifests.map(publicDeckManifest),
+      ziffleKeys,
+      ziffleCeremonies: players.map((player) => ({
+        owner: player.index,
+        deckCount: player.deckCount,
+        context: matchId,
+        keyContext: matchId,
+        keys: ziffleKeys,
+        steps: players.map((shuffler) => ({
+          shuffler: shuffler.index,
+          deckHex: `open-deck-${player.index}-${shuffler.index}`,
+          proofHex: `open-proof-${player.index}-${shuffler.index}`,
+        })),
+        deckHash: `open-deck-hash-${player.index}`,
+      })),
+    };
+    match.genesis = await buildSignedMatchGenesis({
+      keyPair: playerKeys[0],
+      match,
+      hostSeat: 0,
+    }, webcrypto);
+    return match;
+  };
+
+  const match = await buildMatch(await buildPlayers());
+  assert.equal((await verifySignedMatchGenesis(match, webcrypto)).valid, true);
+
+  const badOpening = {
+    ...(await buildDeckSlotOpening({ manifest: manifests[0], slot: 0, card: "Island" }, webcrypto)),
+    card: "Swamp",
+  };
+  const tamperedMatch = await buildMatch(await buildPlayers({ 0: [
+    badOpening,
+    await buildDeckSlotOpening({ manifest: manifests[0], slot: 1, card: "Mountain" }, webcrypto),
+  ] }));
+  await assert.rejects(
+    () => verifySignedMatchGenesis(tamperedMatch, webcrypto),
+    /does not match the declared card|does not match its commitment/,
   );
 });
 

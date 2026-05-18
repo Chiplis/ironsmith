@@ -346,8 +346,22 @@ impl WasmGame {
                     .unwrap()
                     .respond_blockers(converted, player);
             }
-            (DecisionContext::SelectObjects(obj_ctx), UiCommand::SelectObjects { object_ids }) => {
-                let object_ids = normalize_select_object_choice_ids(obj_ctx, &object_ids);
+            (
+                DecisionContext::SelectObjects(obj_ctx),
+                UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids,
+                    object_hidden_refs,
+                },
+            ) => {
+                let object_ids = normalize_select_object_choice_ids(
+                    &self.game,
+                    obj_ctx,
+                    &object_ids,
+                    &object_stable_ids,
+                    &object_hidden_refs,
+                )
+                .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
                 // Validate discard selection against the decision context.
                 let legal_ids: Vec<u64> = obj_ctx
                     .candidates
@@ -1091,8 +1105,21 @@ impl WasmGame {
                 })?;
                 Ok(ReplayDecisionAnswer::Priority(action))
             }
-            (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
-                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
+            (
+                DecisionContext::SelectObjects(objects),
+                UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids,
+                    object_hidden_refs,
+                },
+            ) => {
+                let object_ids = normalize_select_object_choice_ids(
+                    &self.game,
+                    objects,
+                    &object_ids,
+                    &object_stable_ids,
+                    &object_hidden_refs,
+                )?;
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()
@@ -1280,7 +1307,10 @@ impl WasmGame {
 
                 Ok(ReplayDecisionAnswer::Counters(selected))
             }
-            (DecisionContext::Partition(partition), UiCommand::SelectObjects { object_ids }) => {
+            (
+                DecisionContext::Partition(partition),
+                UiCommand::SelectObjects { object_ids, .. },
+            ) => {
                 let legal_ids: Vec<u64> = partition.cards.iter().map(|(id, _)| id.0).collect();
                 validate_object_selection(
                     0,
@@ -1471,8 +1501,21 @@ impl WasmGame {
                 })?;
                 Ok(PriorityResponse::HybridChoice(choice))
             }
-            (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
-                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
+            (
+                DecisionContext::SelectObjects(objects),
+                UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids,
+                    object_hidden_refs,
+                },
+            ) => {
+                let object_ids = normalize_select_object_choice_ids(
+                    &self.game,
+                    objects,
+                    &object_ids,
+                    &object_stable_ids,
+                    &object_hidden_refs,
+                )?;
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()
@@ -1791,6 +1834,59 @@ mod live_action_rollback_tests {
             }
             break;
         }
+    }
+
+    #[test]
+    fn standalone_black_lotus_color_choice_returns_to_priority() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+
+        let lotus = ObjectId(
+            wasm.add_card_to_zone(
+                0,
+                "Black Lotus".to_string(),
+                "Battlefield".to_string(),
+                true,
+            )
+            .expect("Black Lotus should load"),
+        );
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == lotus)
+        });
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Colors(ctx)) => assert_eq!(ctx.player, alice),
+            other => panic!("expected Black Lotus color decision, got {other:?}"),
+        }
+
+        dispatch_decision_select_option(&mut wasm, 2);
+
+        let pool = &wasm.game.player(alice).expect("Alice should exist").mana_pool;
+        assert_eq!(pool.black, 3, "Black Lotus should add three black mana");
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
+            other => panic!("expected priority after Black Lotus color choice, got {other:?}"),
+        }
+        assert!(
+            wasm.pending_live_continuation.is_none(),
+            "completed Black Lotus mana ability should not keep a replay continuation"
+        );
     }
 
     fn dispatch_decision_select_option(wasm: &mut WasmGame, option_index: usize) {

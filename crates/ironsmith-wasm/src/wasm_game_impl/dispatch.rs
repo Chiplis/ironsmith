@@ -724,6 +724,8 @@ impl WasmGame {
             slot: info.slot,
             card: object.name.clone(),
             commitment: info.commitment.clone(),
+            public_slot: info.public_slot,
+            public_commitment: info.public_commitment.clone(),
         })
     }
 

@@ -1539,7 +1539,8 @@ pub(super) fn continue_spell_cost_payment(
                 candidates,
                 1,
                 Some(1),
-            );
+            )
+            .with_reveal_policy(crate::decisions::context::SelectionRevealPolicy::Public);
             Ok(GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(ctx),
             ))
@@ -1580,7 +1581,8 @@ pub(super) fn continue_spell_cost_payment(
                 candidates,
                 1,
                 Some(1),
-            );
+            )
+            .with_reveal_policy(card_cost_choice_reveal_policy(&card_choice_cost));
             Ok(GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(ctx),
             ))
@@ -2299,6 +2301,24 @@ pub(super) fn card_cost_choice_description_and_candidates(
     (description, candidates)
 }
 
+fn card_cost_choice_reveal_policy(
+    card_choice_cost: &ActivationCardCostChoice,
+) -> crate::decisions::context::SelectionRevealPolicy {
+    use crate::decisions::context::SelectionRevealPolicy;
+
+    match card_choice_cost {
+        ActivationCardCostChoice::Discard { .. }
+        | ActivationCardCostChoice::ExileFromHand { .. }
+        | ActivationCardCostChoice::ExileFromGraveyard { .. }
+        | ActivationCardCostChoice::ExileChosenObject { .. }
+        | ActivationCardCostChoice::RevealFromHand { .. } => SelectionRevealPolicy::Public,
+        ActivationCardCostChoice::MoveChosenObjectToZone {
+            destination_zone, ..
+        } if !destination_zone.is_hidden() => SelectionRevealPolicy::Public,
+        _ => SelectionRevealPolicy::None,
+    }
+}
+
 pub(super) fn collect_spell_cost_steps(
     game: &GameState,
     spell_id: ObjectId,
@@ -2931,7 +2951,8 @@ pub(super) fn continue_activation_cost_payment(
                 candidates,
                 1,
                 Some(1),
-            );
+            )
+            .with_reveal_policy(crate::decisions::context::SelectionRevealPolicy::Public);
             Ok(GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(ctx),
             ))
@@ -2973,7 +2994,8 @@ pub(super) fn continue_activation_cost_payment(
                 candidates,
                 1,
                 Some(1),
-            );
+            )
+            .with_reveal_policy(card_cost_choice_reveal_policy(&card_choice_cost));
             Ok(GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(ctx),
             ))

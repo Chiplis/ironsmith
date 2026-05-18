@@ -47,6 +47,55 @@ pub enum DecisionHiddenCardVisibility {
     Public,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionIdentity {
+    /// Submit and validate the current rules object ID exactly as rendered.
+    ObjectId,
+    /// Submit a stable card identity and remap it to the current local object ID.
+    StableId,
+    /// Submit hidden-card commitment metadata and remap it to the current local object ID.
+    HiddenReference,
+}
+
+impl SelectionIdentity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SelectionIdentity::ObjectId => "object_id",
+            SelectionIdentity::StableId => "stable_id",
+            SelectionIdentity::HiddenReference => "hidden_reference",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SelectionRevealPolicy {
+    None,
+    PrivateToDecisionPlayer,
+    Public,
+}
+
+impl SelectionRevealPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SelectionRevealPolicy::None => "none",
+            SelectionRevealPolicy::PrivateToDecisionPlayer => "private_to_decision_player",
+            SelectionRevealPolicy::Public => "public",
+        }
+    }
+}
+
+impl From<DecisionHiddenCardVisibility> for SelectionRevealPolicy {
+    fn from(visibility: DecisionHiddenCardVisibility) -> Self {
+        match visibility {
+            DecisionHiddenCardVisibility::None => SelectionRevealPolicy::None,
+            DecisionHiddenCardVisibility::PrivateToDecisionPlayer => {
+                SelectionRevealPolicy::PrivateToDecisionPlayer
+            }
+            DecisionHiddenCardVisibility::Public => SelectionRevealPolicy::Public,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecisionHiddenCardView {
     pub object_ids: Vec<ObjectId>,
@@ -345,6 +394,10 @@ pub struct SelectableObject {
     pub name: String,
     /// Whether this object is currently legal to select.
     pub legal: bool,
+    /// Optional override for how this candidate is identified across synced peers.
+    pub selection_identity: Option<SelectionIdentity>,
+    /// Optional override for whether selecting this candidate opens hidden material.
+    pub reveal_policy: Option<SelectionRevealPolicy>,
 }
 
 impl SelectableObject {
@@ -354,6 +407,8 @@ impl SelectableObject {
             id,
             name: name.into(),
             legal: true,
+            selection_identity: None,
+            reveal_policy: None,
         }
     }
 
@@ -363,7 +418,19 @@ impl SelectableObject {
             id,
             name: name.into(),
             legal,
+            selection_identity: None,
+            reveal_policy: None,
         }
+    }
+
+    pub fn with_selection_identity(mut self, identity: SelectionIdentity) -> Self {
+        self.selection_identity = Some(identity);
+        self
+    }
+
+    pub fn with_reveal_policy(mut self, policy: SelectionRevealPolicy) -> Self {
+        self.reveal_policy = Some(policy);
+        self
     }
 }
 
@@ -392,6 +459,10 @@ pub struct SelectObjectsContext {
     pub allow_partial_completion: bool,
     /// Whether engine auto-selection of a single required object should be skipped.
     pub require_explicit_choice: bool,
+    /// Default synced identity strategy for candidates in this decision.
+    pub selection_identity: SelectionIdentity,
+    /// Default hidden-card opening policy for selected candidates in this decision.
+    pub reveal_policy: SelectionRevealPolicy,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
 }
@@ -415,6 +486,8 @@ impl SelectObjectsContext {
             max,
             allow_partial_completion: false,
             require_explicit_choice: false,
+            selection_identity: SelectionIdentity::StableId,
+            reveal_policy: SelectionRevealPolicy::None,
             ui_hints: DecisionUiHints::default(),
         }
     }
@@ -426,6 +499,16 @@ impl SelectObjectsContext {
 
     pub fn require_explicit_choice(mut self) -> Self {
         self.require_explicit_choice = true;
+        self
+    }
+
+    pub fn with_selection_identity(mut self, identity: SelectionIdentity) -> Self {
+        self.selection_identity = identity;
+        self
+    }
+
+    pub fn with_reveal_policy(mut self, policy: SelectionRevealPolicy) -> Self {
+        self.reveal_policy = policy;
         self
     }
 
@@ -448,6 +531,9 @@ impl SelectObjectsContext {
         self.ui_hints = self
             .ui_hints
             .with_hidden_card_view(object_ids, visibility, description);
+        self.reveal_policy = self
+            .reveal_policy
+            .max(SelectionRevealPolicy::from(visibility));
         self
     }
 }

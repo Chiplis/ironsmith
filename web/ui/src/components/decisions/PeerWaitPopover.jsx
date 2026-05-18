@@ -1,6 +1,8 @@
-import { LoaderCircle } from "lucide-react";
+import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { cn } from "@/lib/utils";
+
+const PeerWaitContext = createContext(null);
 
 function defaultPeerWaitTitle(kind) {
   switch (kind) {
@@ -41,11 +43,45 @@ function peerWaitDescription(peerWait) {
   return `${who} must respond before the game state can advance.`;
 }
 
-export function PeerWaitButtonContent({ className = "" }) {
+function peerWaitButtonLabel(peerWait) {
+  const names = peerNames(peerWait);
+  const singlePeer = names.length === 1 ? names[0] : "";
+  const subject = singlePeer || "Peers";
+  switch (peerWait?.kind) {
+    case "crypto_material":
+      return `${subject} generating payloads`;
+    case "ziffle_reveal":
+      return `${subject} proving reveal`;
+    case "ziffle_shuffle":
+      return `${subject} proving shuffle`;
+    case "fair_random_commit":
+      return `${subject} committing randomness`;
+    case "fair_random_reveal":
+      return `${subject} revealing randomness`;
+    case "action_quorum":
+      return `${subject} verifying payload`;
+    case "timeout_vote":
+      return `${subject} signing timeout`;
+    case "peer_resync":
+      return `${subject} importing state`;
+    default:
+      return `${subject} responding`;
+  }
+}
+
+export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp = null }) {
+  const contextPeerWait = useContext(PeerWaitContext);
+  const peerWait = peerWaitProp || contextPeerWait;
   return (
-    <span className={cn("peer-wait-button-content inline-flex h-full w-full items-center justify-center", className)}>
-      <LoaderCircle className="peer-wait-spinner h-4 w-4 animate-spin" aria-hidden="true" />
-      <span className="sr-only">Waiting for peers</span>
+    <span
+      className={cn(
+        "peer-wait-button-content inline-flex h-full w-full min-w-0 items-center justify-center text-center",
+        className
+      )}
+    >
+      <span className="peer-wait-button-label min-w-0 truncate text-[11px] font-bold uppercase leading-tight">
+        {peerWaitButtonLabel(peerWait)}
+      </span>
     </span>
   );
 }
@@ -61,15 +97,17 @@ export default function PeerWaitPopover({
   if (!peerWait) return children;
 
   return (
-    <ComicTooltip
-      title={peerWaitTitle(peerWait)}
-      description={peerWaitDescription(peerWait)}
-      side={side}
-      align={align}
-      sideOffset={sideOffset}
-      contentClassName={contentClassName}
-    >
-      {children}
-    </ComicTooltip>
+    <PeerWaitContext.Provider value={peerWait}>
+      <ComicTooltip
+        title={peerWaitTitle(peerWait)}
+        description={peerWaitDescription(peerWait)}
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        contentClassName={contentClassName}
+      >
+        {children}
+      </ComicTooltip>
+    </PeerWaitContext.Provider>
   );
 }

@@ -472,6 +472,9 @@ impl WasmGame {
                             self.build_hand_selectable_objects(player),
                             pending_exile.amount,
                             Some(pending_exile.amount),
+                        )
+                        .with_reveal_policy(
+                            ironsmith::decisions::context::SelectionRevealPolicy::Public,
                         ),
                     )
                 } else {
@@ -714,8 +717,24 @@ impl WasmGame {
                     return restore(self, pending_ctx, err);
                 }
             }
-            (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
-                let object_ids = normalize_select_object_choice_ids(objects, &object_ids);
+            (
+                DecisionContext::SelectObjects(objects),
+                UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids,
+                    object_hidden_refs,
+                },
+            ) => {
+                let object_ids = match normalize_select_object_choice_ids(
+                    &self.game,
+                    objects,
+                    &object_ids,
+                    &object_stable_ids,
+                    &object_hidden_refs,
+                ) {
+                    Ok(object_ids) => object_ids,
+                    Err(err) => return restore(self, pending_ctx, err),
+                };
                 let legal_ids: Vec<u64> = objects
                     .candidates
                     .iter()
