@@ -942,26 +942,64 @@ function openingMatchesRequirement(opening, requirement) {
   if (requirement.owner != null && Number(opening.owner) !== Number(requirement.owner)) {
     return false;
   }
+  const requirementCommitments = [
+    requirement.commitment,
+    requirement.positionCommitment,
+    requirement.position_commitment,
+    requirement.publicCommitment,
+    requirement.public_commitment,
+  ]
+    .map((entry) => String(entry || ""))
+    .filter((entry, index, list) => entry && list.indexOf(entry) === index);
+  const openingCommitments = [
+    opening.commitment,
+    opening.positionCommitment,
+    opening.position_commitment,
+    opening.publicCommitment,
+    opening.public_commitment,
+  ]
+    .map((entry) => String(entry || ""))
+    .filter(Boolean);
   if (
     requirement.objectId != null
     && opening.objectId != null
     && Number(opening.objectId) !== Number(requirement.objectId)
     && requirement.slot == null
-    && !requirement.commitment
+    && requirement.publicSlot == null
+    && requirement.public_slot == null
+    && requirement.position == null
+    && requirementCommitments.length === 0
   ) {
     return false;
   }
-  if (requirement.commitment) {
-    const requiredCommitment = String(requirement.commitment);
-    const commitmentMatches =
-      String(opening.commitment || "") === requiredCommitment
-      || String(opening.positionCommitment || "") === requiredCommitment;
-    if (!commitmentMatches) return false;
-    if (String(opening.commitment || "") === requiredCommitment) return true;
+  if (requirementCommitments.length > 0) {
+    if (!requirementCommitments.some((commitment) =>
+      openingCommitments.includes(commitment)
+    )) {
+      return false;
+    }
+    return true;
   }
-  if (requirement.slot == null) return true;
-  return Number(opening.slot) === Number(requirement.slot)
-    || Number(opening.position) === Number(requirement.slot);
+  const requirementSlots = [
+    requirement.slot,
+    requirement.publicSlot,
+    requirement.public_slot,
+    requirement.position,
+  ]
+    .map((entry) => Number(entry))
+    .filter((entry, index, list) =>
+      Number.isSafeInteger(entry) && entry >= 0 && list.indexOf(entry) === index
+    );
+  if (requirementSlots.length === 0) return true;
+  const openingSlots = [
+    opening.slot,
+    opening.publicSlot,
+    opening.public_slot,
+    opening.position,
+  ]
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isSafeInteger(entry) && entry >= 0);
+  return requirementSlots.some((slot) => openingSlots.includes(slot));
 }
 
 function mergeAuditOpenings(...openingLists) {

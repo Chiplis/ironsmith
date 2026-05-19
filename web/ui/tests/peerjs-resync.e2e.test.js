@@ -457,6 +457,22 @@ async function clickEnabledButton(page, label, textPattern) {
   }
 }
 
+async function clickUnselectedEnabledButton(page, label, textPattern) {
+  const button = page.locator("button:enabled:not(.is-selected)").filter({ hasText: textPattern }).first();
+  if ((await button.count()) === 0) return null;
+  try {
+    const text = (await button.innerText({ timeout: 1000 })).replace(/\s+/g, " ").trim();
+    await activateButtonNode(button);
+    return { label, text };
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!message.includes("Timeout") && !message.includes("detached")) {
+      throw err;
+    }
+    return null;
+  }
+}
+
 async function clickLastEnabledButton(page, label, textPattern) {
   const button = page.locator("button:enabled").filter({ hasText: textPattern }).last();
   if ((await button.count()) === 0) return null;
@@ -3271,6 +3287,167 @@ test("full UI PeerJS Gemstone Caverns pregame action stays synced", { timeout: 3
       120000,
     );
     await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS Gemstone Caverns after guest mulligans publishes its opening", { timeout: 360000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Gemstone Caverns",
+      guestDeckText: "60 Gemstone Caverns",
+      hostName: "Chiplis",
+      guestName: "Alice",
+      hostLabel: "host-gemstone-mulligan-ui",
+      guestLabel: "guest-gemstone-mulligan-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-before-guest-gemstone-mulligans", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailuresWithDebug(
+      "host keep before guest Gemstone mulligans should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    for (let mulligan = 1; mulligan <= 2; mulligan += 1) {
+      const beforeMulligan = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+      await waitAndClickLocalButton(guestPage, `guest-gemstone-mulligan-${mulligan}`, /Mulligan/i, 120000);
+      await waitForFullUiSequenceAdvance(
+        hostPage,
+        guestPage,
+        beforeMulligan,
+        `expected guest Gemstone mulligan ${mulligan} to sync`,
+        180000,
+      );
+      await waitForNamedVisibleHand(
+        guestPage,
+        `expected visible guest hand after Gemstone mulligan ${mulligan}`,
+        180000,
+        (snap) => Number(snap?.multiplayer?.lastAppliedSequence || 0) > beforeMulligan,
+      );
+      await assertNoFullUiSyncFailuresWithDebug(
+        `guest Gemstone mulligan ${mulligan} should stay synced`,
+        hostPage,
+        guestPage,
+      );
+    }
+
+    await waitAndClickLocalButton(guestPage, "guest-keep-after-two-gemstone-mulligans", /KEEP HAND/i, 120000);
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose 2 card\(s\) to put on the bottom of your library/i,
+      "expected guest to bottom two cards after two mulligans",
+      120000,
+    );
+    const beforeBottom = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+    for (let index = 1; index <= 2; index += 1) {
+      const clicked = await clickUnselectedEnabledButton(
+        guestPage,
+        `guest-bottom-gemstone-after-mulligans-${index}`,
+        /^Gemstone Caverns$/i,
+      );
+      assert.ok(clicked, `expected guest to choose bottom card ${index}\n${await visibleBodyText(guestPage)}`);
+    }
+    await waitAndClickLocalButton(guestPage, "guest-submit-bottom-after-gemstone-mulligans", /SUBMIT/i, 60000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeBottom,
+      "expected guest bottom cards after Gemstone mulligans to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest bottom cards after Gemstone mulligans should stay synced",
+      hostPage,
+      guestPage,
+    );
+    if (await hasLocalButton(guestPage, /SUBMIT ORDER/i)) {
+      const beforeBottomOrder = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+      await waitAndClickLocalButton(
+        guestPage,
+        "guest-submit-bottom-order-after-gemstone-mulligans",
+        /SUBMIT ORDER/i,
+        60000,
+      );
+      await waitForFullUiSequenceAdvance(
+        hostPage,
+        guestPage,
+        beforeBottomOrder,
+        "expected guest bottom-card order after Gemstone mulligans to sync",
+        180000,
+      );
+      await assertNoFullUiSyncFailuresWithDebug(
+        "guest bottom-card order after Gemstone mulligans should stay synced",
+        hostPage,
+        guestPage,
+      );
+    }
+
+    for (
+      let step = 0;
+      step < 12 && !(await hasLocalButton(guestPage, /BEGIN WITH GEMSTONE CAVERNS/i));
+      step += 1
+    ) {
+      await clickAnyFullUiProgressAction([hostPage, guestPage], `advance-to-mulliganed-gemstone-pregame-${step}`, 60000);
+      await sleep(1500);
+    }
+
+    await waitAndClickLocalButton(
+      guestPage,
+      "guest-begin-with-gemstone-after-mulligans",
+      /BEGIN WITH GEMSTONE CAVERNS/i,
+      120000,
+    );
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose 1 card\(s\) from your hand to exile for Gemstone Caverns/i,
+      "expected Gemstone Caverns to ask the mulliganed guest for a hand card to exile",
+      120000,
+    );
+    const beforeGemstoneExile = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+    const selectedExile = await clickUnselectedEnabledButton(
+      guestPage,
+      "guest-exile-gemstone-after-mulligans",
+      /^Gemstone Caverns$/i,
+    );
+    assert.ok(selectedExile, `expected guest to select a Gemstone Caverns to exile\n${await visibleBodyText(guestPage)}`);
+    await waitAndClickLocalButton(guestPage, "guest-submit-gemstone-after-mulligans", /SUBMIT/i, 60000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeGemstoneExile,
+      "expected Gemstone Caverns exile after guest mulligans to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "Gemstone Caverns exile after guest mulligans should publish a public opening",
+      hostPage,
+      guestPage,
+    );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([
