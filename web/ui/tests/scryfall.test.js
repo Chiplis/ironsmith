@@ -42,7 +42,7 @@ test("blank custom art removes an existing override", () => {
   ]);
 
   assert.equal(customCardArtUrl("Forge Test"), "");
-  assert.match(scryfallImageUrl("Forge Test", "art_crop"), /^https:\/\/api\.scryfall\.com\/cards\/named\?/);
+  assert.equal(scryfallImageUrl("Forge Test", "art_crop"), "");
 });
 
 test("hidden card names use the local SVG cardback instead of Scryfall", () => {
@@ -56,13 +56,15 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
   let calls = 0;
   globalThis.fetch = async (url) => {
     calls += 1;
-    assert.match(String(url), /^https:\/\/api\.scryfall\.com\/cards\/named\?/);
+    assert.match(String(url), /^http:\/\/localhost\/cards\/cache-test-card\.json$/);
     return {
       ok: true,
       json: async () => ({
-        image_uris: {
-          normal: "https://cards.example.test/cache-test-normal.jpg",
-          art_crop: "https://cards.example.test/cache-test-art.jpg",
+        scryfall: {
+          image_uris: {
+            normal: "https://cards.example.test/cache-test-normal.jpg",
+            art_crop: "https://cards.example.test/cache-test-art.jpg",
+          },
         },
       }),
     };
@@ -87,6 +89,39 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
       await resolveScryfallImageUrl("Cache Test Card", "normal"),
       "https://cards.example.test/cache-test-normal.jpg"
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Scryfall API fallback resolves CDN image URLs without using format=image", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    if (String(url).startsWith("http://localhost/cards/api-fallback-card.json")) {
+      return { status: 404, ok: false, json: async () => ({}) };
+    }
+    assert.match(String(url), /^https:\/\/api\.scryfall\.com\/cards\/named\?/);
+    assert.doesNotMatch(String(url), /format=image/);
+    return {
+      ok: true,
+      json: async () => ({
+        image_uris: {
+          normal: "https://cards.example.test/api-fallback-normal.jpg",
+          art_crop: "https://cards.example.test/api-fallback-art.jpg",
+        },
+      }),
+      headers: { get: () => null },
+    };
+  };
+
+  try {
+    assert.equal(
+      await resolveScryfallImageUrl("API Fallback Card", "normal"),
+      "https://cards.example.test/api-fallback-normal.jpg"
+    );
+    assert.equal(urls.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }

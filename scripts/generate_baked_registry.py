@@ -120,9 +120,9 @@ def load_latest_semantic_scores(db_path: Path) -> Dict[str, float]:
 
 UNSCORED_SENTINEL = -1.0
 
-SingleEntry = Tuple[str, str, float]
-FlipPair = Tuple[str, str, float, str, str, float, str]
-SplitPair = Tuple[str, str, float, str, str, float, str, bool]
+SingleEntry = Tuple[str, str, float, dict]
+FlipPair = Tuple[str, str, float, str, str, float, str, dict]
+SplitPair = Tuple[str, str, float, str, str, float, str, bool, dict]
 AliasEntry = Tuple[str, str]
 
 
@@ -294,6 +294,7 @@ def collect_unique_blocks(
                     back_score,
                     combined_name,
                     has_fuse,
+                    compact_linked_scryfall_metadata(card, front, back),
                 )
             )
             register_root_print_aliases(card, front_name)
@@ -336,6 +337,7 @@ def collect_unique_blocks(
                     back_parse_block,
                     back_score,
                     combined_name,
+                    compact_linked_scryfall_metadata(card, front, back),
                 )
             )
             register_root_print_aliases(card, front_name)
@@ -358,7 +360,7 @@ def collect_unique_blocks(
         key = name.casefold()
         score = require_score(name, name)
         if key not in unique:
-            unique[key] = (name, parse_block, score)
+            unique[key] = (name, parse_block, score, compact_scryfall_metadata(card))
         register_root_print_aliases(card, name)
 
     if missing_scores:
@@ -1118,7 +1120,7 @@ def write_generated_payload(
     payload = bytearray()
     payload.extend(b"MGR1")
     append_u32(payload, len(ordered))
-    for name, block, score in ordered:
+    for name, block, score, _metadata in ordered:
         append_string(payload, name)
         append_string(payload, block)
         append_f32(payload, score)
@@ -1132,6 +1134,7 @@ def write_generated_payload(
         back_block,
         back_score,
         combined_name,
+        _metadata,
     ) in flips_ordered:
         append_string(payload, front_name)
         append_string(payload, front_block)
@@ -1151,6 +1154,7 @@ def write_generated_payload(
         back_score,
         combined_name,
         has_fuse,
+        _metadata,
     ) in splits_ordered:
         append_string(payload, front_name)
         append_string(payload, front_block)
@@ -1175,6 +1179,43 @@ def frontend_score(score: float) -> float | None:
     return max(0.0, min(1.0, float(score)))
 
 
+def compact_image_uris(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key in ("small", "normal", "large", "png", "art_crop", "border_crop"):
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+    return out
+
+
+def compact_scryfall_metadata(card: dict, *, face: dict | None = None) -> dict:
+    source = face if isinstance(face, dict) else card
+    metadata = {
+        "image_uris": compact_image_uris(
+            source.get("image_uris") or card.get("image_uris")
+        ),
+        "mana_cost": source.get("mana_cost") if isinstance(source.get("mana_cost"), str) else None,
+        "oracle_text": source.get("oracle_text") if isinstance(source.get("oracle_text"), str) else "",
+        "produced_mana": source.get("produced_mana") if isinstance(source.get("produced_mana"), list) else [],
+    }
+    if face is not None:
+        name = face.get("name")
+        if isinstance(name, str) and name.strip():
+            metadata["name"] = name.strip()
+    return metadata
+
+
+def compact_linked_scryfall_metadata(card: dict, front: dict, back: dict) -> dict:
+    metadata = compact_scryfall_metadata(card)
+    metadata["faces"] = [
+        compact_scryfall_metadata(card, face=front),
+        compact_scryfall_metadata(card, face=back),
+    ]
+    return metadata
+
+
 def frontend_aliases_for(
     aliases_by_canonical: Dict[str, List[str]],
     *canonical_names: str,
@@ -1196,11 +1237,12 @@ def frontend_asset_payload_for_single(
     entry: SingleEntry,
     aliases_by_canonical: Dict[str, List[str]],
 ) -> dict:
-    name, block, score = entry
+    name, block, score, metadata = entry
     return {
         "version": FRONTEND_CARD_ASSET_VERSION,
         "canonicalName": name,
         "aliases": frontend_aliases_for(aliases_by_canonical, name),
+        "scryfall": metadata,
         "group": {
             "kind": "single",
             "name": name,
@@ -1221,6 +1263,7 @@ def frontend_asset_payload_for_linked(
     back_score: float,
     combined_name: str,
     has_fuse: bool,
+    metadata: dict,
     aliases_by_canonical: Dict[str, List[str]],
 ) -> dict:
     aliases = frontend_aliases_for(aliases_by_canonical, front_name, back_name)
@@ -1239,6 +1282,7 @@ def frontend_asset_payload_for_linked(
         "version": FRONTEND_CARD_ASSET_VERSION,
         "canonicalName": front_name,
         "aliases": deduped_aliases,
+        "scryfall": metadata,
         "group": {
             "kind": "linked",
             "layout": layout,
@@ -1313,7 +1357,7 @@ def write_frontend_card_assets(
     index_cards: List[dict] = []
 
     for entry in ordered:
-        name, _block, score = entry
+        name, _block, score, _metadata = entry
         payload = frontend_asset_payload_for_single(entry, aliases_by_canonical)
         add_frontend_route(routes, name, payload)
         for alias in aliases_by_canonical.get(name.casefold(), []):
@@ -1335,6 +1379,7 @@ def write_frontend_card_assets(
             back_block,
             back_score,
             combined_name,
+            metadata,
         ) = entry
         payload = frontend_asset_payload_for_linked(
             layout="transform_like",
@@ -1346,6 +1391,7 @@ def write_frontend_card_assets(
             back_score=back_score,
             combined_name=combined_name,
             has_fuse=False,
+            metadata=metadata,
             aliases_by_canonical=aliases_by_canonical,
         )
         for route_name in (front_name, back_name, combined_name):
@@ -1372,6 +1418,7 @@ def write_frontend_card_assets(
             back_score,
             combined_name,
             has_fuse,
+            metadata,
         ) = entry
         payload = frontend_asset_payload_for_linked(
             layout="split",
@@ -1383,6 +1430,7 @@ def write_frontend_card_assets(
             back_score=back_score,
             combined_name=combined_name,
             has_fuse=has_fuse,
+            metadata=metadata,
             aliases_by_canonical=aliases_by_canonical,
         )
         for route_name in (front_name, back_name, combined_name):

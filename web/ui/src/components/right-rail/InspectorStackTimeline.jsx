@@ -6,9 +6,9 @@ import useNewCards from "@/hooks/useNewCards";
 import useStackStartAlert from "@/hooks/useStackStartAlert";
 import StackCard from "@/components/cards/StackCard";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
-import { scryfallImageUrl } from "@/lib/scryfall";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
@@ -71,7 +71,7 @@ function HorizontalStackEntry({
   compact = false,
 }) {
   const name = entry?.name || `Object#${entry?.id}`;
-  const artUrl = scryfallImageUrl(name, "art_crop");
+  const artUrl = useScryfallImageUrl(name, "art_crop");
   const kindLabel = horizontalStackKindLabel(entry);
   const subtitle = String(entry?.__subtitle || "").trim();
   const isTriggerOrderingEntry = !!entry?.__trigger_ordering;

@@ -1,5 +1,5 @@
 import { useDragState } from "@/context/DragContext";
-import { scryfallImageUrl } from "@/lib/scryfall";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 
 const GLOW_COLORS = {
   land: { border: "rgba(88, 214, 166, 0.6)", shadow: "rgba(88, 214, 166, VAL)" },
@@ -37,6 +37,7 @@ function computeProximity(x, y) {
 
 export default function DragOverlay() {
   const dragState = useDragState();
+  const artUrl = useScryfallImageUrl(dragState?.cardName || "", "art_crop");
   if (!dragState) return null;
 
   const { cardName, glowKind, currentX, currentY, startX } = dragState;
@@ -53,8 +54,6 @@ export default function DragOverlay() {
   const shadowColor = colors.shadow.replace("VAL", glowIntensity.toFixed(2));
   const shadowSpread = Math.round(6 + t * 20);
   const shadowBlur = Math.round(12 + t * 30);
-
-  const artUrl = scryfallImageUrl(cardName, "art_crop");
 
   return (
     // Outer: tracks cursor position instantly (no transition)

@@ -6,7 +6,6 @@ fn external_card_score(score: Option<f32>) -> Option<f32> {
     score.map(|value| value.clamp(0.0, 1.0))
 }
 
-#[wasm_bindgen]
 impl WasmGame {
     fn remember_external_parse_source(&mut self, name: &str, source_name: &str, block: &str) {
         let key = external_card_lookup_key(name);
@@ -146,6 +145,12 @@ impl WasmGame {
             ExternalCardSourceGroup::Single { name, block, score } => {
                 self.remember_external_parse_source(name, name, block);
                 self.remember_external_score(name, *score);
+                if !source.canonical_name.trim().is_empty()
+                    && !source.canonical_name.eq_ignore_ascii_case(name)
+                {
+                    self.remember_external_parse_source(&source.canonical_name, name, block);
+                    self.remember_external_score(&source.canonical_name, *score);
+                }
                 for alias in &source.aliases {
                     if alias.canonical.eq_ignore_ascii_case(name) {
                         self.remember_external_parse_source(&alias.alias, name, block);
@@ -171,6 +176,16 @@ impl WasmGame {
                     );
                     self.remember_external_parse_source(combined_name, &front.name, &front.block);
                     self.remember_external_score(combined_name, combined_score);
+                    if !source.canonical_name.trim().is_empty()
+                        && !source.canonical_name.eq_ignore_ascii_case(combined_name)
+                    {
+                        self.remember_external_parse_source(
+                            &source.canonical_name,
+                            &front.name,
+                            &front.block,
+                        );
+                        self.remember_external_score(&source.canonical_name, combined_score);
+                    }
                 }
                 for alias in &source.aliases {
                     if let Some(face) = faces
@@ -229,10 +244,10 @@ impl WasmGame {
         Ok(loaded)
     }
 
-    #[wasm_bindgen(js_name = registerExternalCardSources)]
-    pub fn register_external_card_sources(&mut self, sources: JsValue) -> Result<JsValue, JsValue> {
-        let input: ExternalCardSourcesInput = serde_wasm_bindgen::from_value(sources)
-            .map_err(|err| JsValue::from_str(&format!("invalid card source payload: {err}")))?;
+    fn register_external_card_sources_input(
+        &mut self,
+        input: ExternalCardSourcesInput,
+    ) -> ExternalCardRegistrationSummary {
         let sources = match input {
             ExternalCardSourcesInput::Single(source) => vec![source],
             ExternalCardSourcesInput::Many(sources) => sources,
@@ -265,7 +280,30 @@ impl WasmGame {
             }
         }
 
-        serde_wasm_bindgen::to_value(&ExternalCardRegistrationSummary { loaded, failed })
+        ExternalCardRegistrationSummary { loaded, failed }
+    }
+}
+
+#[wasm_bindgen]
+impl WasmGame {
+    #[wasm_bindgen(js_name = registerExternalCardSourcesJson)]
+    pub fn register_external_card_sources_json(
+        &mut self,
+        sources_json: String,
+    ) -> Result<String, JsValue> {
+        let input: ExternalCardSourcesInput = serde_json::from_str(&sources_json)
+            .map_err(|err| JsValue::from_str(&format!("invalid card source JSON: {err}")))?;
+        let summary = self.register_external_card_sources_input(input);
+        serde_json::to_string(&summary)
+            .map_err(|err| JsValue::from_str(&format!("card source summary encode failed: {err}")))
+    }
+
+    #[wasm_bindgen(js_name = registerExternalCardSources)]
+    pub fn register_external_card_sources(&mut self, sources: JsValue) -> Result<JsValue, JsValue> {
+        let input: ExternalCardSourcesInput = serde_wasm_bindgen::from_value(sources)
+            .map_err(|err| JsValue::from_str(&format!("invalid card source payload: {err}")))?;
+        let summary = self.register_external_card_sources_input(input);
+        serde_wasm_bindgen::to_value(&summary)
             .map_err(|err| JsValue::from_str(&format!("card source summary encode failed: {err}")))
     }
 }

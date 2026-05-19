@@ -3,7 +3,8 @@ import { useGame } from "@/context/GameContext";
 import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
-import { fetchScryfallCardMeta, scryfallImageUrl } from "@/lib/scryfall";
+import { fetchScryfallCardMeta } from "@/lib/scryfall";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { ManaCostIcons } from "@/lib/mana-symbols";
 
 const semanticScoreCache = new Map();
@@ -804,7 +805,7 @@ export default function GameCard({
   const { game, inspectorDebug } = useGame();
   const name = card.name || "";
   const artVersion = variant === "hand" ? "normal" : "art_crop";
-  const artUrl = scryfallImageUrl(name, artVersion);
+  const artUrl = useScryfallImageUrl(name, artVersion);
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";

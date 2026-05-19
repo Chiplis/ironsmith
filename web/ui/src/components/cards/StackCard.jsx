@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
-import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
@@ -24,8 +24,8 @@ export default function StackCard({
 }) {
   const { state } = useGame();
   const name = entry.name || `Object#${entry.id}`;
-  const artUrl = scryfallImageUrl(name, "art_crop");
-  const scryfallUrl = scryfallImageUrl(name);
+  const artUrl = useScryfallImageUrl(name, "art_crop");
+  const scryfallUrl = useScryfallImageUrl(name);
   const isCastEntry = !entry.ability_kind;
   const kindLabel = isCastEntry
     ? "Spell"

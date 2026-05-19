@@ -33,6 +33,7 @@ let cardAssetsBaseUrl = null;
 let cardIndexPromise = null;
 const registeredCardRoutes = new Set();
 const missingCardRoutes = new Set();
+const knownRuntimeCardNames = new Set();
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",
@@ -55,6 +56,22 @@ const DISPATCH_TRACE_METHODS = new Set([
   "dispatch",
   "forfeitPlayer",
 ]);
+const RUNTIME_EVALUATION_METHODS = new Set([
+  "dispatch",
+  "previewCryptoRequirements",
+  "snapshot",
+  "uiState",
+]);
+const CARD_ZONE_KEYS = [
+  "battlefield",
+  "battlefield_cards",
+  "command_zone_cards",
+  "exile_cards",
+  "graveyard_cards",
+  "hand_cards",
+  "library_cards",
+  "stack",
+];
 
 function nowMs() {
   return performance.now();
@@ -103,6 +120,13 @@ function normalizeRegistryStatus(raw) {
   };
 }
 
+function readRegistryStatus() {
+  if (!game || typeof game.preloadRegistryStatus !== "function") {
+    return null;
+  }
+  return game.preloadRegistryStatus();
+}
+
 function cardRouteKey(name) {
   const normalized = String(name || "")
     .trim()
@@ -121,6 +145,17 @@ function cardAssetUrl(route) {
   return new URL(`${route}.json`, cardAssetsBaseUrl).href;
 }
 
+function cardNameAlreadyKnown(name) {
+  if (!game || typeof game.isKnownCardName !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(game.isKnownCardName(String(name || "")));
+  } catch {
+    return false;
+  }
+}
+
 function compactCardNameList(names) {
   const out = [];
   const seen = new Set();
@@ -133,6 +168,62 @@ function compactCardNameList(names) {
     out.push(name);
   }
   return out;
+}
+
+function rememberRuntimeCardName(rawName) {
+  const name = String(rawName || "").trim();
+  if (
+    !name
+    || /^hidden card$/i.test(name)
+    || /^card details unavailable$/i.test(name)
+  ) {
+    return;
+  }
+  knownRuntimeCardNames.add(name);
+  if (knownRuntimeCardNames.size > 1024) {
+    const first = knownRuntimeCardNames.values().next();
+    if (!first.done) knownRuntimeCardNames.delete(first.value);
+  }
+}
+
+function rememberCardNamesFromZoneCards(cards) {
+  if (!Array.isArray(cards)) return;
+  for (const card of cards) {
+    if (!card || typeof card !== "object") continue;
+    rememberRuntimeCardName(card.name);
+  }
+}
+
+function rememberCardNamesFromEngineResult(value) {
+  if (!value || typeof value !== "object") return;
+  if (typeof value.name === "string" && (
+    typeof value.oracle_text === "string"
+    || typeof value.type_line === "string"
+    || Array.isArray(value.actions)
+    || value.stable_id != null
+    || value.stableId != null
+  )) {
+    rememberRuntimeCardName(value.name);
+  }
+  const players = Array.isArray(value.players) ? value.players : [];
+  for (const player of players) {
+    if (!player || typeof player !== "object") continue;
+    for (const key of CARD_ZONE_KEYS) {
+      rememberCardNamesFromZoneCards(player[key]);
+    }
+  }
+  for (const key of CARD_ZONE_KEYS) {
+    rememberCardNamesFromZoneCards(value[key]);
+  }
+  rememberCardNamesFromZoneCards(value?.viewed_cards?.cards);
+  rememberCardNamesFromZoneCards(value?.active_viewed_cards?.cards);
+  const objects = Array.isArray(value.objects) ? value.objects : [];
+  for (const object of objects) {
+    if (!object || typeof object !== "object" || object.hiddenCard || object.hidden_card) {
+      continue;
+    }
+    rememberRuntimeCardName(object.name);
+  }
 }
 
 function collectDeckNames(payload, out = []) {
@@ -216,6 +307,9 @@ function collectNamesForMethod(method, args) {
     default:
       break;
   }
+  if (RUNTIME_EVALUATION_METHODS.has(method)) {
+    names.push(...knownRuntimeCardNames);
+  }
   return compactCardNameList(names);
 }
 
@@ -255,6 +349,10 @@ async function fetchCardSource(name) {
   if (!route || registeredCardRoutes.has(route) || missingCardRoutes.has(route)) {
     return null;
   }
+  if (cardNameAlreadyKnown(name)) {
+    registeredCardRoutes.add(route);
+    return null;
+  }
   const url = cardAssetUrl(route);
   if (!url) return null;
   const response = await fetch(url, { cache: "force-cache" });
@@ -265,7 +363,22 @@ async function fetchCardSource(name) {
   if (!response.ok) {
     throw new Error(`Card source fetch failed for "${name}": HTTP ${response.status}`);
   }
-  const payload = await response.json();
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    missingCardRoutes.add(route);
+    return null;
+  }
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    missingCardRoutes.add(route);
+    return null;
+  }
+  if (!payload || typeof payload !== "object" || !payload.group) {
+    missingCardRoutes.add(route);
+    return null;
+  }
   registeredCardRoutes.add(route);
   const sourceNames = [
     payload?.canonicalName,
@@ -285,20 +398,40 @@ async function fetchCardSource(name) {
   return payload;
 }
 
+function registerFetchedCardSources(sources) {
+  if (!game || !Array.isArray(sources) || sources.length === 0) {
+    return null;
+  }
+  if (typeof game.registerExternalCardSourcesJson === "function") {
+    const raw = game.registerExternalCardSourcesJson(JSON.stringify(sources));
+    return raw ? JSON.parse(raw) : null;
+  }
+  if (typeof game.registerExternalCardSources === "function") {
+    return game.registerExternalCardSources(sources);
+  }
+  return null;
+}
+
 async function ensureCardSourcesForNames(names) {
-  if (!game || typeof game.registerExternalCardSources !== "function") {
+  if (
+    !game
+    || (
+      typeof game.registerExternalCardSourcesJson !== "function"
+      && typeof game.registerExternalCardSources !== "function"
+    )
+  ) {
     return;
   }
   const uniqueNames = compactCardNameList(names);
   if (uniqueNames.length === 0) return;
   const sources = (await Promise.all(uniqueNames.map(fetchCardSource))).filter(Boolean);
   if (sources.length === 0) return;
-  await game.registerExternalCardSources(sources);
+  registerFetchedCardSources(sources);
 }
 
 async function currentSemanticThreshold() {
   if (!game || typeof game.getSemanticThreshold !== "function") return 0;
-  const raw = await game.getSemanticThreshold();
+  const raw = game.getSemanticThreshold();
   const percent = Number(raw);
   return Number.isFinite(percent) ? Math.max(0, percent / 100) : 0;
 }
@@ -473,6 +606,7 @@ async function handleInit(msg = {}) {
     lastRegistryLoaded = -1;
     lastRegistryTotal = -1;
     cardIndexPromise = null;
+    knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
     missingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
@@ -490,8 +624,8 @@ async function handleInit(msg = {}) {
     postProgress("init", 1);
     await initWasm(wasmResponse);
     game = new WasmGame();
-    if (typeof game.preloadRegistryStatus === "function") {
-      const status = await game.preloadRegistryStatus();
+    const status = readRegistryStatus();
+    if (status) {
       postRegistryStatus(status, true);
       backgroundCompileDone = Boolean(status?.done);
       if (!backgroundCompileDone) {
@@ -522,25 +656,19 @@ function handleCall(msg) {
     if (method === "autocompleteCardNames") {
       return {
         result: await autocompleteFromCardIndex(args[0], args[1]),
-        registryStatus: typeof game.preloadRegistryStatus === "function"
-          ? await game.preloadRegistryStatus()
-          : null,
+        registryStatus: readRegistryStatus(),
       };
     }
     if (method === "getCardSemanticScore") {
       return {
         result: await semanticScoreFromCardIndex(args[0]),
-        registryStatus: typeof game.preloadRegistryStatus === "function"
-          ? await game.preloadRegistryStatus()
-          : null,
+        registryStatus: readRegistryStatus(),
       };
     }
     if (method === "cardsMeetingThreshold") {
       return {
         result: await cardsMeetingThresholdFromCardIndex(),
-        registryStatus: typeof game.preloadRegistryStatus === "function"
-          ? await game.preloadRegistryStatus()
-          : null,
+        registryStatus: readRegistryStatus(),
       };
     }
     const fn = game[method];
@@ -549,6 +677,7 @@ function handleCall(msg) {
     }
     const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
+    rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;
     let snapshotPerf = null;
     let snapshotPerfReadMs = 0;
@@ -583,10 +712,7 @@ function handleCall(msg) {
       advanceUntilDecisionPerfReadMs = nowMs() - advanceUntilDecisionPerfStartedAt;
     }
     const registryStatusStartedAt = nowMs();
-    let registryStatus = null;
-    if (typeof game.preloadRegistryStatus === "function") {
-      registryStatus = await game.preloadRegistryStatus();
-    }
+    const registryStatus = readRegistryStatus();
     const registryStatusMs = nowMs() - registryStatusStartedAt;
     const totalWorkerMs = nowMs() - enqueuedAt;
     const snapshotTotalMs = Number(snapshotPerf?.totalSnapshotMs ?? 0);

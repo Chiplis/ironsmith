@@ -20,11 +20,11 @@ logos = "0.16.1"
 winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 serde_json = { version = "1.0.149", optional = true }
-wasm-bindgen = { version = "0.2.118", optional = true }
+wasm-bindgen = { version = "0.2.120", optional = true }
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 getrandom = { version = "0.4.2", features = ["wasm_js"], optional = true }
-js-sys = { version = "0.3.95", optional = true }
+js-sys = { version = "0.3.97", optional = true }
 
 [build-dependencies]
 serde = { version = "1.0.228", features = ["derive"] }

@@ -8,6 +8,7 @@ DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
 DEFAULT_DB_PATH="$ROOT_DIR/reports/engine-status.sqlite3"
 DEFAULT_FRONTEND_SCORES_FILE="$ROOT_DIR/web/ui/public/ironsmith_semantic_scores.json"
 DEFAULT_FRONTEND_CARDS_DIR="$ROOT_DIR/web/ui/public/cards"
+FRONTEND_CARDS_CACHE_MANIFEST_NAME=".ironsmith_frontend_cards_checksum"
 
 FEATURES="wasm-lean"
 OPTIMIZE_WASM=0
@@ -46,8 +47,85 @@ Notes:
   - Run sync_card_status_db separately when latest_card_compilation needs to be refreshed.
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
   - Frontend card assets default to $DEFAULT_FRONTEND_CARDS_DIR and are copied by Vite into dist/cards/.
+  - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
   - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in ironsmith_bg.wasm.
 USAGE
+}
+
+write_frontend_cards_cache_manifest() {
+  local target="$1"
+  python3 - "$ROOT_DIR" "$DB_PATH" "$target" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1]).resolve()
+db_path = Path(sys.argv[2]).resolve()
+target = Path(sys.argv[3])
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+inputs = [
+    ("rebuild-wasm.sh", root / "rebuild-wasm.sh"),
+    ("scripts/generate_baked_registry.py", root / "scripts" / "generate_baked_registry.py"),
+    ("scripts/stream_scryfall_blocks.py", root / "scripts" / "stream_scryfall_blocks.py"),
+    ("registry-db", db_path),
+]
+
+payload = {
+    "schemaVersion": 1,
+    "inputs": [
+        {
+            "label": label,
+            "path": str(path.relative_to(root) if path.is_relative_to(root) else path),
+            "sha256": file_sha256(path),
+        }
+        for label, path in inputs
+    ],
+}
+checksum_payload = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+payload["checksum"] = hashlib.sha256(checksum_payload).hexdigest()
+target.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+PY
+}
+
+frontend_cards_cache_matches() {
+  local expected_manifest="$1"
+  local existing_manifest="$2"
+  local cards_dir="$3"
+  local scores_file="$4"
+  python3 - "$expected_manifest" "$existing_manifest" "$cards_dir" "$scores_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+expected_path = Path(sys.argv[1])
+existing_path = Path(sys.argv[2])
+cards_dir = Path(sys.argv[3])
+scores_file = Path(sys.argv[4])
+
+try:
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    existing = json.loads(existing_path.read_text(encoding="utf-8"))
+except (FileNotFoundError, json.JSONDecodeError):
+    sys.exit(1)
+
+if expected.get("checksum") != existing.get("checksum"):
+    sys.exit(1)
+if not (cards_dir / "index.json").is_file():
+    sys.exit(1)
+if not scores_file.is_file():
+    sys.exit(1)
+sys.exit(0)
+PY
 }
 
 while [[ $# -gt 0 ]]; do
@@ -98,6 +176,7 @@ done
 cd "$ROOT_DIR"
 require_cmd cargo
 require_cmd wasm-pack
+require_cmd python3
 
 if [[ ! -f "$DB_PATH" ]]; then
   cat >&2 <<EOF
@@ -109,10 +188,28 @@ EOF
   exit 1
 fi
 
-echo "[INFO] using latest strict card compilation snapshots from DB..."
+mkdir -p "$ROOT_DIR/target"
+FRONTEND_CARDS_CACHE_MANIFEST="$FRONTEND_CARDS_DIR/$FRONTEND_CARDS_CACHE_MANIFEST_NAME"
+PENDING_FRONTEND_CARDS_CACHE_MANIFEST="$(mktemp "$ROOT_DIR/target/frontend-card-assets-cache.XXXXXX.json")"
+write_frontend_cards_cache_manifest "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST"
 
-mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
-python3 - "$DB_PATH" "$FRONTEND_SCORES_FILE" <<'PY'
+FRONTEND_JSON_CACHE_CURRENT=0
+if frontend_cards_cache_matches \
+  "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST" \
+  "$FRONTEND_CARDS_CACHE_MANIFEST" \
+  "$FRONTEND_CARDS_DIR" \
+  "$FRONTEND_SCORES_FILE"; then
+  FRONTEND_JSON_CACHE_CURRENT=1
+fi
+
+if [[ "$FRONTEND_JSON_CACHE_CURRENT" -eq 1 ]]; then
+  rm -f "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST"
+  echo "[INFO] skipped frontend JSON assets; checksum cache is current: $FRONTEND_CARDS_DIR"
+else
+  echo "[INFO] using latest strict card compilation snapshots from DB..."
+
+  mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
+  python3 - "$DB_PATH" "$FRONTEND_SCORES_FILE" <<'PY'
 import json
 import sqlite3
 import sys
@@ -160,14 +257,16 @@ summary = {
 
 target.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
 PY
-echo "[INFO] synced semantic threshold cache for frontend: $FRONTEND_SCORES_FILE"
+  echo "[INFO] synced semantic threshold cache for frontend: $FRONTEND_SCORES_FILE"
 
-mkdir -p "$ROOT_DIR/target"
-python3 "$ROOT_DIR/scripts/generate_baked_registry.py" \
-  --db-path "$DB_PATH" \
-  --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
-  --frontend-cards-dir "$FRONTEND_CARDS_DIR"
-echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
+  python3 "$ROOT_DIR/scripts/generate_baked_registry.py" \
+    --db-path "$DB_PATH" \
+    --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
+    --frontend-cards-dir "$FRONTEND_CARDS_DIR"
+  mkdir -p "$FRONTEND_CARDS_DIR"
+  mv -f "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST" "$FRONTEND_CARDS_CACHE_MANIFEST"
+  echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
+fi
 
 if feature_enabled "generated-registry"; then
   export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"

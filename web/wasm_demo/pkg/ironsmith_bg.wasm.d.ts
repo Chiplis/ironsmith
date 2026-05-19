@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const wasmgame_registerExternalCardSourcesJson: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmgame_registerExternalCardSources: (a: number, b: any) => [number, number, number];
 export const wasm_start: () => void;
 export const wasmgame_new: () => number;

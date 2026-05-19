@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
-import { scryfallImageUrl } from "@/lib/scryfall";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects, getVisibleTopStackObject } from "@/lib/stack-targets";
@@ -783,7 +783,7 @@ export default function HoverArtOverlay({
     state?.players,
   ]);
   const artObjectName = stableLinkedObjectName || objectName;
-  const imageUrl = artObjectName ? scryfallImageUrl(artObjectName, "art_crop") : "";
+  const imageUrl = useScryfallImageUrl(artObjectName, "art_crop");
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
   const topStackObject = getVisibleTopStackObject(state);
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;

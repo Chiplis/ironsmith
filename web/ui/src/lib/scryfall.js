@@ -46,7 +46,14 @@ export const HIDDEN_CARD_BACK_IMAGE_URL =
 
 const resolvedCardImageUrlCache = new Map();
 const cardJsonCache = new Map();
+const localCardPayloadCache = new Map();
 const imagePreloadCache = new Map();
+let scryfallApiQueue = Promise.resolve();
+let nextScryfallApiRequestAt = 0;
+let scryfallApiBackoffUntil = 0;
+
+const SCRYFALL_API_MIN_INTERVAL_MS = 140;
+const SCRYFALL_API_DEFAULT_BACKOFF_MS = 60_000;
 
 function storage() {
   try {
@@ -108,6 +115,25 @@ function cardJsonCacheKey(cardName) {
   return customArtKey(cardName);
 }
 
+function baseAssetUrl() {
+  const configured = typeof import.meta !== "undefined"
+    ? import.meta.env?.BASE_URL
+    : null;
+  const base = configured || "/";
+  return new URL(base, globalThis?.location?.href || "http://localhost/").href;
+}
+
+function cardRouteKey(name) {
+  const normalized = String(name || "")
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "";
+}
+
 function namedCardParams(cardName) {
   const query = String(cardName || "").trim();
   const params = new URLSearchParams();
@@ -122,13 +148,6 @@ function namedCardParams(cardName) {
   return params;
 }
 
-function fallbackScryfallImageUrl(cardName, version = "normal") {
-  const params = namedCardParams(cardName);
-  params.set("format", "image");
-  params.set("version", version);
-  return `https://api.scryfall.com/cards/named?${params.toString()}`;
-}
-
 function namedCardJsonUrls(cardName) {
   const query = String(cardName || "").trim();
   if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
@@ -141,11 +160,17 @@ function namedCardJsonUrls(cardName) {
 }
 
 function imageUrlFromScryfallCard(card, version = "normal") {
+  return imageUrlFromImageUris(
+    card?.image_uris
+      || (Array.isArray(card?.card_faces)
+        ? card.card_faces.find((face) => face?.image_uris)?.image_uris
+        : null),
+    version
+  );
+}
+
+function imageUrlFromImageUris(imageUris, version = "normal") {
   const wanted = String(version || "normal").trim() || "normal";
-  const imageUris = card?.image_uris
-    || (Array.isArray(card?.card_faces)
-      ? card.card_faces.find((face) => face?.image_uris)?.image_uris
-      : null);
   if (!imageUris) return "";
   return String(
     imageUris[wanted]
@@ -169,6 +194,96 @@ function cacheResolvedImageUrls(cardName, card) {
   }
 }
 
+function cacheImageUris(cardName, imageUris) {
+  if (!imageUris || typeof imageUris !== "object") return;
+  for (const [version, url] of Object.entries(imageUris)) {
+    if (!url) continue;
+    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version), String(url));
+  }
+}
+
+function localScryfallPayloadForName(payload, cardName) {
+  const scryfall = payload?.scryfall || null;
+  if (!scryfall || typeof scryfall !== "object") return null;
+  const queryKey = customArtKey(cardName);
+  const faces = Array.isArray(scryfall.faces) ? scryfall.faces : [];
+  const exactFace = faces.find((face) => customArtKey(face?.name) === queryKey);
+  return exactFace || scryfall;
+}
+
+function cacheLocalScryfallPayload(cardName, payload) {
+  const scryfall = localScryfallPayloadForName(payload, cardName);
+  cacheImageUris(cardName, scryfall?.image_uris);
+}
+
+async function fetchLocalCardPayload(cardName) {
+  const query = String(cardName || "").trim();
+  const route = cardRouteKey(query);
+  if (!route || isHiddenCardName(query)) return null;
+  if (localCardPayloadCache.has(route)) return localCardPayloadCache.get(route);
+
+  const request = (async () => {
+    const url = new URL(`cards/${route}.json`, baseAssetUrl()).href;
+    const response = await fetch(url, { cache: "force-cache" });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`Local card metadata fetch failed: HTTP ${response.status}`);
+    const payload = await response.json();
+    cacheLocalScryfallPayload(query, payload);
+    return payload && typeof payload === "object" ? payload : null;
+  })()
+    .catch((error) => {
+      localCardPayloadCache.delete(route);
+      throw error;
+    });
+
+  localCardPayloadCache.set(route, request);
+  return request;
+}
+
+function parseRetryAfterMs(response) {
+  const raw = response?.headers?.get?.("retry-after");
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(Math.ceil(seconds * 1000), 10 * 60_000);
+  }
+  const timestamp = Date.parse(String(raw || ""));
+  if (Number.isFinite(timestamp)) {
+    return Math.max(0, Math.min(timestamp - Date.now(), 10 * 60_000));
+  }
+  return SCRYFALL_API_DEFAULT_BACKOFF_MS;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function fetchScryfallApiJson(url) {
+  const run = async () => {
+    const now = Date.now();
+    if (now < scryfallApiBackoffUntil) {
+      throw new Error("Scryfall API temporarily backed off after rate limiting");
+    }
+
+    const delay = Math.max(0, nextScryfallApiRequestAt - now);
+    if (delay > 0) await wait(delay);
+    nextScryfallApiRequestAt = Date.now() + SCRYFALL_API_MIN_INTERVAL_MS;
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (response.status === 429) {
+      scryfallApiBackoffUntil = Date.now() + parseRetryAfterMs(response);
+    }
+    return response;
+  };
+
+  const request = scryfallApiQueue.then(run, run);
+  scryfallApiQueue = request.catch(() => null);
+  return request;
+}
+
 async function fetchScryfallCardJson(cardName) {
   const query = String(cardName || "").trim();
   const key = cardJsonCacheKey(query);
@@ -177,7 +292,7 @@ async function fetchScryfallCardJson(cardName) {
 
   const request = (async () => {
     for (const url of namedCardJsonUrls(query)) {
-      const response = await fetch(url);
+      const response = await fetchScryfallApiJson(url);
       if (!response.ok) continue;
       const card = await response.json();
       cacheResolvedImageUrls(query, card);
@@ -218,7 +333,7 @@ export function scryfallImageUrl(cardName, version = "normal") {
   if (customUrl) return customUrl;
   const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version));
   if (cached) return cached;
-  return fallbackScryfallImageUrl(query, version);
+  return "";
 }
 
 export async function resolveScryfallImageUrl(cardName, version = "normal") {
@@ -232,13 +347,21 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const cached = resolvedCardImageUrlCache.get(key);
   if (cached) return cached;
 
+  const localPayload = await fetchLocalCardPayload(query).catch(() => null);
+  const localScryfall = localScryfallPayloadForName(localPayload, query);
+  const localResolved = imageUrlFromImageUris(localScryfall?.image_uris, version);
+  if (localResolved) {
+    resolvedCardImageUrlCache.set(key, localResolved);
+    return localResolved;
+  }
+
   const card = await fetchScryfallCardJson(query);
   const resolved = imageUrlFromScryfallCard(card, version);
   if (resolved) {
     resolvedCardImageUrlCache.set(key, resolved);
     return resolved;
   }
-  return fallbackScryfallImageUrl(query, version);
+  return "";
 }
 
 export async function preloadScryfallImage(cardName, version = "normal") {
@@ -306,6 +429,16 @@ export async function fetchScryfallCardMeta(cardName) {
   }
 
   const request = (async () => {
+    const localPayload = await fetchLocalCardPayload(query).catch(() => null);
+    const localScryfall = localScryfallPayloadForName(localPayload, query);
+    if (localScryfall) {
+      return {
+        mana_cost: localScryfall?.mana_cost || null,
+        oracle_text: localScryfall?.oracle_text || "",
+        produced_mana: Array.isArray(localScryfall?.produced_mana) ? localScryfall.produced_mana : [],
+      };
+    }
+
     const fuzzyCard = await fetchScryfallCardJson(query);
     return {
       mana_cost: fuzzyCard?.mana_cost || null,

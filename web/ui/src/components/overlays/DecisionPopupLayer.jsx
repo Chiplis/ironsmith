@@ -2532,6 +2532,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         variant="ghost"
                         size="sm"
                         className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaiting || !canAdvanceViewedCardsStep}
                         disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
@@ -2581,6 +2582,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                           variant="ghost"
                           size="sm"
                           className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                          style={decisionButtonStyle}
                           data-local-action={localDecisionButton ? "true" : "false"}
                           aria-disabled={peerWaiting || !canAct}
                           aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
@@ -2821,6 +2823,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     variant="ghost"
                     size="sm"
                     className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                    style={decisionButtonStyle}
                     data-local-action={localDecisionButton ? "true" : "false"}
                     aria-disabled={peerWaiting || !canAdvanceViewedCardsStep}
                     disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
@@ -2849,6 +2852,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         variant="ghost"
                         size="sm"
                         className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaiting || !canAct}
                         aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}

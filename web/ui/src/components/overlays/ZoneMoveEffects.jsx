@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { scryfallImageUrl } from "@/lib/scryfall";
+import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { RIFT_DISSOLVE_EXILE_EFFECT_MS } from "@/lib/game-animations";
 
 const EXILE_EFFECT_DURATION_MS = RIFT_DISSOLVE_EXILE_EFFECT_MS;
@@ -894,7 +894,8 @@ function ShaderCanvas({ effects }) {
 
 function ParticleExileCard({ effect }) {
   const name = String(effect.card?.name || "");
-  const artUrl = effect.sourceImageUrl || (name ? scryfallImageUrl(name, "art_crop") : null);
+  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
+  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
   const rect = effect.rect;
   const targetRect = effect.targetRect || rect;
   const sourceCenterX = rect.left + rect.width / 2;

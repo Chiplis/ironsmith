@@ -17,7 +17,7 @@ use ironsmith::zone::Zone;
 
 use super::{
     ActiveViewedCards, CryptoRequirementView, DecisionView, GameOverView, ManaPaymentView,
-    WasmGame, hidden_object_label, object_visible_to_perspective,
+    hidden_object_label, object_visible_to_perspective,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
