@@ -3115,9 +3115,9 @@ export function usePeerLobby({
         requester: waiter.metadata || null,
         responder: message.diagnostics || null,
       };
-      waiter.reject(new Error(
-        `${String(message.error)}: ${compactZiffleDiagnosticsJson(diagnostics)}`
-      ));
+      const error = new Error(String(message.error));
+      error.ziffleDiagnostics = diagnostics;
+      waiter.reject(error);
     } else {
       waiter.resolve(message.tokens || message.token);
     }
@@ -11087,12 +11087,10 @@ export function usePeerLobby({
         })),
       };
       const ceremony = ziffleCeremonyForOwner(message.ceremonyOwner, lookup)
-        || await waitForZiffleCeremony(message.ceremonyOwner, lookup)
-        || attachedCeremony;
+        || attachedCeremony
+        || await waitForZiffleCeremony(message.ceremonyOwner, lookup);
       if (!ceremony) {
-        const error = new Error(
-          `Unknown ziffle ceremony: ${compactZiffleDiagnosticsJson(diagnostics)}`
-        );
+        const error = new Error("Unknown ziffle ceremony");
         error.ziffleDiagnostics = diagnostics;
         throw error;
       }
@@ -11419,6 +11417,9 @@ export function usePeerLobby({
           `${peerLabel} is generating reveal proof material for ${positions.length} hidden `
           + `card${positions.length === 1 ? "" : "s"}.`,
       });
+      const includeCeremonyInRevealRequest =
+        Boolean(options.includeCeremonyInRevealRequest)
+        || Boolean(actionAuthorization);
       const requestPayload = {
         type: "ziffle_reveal_token_request",
         protocolVersion: PROTOCOL_VERSION,
@@ -11426,7 +11427,7 @@ export function usePeerLobby({
         ceremonyOwner: Number(ceremony.owner),
         deckHash: String(ceremony.deckHash || ""),
         ceremonyContext: String(ceremony.context || ""),
-        ...(options.includeCeremonyInRevealRequest ? { ceremony: cloneMultiplayerPayload(ceremony) } : {}),
+        ...(includeCeremonyInRevealRequest ? { ceremony: cloneMultiplayerPayload(ceremony) } : {}),
         cardPosition: positions[0],
         cardPositions: positions,
         requesterPeerId: session.localPeerId || "",

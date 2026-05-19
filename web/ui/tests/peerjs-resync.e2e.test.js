@@ -2831,21 +2831,82 @@ test("full UI PeerJS guest Mulligan redraw stays synced", { timeout: 300000 }, a
     assertNoSyncFailureText(afterHostKeepText, "host keep before guest mulligan should not sync-fail");
 
     await waitForLocalButton(guestPage, /Mulligan/i, "expected Player 1 mulligan button to become local", 120000);
+    const beforeGuestMulliganSnapshot = await fullUiSnapshot(guestPage);
+    const beforeGuestMulliganSequence = Number(
+      beforeGuestMulliganSnapshot?.multiplayer?.lastAppliedSequence || 0
+    );
     const guestMulligan = await activateLocalButton(guestPage, "guest-mulligan", /Mulligan/i);
     assert.ok(
       guestMulligan,
       `expected Player 1 to be able to mulligan\nhost body:\n${await visibleBodyText(hostPage)}\nguest body:\n${await visibleBodyText(guestPage)}`
     );
-    await sleep(5000);
-
-    const afterGuestMulliganText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    await waitForFullUiPair(
+      hostPage,
+      guestPage,
+      (host, guest) => {
+        const hostSeq = Number(host?.multiplayer?.lastAppliedSequence || 0);
+        const guestSeq = Number(guest?.multiplayer?.lastAppliedSequence || 0);
+        const guestLocal = Number(guest?.multiplayer?.localPlayerIndex);
+        return hostSeq > beforeGuestMulliganSequence
+          && guestSeq === hostSeq
+          && Number(guest?.state?.decision?.player) === guestLocal;
+      },
+      "expected Player 1 to receive a fresh opening-hand decision after mulligan",
+      180000,
+    );
+    const guestRedrawHand = await waitForNamedVisibleHand(
+      guestPage,
+      "expected Player 1 redraw hand to be visible after mulligan",
+      180000,
+      (snap) =>
+        Number(snap?.multiplayer?.lastAppliedSequence || 0) > beforeGuestMulliganSequence
+        && Number(snap?.state?.decision?.player) === Number(snap?.multiplayer?.localPlayerIndex),
+    );
+    assert.ok(
+      guestRedrawHand.length >= 7,
+      `expected Player 1 redraw hand to contain visible cards: ${JSON.stringify(guestRedrawHand)}`
+    );
     try {
-      assertNoSyncFailureText(afterGuestMulliganText, "guest mulligan click should not sync-fail");
+      await assertNoFullUiSyncFailuresWithDebug(
+        "guest mulligan redraw should not sync-fail",
+        hostPage,
+        guestPage,
+      );
     } catch (err) {
       assert.fail(
         `${err?.message || err}\nhost console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}\nguest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}`
       );
     }
+
+    const guestKeep = await activateLocalButton(guestPage, "guest-keep-redraw", /KEEP HAND/i);
+    assert.ok(guestKeep, `expected Player 1 to be able to keep the redraw hand\n${await visibleBodyText(guestPage)}`);
+    const bottomPromptText = await waitForVisibleBodyText(
+      guestPage,
+      /Choose 1 card\(s\) to put on the bottom of your library/i,
+      "expected Player 1 to bottom one card after keeping a mulligan hand",
+      120000,
+    );
+    assertNoSyncFailureText(bottomPromptText, "guest keep after redraw should not sync-fail");
+
+    const beforeBottomSnapshot = await fullUiSnapshot(guestPage);
+    const beforeBottomSequence = Number(beforeBottomSnapshot?.multiplayer?.lastAppliedSequence || 0);
+    const bottomChoice = await clickEnabledButton(guestPage, "guest-bottom-card", /^(Swamp|Island)$/i);
+    assert.ok(bottomChoice, "expected Player 1 to choose a card to bottom");
+    const submitBottom = await activateLocalButton(guestPage, "guest-submit-bottom-card", /SUBMIT/i);
+    assert.ok(submitBottom, "expected Player 1 bottom-card choice to be submittable");
+
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeBottomSequence,
+      "expected mulligan flow to advance after Player 1 bottoms a card",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest mulligan bottom flow should stay synced",
+      hostPage,
+      guestPage,
+    );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
     await withTimeout(Promise.allSettled([
