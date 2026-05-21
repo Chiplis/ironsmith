@@ -117,13 +117,6 @@ function locateObjectInState(state, objectId) {
   if (objectId == null) return null;
   const needle = String(objectId);
   const viewedCards = state?.viewed_cards || null;
-  if (viewedCardIds(state).has(needle)) {
-    return {
-      side: viewedCards?.visibility === "public" ? "public-view" : "private-view",
-      zone: String(viewedCards?.zone || "").toLowerCase(),
-      viewVisibility: viewedCards?.visibility === "public" ? "public" : "private",
-    };
-  }
 
   const perspective = state?.perspective;
   const players = state?.players || [];
@@ -154,6 +147,14 @@ function locateObjectInState(state, objectId) {
     if (String(entry?.id) === needle || String(entry?.inspect_object_id) === needle) {
       return { side: "stack", zone: "stack" };
     }
+  }
+
+  if (viewedCardIds(state).has(needle)) {
+    return {
+      side: viewedCards?.visibility === "public" ? "public-view" : "private-view",
+      zone: String(viewedCards?.zone || "").toLowerCase(),
+      viewVisibility: viewedCards?.visibility === "public" ? "public" : "private",
+    };
   }
 
   return null;

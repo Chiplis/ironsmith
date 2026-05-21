@@ -456,18 +456,47 @@ impl WasmGame {
         let input: RevealHiddenPositionInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
         let owner = PlayerId::from_index(input.owner);
-        let Some((&object_id, info)) = self.game.hidden_cards.iter().find(|(object_id, info)| {
-            info.owner == owner
-                && info.slot == input.position
-                && self.game.is_hidden_card_placeholder(**object_id)
-        }) else {
+        let position_commitment = input.position_commitment.as_deref();
+        let commitment_matches = |info: &ironsmith::game_state::HiddenCardInfo| {
+            position_commitment.is_none_or(|commitment| {
+                info.commitment == commitment
+                    || info.public_commitment.as_deref() == Some(commitment)
+            })
+        };
+        let position_matches = |info: &ironsmith::game_state::HiddenCardInfo| {
+            info.slot == input.position
+                || info.public_slot == Some(input.position)
+                || position_commitment.is_some_and(|commitment| {
+                    info.commitment == commitment
+                        || info.public_commitment.as_deref() == Some(commitment)
+                })
+        };
+
+        let explicit_target = input.object_id.and_then(|raw| {
+            let object_id = ObjectId::from_raw(raw);
+            self.game
+                .hidden_card_info(object_id)
+                .cloned()
+                .filter(|info| info.owner == owner && position_matches(info))
+                .map(|info| (object_id, info))
+        });
+        let target = explicit_target.or_else(|| {
+            self.game
+                .hidden_cards
+                .iter()
+                .find(|(object_id, info)| {
+                    info.owner == owner
+                        && self.game.is_hidden_card_placeholder(**object_id)
+                        && position_matches(info)
+                })
+                .map(|(object_id, info)| (*object_id, info.clone()))
+        });
+        let Some((object_id, info)) = target else {
             return Err(JsValue::from_str(
                 "hidden ziffle position is not present in this engine",
             ));
         };
-        if let Some(position_commitment) = input.position_commitment.as_deref()
-            && position_commitment != info.commitment
-        {
+        if !commitment_matches(&info) {
             return Err(JsValue::from_str(
                 "hidden ziffle position commitment does not match reveal",
             ));
@@ -495,11 +524,21 @@ impl WasmGame {
             .find_card_definition(&input.card_name)
             .cloned()
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
-        self.game
-            .register_linked_face_family_from_catalog(&definition, &self.registry);
-        self.game
-            .reveal_hidden_card_with_definition(object_id, &definition)
-            .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        if let Some(existing_name) = self.game.object(object_id).map(|object| object.name.clone())
+            && existing_name != "Hidden Card"
+        {
+            if existing_name != input.card_name {
+                return Err(JsValue::from_str(
+                    "opened object identity does not match reveal",
+                ));
+            }
+        } else {
+            self.game
+                .register_linked_face_family_from_catalog(&definition, &self.registry);
+            self.game
+                .reveal_hidden_card_with_definition(object_id, &definition)
+                .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        }
         self.reveal_hidden_card_in_live_continuation_checkpoint(
             owner,
             &[input.original_slot, input.position],
@@ -688,10 +727,9 @@ impl WasmGame {
                 ironsmith::game_state::HiddenCardInfo {
                     owner,
                     zone,
-                    slot: position as u16,
-                    commitment: format!("ziffle:{}:{}", input.deck_hash, position),
-                    public_slot: None,
-                    public_commitment: None,
+                    public_slot: Some(position as u16),
+                    public_commitment: Some(format!("ziffle:{}:{}", input.deck_hash, position)),
+                    ..info
                 },
             );
         }

@@ -425,10 +425,8 @@ impl ActiveViewedCards {
     }
 
     fn resolved_object_id(&self, game: &GameState, index: usize, card: ObjectId) -> ObjectId {
-        if game.object(card).is_some() {
-            return card;
-        }
         game.find_object_by_stable_id(self.stable_id_at(index, card))
+            .or_else(|| game.object(card).map(|_| card))
             .unwrap_or(card)
     }
 
@@ -1590,12 +1588,12 @@ impl WasmGame {
 
             for (index, &object_id) in view.cards.iter().enumerate() {
                 let resolved_object_id = view.resolved_object_id(&self.game, index, object_id);
-                let Some(card) = before
+                let Some(card) = after
                     .hidden_by_id
-                    .get(&object_id)
+                    .get(&resolved_object_id)
                     .or_else(|| after.hidden_by_id.get(&object_id))
                     .or_else(|| before.hidden_by_id.get(&resolved_object_id))
-                    .or_else(|| after.hidden_by_id.get(&resolved_object_id))
+                    .or_else(|| before.hidden_by_id.get(&object_id))
                 else {
                     continue;
                 };
@@ -3765,6 +3763,8 @@ struct RevealHiddenSlotInput {
 #[serde(rename_all = "camelCase")]
 struct RevealHiddenPositionInput {
     owner: u8,
+    #[serde(default)]
+    object_id: Option<u64>,
     position: u16,
     original_slot: u16,
     card_name: String,

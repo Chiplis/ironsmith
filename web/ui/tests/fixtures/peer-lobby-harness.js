@@ -709,13 +709,24 @@ function Harness() {
             : null;
 
         return {
-          multiplayer: lobby.multiplayer,
+          multiplayer: {
+            ...lobby.multiplayer,
+            players: (lobby.multiplayer.players || []).map((player) => ({
+              ...player,
+              routePeerId: typeof lobby.routePeerIdForPlayer === "function"
+                ? lobby.routePeerIdForPlayer(player)
+                : (player.currentPeerId || player.peerId || ""),
+            })),
+          },
           canStartHostedMatch: lobby.canStartHostedMatch,
           visibleState,
           statusEvents: [...statusEventsRef.current],
           noticeEvents: [...noticeEventsRef.current],
           syncEvents: [...syncEventsRef.current, ...game.syncEvents()],
           instrumentation: game.instrumentation(),
+          perfEvents: Array.isArray(window.__ironsmithPerfEvents)
+            ? window.__ironsmithPerfEvents.slice(-100)
+            : [],
           auditTranscript,
         };
       },

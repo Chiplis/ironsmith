@@ -1236,7 +1236,9 @@ impl WasmGame {
             .unwrap_or(20);
 
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
-        self.registry = CardRegistry::new();
+        // Keep the session card catalog intact. Checkpoint import is game-state
+        // reset, but browser-loaded lean-build card definitions must remain
+        // available for visible objects and later hidden-card openings.
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(checkpoint.players.len());
         self.priority_state.set_auto_choose_single_pip_payment(false);

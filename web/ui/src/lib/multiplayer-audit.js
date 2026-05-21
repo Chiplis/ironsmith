@@ -2670,6 +2670,17 @@ function ziffleRuntimeCommitment(deckHash, position) {
   return `ziffle:${String(deckHash || "")}:${Number(position)}`;
 }
 
+function ziffleContextFromOpening(opening) {
+  if (!opening || typeof opening !== "object") return "";
+  const proof = opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof || {};
+  return String(
+    opening.ziffleContext
+    || opening.ziffle_context
+    || proof.context
+    || ""
+  );
+}
+
 function normalizeZiffleKeys(keys = []) {
   return (Array.isArray(keys) ? keys : [])
     .map((key) => ({
@@ -2843,31 +2854,62 @@ export function buildZiffleOpeningProof({
 }
 
 function ziffleObjectOrderLinksOpening(ceremony, shuffleOriginalSlot, position, opening) {
-  if (ceremony?.authenticatedOrder !== true) return false;
   const proof = opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof || {};
-  const objectId = Number(
-    opening?.shuffleObjectId
-    ?? opening?.shuffle_object_id
-    ?? proof?.shuffleObjectId
-    ?? proof?.shuffle_object_id
-    ?? opening?.objectId
-    ?? opening?.object_id
-  );
-  if (!Number.isSafeInteger(objectId) || objectId < 0) return false;
   const beforeOrder = normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order);
   const afterOrder = normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order);
   if (beforeOrder.length === 0 && afterOrder.length === 0) return false;
+  const beforeObjectId = Number(beforeOrder[Number(shuffleOriginalSlot)]);
+  const afterObjectId = Number(afterOrder[Number(position)]);
+  if (
+    Number.isSafeInteger(beforeObjectId)
+    && beforeObjectId >= 0
+    && Number.isSafeInteger(afterObjectId)
+    && afterObjectId >= 0
+    && beforeObjectId === afterObjectId
+  ) {
+    return true;
+  }
+  const normalizedId = (value) => {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id >= 0 ? id : null;
+  };
+  const shuffleObjectId = normalizedId(
+    proof?.shuffleObjectId
+    ?? proof?.shuffle_object_id
+    ?? opening?.shuffleObjectId
+    ?? opening?.shuffle_object_id
+  );
+  const objectId = normalizedId(
+    proof?.objectId
+    ?? proof?.object_id
+    ?? opening?.objectId
+    ?? opening?.object_id
+  );
+  const beforeExpectedObjectId = shuffleObjectId ?? objectId;
+  const afterExpectedObjectId = objectId ?? shuffleObjectId;
+  if (beforeExpectedObjectId == null || afterExpectedObjectId == null) return false;
   const beforeMatches =
     beforeOrder.length === 0
-    || Number(beforeOrder[Number(shuffleOriginalSlot)]) === objectId;
+    || beforeObjectId === beforeExpectedObjectId;
   const afterMatches =
     afterOrder.length === 0
-    || Number(afterOrder[Number(position)]) === objectId;
+    || afterObjectId === afterExpectedObjectId;
   return beforeMatches && afterMatches;
 }
 
 function ziffleRevealMatchesOpening(ceremony, revealOriginalSlot, position, opening) {
-  if (Number(revealOriginalSlot) === Number(opening?.slot)) return true;
+  if (Number(revealOriginalSlot) === Number(opening?.slot)) {
+    return true;
+  }
+  const beforeOrder = normalizeShuffleOrder(ceremony?.beforeOrder ?? ceremony?.before_order);
+  const afterOrder = normalizeShuffleOrder(ceremony?.afterOrder ?? ceremony?.after_order);
+  if (
+    beforeOrder.length === 0
+    && afterOrder.length === 0
+    && Number(revealOriginalSlot) === Number(opening?.slot)
+  ) {
+    return true;
+  }
   return ziffleObjectOrderLinksOpening(ceremony, revealOriginalSlot, position, opening);
 }
 
@@ -3056,8 +3098,104 @@ async function verifyZifflePositionOpening({
     throw new Error(`Ziffle opening at sequence ${seq} is missing a valid shuffled position`);
   }
   const proof = opening?.ziffleReveal || opening?.ziffleProof || opening?.positionOpeningProof;
+  const commitmentDeckHash = ziffleDeckHashFromCommitment(positionCommitment);
+  const openingContext = ziffleContextFromOpening(opening);
+  const matchingCeremonies = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).filter((entry) =>
+    Number(entry?.owner) === Number(opening.owner)
+    && String(entry?.deckHash || "") === String(commitmentDeckHash || "")
+    && (!openingContext || String(entry?.context || "") === openingContext)
+  );
+  if (openingContext && matchingCeremonies.length === 0) {
+    throw new Error(
+      `Ziffle opening at sequence ${seq} references an unknown shuffle ceremony context`
+    );
+  }
+  const orderedCeremony =
+    matchingCeremonies.find((entry) => entry?.authenticatedOrder === true)
+    || matchingCeremonies[0];
+  if (orderedCeremony?.authenticatedOrder === true) {
+    const beforeOrder = normalizeShuffleOrder(
+      orderedCeremony.beforeOrder ?? orderedCeremony.before_order
+    );
+    const afterOrder = normalizeShuffleOrder(
+      orderedCeremony.afterOrder ?? orderedCeremony.after_order
+    );
+    if (!proof && ziffleObjectOrderLinksOpening(orderedCeremony, opening.slot, position, opening)) {
+      return;
+    }
+    const objectId = Number(
+      opening.shuffleObjectId
+      ?? opening.shuffle_object_id
+      ?? opening.objectId
+      ?? opening.object_id
+    );
+    const positionObjectId = Number(afterOrder[Number(position)]);
+    if (
+      !proof
+      && beforeOrder.length === 0
+      &&
+      Number.isSafeInteger(objectId)
+      && objectId >= 0
+      && Number.isSafeInteger(positionObjectId)
+      && positionObjectId >= 0
+      && objectId === positionObjectId
+    ) {
+      return;
+    }
+    const shuffleOriginalSlot = beforeOrder.findIndex((entry) => Number(entry) === objectId);
+    if (!proof) {
+      throw new Error(
+        `Ziffle opening at sequence ${seq} object order does not match opening`
+        + ` (${JSON.stringify({
+          owner: opening?.owner,
+          slot: opening?.slot,
+          objectId: opening?.objectId ?? opening?.object_id ?? null,
+          shuffleObjectId: opening?.shuffleObjectId ?? opening?.shuffle_object_id ?? null,
+          card: opening?.card,
+          position,
+          positionCommitment,
+          afterAtPosition: afterOrder[Number(position)] ?? null,
+          derivedShuffleSlot: shuffleOriginalSlot,
+        })})`
+      );
+    }
+  }
   if (!proof || typeof proof !== "object") {
-    throw new Error(`Ziffle opening at sequence ${seq} is missing its position reveal proof`);
+    const beforeOrder = normalizeShuffleOrder(
+      orderedCeremony?.beforeOrder ?? orderedCeremony?.before_order
+    );
+    const afterOrder = normalizeShuffleOrder(
+      orderedCeremony?.afterOrder ?? orderedCeremony?.after_order
+    );
+    const objectId = Number(
+      opening?.shuffleObjectId
+      ?? opening?.shuffle_object_id
+      ?? opening?.objectId
+      ?? opening?.object_id
+    );
+    throw new Error(
+      `Ziffle opening at sequence ${seq} is missing its position reveal proof`
+      + ` (${JSON.stringify({
+        owner: opening?.owner,
+        slot: opening?.slot,
+        objectId: opening?.objectId ?? opening?.object_id ?? null,
+        shuffleObjectId: opening?.shuffleObjectId ?? opening?.shuffle_object_id ?? null,
+        card: opening?.card,
+        position,
+        positionCommitment,
+        matchingCeremonies: matchingCeremonies.map((entry) => ({
+          owner: entry.owner,
+          deckHash: entry.deckHash,
+          context: entry.context,
+          authenticatedOrder: entry.authenticatedOrder === true,
+          beforeLen: normalizeShuffleOrder(entry.beforeOrder ?? entry.before_order).length,
+          afterLen: normalizeShuffleOrder(entry.afterOrder ?? entry.after_order).length,
+        })),
+        derivedShuffleSlot: beforeOrder.findIndex((entry) => Number(entry) === objectId),
+        beforeAtOpeningSlot: beforeOrder[Number(opening?.slot)] ?? null,
+        afterAtPosition: afterOrder[Number(position)] ?? null,
+      })})`
+    );
   }
   if (String(proof.type || "") !== ZIFFLE_OPENING_PROOF_TYPE) {
     throw new Error(`Ziffle opening at sequence ${seq} has an unsupported position proof`);
@@ -3491,6 +3629,20 @@ export async function verifyLiveAuditTranscript(
     ...ceremony,
     authenticatedOrder: false,
   }));
+  const upsertVerifiedZiffleCeremony = (ceremony) => {
+    if (!ceremony || typeof ceremony !== "object") return;
+    const index = verifiedZiffleCeremonies.findIndex((entry) =>
+      Number(entry?.owner) === Number(ceremony.owner)
+      && String(entry?.deckHash || "") === String(ceremony.deckHash || "")
+      && String(entry?.context || "") === String(ceremony.context || "")
+    );
+    const normalized = { ...ceremony };
+    if (index >= 0) {
+      verifiedZiffleCeremonies[index] = normalized;
+    } else {
+      verifiedZiffleCeremonies.push(normalized);
+    }
+  };
   let stateHash = String(transcript.initialStateHash || "0".repeat(64));
   let clockHash = INITIAL_MATCH_CLOCK_HASH;
   let finalPublicCheckpointHash = String(transcript.initialPublicCheckpointHash || "");
@@ -3612,19 +3764,23 @@ export async function verifyLiveAuditTranscript(
       players,
       seq: expectedSeq,
     });
+    const actionVerifiedZiffleCeremonies = [
+      ...verifiedZiffleCeremonies,
+      ...actionZiffleCeremonies,
+    ];
     await verifyAuditOpenings({
       openings: audit.openings || [],
       manifests,
-      ziffleCeremonies: [
-        ...verifiedZiffleCeremonies,
-        ...actionZiffleCeremonies,
-      ],
+      ziffleCeremonies: actionVerifiedZiffleCeremonies,
       verifyZiffleOpening: options.verifyZiffleOpening,
       expectedZiffleKeys,
       expectedMatchId: expectedShuffleMatchId,
       players,
       seq: expectedSeq,
     }, cryptoImpl);
+    for (const ceremony of actionZiffleCeremonies) {
+      upsertVerifiedZiffleCeremony(ceremony);
+    }
     await verifyPrivateViewProofs(audit.privateViewProofs || [], {
       players,
       manifests,

@@ -219,7 +219,7 @@ function rememberCardNamesFromEngineResult(value) {
   rememberCardNamesFromZoneCards(value?.active_viewed_cards?.cards);
   const objects = Array.isArray(value.objects) ? value.objects : [];
   for (const object of objects) {
-    if (!object || typeof object !== "object" || object.hiddenCard || object.hidden_card) {
+    if (!object || typeof object !== "object") {
       continue;
     }
     rememberRuntimeCardName(object.name);
@@ -253,8 +253,7 @@ function collectCheckpointCardNames(checkpoint, out = []) {
     if (!object || typeof object !== "object") continue;
     const name = String(object.name || "").trim();
     const isToken = Boolean(object.token);
-    const hidden = object.hiddenCard || object.hidden_card || null;
-    if (name && !isToken && !hidden && name.toLocaleLowerCase("en-US") !== "hidden card") {
+    if (name && !isToken && name.toLocaleLowerCase("en-US") !== "hidden card") {
       out.push(name);
     }
   }

@@ -6,7 +6,10 @@ impl WasmGame {
         seed: u64,
     ) {
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
-        self.registry = CardRegistry::new();
+        // Card definitions are a session-level catalog, not match state. In the
+        // lean WASM build the browser loads per-card sources on demand before
+        // validation; resetting the registry here would drop those definitions
+        // before startMatch/reveals use them.
         self.game.set_random_seed(seed);
         self.match_format = MatchFormatInput::Normal;
         self.pregame = None;

@@ -1,8 +1,8 @@
 const PLAYER_ACCENT_PALETTE = [
-  { hex: "#731bde", rgb: "115, 27, 222" },
+  { hex: "#f28c28", rgb: "242, 140, 40" },
   { hex: "#ff3b30", rgb: "255, 59, 48" },
   { hex: "#22c55e", rgb: "34, 197, 94" },
-  { hex: "#f3b25a", rgb: "243, 178, 90" },
+  { hex: "#731bde", rgb: "115, 27, 222" },
 ];
 
 function normalizeHexColor(color) {

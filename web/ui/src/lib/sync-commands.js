@@ -255,6 +255,12 @@ export function resolveSyncedCommand(command) {
         syncedCommand.object_stable_id = stableId;
       }
     }
+    const hiddenRef = normalizeSelectObjectHiddenRef(
+      command.object_hidden_ref ?? command.objectHiddenRef
+    );
+    if (hiddenRef) {
+      syncedCommand.object_hidden_ref = hiddenRef;
+    }
     return syncedCommand;
   }
 

@@ -850,20 +850,20 @@ fn resolve_viewed_card(
     id: ObjectId,
     stable_id: StableId,
 ) -> (ObjectId, u64, String, String) {
-    if let Some(obj) = game.object(id) {
+    if let Some(current_id) = game.find_object_by_stable_id(stable_id)
+        && let Some(obj) = game.object(current_id)
+    {
         return (
-            id,
+            current_id,
             obj.stable_id.0.0,
             obj.name.clone(),
             obj.compiled_card_text.clone(),
         );
     }
 
-    if let Some(current_id) = game.find_object_by_stable_id(stable_id)
-        && let Some(obj) = game.object(current_id)
-    {
+    if let Some(obj) = game.object(id) {
         return (
-            current_id,
+            id,
             obj.stable_id.0.0,
             obj.name.clone(),
             obj.compiled_card_text.clone(),

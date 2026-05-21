@@ -1,4 +1,6 @@
-import { getPlayerAccent } from "./player-colors.js";
+import { getPlayerAccent, hexToRgbString } from "./player-colors.js";
+
+const LOCAL_DECISION_ACCENT = "#731bde";
 
 export function decisionButtonPlayerId(state, decision = state?.decision) {
   return (
@@ -11,6 +13,12 @@ export function decisionButtonPlayerId(state, decision = state?.decision) {
 
 export function decisionButtonAccentVars(state, decision = state?.decision, accentOverrides = null) {
   const playerId = decisionButtonPlayerId(state, decision);
+  if (Number(playerId) === Number(state?.perspective)) {
+    return {
+      "--decision-main-accent": LOCAL_DECISION_ACCENT,
+      "--decision-main-rgb": hexToRgbString(LOCAL_DECISION_ACCENT),
+    };
+  }
   const accent = getPlayerAccent(state?.players || [], playerId, state?.perspective, accentOverrides);
   if (!accent) return undefined;
 

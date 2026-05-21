@@ -466,6 +466,12 @@ function resolveSyncedCommand(command) {
         syncedCommand.object_stable_id = stableId;
       }
     }
+    const hiddenRef = normalizeSelectObjectHiddenRef(
+      command.object_hidden_ref ?? command.objectHiddenRef
+    );
+    if (hiddenRef) {
+      syncedCommand.object_hidden_ref = hiddenRef;
+    }
     return syncedCommand;
   }
 
@@ -746,6 +752,7 @@ export function GameProvider({ children }) {
   const auditReplayPreparedRef = useRef(null);
   const multiplayerActiveRef = useRef(false);
   const multiplayerAutoPassAttemptRef = useRef("");
+  const multiplayerSubmitInFlightRef = useRef(false);
   const stickyViewedCardsRef = useRef(null);
   const stickyGameOverRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
@@ -1683,7 +1690,7 @@ export function GameProvider({ children }) {
       multiplayerAutoPassAttemptRef.current = "";
       return;
     }
-    if (multiplayer.submittingAction) return;
+    if (multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
 
     const currentState = state;
     const result = buildMultiplayerSmartAutoPass({
@@ -1723,12 +1730,17 @@ export function GameProvider({ children }) {
       return;
     }
 
-    submitMultiplayerCommand(syncedCommand, "Auto-passed priority").catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      emitSyncFailureNotice("Auto-pass failed", message);
-      setStatus(`Auto-pass failed: ${message}`, true);
-      console.error(err);
-    });
+    multiplayerSubmitInFlightRef.current = true;
+    submitMultiplayerCommand(syncedCommand, "Auto-passed priority")
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        emitSyncFailureNotice("Auto-pass failed", message);
+        setStatus(`Auto-pass failed: ${message}`, true);
+        console.error(err);
+      })
+      .finally(() => {
+        multiplayerSubmitInFlightRef.current = false;
+      });
   }, [
     autoPassEnabled,
     holdRule,
@@ -1824,9 +1836,15 @@ export function GameProvider({ children }) {
           try {
             if (isTargetSubmit) armTargetSubmitDebounce();
             const syncedCommand = serializeMultiplayerCommand(command, currentState);
-            await submitMultiplayerCommand(syncedCommand, successMessage);
+            multiplayerSubmitInFlightRef.current = true;
+            try {
+              await submitMultiplayerCommand(syncedCommand, successMessage);
+            } finally {
+              multiplayerSubmitInFlightRef.current = false;
+            }
             if (isTargetSubmit) settleTargetSubmitDebounce();
           } catch (err) {
+            multiplayerSubmitInFlightRef.current = false;
             if (isTargetSubmit) clearTargetSubmitDebounce();
             emitSyncFailureNotice(
               "Sync failed",
@@ -2431,6 +2449,9 @@ export function GameProvider({ children }) {
 
     const e2eApi = {
       snapshot,
+      checkpoint: () => gameRef.current?.exportSyncCheckpoint?.() || null,
+      publicCheckpoint: () => gameRef.current?.exportPublicAuditCheckpoint?.() || null,
+      auditTranscript: () => exportAuditTranscript?.({ includeLiveCheckpoint: false }) || null,
       dispatch: (command, label) => dispatch(command, label),
       submitMultiplayerCommand: (command, label) => submitMultiplayerCommand(command, label),
     };

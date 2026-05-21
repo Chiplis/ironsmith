@@ -211,6 +211,83 @@ async function snapshot(page) {
   return page.evaluate(() => window.__peerHarness.snapshot());
 }
 
+function compactSnapshotForFailure(snap) {
+  if (!snap || typeof snap !== "object") return snap;
+  const multiplayer = snap.multiplayer || {};
+  const visibleState = snap.visibleState || {};
+  const transcript = snap.auditTranscript || snap.liveAuditTranscript || {};
+  return {
+    multiplayer: {
+      role: multiplayer.role,
+      mode: multiplayer.mode,
+      lobbyId: multiplayer.lobbyId,
+      hostPeerId: multiplayer.hostPeerId,
+      localPeerId: multiplayer.localPeerId,
+      localPlayerIndex: multiplayer.localPlayerIndex,
+      matchStarted: multiplayer.matchStarted,
+      lastAppliedSequence: multiplayer.lastAppliedSequence,
+      submittingAction: multiplayer.submittingAction,
+      players: (multiplayer.players || []).map((player) => ({
+        index: player.index,
+        name: player.name,
+        peerId: player.peerId,
+        currentPeerId: player.currentPeerId,
+        routePeerId: player.routePeerId,
+        connected: player.connected,
+        ready: player.ready,
+      })),
+    },
+    visibleState: {
+      snapshot_id: visibleState.snapshot_id,
+      perspective: visibleState.perspective,
+      phase: visibleState.phase,
+      active_player: visibleState.active_player,
+      priority_player: visibleState.priority_player,
+      decision: visibleState.decision
+        ? {
+            type: visibleState.decision.type,
+            player: visibleState.decision.player,
+            actionCount: Array.isArray(visibleState.decision.actions)
+              ? visibleState.decision.actions.length
+              : undefined,
+          }
+        : null,
+      players: (visibleState.players || []).map((player) => ({
+        index: player.index,
+        battlefield: Array.isArray(player.battlefield) ? player.battlefield.length : undefined,
+        hand: Array.isArray(player.hand) ? player.hand.length : undefined,
+        library: Array.isArray(player.library) ? player.library.length : undefined,
+        graveyard: Array.isArray(player.graveyard) ? player.graveyard.length : undefined,
+        exile: Array.isArray(player.exile) ? player.exile.length : undefined,
+      })),
+    },
+    statusEvents: (snap.statusEvents || []).slice(-20).map((event) => event.message || event),
+    syncEvents: (snap.syncEvents || []).slice(-20).map((event) => ({
+      type: event.type,
+      sequence: event.syncContext?.sequence ?? event.sequence,
+      commandType: event.command?.type,
+      message: event.message,
+    })),
+    transcriptActions: (transcript.actions || []).slice(-5).map((action) => ({
+      seq: action.seq,
+      actorIndex: action.actorIndex,
+      commandType: action.command?.type,
+      label: action.label,
+    })),
+    transcriptOutcome: transcript.outcome || null,
+    perfEvents: (snap.perfEvents || []).slice(-50).map((event) => ({
+      label: event.label,
+      seq: event.payload?.seq,
+      actor: event.payload?.actor,
+      target_peer_id: event.payload?.target_peer_id,
+      target_player_index: event.payload?.target_player_index,
+      sent: event.payload?.sent,
+      route: event.payload?.route,
+      error: event.payload?.error,
+    })),
+  };
+}
+
 async function waitForSnapshot(page, predicate, label, timeoutMs = 20000) {
   const started = Date.now();
   let lastSnapshot = null;
@@ -219,7 +296,7 @@ async function waitForSnapshot(page, predicate, label, timeoutMs = 20000) {
     if (predicate(lastSnapshot)) return lastSnapshot;
     await sleep(100);
   }
-  assert.fail(`${label}\nLast snapshot: ${JSON.stringify(lastSnapshot, null, 2)}`);
+  assert.fail(`${label}\nLast snapshot: ${JSON.stringify(compactSnapshotForFailure(lastSnapshot), null, 2)}`);
 }
 
 function checkpointImportEvents(snap) {
@@ -339,8 +416,79 @@ async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutM
     }
     await sleep(250);
   }
+  const summarize = (snap) => ({
+    status: snap?.status,
+    role: snap?.multiplayer?.role,
+    localPlayerIndex: snap?.multiplayer?.localPlayerIndex,
+    lastAppliedSequence: snap?.multiplayer?.lastAppliedSequence,
+    matchStarted: snap?.multiplayer?.matchStarted,
+    submittingAction: snap?.multiplayer?.submittingAction,
+    players: snap?.multiplayer?.players?.map((player) => ({
+      index: player.index,
+      name: player.name,
+      peerId: player.peerId,
+      currentPeerId: player.currentPeerId,
+      connected: player.connected,
+    })),
+    decision: snap?.state?.decision,
+    handSizes: snap?.state?.players?.map((player) => player.hand_size),
+    librarySizes: snap?.state?.players?.map((player) => player.library_size),
+    lastPerfEvents: snap?.perfEvents?.slice(-12),
+  });
+  const checkpointSummary = async (page) => page.evaluate(async () => {
+    const checkpoint = await window.__ironsmithE2E?.publicCheckpoint?.();
+    const syncCheckpoint = await window.__ironsmithE2E?.checkpoint?.();
+    const objectsById = new Map((syncCheckpoint?.objects || []).map((object) => [
+      Number(object.id),
+      object,
+    ]));
+    const handEntries = (syncCheckpoint?.players || []).flatMap((player) =>
+      (player.hand || []).map((objectId, index) => {
+        const object = objectsById.get(Number(objectId)) || {};
+        const hidden = object.hiddenCard || object.hidden_card || {};
+        return {
+          owner: player.id,
+          index,
+          objectId,
+          name: object.name,
+          slot: hidden.slot,
+          publicSlot: hidden.publicSlot ?? hidden.public_slot,
+          commitment: hidden.commitment,
+          publicCommitment: hidden.publicCommitment ?? hidden.public_commitment,
+        };
+      })
+    );
+    return {
+      hiddenZones: (checkpoint?.hidden_zones || checkpoint?.hiddenZones || []).map((zone) => ({
+        owner: zone.owner,
+        zone: zone.zone,
+        count: zone.count,
+        commitmentRoot: zone.commitmentRoot ?? zone.commitment_root,
+      })),
+      battlefield: checkpoint?.battlefield || [],
+      publicExile: checkpoint?.publicExile || checkpoint?.public_exile || [],
+      stack: checkpoint?.stack || [],
+      objects: (checkpoint?.objects || []).map((object) => ({
+        id: object.id,
+        stableId: object.stableId ?? object.stable_id,
+        owner: object.owner,
+        controller: object.controller,
+        zone: object.zone,
+        name: object.identity?.name || null,
+      })),
+      handEntries,
+    };
+  }).catch((err) => ({ error: String(err?.message || err) }));
+  const [hostCheckpoint, guestCheckpoint] = await Promise.all([
+    checkpointSummary(hostPage),
+    checkpointSummary(guestPage),
+  ]);
   assert.fail(
-    `${label}\nhost: ${JSON.stringify(lastHost, null, 2)}\nguest: ${JSON.stringify(lastGuest, null, 2)}`
+    `${label}`
+    + `\nhost(${hostPage.__peerHarnessLabel || "host"}): ${JSON.stringify(summarize(lastHost), null, 2)}`
+    + `\nhostCheckpoint: ${JSON.stringify(hostCheckpoint, null, 2)}`
+    + `\nguest(${guestPage.__peerHarnessLabel || "guest"}): ${JSON.stringify(summarize(lastGuest), null, 2)}`
+    + `\nguestCheckpoint: ${JSON.stringify(guestCheckpoint, null, 2)}`
   );
 }
 
@@ -509,6 +657,37 @@ async function buttonDebugText(page) {
 }
 
 async function fullUiPageDebug(page, index = 0) {
+  const auditTranscript = await page.evaluate(async () => {
+    const transcript = await window.__ironsmithE2E?.auditTranscript?.();
+    const actions = Array.isArray(transcript?.actions) ? transcript.actions : [];
+    return {
+      actionCount: actions.length,
+      actions: actions.map((action) => ({
+        seq: action.seq,
+        actor: action.actor,
+        commandType: action.command?.type,
+        commandKind: action.command?.kind,
+        shuffleProofs: (action.audit?.shuffleProofs || []).map((proof) => ({
+          owner: proof.owner,
+          deckHash: proof.deckHash,
+          beforeLen: (proof.beforeOrder || proof.before_order || []).length,
+          afterLen: (proof.afterOrder || proof.after_order || []).length,
+          epoch: proof.epoch,
+        })),
+        openings: (action.audit?.openings || []).map((opening) => ({
+          owner: opening.owner,
+          slot: opening.slot,
+          objectId: opening.objectId ?? opening.object_id ?? null,
+          shuffleObjectId: opening.shuffleObjectId ?? opening.shuffle_object_id ?? null,
+          card: opening.card,
+          position: opening.position ?? null,
+          positionCommitment: opening.positionCommitment ?? opening.position_commitment ?? "",
+          hasProof: Boolean(opening.ziffleReveal || opening.ziffleProof || opening.positionOpeningProof),
+          timing: opening.timing,
+        })),
+      })),
+    };
+  }).catch((err) => ({ error: String(err?.message || err) }));
   return {
     index,
     label: page?.__peerHarnessLabel || "",
@@ -516,6 +695,7 @@ async function fullUiPageDebug(page, index = 0) {
     errors: page?.__peerHarnessErrors || [],
     console: (page?.__peerHarnessConsole || []).slice(-30),
     snapshot: await fullUiSnapshot(page).catch((err) => String(err?.message || err)),
+    auditTranscript,
     buttons: await buttonDebugText(page).catch((err) => String(err?.message || err)),
     body: await visibleBodyText(page).catch((err) => String(err?.message || err)),
   };
@@ -742,7 +922,7 @@ async function clickAnyFullUiProgressAction(pages, label, timeoutMs = 90000) {
   const progressPattern = /PLAY MOUNTAIN|KEEP HAND|PREGAME|BEGIN GAME|CONTINUE|UNTAP|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    await assertNoFullUiSyncFailures(...pages);
+    await assertNoFullUiSyncFailuresWithDebug(`${label}: unexpected sync failure before click`, ...pages);
     for (const [index, page] of pages.entries()) {
       const click = await clickLocalButton(page, `${label}-${index}`, progressPattern);
       if (click) return { page, index, click };
@@ -1172,11 +1352,24 @@ test("PeerJS remote public openings can prove ziffle positions against original 
       ...hostAfterOpen.statusEvents,
       ...guestAfterOpen.statusEvents,
     ].map((event) => event.message).join("\n");
-    assert.match(
-      statusText,
-      /Waiting for cryptographic reveal material from Guest/,
-      "host should request the guest's reveal token for the ziffle position",
-    );
+	    const signedOpenings = [
+	      ...(hostAfterOpen.auditTranscript?.actions?.at(-1)?.audit?.openings || []),
+	      ...(guestAfterOpen.auditTranscript?.actions?.at(-1)?.audit?.openings || []),
+	    ];
+	    assert.ok(
+	      signedOpenings.some((opening) =>
+	        Number(opening.owner) === 0
+	        && String(opening.card || "") === "Mystical Tutor"
+	        && opening.position != null
+	        && opening.positionCommitment
+	      ),
+	      `expected signed audit opening to carry ziffle position metadata: ${JSON.stringify(signedOpenings)}`,
+	    );
+	    assert.doesNotMatch(
+	      statusText,
+	      /Waiting for cryptographic reveal material from Guest/,
+	      "authenticated object-order shuffles should not need a separate reveal-token request",
+	    );
     assert.doesNotMatch(
       statusText,
       /does not match slot|hidden card commitment does not match reveal|Sync failed|Timed out waiting for ziffle reveal|Missing ziffle ceremony/i,
@@ -1292,7 +1485,7 @@ test("PeerJS opened ziffle hand cards keep original slots when played", { timeou
   }
 });
 
-test("PeerJS opened ziffle hand cards use cached positions when object export is gone", { timeout: 60000 }, async () => {
+test("PeerJS opened ziffle hand cards resolve positions when object export is gone", { timeout: 60000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
   const { vite, baseUrl } = await startHarnessServer(peerPort);
@@ -1318,7 +1511,7 @@ test("PeerJS opened ziffle hand cards use cached positions when object export is
     const hostLobby = await waitForSnapshot(
       hostPage,
       (snap) => snap.multiplayer.mode === "lobby" && snap.multiplayer.lobbyId,
-      "host creates a lobby for cached ziffle land test",
+      "host creates a lobby for fallback ziffle land test",
     );
 
     await guestPage.evaluate(({ lobbyId, deckText }) => {
@@ -1334,13 +1527,13 @@ test("PeerJS opened ziffle hand cards use cached positions when object export is
       (snap) => snap.canStartHostedMatch
         && snap.multiplayer.players.length === 2
         && snap.multiplayer.players.every((player) => player.connected !== false),
-      "both peers join and are ready for cached ziffle land test",
+      "both peers join and are ready for fallback ziffle land test",
     );
 
     await hostPage.evaluate(() => window.__peerHarness.setIncludeOpenedLandInCheckpointHand(true));
     await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
-    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts cached ziffle land match");
-    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives cached ziffle land match");
+    await waitForSnapshot(hostPage, (snap) => snap.multiplayer.matchStarted, "host starts fallback ziffle land match");
+    await waitForSnapshot(guestPage, (snap) => snap.multiplayer.matchStarted, "guest receives fallback ziffle land match");
     await hostPage.evaluate(() => window.__peerHarness.setFailOpenedLandExport(true));
 
     await hostPage.evaluate(async () => {
@@ -1354,18 +1547,18 @@ test("PeerJS opened ziffle hand cards use cached positions when object export is
       return window.__peerHarness.submitMultiplayerCommand({
         type: "priority_action",
         action_ref: action.action_ref,
-      }, "host cached ziffle land action");
+      }, "host fallback ziffle land action");
     });
 
     const hostAfterLand = await waitForSnapshot(
       hostPage,
       (snap) => snap.multiplayer.lastAppliedSequence === 1,
-      "host applies cached ziffle land action",
+      "host applies fallback ziffle land action",
     );
     const guestAfterLand = await waitForSnapshot(
       guestPage,
       (snap) => snap.multiplayer.lastAppliedSequence === 1,
-      "guest applies cached ziffle land action",
+      "guest applies fallback ziffle land action",
     );
     const signedOpenings = hostAfterLand.auditTranscript?.actions?.at(-1)?.audit?.openings || [];
     assert.ok(
@@ -1375,7 +1568,7 @@ test("PeerJS opened ziffle hand cards use cached positions when object export is
         && Number(opening.slot) === 7
         && opening.position != null
       ),
-      `expected cached opened-land audit opening to retain its ziffle position: ${JSON.stringify(signedOpenings)}`,
+      `expected fallback opened-land audit opening to retain its ziffle position: ${JSON.stringify(signedOpenings)}`,
     );
     const noticeText = [
       ...hostAfterLand.statusEvents,
@@ -2185,22 +2378,35 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
         action_ref: action.action_ref,
       }, "promoted guest action after host reconnect");
     });
-    const afterPromotedGuestAction = await Promise.all([
-      waitForSnapshot(
-        hostPage,
-        (snap) => snap.multiplayer.lastAppliedSequence === 2
-          && syncedCommandEvents(snap).length >= 2,
-        "original host accepts promoted host action with elapsed clock",
-        30000,
-      ),
-      waitForSnapshot(
-        guestPage,
-        (snap) => snap.multiplayer.lastAppliedSequence === 2
-          && syncedCommandEvents(snap).length >= 2,
-        "promoted host applies its delayed action",
-        30000,
-      ),
-    ]);
+    let afterPromotedGuestAction = null;
+    try {
+      afterPromotedGuestAction = await Promise.all([
+        waitForSnapshot(
+          hostPage,
+          (snap) => snap.multiplayer.lastAppliedSequence === 2
+            && syncedCommandEvents(snap).length >= 2,
+          "original host accepts promoted host action with elapsed clock",
+          30000,
+        ),
+        waitForSnapshot(
+          guestPage,
+          (snap) => snap.multiplayer.lastAppliedSequence === 2
+            && syncedCommandEvents(snap).length >= 2,
+          "promoted host applies its delayed action",
+          30000,
+        ),
+      ]);
+    } catch (err) {
+      const [hostDebug, guestDebug] = await Promise.all([
+        snapshot(hostPage).catch((snapshotErr) => ({ error: String(snapshotErr?.message || snapshotErr) })),
+        snapshot(guestPage).catch((snapshotErr) => ({ error: String(snapshotErr?.message || snapshotErr) })),
+      ]);
+      assert.fail(
+        `${err?.message || err}\n`
+        + `host after promoted action: ${JSON.stringify(compactSnapshotForFailure(hostDebug), null, 2)}\n`
+        + `guest after promoted action: ${JSON.stringify(compactSnapshotForFailure(guestDebug), null, 2)}`
+      );
+    }
     assert.equal(afterPromotedGuestAction[0].visibleState.snapshot_id, 2);
     assert.equal(afterPromotedGuestAction[0].visibleState.players[0].battlefield.length, 2);
 
@@ -3460,8 +3666,289 @@ test("full UI PeerJS Gemstone Caverns after guest mulligans publishes its openin
   }
 });
 
-async function driveDemonicConsultationCast({ hostPage, guestPage, actorPage, actorLabel, maxSteps = 160 }) {
-  let playedSwamp = false;
+test("full UI PeerJS Gemstone Caverns after both players mulligan remaps pregame source", { timeout: 360000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "30 Swamp\n30 Demonic Consultation",
+      guestDeckText: "60 Gemstone Caverns",
+      hostName: "Alice",
+      guestName: "Chiplis",
+      hostLabel: "host-both-mulligan-gemstone-ui",
+      guestLabel: "guest-both-mulligan-gemstone-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const beforeHostMulligan = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
+    await waitAndClickLocalButton(hostPage, "host-mulligan-before-guest-gemstone", /Mulligan/i, 120000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeHostMulligan,
+      "expected host mulligan before guest Gemstone to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "host mulligan before guest Gemstone should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    const beforeGuestMulligan = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+    await waitAndClickLocalButton(guestPage, "guest-mulligan-before-gemstone", /Mulligan/i, 120000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeGuestMulligan,
+      "expected guest mulligan before Gemstone to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest mulligan before Gemstone should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    const mulliganBottoms = [
+      {
+        page: hostPage,
+        label: "host",
+        bottomPattern: /^(Swamp|Demonic Consultation)$/i,
+      },
+      {
+        page: guestPage,
+        label: "guest",
+        bottomPattern: /^Gemstone Caverns$/i,
+      },
+    ];
+    for (let keepIndex = 0; keepIndex < 2; keepIndex += 1) {
+      const startedKeep = Date.now();
+      let kept = false;
+      while (!kept && Date.now() - startedKeep < 120000) {
+        await assertNoFullUiSyncFailuresWithDebug(
+          `waiting for keep decision ${keepIndex + 1} after both mulligans`,
+          hostPage,
+          guestPage,
+        );
+        for (const entry of mulliganBottoms) {
+          const beforeKeep = Number((await fullUiSnapshot(entry.page))?.multiplayer?.lastAppliedSequence || 0);
+          const keep = await activateLocalButton(
+            entry.page,
+            `${entry.label}-keep-after-both-mulligan-${keepIndex + 1}`,
+            /KEEP HAND/i,
+          );
+          if (!keep) continue;
+          await waitForFullUiSequenceAdvance(
+            hostPage,
+            guestPage,
+            beforeKeep,
+            `expected ${entry.label} keep after both mulligans to sync`,
+            180000,
+          );
+          kept = true;
+          break;
+        }
+        if (!kept) await sleep(250);
+      }
+      assert.ok(
+        kept,
+        `expected a local keep decision ${keepIndex + 1} after both mulligans\nhost:\n${await visibleBodyText(hostPage)}\nguest:\n${await visibleBodyText(guestPage)}`,
+      );
+    }
+
+    for (let bottomIndex = 0; bottomIndex < 2; bottomIndex += 1) {
+      const startedBottom = Date.now();
+      let bottomed = false;
+      while (!bottomed && Date.now() - startedBottom < 120000) {
+        await assertNoFullUiSyncFailuresWithDebug(
+          `waiting for mulligan bottom decision ${bottomIndex + 1}`,
+          hostPage,
+          guestPage,
+        );
+        for (const entry of mulliganBottoms) {
+          const body = await visibleBodyText(entry.page);
+          if (!/Choose 1 card\(s\) to put on the bottom of your library/i.test(body)) {
+            continue;
+          }
+          const buttons = await buttonDebugText(entry.page);
+          if (!buttons.some((button) =>
+            button.localAction === "true" && /SUBMIT/i.test(button.text)
+          )) {
+            continue;
+          }
+          await waitForVisibleBodyText(
+            entry.page,
+            /Choose 1 card\(s\) to put on the bottom of your library/i,
+            `expected ${entry.label} to bottom one card after mulligan before guest Gemstone`,
+            120000,
+          );
+          const beforeBottom = Number((await fullUiSnapshot(entry.page))?.multiplayer?.lastAppliedSequence || 0);
+          const selectedBottom = await clickUnselectedEnabledButton(
+            entry.page,
+            `${entry.label}-bottom-after-both-mulligan-${bottomIndex + 1}`,
+            entry.bottomPattern,
+          );
+          assert.ok(
+            selectedBottom,
+            `expected ${entry.label} to choose a bottom card\n${await visibleBodyText(entry.page)}`,
+          );
+          await waitAndClickLocalButton(
+            entry.page,
+            `${entry.label}-submit-bottom-before-guest-gemstone-${bottomIndex + 1}`,
+            /SUBMIT/i,
+            60000,
+          );
+          await waitForFullUiSequenceAdvance(
+            hostPage,
+            guestPage,
+            beforeBottom,
+            `expected ${entry.label} bottom before guest Gemstone to sync`,
+            180000,
+          );
+          bottomed = true;
+          break;
+        }
+        if (!bottomed) await sleep(250);
+      }
+      assert.ok(
+        bottomed,
+        `expected a local keep/bottom decision ${bottomIndex + 1} after both mulligans\nhost:\n${await visibleBodyText(hostPage)}\nguest:\n${await visibleBodyText(guestPage)}`,
+      );
+    }
+    await assertNoFullUiSyncFailuresWithDebug(
+      "bottoming after both mulligans before Gemstone should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    for (
+      let step = 0;
+      step < 12 && !(await hasLocalButton(guestPage, /BEGIN WITH GEMSTONE CAVERNS/i));
+      step += 1
+    ) {
+      await clickAnyFullUiProgressAction([hostPage, guestPage], `advance-to-both-mulligan-gemstone-${step}`, 60000);
+      await sleep(1500);
+    }
+
+    const beforeGemstone = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+    await waitAndClickLocalButton(
+      guestPage,
+      "guest-begin-with-gemstone-after-both-mulligan",
+      /BEGIN WITH GEMSTONE CAVERNS/i,
+      120000,
+    );
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeGemstone,
+      "expected guest Gemstone pregame source after both mulligans to remap and sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest Gemstone pregame source after both mulligans should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    await waitForVisibleBodyText(
+      guestPage,
+      /Choose 1 card\(s\) from your hand to exile for Gemstone Caverns/i,
+      "expected Gemstone Caverns to ask the guest for an exile after both mulligans",
+      120000,
+    );
+    const beforeGemstoneExile = Number((await fullUiSnapshot(guestPage))?.multiplayer?.lastAppliedSequence || 0);
+    const selectedGemstoneExile = await clickUnselectedEnabledButton(
+      guestPage,
+      "guest-exile-gemstone-after-both-mulligan",
+      /^Gemstone Caverns$/i,
+    );
+    assert.ok(
+      selectedGemstoneExile,
+      `expected guest to select a Gemstone Caverns to exile after both mulligans\n${await visibleBodyText(guestPage)}`
+    );
+    await waitAndClickLocalButton(
+      guestPage,
+      "guest-submit-gemstone-exile-after-both-mulligan",
+      /SUBMIT/i,
+      60000,
+    );
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeGemstoneExile,
+      "expected guest Gemstone exile after both mulligans to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest Gemstone exile after both mulligans should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    await driveDemonicConsultationCast({
+      hostPage,
+      guestPage,
+      actorPage: hostPage,
+      actorLabel: "host-after-both-mulligan-gemstone",
+      maxSteps: 260,
+    });
+    const { host: hostAfterSwamp, guest: guestAfterSwamp } = await waitForFullUiSync(
+      hostPage,
+      guestPage,
+      "expected peers to agree after host Swamp after Gemstone",
+      120000,
+    );
+    assert.ok(
+      snapshotBattlefieldCardCount(hostAfterSwamp, "Swamp") >= 1,
+      `host should see a Swamp on the battlefield\n${JSON.stringify(hostAfterSwamp?.state?.players, null, 2)}`
+    );
+    assert.ok(
+      snapshotBattlefieldCardCount(guestAfterSwamp, "Swamp") >= 1,
+      `guest should see a Swamp on the battlefield\n${JSON.stringify(guestAfterSwamp?.state?.players, null, 2)}`
+    );
+    await resolveDemonicConsultationWithMissingName({
+      hostPage,
+      guestPage,
+      actorPage: hostPage,
+      actorLabel: "host-after-both-mulligan-gemstone",
+      actorIndex: 0,
+      missingName: "Black Lotus",
+      maxSteps: 260,
+    });
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+async function driveDemonicConsultationCast({
+  hostPage,
+  guestPage,
+  actorPage,
+  actorLabel,
+  landAlreadyPlayed = false,
+  maxSteps = 160,
+}) {
+  let playedSwamp = Boolean(landAlreadyPlayed);
   let attemptedCastConsultation = false;
   let castConsultation = false;
   let consultationOnStack = false;
@@ -3499,11 +3986,17 @@ async function driveDemonicConsultationCast({ hostPage, guestPage, actorPage, ac
     }
 
     if (playedSwamp && !castConsultation && /CAST DEMONIC CONSULTATION/i.test(actorText)) {
-      const result = await clickLocalButton(
-        actorPage,
-        `${actorLabel}-cast-consultation`,
-        /CAST DEMONIC CONSULTATION/i
-      );
+      const result =
+        await clickLocalButton(
+          actorPage,
+          `${actorLabel}-cast-consultation`,
+          /CAST DEMONIC CONSULTATION/i
+        )
+        || await clickEnabledButton(
+          actorPage,
+          `${actorLabel}-cast-consultation`,
+          /CAST DEMONIC CONSULTATION/i
+        );
       if (result) {
         attemptedCastConsultation = true;
         await sleep(2500);
@@ -3927,6 +4420,123 @@ test("full UI PeerJS guest Demonic Consultation missing name exiles the library 
   }
 });
 
+test("full UI PeerJS host Demonic Consultation missing name after mulligan keeps ziffle openings linked", { timeout: 480000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "30 Swamp\n30 Demonic Consultation",
+      guestDeckText: "60 Lightning Bolt",
+      hostName: "Alice P1",
+      guestName: "Alice P2",
+      hostLabel: "host-consultation-mulligan-missing-name",
+      guestLabel: "guest-consultation-mulligan-missing-name",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const beforeMulligan = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
+    await waitAndClickLocalButton(hostPage, "host-consultation-missing-name-mulligan", /Mulligan/i, 120000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeMulligan,
+      "expected host Demonic Consultation mulligan to sync",
+      180000,
+    );
+    await waitAndClickLocalButton(guestPage, "guest-keep-after-host-consultation-mulligan", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailuresWithDebug(
+      "guest keep after host Consultation mulligan should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    const hostHand = await waitForNamedVisibleHand(
+      hostPage,
+      "expected host redraw hand to be visible after Consultation mulligan",
+      180000,
+    );
+    assert.ok(
+      hostHand.includes("Swamp") && hostHand.includes("Demonic Consultation"),
+      `expected host mulligan hand to be able to cast Demonic Consultation\nhand: ${JSON.stringify(hostHand, null, 2)}`
+    );
+    await waitAndClickLocalButton(hostPage, "host-keep-consultation-mulligan-hand", /KEEP HAND/i, 120000);
+    await waitForVisibleBodyText(
+      hostPage,
+      /Choose 1 card\(s\) to put on the bottom of your library/i,
+      "expected host to bottom one card after the Consultation mulligan",
+      120000,
+    );
+    const namesBeforeBottom = await visibleHandCardNames(hostPage);
+    const swampCount = namesBeforeBottom.filter((name) => name === "Swamp").length;
+    const consultationCount = namesBeforeBottom.filter((name) => name === "Demonic Consultation").length;
+    const bottomPattern = consultationCount > 1 ? /^Demonic Consultation$/i : /^Swamp$/i;
+    assert.ok(
+      consultationCount > 1 || swampCount > 1,
+      `expected a redundant card to bottom while keeping Consultation castable\nhand: ${JSON.stringify(namesBeforeBottom, null, 2)}`
+    );
+    const beforeBottom = Number((await fullUiSnapshot(hostPage))?.multiplayer?.lastAppliedSequence || 0);
+    const bottomChoice = await clickUnselectedEnabledButton(
+      hostPage,
+      "host-bottom-after-consultation-mulligan",
+      bottomPattern,
+    );
+    assert.ok(bottomChoice, `expected host to choose a bottom card\n${await visibleBodyText(hostPage)}`);
+    await waitAndClickLocalButton(hostPage, "host-submit-bottom-after-consultation-mulligan", /SUBMIT/i, 60000);
+    await waitForFullUiSequenceAdvance(
+      hostPage,
+      guestPage,
+      beforeBottom,
+      "expected host bottom card after Consultation mulligan to sync",
+      180000,
+    );
+    await assertNoFullUiSyncFailuresWithDebug(
+      "host bottom card after Consultation mulligan should stay synced",
+      hostPage,
+      guestPage,
+    );
+
+    await driveDemonicConsultationCast({
+      hostPage,
+      guestPage,
+      actorPage: hostPage,
+      actorLabel: "host",
+      maxSteps: 180,
+    });
+    await resolveDemonicConsultationWithMissingName({
+      hostPage,
+      guestPage,
+      actorPage: hostPage,
+      actorLabel: "host",
+      actorIndex: 0,
+      missingName: "Black Lotus",
+      maxSteps: 240,
+    });
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries without desync", { timeout: 600000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
@@ -3953,12 +4563,20 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
 
   const assertClean = async (label) => {
     const text = await combinedText();
-    assertNoSyncFailureText(text, label);
-    assert.doesNotMatch(
-      text,
-      /Cheat detected|Invalid priority action ref|Action order mismatch|Missing public_open audit opening|Missing audit material/i,
-      label,
-    );
+    try {
+      assertNoSyncFailureText(text, label);
+      assert.doesNotMatch(
+        text,
+        /Cheat detected|Invalid priority action ref|Action order mismatch|Missing public_open audit opening|Missing audit material/i,
+        label,
+      );
+    } catch (err) {
+      const debug = await Promise.all([
+        fullUiPageDebug(hostPage, 0),
+        fullUiPageDebug(guestPage, 1),
+      ]);
+      assert.fail(`${label}\n${err?.message || err}\n${JSON.stringify(debug, null, 2)}`);
+    }
   };
 
   const clickUnselectedButton = async (page, label, textPattern) => {
@@ -4250,20 +4868,28 @@ test("full UI PeerJS Selvala after host mulligans reveals ziffle libraries witho
       120000,
     );
     await sleep(4000);
-    await Promise.all([
-      waitForVisibleBodyText(
-        hostPage,
-        /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
-        `expected host to see Selvala reveal during ${slug}`,
-        120000,
-      ),
-      waitForVisibleBodyText(
-        guestPage,
-        /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
-        `expected guest to see Selvala reveal during ${slug}`,
-        120000,
-      ),
-    ]);
+    try {
+      await Promise.all([
+        waitForVisibleBodyText(
+          hostPage,
+          /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
+          `expected host to see Selvala reveal during ${slug}`,
+          120000,
+        ),
+        waitForVisibleBodyText(
+          guestPage,
+          /REVEALED[\s\S]*(Black Lotus|Selvala, Explorer Returned)/i,
+          `expected guest to see Selvala reveal during ${slug}`,
+          120000,
+        ),
+      ]);
+    } catch (err) {
+      const debug = await Promise.all([
+        fullUiPageDebug(hostPage, 0),
+        fullUiPageDebug(guestPage, 1),
+      ]);
+      assert.fail(`${err?.message || err}\n${JSON.stringify(debug, null, 2)}`);
+    }
     await capture(`${slug}-reveal-visible`);
 
     const guestRevealText = await visibleBodyText(guestPage);
