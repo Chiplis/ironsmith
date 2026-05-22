@@ -26,7 +26,15 @@ fn convert_zone_change_trigger(
     trigger: ironsmith_core::trigger_model::ZoneChangeTrigger,
 ) -> crate::triggers::Trigger {
     let mut out = crate::triggers::zone_changes::ZoneChangeTrigger::new();
-    if let Some(from) = trigger.from {
+    if let Some(from_zones) = trigger.from_zones {
+        if from_zones.len() == 1 {
+            out = out.from(from_zones[0]);
+        } else {
+            out = out.from(crate::triggers::zone_changes::ZonePattern::OneOf(
+                from_zones,
+            ));
+        }
+    } else if let Some(from) = trigger.from {
         out = out.from(from);
     }
     if let Some(to) = trigger.to {
@@ -43,6 +51,9 @@ fn convert_zone_change_trigger(
     }
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
+    if let Some(during_turn) = trigger.during_turn {
+        out = out.during_turn(during_turn);
+    }
     crate::triggers::Trigger::new(out)
 }
 

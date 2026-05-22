@@ -1304,6 +1304,49 @@ pub(crate) fn parse_cant_clause(
         &normalized[7..]
     } else {
         &normalized[6..]
+    } && let ["there", "are", amount, "or", "more", "cards", "in", "exile"] = tail
+        && let Some(count) = parse_cardinal_u32(amount)
+    {
+        let condition =
+            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::Count(
+                    ObjectFilter::default().in_zone(Zone::Exile).nontoken(),
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(count as i32),
+            }));
+        return Ok(Some(
+            StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                format_negated_restriction_display(tokens),
+            )
+            .with_condition(condition)
+            .unwrap_or_else(|| {
+                StaticAbility::restriction(
+                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                    format_negated_restriction_display(tokens),
+                )
+            }),
+        ));
+    }
+
+    if (slice_starts_with(
+        &normalized,
+        &[
+            "this", "creature", "cant", "attack", "or", "block", "unless",
+        ],
+    ) || slice_starts_with(
+        &normalized,
+        &["this", "cant", "attack", "or", "block", "unless"],
+    )) && let tail = if slice_starts_with(
+        &normalized,
+        &[
+            "this", "creature", "cant", "attack", "or", "block", "unless",
+        ],
+    ) {
+        &normalized[7..]
+    } else {
+        &normalized[6..]
     } && let ["you", "control", amount, "or", "more", rest @ ..] = tail
         && !rest.is_empty()
         && let Some(count) = parse_cardinal_u32(amount)
@@ -1480,4 +1523,38 @@ pub(crate) fn parse_cant_clause(
     };
 
     Ok(Some(ability))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::util::tokenize_line;
+    use super::*;
+
+    #[test]
+    fn parse_cant_attack_or_block_unless_cards_in_exile_condition() {
+        let tokens = tokenize_line(
+            "This creature can't attack or block unless there are seven or more cards in exile.",
+            0,
+        );
+
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("cant-attack-or-block-unless-exile-count should parse")
+            .expect("expected a static restriction");
+
+        assert_eq!(abilities.len(), 1);
+        let debug = format!("{:?}", abilities[0]);
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("ValueComparison"), "{debug}");
+        assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
+        assert!(debug.contains("Fixed(7)"), "{debug}");
+        assert!(debug.contains("Exile"), "{debug}");
+
+        let display = abilities[0].display().to_ascii_lowercase();
+        assert!(
+            display.contains("can't attack or block unless there are seven or more cards in exile")
+                || display
+                    .contains("cant attack or block unless there are seven or more cards in exile"),
+            "expected original conditional attack/block restriction text, got {display}"
+        );
+    }
 }

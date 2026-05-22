@@ -28,7 +28,7 @@ use crate::events::EventKind;
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
 use crate::events::zones::ZoneChangeEvent;
 use crate::filter::ObjectFilterExt as _;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter, PlayerFilterExt as _};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::types::CardType;
@@ -120,6 +120,8 @@ pub struct ZoneChangeTrigger {
     pub player: PlayerRelation,
     /// Optional filter on what caused the zone change.
     pub cause_filter: Option<CauseFilter>,
+    /// Optional active-turn qualifier.
+    pub during_turn: Option<PlayerFilter>,
     /// How many times to fire for batch events.
     pub count_mode: CountMode,
     /// If true, only trigger for the source object ("When ~ dies").
@@ -136,6 +138,7 @@ impl Default for ZoneChangeTrigger {
             object_filter: ObjectFilter::default(),
             player: PlayerRelation::Any,
             cause_filter: None,
+            during_turn: None,
             count_mode: CountMode::Each,
             this_object: false,
             this_object_surface: None,
@@ -182,6 +185,12 @@ impl ZoneChangeTrigger {
     /// Set or clear the cause filter.
     pub fn cause_filter(mut self, cause_filter: Option<CauseFilter>) -> Self {
         self.cause_filter = cause_filter;
+        self
+    }
+
+    /// Set the active-turn qualifier.
+    pub fn during_turn(mut self, player: PlayerFilter) -> Self {
+        self.during_turn = Some(player);
         self
     }
 
@@ -323,6 +332,33 @@ impl ZoneChangeTrigger {
             }
         }
 
+        fn source_zone_phrase(trigger: &ZoneChangeTrigger) -> Option<&'static str> {
+            match &trigger.from {
+                ZonePattern::Specific(Zone::Graveyard) => Some("from a graveyard"),
+                ZonePattern::Specific(Zone::Battlefield) => Some("from the battlefield"),
+                ZonePattern::OneOf(zones)
+                    if zones.contains(&Zone::Graveyard)
+                        && zones.contains(&Zone::Battlefield)
+                        && zones.len() == 2 =>
+                {
+                    Some("from graveyards and/or the battlefield")
+                }
+                _ => None,
+            }
+        }
+
+        fn is_nontoken_card_subject_from_card_zones(trigger: &ZoneChangeTrigger) -> bool {
+            trigger.to == ZonePattern::Specific(Zone::Exile)
+                && matches!(
+                    &trigger.from,
+                    ZonePattern::OneOf(zones)
+                        if zones.contains(&Zone::Graveyard)
+                            && zones.contains(&Zone::Battlefield)
+                            && zones.len() == 2
+                )
+                && trigger.object_filter == ObjectFilter::default().nontoken()
+        }
+
         if self.this_object {
             let battlefield_subject = self.this_subject_text("permanent");
             let card_subject = self.this_subject_text("card");
@@ -371,7 +407,15 @@ impl ZoneChangeTrigger {
         }
 
         // Object filter description
-        let mut filter_desc = subject_description_for_zone_change(&self.object_filter);
+        let mut filter_desc = if is_nontoken_card_subject_from_card_zones(self) {
+            if self.count_mode == CountMode::OneOrMore {
+                "cards".to_string()
+            } else {
+                "card".to_string()
+            }
+        } else {
+            subject_description_for_zone_change(&self.object_filter)
+        };
         if self.to == ZonePattern::Specific(Zone::Battlefield)
             && enters_origin_phrase(self).is_some()
             && let Some(stripped) = filter_desc.strip_suffix(" you own")
@@ -428,7 +472,16 @@ impl ZoneChangeTrigger {
                 }
             }
             (_, ZonePattern::Specific(Zone::Exile)) => {
-                parts.push("is exiled".to_string());
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                if let Some(source_phrase) = source_zone_phrase(self) {
+                    parts.push(format!("{verb} put into exile {source_phrase}"));
+                } else {
+                    parts.push(format!("{verb} exiled"));
+                }
             }
             _ => {
                 parts.push("changes zones".to_string());
@@ -437,6 +490,19 @@ impl ZoneChangeTrigger {
 
         if let Some(cause_phrase) = cause_phrase(self) {
             parts.push(cause_phrase.to_string());
+        }
+
+        if let Some(during_turn) = &self.during_turn {
+            let phrase = match during_turn {
+                PlayerFilter::You => Some("during your turn"),
+                PlayerFilter::Opponent => Some("during an opponent's turn"),
+                PlayerFilter::Any | PlayerFilter::Active => None,
+                PlayerFilter::Specific(_) => Some("during that player's turn"),
+                _ => Some("during the specified player's turn"),
+            };
+            if let Some(phrase) = phrase {
+                parts.push(phrase.to_string());
+            }
         }
 
         parts.join(" ")
@@ -492,6 +558,14 @@ impl TriggerMatcher for ZoneChangeTrigger {
         let Some(zc) = event.downcast::<ZoneChangeEvent>() else {
             return false;
         };
+
+        if let Some(during_turn) = &self.during_turn {
+            let active_player = ctx.game.turn.active_player;
+            let turn_filter_ctx = ctx.filter_ctx.clone().with_active_player(active_player);
+            if !during_turn.matches_player(active_player, &turn_filter_ctx) {
+                return false;
+            }
+        }
 
         // Check zone patterns
         if !self.from.matches(zc.from) {
@@ -896,6 +970,44 @@ mod tests {
     }
 
     #[test]
+    fn test_zone_change_trigger_during_your_turn_qualifier() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let card_id = ObjectId::from_raw(2);
+
+        let trigger = ZoneChangeTrigger::new()
+            .from(ZonePattern::OneOf(vec![Zone::Graveyard, Zone::Battlefield]))
+            .to(Zone::Exile)
+            .filter(ObjectFilter::default().nontoken())
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                card_id,
+                Zone::Graveyard,
+                Zone::Exile,
+                EventCause::effect(),
+                Some(ObjectSnapshot::for_testing(card_id, alice, "Exiled Card")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        game.turn.active_player = alice;
+        {
+            let ctx = TriggerContext::for_source(source_id, alice, &game);
+            assert!(trigger.matches(&event, &ctx));
+        }
+
+        game.turn.active_player = bob;
+        {
+            let ctx = TriggerContext::for_source(source_id, alice, &game);
+            assert!(!trigger.matches(&event, &ctx));
+        }
+    }
+
+    #[test]
     fn test_batch_trigger_count() {
         let objects = vec![
             ObjectId::from_raw(1),
@@ -962,6 +1074,17 @@ mod tests {
 
         let discard = ZoneChangeTrigger::you_discard();
         assert!(discard.display().contains("discard"));
+
+        let graveyard_or_battlefield_to_exile = ZoneChangeTrigger::new()
+            .from(ZonePattern::OneOf(vec![Zone::Graveyard, Zone::Battlefield]))
+            .to(Zone::Exile)
+            .filter(ObjectFilter::default().nontoken())
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        assert_eq!(
+            graveyard_or_battlefield_to_exile.display(),
+            "Whenever one or more cards are put into exile from graveyards and/or the battlefield during your turn"
+        );
     }
 
     #[test]

@@ -1150,6 +1150,171 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    let (zone_change_words, during_turn) = if slice_ends_with(&words, &["during", "your", "turn"]) {
+        (
+            &words[..words.len().saturating_sub(3)],
+            Some(PlayerFilter::You),
+        )
+    } else {
+        (words.as_slice(), None)
+    };
+
+    for (tail, from_zones) in [
+        (
+            [
+                "is",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyards",
+                "and",
+                "or",
+                "the",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "are",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyards",
+                "and",
+                "or",
+                "the",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "is",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyards",
+                "and/or",
+                "the",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "are",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyards",
+                "and/or",
+                "the",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "is",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyard",
+                "and",
+                "or",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "are",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyard",
+                "and",
+                "or",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "is",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyard",
+                "and/or",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+        (
+            [
+                "are",
+                "put",
+                "into",
+                "exile",
+                "from",
+                "graveyard",
+                "and/or",
+                "battlefield",
+            ]
+            .as_slice(),
+            vec![Zone::Graveyard, Zone::Battlefield],
+        ),
+    ] {
+        if slice_ends_with(zone_change_words, tail) {
+            let subject_word_len = zone_change_words.len().saturating_sub(tail.len());
+            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
+            let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in put-into-exile-from-zones trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            filter.zone = None;
+            filter.controller = None;
+            filter.owner = None;
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(TriggerSpec::PutIntoExileFromZones {
+                filter,
+                from: from_zones,
+                one_or_more,
+                during_turn,
+            });
+        }
+    }
+
     for tail in [
         ["is", "put", "into", "your", "graveyard", "from", "anywhere"].as_slice(),
         [

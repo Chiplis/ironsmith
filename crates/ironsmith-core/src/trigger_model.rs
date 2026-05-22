@@ -971,24 +971,28 @@ pub trait CompilerTriggerMatcher {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZoneChangeTrigger {
     pub from: Option<Zone>,
+    pub from_zones: Option<Vec<Zone>>,
     pub to: Option<Zone>,
     pub filter: Option<ObjectFilter>,
     pub this: bool,
     pub this_surface: Option<SourceReferenceSurface>,
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
+    pub during_turn: Option<PlayerFilter>,
 }
 
 impl ZoneChangeTrigger {
     pub fn new() -> Self {
         Self {
             from: None,
+            from_zones: None,
             to: None,
             filter: None,
             this: false,
             this_surface: None,
             count: CountMode::One,
             cause_filter: None,
+            during_turn: None,
         }
     }
 
@@ -999,6 +1003,18 @@ impl ZoneChangeTrigger {
 
     pub fn from(mut self, zone: Zone) -> Self {
         self.from = Some(zone);
+        self.from_zones = None;
+        self
+    }
+
+    pub fn from_any_of(mut self, zones: Vec<Zone>) -> Self {
+        if zones.len() == 1 {
+            self.from = zones.first().copied();
+            self.from_zones = None;
+        } else {
+            self.from = None;
+            self.from_zones = Some(zones);
+        }
         self
     }
 
@@ -1024,6 +1040,11 @@ impl ZoneChangeTrigger {
 
     pub fn cause_filter(mut self, filter: Option<CauseFilter>) -> Self {
         self.cause_filter = filter;
+        self
+    }
+
+    pub fn during_turn(mut self, player: PlayerFilter) -> Self {
+        self.during_turn = Some(player);
         self
     }
 }

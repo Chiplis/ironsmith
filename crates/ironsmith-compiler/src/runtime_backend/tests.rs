@@ -8085,6 +8085,11 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify gift-given trigger probe");
     let enchanted_upkeep_tokens = lex_line("the beginning of enchanted player's upkeep", 0)
         .expect("rewrite lexer should classify enchanted player's upkeep trigger probe");
+    let exile_tokens = lex_line(
+        "one or more cards are put into exile from graveyards and/or the battlefield during your turn",
+        0,
+    )
+    .expect("rewrite lexer should classify exile zone-change trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -8174,6 +8179,39 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             crate::target::PlayerFilter::Opponent
         ))
     ));
+    let exile = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+        &exile_tokens,
+    );
+    assert!(
+        matches!(
+            exile,
+            Ok(crate::cards::builders::TriggerSpec::PutIntoExileFromZones {
+                one_or_more: true,
+                during_turn: Some(crate::target::PlayerFilter::You),
+                ..
+            })
+        ),
+        "{exile:?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_ketramose_exile_trigger() {
+    let text = "Whenever one or more cards are put into exile from graveyards and/or the battlefield during your turn, you draw a card and lose 1 life.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify exile zone-change triggered line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("exile zone-change triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("PutIntoExileFromZones"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    assert!(debug.contains("Battlefield"), "{debug}");
+    assert!(debug.contains("during_turn: Some"), "{debug}");
+    assert!(debug.contains("You"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("LoseLife"), "{debug}");
 }
 
 #[test]

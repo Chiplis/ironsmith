@@ -228,6 +228,12 @@ pub(crate) enum TriggerSpec {
         from: Zone,
         one_or_more: bool,
     },
+    PutIntoExileFromZones {
+        filter: ObjectFilter,
+        from: Vec<Zone>,
+        one_or_more: bool,
+        during_turn: Option<PlayerFilter>,
+    },
     CounterPutOn {
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
