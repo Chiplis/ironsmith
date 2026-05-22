@@ -14,7 +14,7 @@ test("ziffle reveal positions are normalized before timeout budgeting", () => {
   );
   assert.equal(
     ziffleRevealTokenTimeoutMs(1000, { deckCount: 60 }),
-    60 * 2000,
+    60 * 4000,
   );
 });
 
@@ -46,9 +46,9 @@ test("ziffle reveal positions reject invalid or out-of-range entries", () => {
 });
 
 test("pending action intent hard timeout is capped by maximum supported reveal work", () => {
-  assert.equal(MAX_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS, 100 * 2000);
+  assert.equal(MAX_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS, 100 * 4000);
   assert.equal(
     pendingActionIntentHardTimeoutMs(60_000),
-    (100 * 2000) + 60_000,
+    (100 * 4000) + 60_000,
   );
 });

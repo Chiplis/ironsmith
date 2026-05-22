@@ -29,6 +29,18 @@ test("viewed card names still populate objects that are not otherwise visible", 
   assert.equal(names.get("202"), "Selvala, Explorer Returned");
 });
 
+test("inspector-only viewed card previews do not populate decision metadata", () => {
+  const names = buildObjectNameById({
+    players: [{ id: 0 }],
+    viewed_cards: {
+      inspector_only: true,
+      cards: [{ id: 404, name: "Swamp" }],
+    },
+  });
+
+  assert.equal(names.has("404"), false);
+});
+
 test("a real viewed card name can replace an earlier hidden zone placeholder", () => {
   const names = buildObjectNameById({
     players: [

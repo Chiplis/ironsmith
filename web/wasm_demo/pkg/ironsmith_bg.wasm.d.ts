@@ -11,6 +11,7 @@ export const wasmgame_startMatch: (a: number, b: any) => [number, number, number
 export const wasmgame_revealHiddenObject: (a: number, b: any) => [number, number, number];
 export const wasmgame_revealHiddenSlot: (a: number, b: any) => [number, number, number];
 export const wasmgame_revealHiddenPosition: (a: number, b: any) => [number, number, number];
+export const wasmgame_revealHiddenPositions: (a: number, b: any) => [number, number, number];
 export const wasmgame_exportHiddenCardOpening: (a: number, b: bigint) => [number, number, number];
 export const wasmgame_previewCryptoRequirements: (a: number, b: any) => [number, number, number];
 export const wasmgame_injectTranscriptRandomSeeds: (a: number, b: any) => [number, number];

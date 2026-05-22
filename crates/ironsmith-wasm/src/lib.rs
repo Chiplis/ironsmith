@@ -3778,9 +3778,30 @@ struct RevealHiddenPositionInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RevealHiddenPositionsInput {
+    #[serde(default)]
+    reveals: Vec<RevealHiddenPositionInput>,
+    #[serde(default)]
+    recompute_decision: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TranscriptRandomSeedsInput {
     #[serde(default)]
     seeds: Vec<String>,
+    #[serde(default)]
+    library_shuffles: Vec<TranscriptLibraryShuffleInput>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscriptLibraryShuffleInput {
+    owner: u8,
+    #[serde(default)]
+    before_order: Vec<u64>,
+    #[serde(default)]
+    after_order: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

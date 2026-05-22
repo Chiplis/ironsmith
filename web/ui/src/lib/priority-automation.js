@@ -10,6 +10,10 @@ export const CUSTOM_PASS_ACTION_HOLD_REASON = "custom pass action";
 export const INVALID_PASS_ACTION_HOLD_REASON = "invalid pass action";
 export const VIEWED_CARDS_HOLD_REASON = "viewed cards pending";
 
+function isInspectorOnlyViewedCards(viewedCards) {
+  return Boolean(viewedCards?.inspector_only || viewedCards?.inspectorOnly);
+}
+
 function toPlayerNumber(value) {
   const player = Number(value);
   return Number.isFinite(player) ? player : null;
@@ -91,7 +95,7 @@ export function buildMultiplayerSmartAutoPass({
   if (baseHoldReason) {
     return { command: null, holdReason: baseHoldReason, passAction: null };
   }
-  if (currentState?.viewed_cards) {
+  if (currentState?.viewed_cards && !isInspectorOnlyViewedCards(currentState.viewed_cards)) {
     return { command: null, holdReason: VIEWED_CARDS_HOLD_REASON, passAction: null };
   }
 

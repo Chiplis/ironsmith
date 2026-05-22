@@ -340,12 +340,20 @@ pub struct ChoiceStore {
     pub chosen_named_options: HashMap<ObjectId, String>,
 }
 
+#[derive(Debug, Clone)]
+struct TranscriptLibraryShuffleOrder {
+    player: PlayerId,
+    before_order: Vec<ObjectId>,
+    after_order: Vec<ObjectId>,
+}
+
 #[derive(Debug)]
 struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
+    transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
     hidden_info_audit_log: RefCell<Vec<HiddenInfoOperation>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
@@ -364,6 +372,9 @@ impl Clone for RuntimeCacheState {
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
             transcript_random_seeds: RefCell::new(self.transcript_random_seeds.borrow().clone()),
+            transcript_library_shuffle_orders: RefCell::new(
+                self.transcript_library_shuffle_orders.borrow().clone(),
+            ),
             hidden_info_audit_log: RefCell::new(self.hidden_info_audit_log.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
@@ -386,6 +397,7 @@ impl RuntimeCacheState {
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
+            transcript_library_shuffle_orders: RefCell::new(VecDeque::new()),
             hidden_info_audit_log: RefCell::new(Vec::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
@@ -2273,6 +2285,41 @@ impl GameState {
             .extend(seeds.into_iter().map(Self::normalize_random_seed));
     }
 
+    /// Queue an externally verified library order for the next shuffle of that
+    /// player's library. The order is expressed in the same object-id space as
+    /// the matching transcript requirement; at shuffle time it is localized to
+    /// the live pre-shuffle library by before-order position.
+    pub fn queue_transcript_library_shuffle_order(
+        &self,
+        player: PlayerId,
+        before_order: Vec<ObjectId>,
+        after_order: Vec<ObjectId>,
+    ) {
+        if before_order.is_empty() || before_order.len() != after_order.len() {
+            return;
+        }
+        self.runtime_cache
+            .transcript_library_shuffle_orders
+            .borrow_mut()
+            .push_back(TranscriptLibraryShuffleOrder {
+                player,
+                before_order,
+                after_order,
+            });
+    }
+
+    fn take_transcript_library_shuffle_order(
+        &self,
+        player: PlayerId,
+    ) -> Option<TranscriptLibraryShuffleOrder> {
+        let mut orders = self
+            .runtime_cache
+            .transcript_library_shuffle_orders
+            .borrow_mut();
+        let index = orders.iter().position(|order| order.player == player)?;
+        orders.remove(index)
+    }
+
     fn record_irreversible_random(&self) -> (u64, u64) {
         let before = self.runtime_cache.irreversible_random_count.get();
         let after = before.wrapping_add(1);
@@ -2331,8 +2378,44 @@ impl GameState {
             return;
         };
         let before_order = self.players[index].library.clone();
-        let mut rng = StdRng::seed_from_u64(seed);
-        self.players[index].library.shuffle(&mut rng);
+        if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id) {
+            let mut id_map = HashMap::with_capacity(before_order.len());
+            if transcript_order.before_order.len() == before_order.len()
+                && transcript_order.after_order.len() == before_order.len()
+            {
+                for (transcript_id, live_id) in transcript_order
+                    .before_order
+                    .iter()
+                    .copied()
+                    .zip(before_order.iter().copied())
+                {
+                    id_map.insert(transcript_id, live_id);
+                }
+                let localized_after = transcript_order
+                    .after_order
+                    .iter()
+                    .copied()
+                    .filter_map(|id| id_map.get(&id).copied())
+                    .collect::<Vec<_>>();
+                let before_set = before_order.iter().copied().collect::<HashSet<_>>();
+                let after_set = localized_after.iter().copied().collect::<HashSet<_>>();
+                if localized_after.len() == before_order.len()
+                    && after_set.len() == before_set.len()
+                    && before_set.iter().all(|id| after_set.contains(id))
+                {
+                    self.players[index].library = localized_after;
+                } else {
+                    let mut rng = StdRng::seed_from_u64(seed);
+                    self.players[index].library.shuffle(&mut rng);
+                }
+            } else {
+                let mut rng = StdRng::seed_from_u64(seed);
+                self.players[index].library.shuffle(&mut rng);
+            }
+        } else {
+            let mut rng = StdRng::seed_from_u64(seed);
+            self.players[index].library.shuffle(&mut rng);
+        }
         let after_order = self.players[index].library.clone();
         self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
             player: player_id,
@@ -9099,6 +9182,37 @@ mod tests {
                     && *random_count_after == before_random + 1
             )
         }));
+    }
+
+    #[test]
+    fn transcript_library_shuffle_order_is_localized_to_live_pre_shuffle_order() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let first =
+            game.create_hidden_card_placeholder(alice, Zone::Library, 0, "slot-0".to_string());
+        let second =
+            game.create_hidden_card_placeholder(alice, Zone::Library, 1, "slot-1".to_string());
+        let third =
+            game.create_hidden_card_placeholder(alice, Zone::Library, 2, "slot-2".to_string());
+        let transcript_before = vec![
+            ObjectId::from_raw(10_001),
+            ObjectId::from_raw(10_002),
+            ObjectId::from_raw(10_003),
+        ];
+        let transcript_after = vec![
+            transcript_before[2],
+            transcript_before[0],
+            transcript_before[1],
+        ];
+
+        game.queue_transcript_library_shuffle_order(alice, transcript_before, transcript_after);
+        game.shuffle_player_library(alice);
+
+        assert_eq!(
+            game.player(alice).expect("alice").library,
+            vec![third, first, second],
+            "queued transcript order should map by before-order position onto live object ids"
+        );
     }
 
     #[test]

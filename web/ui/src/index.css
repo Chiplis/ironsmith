@@ -16162,6 +16162,19 @@ select::-ms-expand {
   padding-left: 0;
 }
 
+.viewed-cards-strip--wrap {
+  overflow: visible !important;
+}
+
+.viewed-cards-strip--wrap .action-strip-scroll {
+  max-height: 100%;
+  padding-right: 6px;
+}
+
+.viewed-cards-strip--wrap .action-strip-pill {
+  flex: 0 1 auto;
+}
+
 .action-strip-options-region + .priority-control-stack {
   margin-left: 0 !important;
   margin-right: 0 !important;

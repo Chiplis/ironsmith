@@ -419,6 +419,15 @@ impl Object {
         }
     }
 
+    pub fn redact_to_hidden_card(&mut self) {
+        let id = self.id;
+        let stable_id = self.stable_id;
+        let owner = self.owner;
+        let zone = self.zone;
+        *self = Self::new_hidden_card(id, owner, zone);
+        self.stable_id = stable_id;
+    }
+
     pub fn apply_card_definition(&mut self, def: &crate::cards::CardDefinition) {
         self.kind = ObjectKind::Card;
         self.card = Some(def.card.id);

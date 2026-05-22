@@ -46,6 +46,7 @@ const WORKER_METHODS = [
   "validateMatchConfig",
   "revealHiddenObject",
   "revealHiddenPosition",
+  "revealHiddenPositions",
   "revealHiddenSlot",
   "ziffleBuildRevealToken",
   "ziffleBuildRevealTokens",

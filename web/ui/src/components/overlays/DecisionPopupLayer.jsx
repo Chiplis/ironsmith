@@ -1024,6 +1024,10 @@ function buildViewedCardsIdentity(viewedCards) {
   ].join("|");
 }
 
+function isInspectorOnlyViewedCards(viewedCards) {
+  return Boolean(viewedCards?.inspector_only || viewedCards?.inspectorOnly);
+}
+
 function isHiddenCardName(name) {
   return String(name || "").trim().toLowerCase() === "hidden card";
 }
@@ -1032,6 +1036,59 @@ function viewedCardDisplayName(card, objectNameById) {
   const objectName = objectNameById.get(String(card?.id));
   if (objectName && !isHiddenCardName(objectName)) return objectName;
   return card?.name || `Card #${card?.id}`;
+}
+
+function buildPeerWaitOpeningPreviewEntries(peerWait) {
+  const previews = Array.isArray(peerWait?.openingPreviews)
+    ? peerWait.openingPreviews
+    : [];
+  return previews
+    .map((preview, index) => {
+      const objectId = Number(preview?.objectId ?? preview?.object_id);
+      const stableId = Number(preview?.stableId ?? preview?.stable_id);
+      const slot = Number(preview?.slot);
+      const position = Number(preview?.position);
+      const id = Number.isSafeInteger(objectId) && objectId >= 0
+        ? objectId
+        : Number.isSafeInteger(stableId) && stableId >= 0
+          ? `stable-${stableId}`
+          : Number.isSafeInteger(slot) && slot >= 0
+            ? `slot-${Number(preview.owner)}-${slot}-${index}`
+            : `opening-preview-${index}`;
+      const name = String(preview?.card || preview?.name || "").trim();
+      if (!name) return null;
+      return {
+        key: [
+          preview?.owner ?? "",
+          preview?.objectId ?? preview?.object_id ?? "",
+          preview?.stableId ?? preview?.stable_id ?? "",
+          preview?.slot ?? "",
+          preview?.position ?? "",
+          name,
+          index,
+        ].join(":"),
+        id,
+        name,
+        controller: preview?.owner,
+        zone: preview?.zone,
+        position: Number.isSafeInteger(position) && position >= 0 ? position : null,
+      };
+    })
+    .filter(Boolean);
+}
+
+function peerWaitOpeningPreviewDescription(peerWait) {
+  const current = Number(peerWait?.progressCurrent);
+  const total = Number(peerWait?.progressTotal);
+  const cardName = String(peerWait?.cardName || "").trim();
+  const zone = String(peerWait?.zone || "").trim();
+  const parts = [];
+  if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+    parts.push(`${Math.max(0, Math.min(total, current))}/${total}`);
+  }
+  if (cardName) parts.push(cardName);
+  if (zone) parts.push(zone);
+  return parts.join(" / ");
 }
 
 function normalizeMobileDecisionSummaryText(text) {
@@ -1072,6 +1129,7 @@ function ViewedCardsStrip({
   onCardHoverStart,
   onCardHoverEnd,
   compact = false,
+  wrap = false,
 }) {
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onCardHoverEnd,
@@ -1105,44 +1163,64 @@ function ViewedCardsStrip({
     <div
       ref={attachScrollableRef}
       className={cn(
-        "action-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden",
+        "action-strip-scroll min-w-0",
+        wrap ? "overflow-x-hidden overflow-y-auto" : "overflow-x-auto overflow-y-hidden",
         compact && "flex-1 self-stretch"
       )}
     >
-      <div className="flex w-max min-w-full items-center gap-1.5 pb-0.5">
-        {cards.length > 0 ? cards.map((card) => (
-          <button
-            key={card.id}
-            type="button"
-            className={cn(
-              "action-strip-pill action-strip-view-card inline-flex max-w-[220px] items-center px-2 py-1 text-[12px] transition-all",
-              String(hoveredObjectId) === String(card.id) || String(selectedObjectId) === String(card.id)
-                ? "is-linked-active text-[#fff5de]"
-                : "is-interactive text-[#decfae]"
-            )}
-            onMouseEnter={() => {
-              if (hoverSuppressed) return;
-              onCardHoverStart?.(card);
-            }}
-            onMouseLeave={() => onCardHoverEnd?.()}
-          >
-            <span className="truncate">
-              <HighlightedDecisionText
-                text={normalizeDecisionText(card.name)}
-                highlightText={normalizeDecisionText(card.name)}
-                highlightColor={
-                  resolveObjectAccent(
-                    players,
-                    perspective,
-                    objectControllerById,
-                    card.id,
-                    card.controller
-                  )?.hex || null
-                }
-              />
-            </span>
-          </button>
-        )) : (
+      <div className={cn(
+        "flex min-w-full items-center gap-1.5 pb-0.5",
+        wrap ? "flex-wrap" : "w-max"
+      )}>
+        {cards.length > 0 ? cards.map((card, index) => {
+          const cardAccent = card.controller == null
+            ? null
+            : getPlayerAccent(players || [], card.controller, perspective);
+          const cardAccentStyle = cardAccent
+            ? {
+              "--decision-main-accent": cardAccent.hex,
+              "--decision-main-rgb": cardAccent.rgb,
+              "--player-accent": cardAccent.hex,
+              "--player-accent-rgb": cardAccent.rgb,
+            }
+            : undefined;
+          return (
+            <button
+              key={card.key || card.id || index}
+              type="button"
+              className={cn(
+                "action-strip-pill action-strip-view-card inline-flex max-w-[220px] items-center px-2 py-1 text-[12px] transition-all",
+                String(hoveredObjectId) === String(card.id) || String(selectedObjectId) === String(card.id)
+                  ? "is-linked-active text-[#fff5de]"
+                  : "is-interactive text-[#decfae]"
+              )}
+              style={cardAccentStyle}
+              onMouseEnter={() => {
+                if (hoverSuppressed) return;
+                onCardHoverStart?.(card);
+              }}
+              onMouseLeave={() => onCardHoverEnd?.()}
+            >
+              <span className="truncate">
+                <HighlightedDecisionText
+                  text={normalizeDecisionText(card.name)}
+                  highlightText={normalizeDecisionText(card.name)}
+                  highlightColor={
+                    cardAccent?.hex
+                    || resolveObjectAccent(
+                      players,
+                      perspective,
+                      objectControllerById,
+                      card.id,
+                      card.controller
+                    )?.hex
+                    || null
+                  }
+                />
+              </span>
+            </button>
+          );
+        }) : (
           <div className="text-[12px] italic text-[#bda983]">
             No cards visible.
           </div>
@@ -1152,7 +1230,11 @@ function ViewedCardsStrip({
   );
 
   return (
-    <div className={cn("viewed-cards-strip min-w-0 flex-1 overflow-hidden px-1 py-1", className)}>
+    <div className={cn(
+      "viewed-cards-strip min-w-0 flex-1 overflow-hidden px-1 py-1",
+      wrap && "viewed-cards-strip--wrap",
+      className
+    )}>
       {compact ? (
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-[200px] max-w-[360px] shrink-0">
@@ -1527,6 +1609,7 @@ function MobileBattleDecisionLayer({
 }) {
   const {
     state,
+    multiplayer,
     dispatch,
     cancelDecision,
     triggerOrderingState,
@@ -1540,6 +1623,8 @@ function MobileBattleDecisionLayer({
   } = useHover();
   const decision = state?.decision || null;
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
+  const peerWait = multiplayer?.peerWait || null;
+  const peerWaiting = Boolean(peerWait);
 
   const [actionsSheetState, setActionsSheetState] = useState({ key: "", open: false });
   const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
@@ -1556,7 +1641,8 @@ function MobileBattleDecisionLayer({
     decision?.context_text || "",
     decision?.consequence_text || "",
   ].join("|");
-  const viewedCards = state?.viewed_cards || null;
+  const rawViewedCards = state?.viewed_cards || null;
+  const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
   const viewedCardsIdentity = useMemo(
     () => buildViewedCardsIdentity(viewedCards),
@@ -1631,18 +1717,29 @@ function MobileBattleDecisionLayer({
     () => {
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
         return viewedCards.cards.map((card) => ({
+          key: String(card.id),
           id: String(card.id),
           name: viewedCardDisplayName(card, objectNameById),
           controller: viewedCards?.subject,
         }));
       }
       return (viewedCards?.card_ids || []).map((id) => ({
+        key: String(id),
         id: String(id),
         name: objectNameById.get(String(id)) || `Card #${id}`,
         controller: viewedCards?.subject,
       }));
     },
     [objectNameById, viewedCards]
+  );
+  const peerWaitOpeningPreviewEntries = useMemo(
+    () => buildPeerWaitOpeningPreviewEntries(peerWait),
+    [peerWait]
+  );
+  const showPeerWaitOpeningPreviews = peerWaiting && peerWaitOpeningPreviewEntries.length > 0;
+  const peerWaitPreviewDescription = useMemo(
+    () => peerWaitOpeningPreviewDescription(peerWait),
+    [peerWait]
   );
   const viewedCardsSourceName = (() => {
     if (viewedCards?.source != null) {
@@ -1752,6 +1849,42 @@ function MobileBattleDecisionLayer({
   }, [viewedCardsToken]);
 
   if (!decision) return null;
+
+  if (showPeerWaitOpeningPreviews) {
+    return renderMobileBattlePortal(
+      <MobileDecisionOverlay
+        eyebrow={canAct ? "Your Action" : "Opponent Action"}
+        title="Opening"
+        subtitle={peerWaitPreviewDescription || peerWait?.operation || ""}
+      >
+        <ViewedCardsStrip
+          label="Opening"
+          description={peerWaitPreviewDescription}
+          sourceName={peerWait?.operation || ""}
+          cards={peerWaitOpeningPreviewEntries}
+          players={state?.players || []}
+          perspective={state?.perspective}
+          objectControllerById={objectControllerById}
+          hoveredObjectId={hoveredObjectId}
+          selectedObjectId={selectedObjectId}
+          onCardHoverStart={handleViewedCardHoverStart}
+          onCardHoverEnd={handleViewedCardHoverEnd}
+          wrap
+        />
+        <div className="mobile-decision-overlay-footer">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mobile-decision-primary-button mobile-decision-primary-button--full"
+            disabled
+          >
+            <PeerWaitButtonContent peerWait={peerWait} />
+          </Button>
+        </div>
+      </MobileDecisionOverlay>
+    );
+  }
 
   if (showViewedCardsStep) {
     return renderMobileBattlePortal(
@@ -2283,7 +2416,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     decision?.context_text || "",
     decision?.consequence_text || "",
   ].join("|");
-  const viewedCards = state?.viewed_cards || null;
+  const rawViewedCards = state?.viewed_cards || null;
+  const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
   const viewedCardsIdentity = useMemo(
     () => buildViewedCardsIdentity(viewedCards),
@@ -2314,18 +2448,29 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     () => {
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
         return viewedCards.cards.map((card) => ({
+          key: String(card.id),
           id: String(card.id),
           name: viewedCardDisplayName(card, objectNameById),
           controller: viewedCards?.subject,
         }));
       }
       return (viewedCards?.card_ids || []).map((id) => ({
+        key: String(id),
         id: String(id),
         name: objectNameById.get(String(id)) || `Card #${id}`,
         controller: viewedCards?.subject,
       }));
     },
     [objectNameById, viewedCards]
+  );
+  const peerWaitOpeningPreviewEntries = useMemo(
+    () => buildPeerWaitOpeningPreviewEntries(peerWait),
+    [peerWait]
+  );
+  const showPeerWaitOpeningPreviews = peerWaiting && peerWaitOpeningPreviewEntries.length > 0;
+  const peerWaitPreviewDescription = useMemo(
+    () => peerWaitOpeningPreviewDescription(peerWait),
+    [peerWait]
   );
   const viewedCardsSourceName = (() => {
     if (viewedCards?.source != null) {
@@ -2737,7 +2882,22 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 />
               </div>
               <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
-                {canAct ? (
+                {showPeerWaitOpeningPreviews ? (
+                  <ViewedCardsStrip
+                    label="Opening"
+                    description={peerWaitPreviewDescription}
+                    sourceName={peerWait?.operation || ""}
+                    cards={peerWaitOpeningPreviewEntries}
+                    players={state?.players || []}
+                    perspective={state?.perspective}
+                    objectControllerById={objectControllerById}
+                    hoveredObjectId={hoveredObjectId}
+                    selectedObjectId={selectedObjectId}
+                    onCardHoverStart={handleViewedCardHoverStart}
+                    onCardHoverEnd={handleViewedCardHoverEnd}
+                    wrap
+                  />
+                ) : canAct ? (
                   showViewedCardsStep ? (
                     <ViewedCardsStrip
                       label={viewedCardsLabel}
@@ -3028,7 +3188,22 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
           )
         ) : (
           <div className="action-strip-decision-content min-w-0 h-full">
-            {showViewedCardsStep ? (
+            {showPeerWaitOpeningPreviews ? (
+              <ViewedCardsStrip
+                label="Opening"
+                description={peerWaitPreviewDescription}
+                sourceName={peerWait?.operation || ""}
+                cards={peerWaitOpeningPreviewEntries}
+                players={state?.players || []}
+                perspective={state?.perspective}
+                objectControllerById={objectControllerById}
+                hoveredObjectId={hoveredObjectId}
+                selectedObjectId={selectedObjectId}
+                onCardHoverStart={handleViewedCardHoverStart}
+                onCardHoverEnd={handleViewedCardHoverEnd}
+                wrap
+              />
+            ) : showViewedCardsStep ? (
               <ViewedCardsStrip
                 label={viewedCardsLabel}
                 description={viewedCards?.description || ""}

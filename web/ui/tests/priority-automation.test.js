@@ -160,6 +160,32 @@ test("multiplayer smart auto-pass holds while viewed cards are pending", () => {
   assert.equal(result.holdReason, VIEWED_CARDS_HOLD_REASON);
 });
 
+test("multiplayer smart auto-pass ignores inspector-only reveal previews", () => {
+  const result = buildMultiplayerSmartAutoPass({
+    autoPassEnabled: true,
+    holdRule: "never",
+    decision: {
+      kind: "priority",
+      player: 1,
+      actions: [{ index: 4, kind: "pass_priority", label: "Pass priority" }],
+    },
+    currentState: {
+      perspective: 1,
+      active_player: 1,
+      stack_size: 1,
+      stack_objects: [{ controller: 1, name: "Selvala, Explorer Returned" }],
+      viewed_cards: {
+        visibility: "public",
+        inspector_only: true,
+        cards: [{ id: 11, name: "Swamp" }],
+      },
+    },
+  });
+
+  assert.deepEqual(result.command, { type: "priority_action", action_index: 4 });
+  assert.equal(result.holdReason, null);
+});
+
 test("multiplayer smart auto-pass holds for opponent stack actions", () => {
   const result = buildMultiplayerSmartAutoPass({
     autoPassEnabled: true,

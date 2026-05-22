@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "signal": "node ./scripts/peer-server.mjs",
-    "test:peerjs": "node --test tests/peerjs-resync.e2e.test.js",
+    "test:peerjs": "bash scripts/run-peerjs-tests.sh",
     "test:p2p-browser": "node tests/p2p-browser-scenarios.mjs",
     "test:hidden-info": "node tests/hidden-info-inventory.mjs",
     "test:wasm-real-engine": "node --test tests/wasm-real-engine-cheat.e2e.test.js"

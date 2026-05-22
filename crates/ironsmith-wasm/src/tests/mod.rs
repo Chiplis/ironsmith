@@ -6545,6 +6545,283 @@ fn tainted_pact_declining_first_revealed_unique_card_prompts_for_second_card() {
 }
 
 #[test]
+fn reveal_hidden_position_uses_position_commitment_over_private_slot_collision() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let wrong_private_slot = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        58,
+        "alice-slot-58".to_string(),
+    );
+    let correct_position = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        36,
+        "alice-slot-36".to_string(),
+    );
+    wasm.game.set_hidden_card_info(
+        correct_position,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Library,
+            slot: 36,
+            commitment: "alice-slot-36".to_string(),
+            public_slot: Some(58),
+            public_commitment: Some("ziffle:test-deck:58".to_string()),
+        },
+    );
+
+    wasm.reveal_hidden_position(
+        serde_wasm_bindgen::to_value(&json!({
+            "owner": 0,
+            "position": 58,
+            "originalSlot": 36,
+            "cardName": "Swamp",
+            "positionCommitment": "ziffle:test-deck:58",
+            "commitment": "alice-slot-36",
+        }))
+        .expect("reveal input should serialize"),
+    )
+    .expect("ziffle reveal should choose the object with the matching position commitment");
+
+    assert_eq!(
+        wasm.game
+            .object(correct_position)
+            .expect("correct position object should exist")
+            .name,
+        "Swamp",
+        "the public ziffle commitment should select the object at that shuffled position"
+    );
+    assert_eq!(
+        wasm.game
+            .object(wrong_private_slot)
+            .expect("private-slot collision object should exist")
+            .name,
+        "Hidden Card",
+        "a matching private slot number must not win over a mismatched position commitment"
+    );
+}
+
+#[test]
+fn reveal_hidden_position_preserves_existing_public_identity_for_private_opening() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let hand_id = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Hand,
+        10,
+        "ziffle:initial-deck:10".to_string(),
+    );
+    wasm.game.set_hidden_card_info(
+        hand_id,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Hand,
+            slot: 10,
+            commitment: "ziffle:initial-deck:10".to_string(),
+            public_slot: Some(51),
+            public_commitment: Some("ziffle:shuffle-deck:51".to_string()),
+        },
+    );
+
+    wasm.reveal_hidden_position(
+        serde_wasm_bindgen::to_value(&json!({
+            "owner": 0,
+            "objectId": hand_id.0,
+            "position": 10,
+            "originalSlot": 40,
+            "cardName": "Swamp",
+            "positionCommitment": "ziffle:initial-deck:10",
+            "commitment": "private-slot-40",
+        }))
+        .expect("reveal input should serialize"),
+    )
+    .expect("private position reveal should preserve the public ziffle identity");
+
+    let info = wasm
+        .game
+        .hidden_card_info(hand_id)
+        .expect("revealed hidden card should retain hidden metadata");
+    assert_eq!(info.slot, 40);
+    assert_eq!(info.commitment, "private-slot-40");
+    assert_eq!(info.public_slot, Some(51));
+    assert_eq!(
+        info.public_commitment.as_deref(),
+        Some("ziffle:shuffle-deck:51")
+    );
+    assert_eq!(
+        wasm.game
+            .object(hand_id)
+            .expect("hand object should still exist")
+            .name,
+        "Swamp"
+    );
+}
+
+#[test]
+fn reveal_hidden_positions_reveals_multiple_ziffle_positions_in_one_batch() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let first = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        10,
+        "private-slot-10".to_string(),
+    );
+    let second = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        20,
+        "private-slot-20".to_string(),
+    );
+    wasm.game.set_hidden_card_info(
+        first,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Library,
+            slot: 10,
+            commitment: "private-slot-10".to_string(),
+            public_slot: Some(51),
+            public_commitment: Some("ziffle:test-deck:51".to_string()),
+        },
+    );
+    wasm.game.set_hidden_card_info(
+        second,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Library,
+            slot: 20,
+            commitment: "private-slot-20".to_string(),
+            public_slot: Some(52),
+            public_commitment: Some("ziffle:test-deck:52".to_string()),
+        },
+    );
+
+    wasm.reveal_hidden_positions(
+        serde_wasm_bindgen::to_value(&json!({
+            "reveals": [
+                {
+                    "owner": 0,
+                    "position": 51,
+                    "originalSlot": 10,
+                    "cardName": "Island",
+                    "positionCommitment": "ziffle:test-deck:51",
+                    "commitment": "private-slot-10",
+                },
+                {
+                    "owner": 0,
+                    "position": 52,
+                    "originalSlot": 20,
+                    "cardName": "Swamp",
+                    "positionCommitment": "ziffle:test-deck:52",
+                    "commitment": "private-slot-20",
+                },
+            ],
+        }))
+        .expect("batch reveal input should serialize"),
+    )
+    .expect("batch reveal should apply");
+
+    assert_eq!(
+        wasm.game.object(first).expect("first card exists").name,
+        "Island"
+    );
+    assert_eq!(
+        wasm.game.object(second).expect("second card exists").name,
+        "Swamp"
+    );
+}
+
+#[test]
+fn reveal_hidden_positions_rejects_batch_without_partial_reveals() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let first = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        10,
+        "private-slot-10".to_string(),
+    );
+    let second = wasm.game.create_hidden_card_placeholder(
+        alice,
+        Zone::Library,
+        20,
+        "private-slot-20".to_string(),
+    );
+    wasm.game.set_hidden_card_info(
+        first,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Library,
+            slot: 10,
+            commitment: "private-slot-10".to_string(),
+            public_slot: Some(51),
+            public_commitment: Some("ziffle:test-deck:51".to_string()),
+        },
+    );
+    wasm.game.set_hidden_card_info(
+        second,
+        ironsmith::game_state::HiddenCardInfo {
+            owner: alice,
+            zone: Zone::Library,
+            slot: 20,
+            commitment: "private-slot-20".to_string(),
+            public_slot: Some(52),
+            public_commitment: Some("ziffle:test-deck:52".to_string()),
+        },
+    );
+
+    let result = wasm.reveal_hidden_positions(
+        serde_wasm_bindgen::to_value(&json!({
+            "reveals": [
+                {
+                    "owner": 0,
+                    "position": 51,
+                    "originalSlot": 10,
+                    "cardName": "Island",
+                    "positionCommitment": "ziffle:test-deck:51",
+                    "commitment": "private-slot-10",
+                },
+                {
+                    "owner": 0,
+                    "position": 52,
+                    "originalSlot": 20,
+                    "cardName": "Swamp",
+                    "positionCommitment": "ziffle:test-deck:wrong",
+                    "commitment": "private-slot-20",
+                },
+            ],
+        }))
+        .expect("batch reveal input should serialize"),
+    );
+
+    assert!(result.is_err(), "invalid batch reveal should fail");
+    assert_eq!(
+        wasm.game.object(first).expect("first card exists").name,
+        "Hidden Card",
+        "the valid first reveal must not be applied before the invalid second reveal is rejected"
+    );
+    assert_eq!(
+        wasm.game.object(second).expect("second card exists").name,
+        "Hidden Card",
+        "the invalid second reveal should remain hidden"
+    );
+}
+
+#[test]
 fn demonic_consultation_resolution_prompts_for_card_name_in_wasm_flow() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);

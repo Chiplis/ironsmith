@@ -3,6 +3,204 @@ pub fn wasm_start() {
     console_error_panic_hook::set_once();
 }
 
+fn public_identity_after_hidden_position_reveal(
+    info: &ironsmith::game_state::HiddenCardInfo,
+    input_position: u16,
+    input_position_commitment: Option<&str>,
+) -> (Option<u16>, Option<String>) {
+    let previous_public_slot = info.public_slot.unwrap_or(info.slot);
+    let previous_public_commitment = info
+        .public_commitment
+        .clone()
+        .unwrap_or_else(|| info.commitment.clone());
+    let incoming_public_commitment = input_position_commitment
+        .map(str::to_string)
+        .unwrap_or_else(|| info.commitment.clone());
+    let has_existing_public_identity =
+        info.public_slot.is_some() || info.public_commitment.is_some();
+    let preserve_existing_public_identity = has_existing_public_identity
+        && (previous_public_slot != input_position
+            || previous_public_commitment != incoming_public_commitment);
+
+    if preserve_existing_public_identity {
+        (
+            Some(previous_public_slot),
+            Some(previous_public_commitment),
+        )
+    } else {
+        (
+            Some(input_position),
+            Some(incoming_public_commitment),
+        )
+    }
+}
+
+fn hidden_position_continuation_target<'a, I>(
+    hidden_cards: I,
+    owner: ironsmith::ids::PlayerId,
+    position: u16,
+    position_commitment: Option<&str>,
+) -> Option<(ironsmith::ids::ObjectId, ironsmith::zone::Zone)>
+where
+    I: IntoIterator<
+        Item = (
+            &'a ironsmith::ids::ObjectId,
+            &'a ironsmith::game_state::HiddenCardInfo,
+        ),
+    >,
+{
+    let commitment = position_commitment.filter(|value| !value.is_empty());
+    hidden_cards.into_iter().find_map(|(object_id, info)| {
+        if info.owner != owner {
+            return None;
+        }
+        if let Some(commitment) = commitment {
+            let matches_commitment = info.commitment == commitment
+                || info.public_commitment.as_deref() == Some(commitment);
+            if !matches_commitment {
+                return None;
+            }
+        }
+        let matches_position = info.public_slot == Some(position)
+            || (info.public_slot.is_none() && info.slot == position)
+            || commitment.is_some_and(|value| info.public_commitment.as_deref() == Some(value));
+        matches_position.then_some((*object_id, info.zone))
+    })
+}
+
+fn hidden_position_reveal_commitment_matches(
+    info: &ironsmith::game_state::HiddenCardInfo,
+    position_commitment: Option<&str>,
+) -> bool {
+    position_commitment.is_none_or(|commitment| {
+        info.commitment == commitment || info.public_commitment.as_deref() == Some(commitment)
+    })
+}
+
+fn hidden_position_reveal_position_matches(
+    info: &ironsmith::game_state::HiddenCardInfo,
+    position: u16,
+    position_commitment: Option<&str>,
+) -> bool {
+    if let Some(commitment) = position_commitment {
+        let matches_commitment =
+            info.commitment == commitment || info.public_commitment.as_deref() == Some(commitment);
+        let matches_position_number = info.slot == position || info.public_slot == Some(position);
+        return matches_commitment
+            && (matches_position_number || info.public_commitment.as_deref() == Some(commitment));
+    }
+    info.slot == position || info.public_slot == Some(position)
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedHiddenPositionReveal {
+    input: RevealHiddenPositionInput,
+    owner: PlayerId,
+    object_id: ObjectId,
+    updated_info: ironsmith::game_state::HiddenCardInfo,
+    definition: CardDefinition,
+    object_already_revealed: bool,
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    #[test]
+    fn position_reveal_preserves_existing_public_hidden_identity() {
+        let info = ironsmith::game_state::HiddenCardInfo {
+            owner: ironsmith::ids::PlayerId::from_index(0),
+            zone: ironsmith::zone::Zone::Hand,
+            slot: 10,
+            commitment: "ziffle:initial-deck:10".to_string(),
+            public_slot: Some(51),
+            public_commitment: Some("ziffle:shuffle-deck:51".to_string()),
+        };
+
+        let (public_slot, public_commitment) =
+            public_identity_after_hidden_position_reveal(
+                &info,
+                10,
+                Some("ziffle:initial-deck:10"),
+            );
+
+        assert_eq!(public_slot, Some(51));
+        assert_eq!(
+            public_commitment.as_deref(),
+            Some("ziffle:shuffle-deck:51")
+        );
+    }
+
+    #[test]
+    fn position_reveal_sets_public_identity_when_none_exists() {
+        let info = ironsmith::game_state::HiddenCardInfo {
+            owner: ironsmith::ids::PlayerId::from_index(0),
+            zone: ironsmith::zone::Zone::Hand,
+            slot: 10,
+            commitment: "ziffle:initial-deck:10".to_string(),
+            public_slot: None,
+            public_commitment: None,
+        };
+
+        let (public_slot, public_commitment) =
+            public_identity_after_hidden_position_reveal(
+                &info,
+                10,
+                Some("ziffle:initial-deck:10"),
+            );
+
+        assert_eq!(public_slot, Some(10));
+        assert_eq!(
+            public_commitment.as_deref(),
+            Some("ziffle:initial-deck:10")
+        );
+    }
+
+    #[test]
+    fn continuation_position_reveal_ignores_original_slot_collision() {
+        let owner = ironsmith::ids::PlayerId::from_index(0);
+        let original_slot_object = ironsmith::ids::ObjectId::from_raw(10);
+        let position_object = ironsmith::ids::ObjectId::from_raw(20);
+        let hidden_cards = std::collections::HashMap::from([
+            (
+                original_slot_object,
+                ironsmith::game_state::HiddenCardInfo {
+                    owner,
+                    zone: ironsmith::zone::Zone::Hand,
+                    slot: 13,
+                    commitment: "slot-13-private".to_string(),
+                    public_slot: None,
+                    public_commitment: None,
+                },
+            ),
+            (
+                position_object,
+                ironsmith::game_state::HiddenCardInfo {
+                    owner,
+                    zone: ironsmith::zone::Zone::Library,
+                    slot: 6,
+                    commitment: "slot-6-private".to_string(),
+                    public_slot: Some(24),
+                    public_commitment: Some("ziffle:deck:24".to_string()),
+                },
+            ),
+        ]);
+
+        let target = hidden_position_continuation_target(
+            hidden_cards.iter(),
+            owner,
+            24,
+            Some("ziffle:deck:24"),
+        );
+
+        assert_eq!(
+            target,
+            Some((position_object, ironsmith::zone::Zone::Library))
+        );
+    }
+
+}
+
 #[wasm_bindgen]
 impl WasmGame {
     fn finish_dispatch_with_snapshot(
@@ -129,6 +327,42 @@ impl WasmGame {
                     commitment_matches.then_some(*object_id)
                 });
         if let Some(object_id) = target {
+            continuation
+                .checkpoint
+                .game
+                .register_linked_face_family_from_catalog(definition, &self.registry);
+            let _ = continuation
+                .checkpoint
+                .game
+                .reveal_hidden_card_with_definition(object_id, definition);
+        }
+    }
+
+    fn reveal_hidden_position_in_live_continuation_checkpoint(
+        &mut self,
+        owner: PlayerId,
+        position: u16,
+        position_commitment: Option<&str>,
+        updated_info: ironsmith::game_state::HiddenCardInfo,
+        definition: &CardDefinition,
+    ) {
+        let Some(continuation) = self.pending_live_continuation.as_mut() else {
+            return;
+        };
+        continuation.speculative_progress = None;
+        let target = hidden_position_continuation_target(
+            continuation.checkpoint.game.hidden_cards.iter(),
+            owner,
+            position,
+            position_commitment,
+        );
+        if let Some((object_id, zone)) = target {
+            let mut continuation_info = updated_info;
+            continuation_info.zone = zone;
+            continuation
+                .checkpoint
+                .game
+                .set_hidden_card_info(object_id, continuation_info);
             continuation
                 .checkpoint
                 .game
@@ -455,31 +689,72 @@ impl WasmGame {
     pub fn reveal_hidden_position(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
         let input: RevealHiddenPositionInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
+        self.registry
+            .ensure_cards_loaded([input.card_name.as_str()]);
+        let reveal = self.validate_hidden_position_reveal(&input)?;
+        self.apply_validated_hidden_position_reveal(&reveal)?;
+        self.finish_hidden_card_reveal(input.recompute_decision)
+    }
+
+    #[wasm_bindgen(js_name = revealHiddenPositions)]
+    pub fn reveal_hidden_positions(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        let input: RevealHiddenPositionsInput = serde_wasm_bindgen::from_value(input)
+            .map_err(|e| JsValue::from_str(&format!("invalid batch reveal input: {e}")))?;
+        if input.reveals.is_empty() {
+            return self.snapshot();
+        }
+        self.registry
+            .ensure_cards_loaded(input.reveals.iter().map(|reveal| reveal.card_name.as_str()));
+        let mut seen_objects = HashSet::new();
+        let mut reveals = Vec::with_capacity(input.reveals.len());
+        for reveal_input in &input.reveals {
+            let reveal = self.validate_hidden_position_reveal(reveal_input)?;
+            if !seen_objects.insert(reveal.object_id) {
+                return Err(JsValue::from_str(
+                    "batch hidden position reveal targets the same object more than once",
+                ));
+            }
+            reveals.push(reveal);
+        }
+        for reveal in &reveals {
+            self.apply_validated_hidden_position_reveal(reveal)?;
+        }
+        let recompute_decision = input.recompute_decision
+            || input
+                .reveals
+                .iter()
+                .any(|reveal| reveal.recompute_decision);
+        self.finish_hidden_card_reveal(recompute_decision)
+    }
+
+    fn validate_hidden_position_reveal(
+        &self,
+        input: &RevealHiddenPositionInput,
+    ) -> Result<ValidatedHiddenPositionReveal, JsValue> {
         let owner = PlayerId::from_index(input.owner);
         let position_commitment = input.position_commitment.as_deref();
-        let commitment_matches = |info: &ironsmith::game_state::HiddenCardInfo| {
-            position_commitment.is_none_or(|commitment| {
-                info.commitment == commitment
-                    || info.public_commitment.as_deref() == Some(commitment)
-            })
-        };
-        let position_matches = |info: &ironsmith::game_state::HiddenCardInfo| {
-            info.slot == input.position
-                || info.public_slot == Some(input.position)
-                || position_commitment.is_some_and(|commitment| {
-                    info.commitment == commitment
-                        || info.public_commitment.as_deref() == Some(commitment)
-                })
-        };
-
-        let explicit_target = input.object_id.and_then(|raw| {
+        let explicit_target = if let Some(raw) = input.object_id {
             let object_id = ObjectId::from_raw(raw);
-            self.game
-                .hidden_card_info(object_id)
-                .cloned()
-                .filter(|info| info.owner == owner && position_matches(info))
-                .map(|info| (object_id, info))
-        });
+            let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
+                return Err(JsValue::from_str(
+                    "explicit hidden ziffle object is not present in this engine",
+                ));
+            };
+            if info.owner != owner
+                || !hidden_position_reveal_position_matches(
+                    &info,
+                    input.position,
+                    position_commitment,
+                )
+            {
+                return Err(JsValue::from_str(
+                    "explicit hidden ziffle object does not match reveal position",
+                ));
+            }
+            Some((object_id, info))
+        } else {
+            None
+        };
         let target = explicit_target.or_else(|| {
             self.game
                 .hidden_cards
@@ -487,7 +762,11 @@ impl WasmGame {
                 .find(|(object_id, info)| {
                     info.owner == owner
                         && self.game.is_hidden_card_placeholder(**object_id)
-                        && position_matches(info)
+                        && hidden_position_reveal_position_matches(
+                            info,
+                            input.position,
+                            position_commitment,
+                        )
                 })
                 .map(|(object_id, info)| (*object_id, info.clone()))
         });
@@ -496,59 +775,87 @@ impl WasmGame {
                 "hidden ziffle position is not present in this engine",
             ));
         };
-        if !commitment_matches(&info) {
+        if !hidden_position_reveal_commitment_matches(&info, position_commitment) {
             return Err(JsValue::from_str(
                 "hidden ziffle position commitment does not match reveal",
             ));
         }
         let zone = info.zone;
-        self.game.set_hidden_card_info(
-            object_id,
-            ironsmith::game_state::HiddenCardInfo {
-                owner,
-                zone,
-                slot: input.original_slot,
-                commitment: input.commitment.clone().unwrap_or_default(),
-                public_slot: Some(input.position),
-                public_commitment: Some(
-                    input
-                        .position_commitment
-                        .clone()
-                        .unwrap_or_else(|| info.commitment.clone()),
-                ),
-            },
+        let (public_slot, public_commitment) = public_identity_after_hidden_position_reveal(
+            &info,
+            input.position,
+            input.position_commitment.as_deref(),
         );
-        self.registry
-            .ensure_cards_loaded([input.card_name.as_str()]);
+        let updated_info = ironsmith::game_state::HiddenCardInfo {
+            owner,
+            zone,
+            slot: input.original_slot,
+            commitment: input.commitment.clone().unwrap_or_default(),
+            public_slot,
+            public_commitment,
+        };
         let definition = self
             .find_card_definition(&input.card_name)
             .cloned()
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
-        if let Some(existing_name) = self.game.object(object_id).map(|object| object.name.clone())
-            && existing_name != "Hidden Card"
-        {
+        let Some(existing_name) = self.game.object(object_id).map(|object| object.name.clone())
+        else {
+            return Err(JsValue::from_str(
+                "hidden ziffle object is not present in this engine",
+            ));
+        };
+        let object_already_revealed = if existing_name != "Hidden Card" {
             if existing_name != input.card_name {
                 return Err(JsValue::from_str(
                     "opened object identity does not match reveal",
                 ));
             }
+            true
         } else {
+            false
+        };
+        Ok(ValidatedHiddenPositionReveal {
+            input: input.clone(),
+            owner,
+            object_id,
+            updated_info,
+            definition,
+            object_already_revealed,
+        })
+    }
+
+    fn apply_validated_hidden_position_reveal(
+        &mut self,
+        reveal: &ValidatedHiddenPositionReveal,
+    ) -> Result<(), JsValue> {
+        self.game
+            .set_hidden_card_info(reveal.object_id, reveal.updated_info.clone());
+        if let Some(existing_name) = self
+            .game
+            .object(reveal.object_id)
+            .map(|object| object.name.clone())
+            && existing_name != "Hidden Card"
+        {
+            if existing_name != reveal.input.card_name {
+                return Err(JsValue::from_str(
+                    "opened object identity does not match reveal",
+                ));
+            }
+        } else if !reveal.object_already_revealed {
             self.game
-                .register_linked_face_family_from_catalog(&definition, &self.registry);
+                .register_linked_face_family_from_catalog(&reveal.definition, &self.registry);
             self.game
-                .reveal_hidden_card_with_definition(object_id, &definition)
+                .reveal_hidden_card_with_definition(reveal.object_id, &reveal.definition)
                 .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
         }
-        self.reveal_hidden_card_in_live_continuation_checkpoint(
-            owner,
-            &[input.original_slot, input.position],
-            &[
-                input.commitment.unwrap_or_default(),
-                input.position_commitment.unwrap_or_default(),
-            ],
-            &definition,
+        self.reveal_hidden_position_in_live_continuation_checkpoint(
+            reveal.owner,
+            reveal.input.position,
+            reveal.input.position_commitment.as_deref(),
+            reveal.updated_info.clone(),
+            &reveal.definition,
         );
-        self.finish_hidden_card_reveal(input.recompute_decision)
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = exportHiddenCardOpening)]
@@ -633,6 +940,26 @@ impl WasmGame {
             seeds.push(value);
         }
         self.game.queue_transcript_random_seeds(seeds);
+        for shuffle in input.library_shuffles {
+            if shuffle.before_order.is_empty()
+                || shuffle.before_order.len() != shuffle.after_order.len()
+            {
+                continue;
+            }
+            self.game.queue_transcript_library_shuffle_order(
+                PlayerId::from_index(shuffle.owner),
+                shuffle
+                    .before_order
+                    .into_iter()
+                    .map(ObjectId::from_raw)
+                    .collect(),
+                shuffle
+                    .after_order
+                    .into_iter()
+                    .map(ObjectId::from_raw)
+                    .collect(),
+            );
+        }
         Ok(())
     }
 
@@ -662,6 +989,32 @@ impl WasmGame {
                 })
                 .collect()
         };
+        if !input.after_order.is_empty() {
+            let current_library = self
+                .game
+                .player(owner)
+                .ok_or_else(|| JsValue::from_str("hidden shuffle owner is not present"))?
+                .library
+                .clone();
+            let current_library_set = current_library.iter().copied().collect::<HashSet<_>>();
+            let reordered_library = order
+                .iter()
+                .copied()
+                .filter(|object_id| current_library_set.contains(object_id))
+                .collect::<Vec<_>>();
+            let reordered_set = reordered_library.iter().copied().collect::<HashSet<_>>();
+            if reordered_library.len() != current_library.len()
+                || reordered_set.len() != current_library_set.len()
+                || !current_library_set.iter().all(|id| reordered_set.contains(id))
+            {
+                return Err(JsValue::from_str(
+                    "verified hidden shuffle order does not cover the current library",
+                ));
+            }
+            if let Some(player) = self.game.player_mut(owner) {
+                player.library = reordered_library;
+            }
+        }
         let mut seen = HashSet::new();
         for (position, object_id) in order.iter().copied().enumerate() {
             if position > u16::MAX as usize {
@@ -676,11 +1029,15 @@ impl WasmGame {
                 return Err(JsValue::from_str("hidden shuffle card is not present"));
             };
             let Some(info) = self.game.hidden_card_info(object_id).cloned() else {
-                if self
-                    .game
-                    .object(object_id)
-                    .is_some_and(|object| object.card.is_some() && object.owner == owner)
+                if zone.is_hidden()
+                    && self
+                        .game
+                        .object(object_id)
+                        .is_some_and(|object| object.card.is_some() && object.owner == owner)
                 {
+                    if let Some(object) = self.game.object_mut(object_id) {
+                        object.redact_to_hidden_card();
+                    }
                     self.game.set_hidden_card_info(
                         object_id,
                         ironsmith::game_state::HiddenCardInfo {
@@ -705,22 +1062,15 @@ impl WasmGame {
             if info.owner != owner {
                 return Err(JsValue::from_str("hidden shuffle library owner mismatch"));
             }
-            if self
-                .game
-                .object(object_id)
-                .is_some_and(|object| object.card.is_some())
+            if zone.is_hidden()
+                && self
+                    .game
+                    .object(object_id)
+                    .is_some_and(|object| object.card.is_some())
             {
-                self.game.set_hidden_card_info(
-                    object_id,
-                    ironsmith::game_state::HiddenCardInfo {
-                        owner,
-                        zone,
-                        public_slot: Some(position as u16),
-                        public_commitment: Some(format!("ziffle:{}:{}", input.deck_hash, position)),
-                        ..info
-                    },
-                );
-                continue;
+                if let Some(object) = self.game.object_mut(object_id) {
+                    object.redact_to_hidden_card();
+                }
             }
             self.game.set_hidden_card_info(
                 object_id,

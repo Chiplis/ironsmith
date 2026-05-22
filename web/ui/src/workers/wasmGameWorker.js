@@ -44,6 +44,7 @@ const SNAPSHOT_METHODS = new Set([
   "injectTranscriptRandomSeeds",
   "revealHiddenObject",
   "revealHiddenPosition",
+  "revealHiddenPositions",
   "revealHiddenSlot",
   "snapshot",
   "startMatch",
@@ -288,6 +289,16 @@ function collectNamesForMethod(method, args) {
     case "revealHiddenPosition":
       names.push(args?.[0]?.cardName || args?.[0]?.card_name);
       break;
+    case "revealHiddenPositions": {
+      const input = args?.[0];
+      const reveals = Array.isArray(input) ? input : input?.reveals;
+      if (Array.isArray(reveals)) {
+        for (const reveal of reveals) {
+          names.push(reveal?.cardName || reveal?.card_name);
+        }
+      }
+      break;
+    }
     case "cardLoadDiagnostics":
     case "getCardSemanticScore":
     case "isKnownCardName":

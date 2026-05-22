@@ -64,6 +64,10 @@ function delay(ms) {
   });
 }
 
+function isInspectorOnlyViewedCards(viewedCards) {
+  return Boolean(viewedCards?.inspector_only || viewedCards?.inspectorOnly);
+}
+
 async function waitForAuditReplayGate(gate) {
   for (
     let attempt = 0;
@@ -873,13 +877,13 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     stateRef.current = state;
-    if (state?.viewed_cards) {
+    if (state?.viewed_cards && !isInspectorOnlyViewedCards(state.viewed_cards)) {
       stickyViewedCardsRef.current = state.viewed_cards;
     }
   }, [state]);
 
   const setPeerState = useCallback((nextState) => {
-    if (nextState?.viewed_cards) {
+    if (nextState?.viewed_cards && !isInspectorOnlyViewedCards(nextState.viewed_cards)) {
       stickyViewedCardsRef.current = nextState.viewed_cards;
     }
     setState(nextState);
@@ -1341,9 +1345,9 @@ export function GameProvider({ children }) {
     }
 
     let visibleState = nextState;
-    if (nextState.viewed_cards) {
+    if (nextState.viewed_cards && !isInspectorOnlyViewedCards(nextState.viewed_cards)) {
       stickyViewedCardsRef.current = nextState.viewed_cards;
-    } else if (stickyViewedCardsRef.current) {
+    } else if (!nextState.viewed_cards && stickyViewedCardsRef.current) {
       visibleState = { ...visibleState, viewed_cards: stickyViewedCardsRef.current };
     }
 

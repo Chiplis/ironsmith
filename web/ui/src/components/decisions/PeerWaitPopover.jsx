@@ -7,6 +7,11 @@ const PeerWaitContext = createContext(null);
 function defaultPeerWaitTitle(kind) {
   switch (kind) {
     case "crypto_material": return "Waiting for cryptographic material";
+    case "local_action": return "Working on your action";
+    case "local_payload": return "Preparing action payload";
+    case "engine_work": return "Resolving action";
+    case "local_ziffle_reveal": return "Generating reveal proof";
+    case "action_progress": return "Waiting for action payload";
     case "ziffle_shuffle": return "Waiting for shuffle material";
     case "ziffle_reveal": return "Waiting for reveal material";
     case "fair_random_commit": return "Waiting for random commitment";
@@ -37,7 +42,9 @@ function peerWaitDescription(peerWait) {
   if (description) return description;
 
   const names = peerNames(peerWait);
-  const who = names.length > 0
+  const who = peerWait?.local
+    ? "Your browser"
+    : names.length > 0
     ? names.join(", ")
     : "one or more peers";
   return `${who} must respond before the game state can advance.`;
@@ -46,8 +53,18 @@ function peerWaitDescription(peerWait) {
 function peerWaitButtonLabel(peerWait) {
   const names = peerNames(peerWait);
   const singlePeer = names.length === 1 ? names[0] : "";
-  const subject = singlePeer || "Peers";
+  const subject = peerWait?.local ? "You" : (singlePeer || "Peers");
+  const operation = String(peerWait?.operation || "").trim();
   switch (peerWait?.kind) {
+    case "local_action":
+    case "local_payload":
+      return operation || "Preparing payload";
+    case "engine_work":
+      return operation || "Engine resolving";
+    case "local_ziffle_reveal":
+      return operation || `${subject} proving reveal`;
+    case "action_progress":
+      return operation ? `${subject} ${operation.toLowerCase()}` : `${subject} syncing action`;
     case "crypto_material":
       return `${subject} generating payloads`;
     case "ziffle_reveal":
@@ -69,19 +86,51 @@ function peerWaitButtonLabel(peerWait) {
   }
 }
 
+function peerWaitButtonDetail(peerWait) {
+  const current = Number(peerWait?.progressCurrent);
+  const total = Number(peerWait?.progressTotal);
+  const hasProgress = Number.isFinite(current) && Number.isFinite(total) && total > 0;
+  const cardName = String(peerWait?.cardName || "").trim();
+  const detail = String(peerWait?.detail || "").trim();
+  const zone = String(peerWait?.zone || "").trim();
+  const timeoutMs = Number(peerWait?.responseTimeoutMs);
+  const parts = [];
+  if (hasProgress) {
+    parts.push(`${Math.max(0, Math.min(total, current))}/${total}`);
+  }
+  if (cardName) {
+    parts.push(cardName);
+  } else if (detail) {
+    parts.push(detail);
+  }
+  if (zone) {
+    parts.push(zone);
+  }
+  if (parts.length === 0 && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    parts.push(`Timeout ${Math.ceil(timeoutMs / 1000)}s`);
+  }
+  return parts.join(" / ");
+}
+
 export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp = null }) {
   const contextPeerWait = useContext(PeerWaitContext);
   const peerWait = peerWaitProp || contextPeerWait;
+  const detail = peerWaitButtonDetail(peerWait);
   return (
     <span
       className={cn(
-        "peer-wait-button-content inline-flex h-full w-full min-w-0 items-center justify-center text-center",
+        "peer-wait-button-content inline-flex h-full w-full min-w-0 flex-col items-center justify-center gap-0.5 text-center",
         className
       )}
     >
       <span className="peer-wait-button-label min-w-0 truncate text-[11px] font-bold uppercase leading-tight">
         {peerWaitButtonLabel(peerWait)}
       </span>
+      {detail ? (
+        <span className="peer-wait-button-detail max-w-full truncate text-[10px] font-semibold uppercase leading-none opacity-80">
+          {detail}
+        </span>
+      ) : null}
     </span>
   );
 }

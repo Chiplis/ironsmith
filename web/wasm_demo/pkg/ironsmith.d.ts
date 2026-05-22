@@ -166,6 +166,7 @@ export class WasmGame {
     reset(player_names: any, starting_life: number): void;
     revealHiddenObject(input: any): any;
     revealHiddenPosition(input: any): any;
+    revealHiddenPositions(input: any): any;
     revealHiddenSlot(input: any): any;
     sampleLoadedDeckSeed(player_index: number): any;
     /**
@@ -240,6 +241,7 @@ export interface InitOutput {
     readonly wasmgame_revealHiddenObject: (a: number, b: any) => [number, number, number];
     readonly wasmgame_revealHiddenSlot: (a: number, b: any) => [number, number, number];
     readonly wasmgame_revealHiddenPosition: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_revealHiddenPositions: (a: number, b: any) => [number, number, number];
     readonly wasmgame_exportHiddenCardOpening: (a: number, b: bigint) => [number, number, number];
     readonly wasmgame_previewCryptoRequirements: (a: number, b: any) => [number, number, number];
     readonly wasmgame_injectTranscriptRandomSeeds: (a: number, b: any) => [number, number];

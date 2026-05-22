@@ -567,6 +567,17 @@ export class WasmGame {
      * @param {any} input
      * @returns {any}
      */
+    revealHiddenPositions(input) {
+        const ret = wasm.wasmgame_revealHiddenPositions(this.__wbg_ptr, input);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} input
+     * @returns {any}
+     */
     revealHiddenSlot(input) {
         const ret = wasm.wasmgame_revealHiddenSlot(this.__wbg_ptr, input);
         if (ret[2]) {

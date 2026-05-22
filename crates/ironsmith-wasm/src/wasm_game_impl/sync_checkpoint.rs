@@ -2009,10 +2009,14 @@ mod sync_checkpoint_tests {
                 .hidden_card_info(ObjectId::from_raw(raw_id))
                 .expect("all shuffled hidden cards should still have metadata");
             assert_eq!(info.owner, bob);
-            assert_eq!(info.slot, position as u16);
             assert_eq!(
-                info.commitment,
-                format!("ziffle:mulligan-deck:{position}")
+                info.public_slot,
+                Some(position as u16),
+                "reseal should publish the post-shuffle public position without replacing private identity"
+            );
+            assert_eq!(
+                info.public_commitment.as_deref(),
+                Some(format!("ziffle:mulligan-deck:{position}").as_str())
             );
         }
     }
@@ -2074,23 +2078,15 @@ mod sync_checkpoint_tests {
                 .hidden_card_info(current_id)
                 .expect("all shuffled hidden cards should still have metadata");
             assert_eq!(info.owner, bob);
-            if game
-                .game
-                .object(current_id)
-                .is_some_and(|object| object.card.is_some())
-            {
-                assert_eq!(info.public_slot, Some(position as u16));
-                assert_eq!(
-                    info.public_commitment.as_deref(),
-                    Some(format!("ziffle:mulligan-deck:{position}").as_str())
-                );
-            } else {
-                assert_eq!(info.slot, position as u16);
-                assert_eq!(
-                    info.commitment,
-                    format!("ziffle:mulligan-deck:{position}")
-                );
-            }
+            assert!(
+                game.game.is_hidden_card_placeholder(current_id),
+                "resealing a hidden-library shuffle should redact cards in hidden zones"
+            );
+            assert_eq!(info.public_slot, Some(position as u16));
+            assert_eq!(
+                info.public_commitment.as_deref(),
+                Some(format!("ziffle:mulligan-deck:{position}").as_str())
+            );
         }
 
         let second_hand = game
@@ -2132,6 +2128,89 @@ mod sync_checkpoint_tests {
                 .hidden_card_info(current_id)
                 .expect("all reshuffled hidden cards should still have metadata");
             assert_eq!(info.owner, bob);
+        }
+    }
+
+    #[test]
+    fn verified_shuffle_reseal_reorders_current_library_to_public_order() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let bob = PlayerId::from_index(1);
+        for slot in 0..6 {
+            game.game.create_hidden_card_placeholder(
+                bob,
+                Zone::Library,
+                slot,
+                format!("bob-slot-{slot}"),
+            );
+        }
+
+        game.game.shuffle_player_library(bob);
+        let verified_full_order = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .library
+            .clone();
+        assert_eq!(game.game.draw_cards(bob, 2).len(), 2);
+        let current_library_set = game
+            .game
+            .player(bob)
+            .expect("Bob should still exist")
+            .library
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let expected_library = verified_full_order
+            .iter()
+            .copied()
+            .filter(|object_id| current_library_set.contains(object_id))
+            .collect::<Vec<_>>();
+
+        game.game
+            .player_mut(bob)
+            .expect("Bob should still exist")
+            .library
+            .reverse();
+        assert_ne!(
+            game.game
+                .player(bob)
+                .expect("Bob should still exist")
+                .library,
+            expected_library,
+            "test setup should perturb the local engine order"
+        );
+
+        game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
+            owner: 1,
+            deck_hash: "verified-deck".to_string(),
+            after_order: verified_full_order.iter().map(|id| id.0).collect(),
+        })
+        .expect("verified shuffle should impose the authenticated public order");
+
+        assert_eq!(
+            game.game
+                .player(bob)
+                .expect("Bob should still exist")
+                .library,
+            expected_library,
+            "verified ziffle order must become the engine's top-of-library order"
+        );
+        for (position, stale_id) in verified_full_order.iter().copied().enumerate() {
+            let current_id = game
+                .game
+                .current_object_id_after_zone_change(stale_id)
+                .unwrap_or(stale_id);
+            let info = game
+                .game
+                .hidden_card_info(current_id)
+                .expect("all verified hidden cards should still have metadata");
+            assert_eq!(info.public_slot, Some(position as u16));
+            assert_eq!(
+                info.public_commitment.as_deref(),
+                Some(format!("ziffle:verified-deck:{position}").as_str())
+            );
         }
     }
 

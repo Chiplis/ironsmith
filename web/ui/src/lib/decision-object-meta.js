@@ -16,6 +16,12 @@ function isHiddenCardName(name) {
   return String(name || "").trim().toLowerCase() === "hidden card";
 }
 
+function decisionViewedCards(state) {
+  const viewedCards = state?.viewed_cards || null;
+  if (viewedCards?.inspector_only || viewedCards?.inspectorOnly) return null;
+  return viewedCards;
+}
+
 function registerController(map, id, controller) {
   if (id == null || controller == null) return;
   const key = String(id);
@@ -55,7 +61,8 @@ export function buildObjectNameById(state) {
     registerName(map, stackObject?.inspect_object_id, stackObject?.name);
   }
 
-  for (const card of state?.viewed_cards?.cards || []) {
+  const viewedCards = decisionViewedCards(state);
+  for (const card of viewedCards?.cards || []) {
     registerName(map, card?.id, card?.name);
   }
 
@@ -91,11 +98,12 @@ export function buildObjectControllerById(state) {
     registerController(map, stackObject?.inspect_object_id, stackObject?.controller);
   }
 
-  const viewedSubject = state?.viewed_cards?.subject;
-  for (const card of state?.viewed_cards?.cards || []) {
+  const viewedCards = decisionViewedCards(state);
+  const viewedSubject = viewedCards?.subject;
+  for (const card of viewedCards?.cards || []) {
     registerController(map, card?.id, viewedSubject);
   }
-  for (const cardId of state?.viewed_cards?.card_ids || []) {
+  for (const cardId of viewedCards?.card_ids || []) {
     registerController(map, cardId, viewedSubject);
   }
 
@@ -136,12 +144,13 @@ export function buildInspectableObjectIdSet(state) {
     }
   }
 
-  for (const card of state?.viewed_cards?.cards || []) {
+  const viewedCards = decisionViewedCards(state);
+  for (const card of viewedCards?.cards || []) {
     if (card?.id != null) {
       ids.add(String(card.id));
     }
   }
-  for (const cardId of state?.viewed_cards?.card_ids || []) {
+  for (const cardId of viewedCards?.card_ids || []) {
     if (cardId != null) {
       ids.add(String(cardId));
     }
