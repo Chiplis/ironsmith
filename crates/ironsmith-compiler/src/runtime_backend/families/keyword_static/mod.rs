@@ -6827,7 +6827,13 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     let cast_prefix = [
         "you", "may", "cast", "spells", "from", "among", "cards", "in", "exile",
     ];
-    if !words.starts_with(&cast_prefix) {
+    let play_lands_and_cast_prefix = [
+        "you", "may", "play", "lands", "and", "cast", "noncreature", "spells", "from",
+        "among", "cards", "you", "exiled",
+    ];
+    let is_cast_from_exile_family = words.starts_with(&cast_prefix);
+    let is_play_lands_and_cast_noncreature_family = words.starts_with(&play_lands_and_cast_prefix);
+    if !is_cast_from_exile_family && !is_play_lands_and_cast_noncreature_family {
         return Ok(None);
     }
 
@@ -6836,14 +6842,33 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     else {
         return Ok(None);
     };
-    let Some(with_idx) = words[..and_idx].iter().position(|word| *word == "with") else {
-        return Ok(None);
-    };
-    let Some(counters_idx) = words[with_idx + 1..and_idx]
-        .iter()
-        .position(|word| matches!(*word, "counter" | "counters"))
-        .map(|offset| with_idx + 1 + offset)
-    else {
+    let (counter_start_idx, counters_idx) = if let Some(with_idx) =
+        words[..and_idx].iter().position(|word| *word == "with")
+    {
+        let Some(counters_idx) = words[with_idx + 1..and_idx]
+            .iter()
+            .position(|word| matches!(*word, "counter" | "counters"))
+            .map(|offset| with_idx + 1 + offset)
+        else {
+            return Ok(None);
+        };
+        (with_idx + 1, counters_idx)
+    } else if is_play_lands_and_cast_noncreature_family {
+        let that_have_prefix = ["that", "have"];
+        let Some(that_have_idx) =
+            find_keyword_static_phrase_start(&words[..and_idx], &that_have_prefix)
+        else {
+            return Ok(None);
+        };
+        let Some(counters_idx) = words[that_have_idx + that_have_prefix.len()..and_idx]
+            .iter()
+            .position(|word| matches!(*word, "counter" | "counters"))
+            .map(|offset| that_have_idx + that_have_prefix.len() + offset)
+        else {
+            return Ok(None);
+        };
+        (that_have_idx + that_have_prefix.len(), counters_idx)
+    } else {
         return Ok(None);
     };
     if counters_idx + 3 > and_idx
@@ -6852,18 +6877,21 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         return Ok(None);
     }
 
-    let owner_words = &words[cast_prefix.len()..with_idx];
-    let owner = match owner_words {
-        [] => None,
-        ["your", "opponents", "own"]
-        | ["your", "opponent", "owns"]
-        | ["opponents", "own"]
-        | ["opponent", "owns"] => Some(PlayerFilter::Opponent),
-        _ => return Ok(None),
+    let owner = if is_play_lands_and_cast_noncreature_family {
+        None
+    } else {
+        let owner_words = &words[cast_prefix.len()..counter_start_idx.saturating_sub(1)];
+        match owner_words {
+            [] => None,
+            ["your", "opponents", "own"]
+            | ["your", "opponent", "owns"]
+            | ["opponents", "own"]
+            | ["opponent", "owns"] => Some(PlayerFilter::Opponent),
+            _ => return Ok(None),
+        }
     };
 
-    let counter_start = with_idx + 1;
-    let counter_tokens = &tokens[counter_start..counters_idx + 1];
+    let counter_tokens = &tokens[counter_start_idx..counters_idx + 1];
     let Some(counter_type) = parse_counter_type_from_tokens(counter_tokens) else {
         return Ok(None);
     };
@@ -6888,12 +6916,40 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         return Ok(None);
     }
 
-    let mut filter = ObjectFilter {
+    let mut base_filter = ObjectFilter {
         zone: Some(Zone::Exile),
         owner,
-        excluded_card_types: vec![CardType::Land],
         with_counter: Some(crate::filter::CounterConstraint::Typed(counter_type)),
         ..ObjectFilter::default()
+    };
+    if is_play_lands_and_cast_noncreature_family {
+        base_filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
+    }
+
+    let mut filter = if is_play_lands_and_cast_noncreature_family {
+        ObjectFilter {
+            any_of: vec![
+                ObjectFilter {
+                    card_types: vec![CardType::Land],
+                    ..base_filter.clone()
+                },
+                ObjectFilter {
+                    excluded_card_types: vec![CardType::Creature, CardType::Land],
+                    ..base_filter.clone()
+                },
+            ],
+            ..ObjectFilter::default()
+        }
+    } else {
+        ObjectFilter {
+            excluded_card_types: vec![CardType::Land],
+            ..base_filter
+        }
     };
     filter.has_mana_cost = false;
 
