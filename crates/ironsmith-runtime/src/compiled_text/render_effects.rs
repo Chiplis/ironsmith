@@ -23596,6 +23596,41 @@ pub(super) fn describe_conditional_choose_both_instead(
     Some(out)
 }
 
+pub(super) fn describe_conditional_replacement_instead(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+
+    let condition = describe_condition(&conditional.condition);
+
+    let true_branch = describe_effect_clause_list(&conditional.if_true)
+        .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+    let true_branch = true_branch.trim().trim_end_matches('.');
+    if true_branch.is_empty()
+        || !true_branch.to_ascii_lowercase().starts_with("exile ")
+        || true_branch.to_ascii_lowercase().contains(" instead")
+    {
+        return None;
+    }
+
+    if condition.contains(" would leave the battlefield") {
+        return Some(format!("If {condition}, {true_branch} instead"));
+    }
+
+    if condition.eq_ignore_ascii_case("it matches permanent")
+        && true_branch.eq_ignore_ascii_case("exile it")
+    {
+        return Some(
+            "If it would leave the battlefield, exile it instead of putting it anywhere else"
+                .to_string(),
+        );
+    }
+
+    None
+}
+
 fn unwrap_for_each_attachment_wrappers(effect: &Effect) -> &Effect {
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return unwrap_for_each_attachment_wrappers(&tag_all.effect);
@@ -26739,6 +26774,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_conditional_choose_both_instead(conditional) {
+            return compact;
+        }
+        if let Some(compact) = describe_conditional_replacement_instead(conditional) {
             return compact;
         }
         if let Some(compact) = describe_no_more_counters_move_then_each_player_return(conditional) {

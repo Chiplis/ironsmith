@@ -14364,6 +14364,19 @@ fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text
     );
 }
 
+#[test]
+fn moira_and_teshar_regression_keeps_leave_battlefield_instead_marker() {
+    let def = parse_oracle_card_definition("Moira and Teshar");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if it would leave the battlefield, exile it instead"),
+        "expected leave-battlefield replacement text to keep 'instead', got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn mana_ability_render_uses_colon_separator() {
