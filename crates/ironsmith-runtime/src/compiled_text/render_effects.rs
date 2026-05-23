@@ -23872,6 +23872,43 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_until(&gain_control.duration)
             );
         }
+        if for_each.effects.len() == 1 {
+            let deal = if let Some(deal) =
+                for_each.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()
+            {
+                Some(deal)
+            } else if let Some(tagged) =
+                for_each.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+            {
+                tagged.effect.downcast_ref::<crate::effects::DealDamageEffect>()
+            } else {
+                None
+            };
+            if let Some(deal) = deal
+                && matches!(deal.target, ChooseSpec::Iterated)
+            {
+                let effect_text = describe_effect_list(&for_each.effects);
+                let replacements = [
+                    " to that object",
+                    " to that creature",
+                    " to that permanent",
+                    " to that artifact",
+                    " to that enchantment",
+                    " to that land",
+                    " to that spell",
+                    " to that card",
+                ];
+                if let Some(suffix) = replacements
+                    .iter()
+                    .find(|suffix| effect_text.ends_with(**suffix))
+                {
+                    let subject_text = effect_text.trim_end_matches(*suffix);
+                    let description = for_each.filter.description();
+                    let filter_text = strip_indefinite_article(&description);
+                    return format!("{subject_text} to each {filter_text}");
+                }
+            }
+        }
         let description = for_each.filter.description();
         let filter_text = strip_indefinite_article(&description);
         return format!(
