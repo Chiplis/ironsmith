@@ -220,6 +220,126 @@ fn parse_choose_type_then_phase_out_bundle(
     ]))
 }
 
+fn parse_proliferate_then_choose_permanents_phase_out_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let first_words = crate::runtime_backend::token_word_refs(first_sentence);
+    let first_words = if first_words.first().copied() == Some("you") {
+        &first_words[1..]
+    } else {
+        &first_words[..]
+    };
+    if first_words
+        != [
+            "proliferate",
+            "then",
+            "choose",
+            "any",
+            "number",
+            "of",
+            "permanents",
+            "you",
+            "control",
+            "that",
+            "had",
+            "a",
+            "counter",
+            "put",
+            "on",
+            "them",
+            "this",
+            "way",
+        ]
+    {
+        return None;
+    }
+
+    let second_words = crate::runtime_backend::token_word_refs(second_sentence);
+    if second_words != ["those", "permanents", "phase", "out"] {
+        return None;
+    }
+
+    let eligible_filter = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    let chosen_tag = TagKey::from(IT_TAG);
+    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    phase_out_filter =
+        phase_out_filter.match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+
+    Some(vec![
+        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
+        EffectAst::ChooseObjects {
+            filter: eligible_filter,
+            count: ChoiceCount::any_number(),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: chosen_tag,
+        },
+        EffectAst::subject_verb_phase_out_all(phase_out_filter),
+    ])
+}
+
+fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = if words.first().copied() == Some("you") {
+        &words[1..]
+    } else {
+        &words[..]
+    };
+    if words
+        != [
+            "proliferate",
+            "then",
+            "choose",
+            "any",
+            "number",
+            "of",
+            "permanents",
+            "you",
+            "control",
+            "that",
+            "had",
+            "a",
+            "counter",
+            "put",
+            "on",
+            "them",
+            "this",
+            "way",
+            "those",
+            "permanents",
+            "phase",
+            "out",
+        ]
+    {
+        return None;
+    }
+
+    let eligible_filter = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    let chosen_tag = TagKey::from(IT_TAG);
+    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    phase_out_filter =
+        phase_out_filter.match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+
+    Some(vec![
+        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
+        EffectAst::ChooseObjects {
+            filter: eligible_filter,
+            count: ChoiceCount::any_number(),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: chosen_tag,
+        },
+        EffectAst::subject_verb_phase_out_all(phase_out_filter),
+    ])
+}
+
 fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let words = if clause_words.first().copied() == Some("you") {
@@ -1642,6 +1762,10 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {
         return Some(effects);
     }
+    if let Some(effects) = parse_proliferate_then_choose_permanents_phase_out_single_sentence(tokens)
+    {
+        return Some(effects);
+    }
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() == 2
         && let Ok(Some(effects)) =
@@ -1658,6 +1782,12 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_choose_type_then_phase_out_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Some(effects) =
+            parse_proliferate_then_choose_permanents_phase_out_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }
