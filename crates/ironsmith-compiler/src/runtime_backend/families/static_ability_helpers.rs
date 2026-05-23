@@ -198,7 +198,33 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     text == "compleated"
         || text.starts_with("prototype ")
         || text.starts_with("splice onto ")
+        || is_ticket_power_toughness_sticker_marker_line(&text)
         || text.starts_with("dredge ")
+}
+
+fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, pt_text)) = text.split_once('—') else {
+        return false;
+    };
+
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+    if !saw_ticket_symbol || !remainder.is_empty() {
+        return false;
+    }
+
+    let pt = pt_text.trim();
+    let Some((power, toughness)) = pt.split_once('/') else {
+        return false;
+    };
+    !power.is_empty()
+        && !toughness.is_empty()
+        && power.chars().all(|c| c.is_ascii_digit())
+        && toughness.chars().all(|c| c.is_ascii_digit())
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {

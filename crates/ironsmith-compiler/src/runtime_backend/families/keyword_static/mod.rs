@@ -209,12 +209,38 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
     text.starts_with("prototype ")
         || text.starts_with("splice onto ")
+        || is_ticket_power_toughness_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."
         || (text.starts_with("this creature crews vehicles as though its power were ")
             && text.ends_with(" greater."))
         || (text.starts_with(
             "you may remove a loyalty counter from a planeswalker you control rather than pay ",
         ) && text.ends_with("'s crew cost."))
+}
+
+fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, pt_text)) = text.split_once('—') else {
+        return false;
+    };
+
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+    if !saw_ticket_symbol || !remainder.is_empty() {
+        return false;
+    }
+
+    let pt = pt_text.trim();
+    let Some((power, toughness)) = pt.split_once('/') else {
+        return false;
+    };
+    !power.is_empty()
+        && !toughness.is_empty()
+        && power.chars().all(|c| c.is_ascii_digit())
+        && toughness.chars().all(|c| c.is_ascii_digit())
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
