@@ -902,8 +902,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::ThisLeavesBattlefield);
     }
 
-    if let Some(leaves_word_idx) =
-        find_index(&words, |word| *word == "leaves" || *word == "leave")
+    if let Some(leaves_word_idx) = find_index(&words, |word| *word == "leaves" || *word == "leave")
         && words.get(leaves_word_idx + 1).copied() == Some("the")
         && words.get(leaves_word_idx + 2).copied() == Some("battlefield")
     {
@@ -912,7 +911,8 @@ pub(crate) fn parse_trigger_clause_lexed(
             .unwrap_or(tokens.len());
         let subject_tokens = &tokens[..leaves_token_idx];
 
-        if let Some(or_idx) = find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
+        if let Some(or_idx) =
+            find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
         {
             let left_tokens = &subject_tokens[..or_idx];
             let mut right_tokens = &subject_tokens[or_idx + 1..];
@@ -930,9 +930,12 @@ pub(crate) fn parse_trigger_clause_lexed(
                     other = true;
                     right_tokens = &right_tokens[1..];
                 }
-                let parsed_filter = parse_object_filter_lexed(right_tokens, other)
-                    .ok()
-                    .or_else(|| parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other));
+                let parsed_filter =
+                    parse_object_filter_lexed(right_tokens, other)
+                        .ok()
+                        .or_else(|| {
+                            parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other)
+                        });
                 if let Some(filter) = parsed_filter {
                     return Ok(TriggerSpec::Either(
                         Box::new(TriggerSpec::ThisLeavesBattlefield),

@@ -1340,13 +1340,19 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     };
     filter.owner = Some(crate::target::PlayerFilter::You);
-    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
-        relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
-    });
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
+        });
 
     Ok(Some(
-        EffectAst::may_cast_matching_spell_without_paying_mana_cost(lead.player, filter, Zone::Graveyard),
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+            lead.player,
+            filter,
+            Zone::Graveyard,
+        ),
     ))
 }
 

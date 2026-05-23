@@ -13,7 +13,6 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause, starts_with_target_indicator,
 };
-use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
@@ -21,6 +20,7 @@ use super::super::keyword_static::{
 };
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::parse_object_filter;
+use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::token_primitives::{
     find_index as find_token_index, find_str_by as find_word_index_by,
     find_str_index as find_word_index, find_window_index as find_word_sequence_index,

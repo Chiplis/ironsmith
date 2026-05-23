@@ -38,7 +38,10 @@ fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<Owned
     }
 
     let mut rewritten = Vec::with_capacity(tokens.len() + 2);
-    rewritten.push(OwnedLexToken::word("that".to_string(), TextSpan::synthetic()));
+    rewritten.push(OwnedLexToken::word(
+        "that".to_string(),
+        TextSpan::synthetic(),
+    ));
     rewritten.push(OwnedLexToken::word(
         "players".to_string(),
         TextSpan::synthetic(),

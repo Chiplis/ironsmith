@@ -4384,20 +4384,26 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
         .expect("Counterpoint follow-up clause should parse as a supported effect");
 
     let (player, filter, zone) = match effects.as_slice() {
-        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            player,
-            filter,
-            zone,
-        }] => (player, filter, zone),
-        [crate::cards::builders::EffectAst::MayByPlayer {
-            player: crate::cards::builders::PlayerAst::You,
-            effects,
-        }] => match effects.as_slice() {
-            [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
                 player,
                 filter,
                 zone,
-            }] => (player, filter, zone),
+            },
+        ] => (player, filter, zone),
+        [
+            crate::cards::builders::EffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,
+            },
+        ] => match effects.as_slice() {
+            [
+                crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                },
+            ] => (player, filter, zone),
             _ => panic!("expected nested free-cast effect, got {effects:#?}"),
         },
         _ => panic!("expected free-cast effect, got {effects:#?}"),
@@ -4418,12 +4424,14 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
     assert!(has_type(crate::types::CardType::Creature), "{filter:#?}");
     assert!(has_type(crate::types::CardType::Instant), "{filter:#?}");
     assert!(has_type(crate::types::CardType::Sorcery), "{filter:#?}");
-    assert!(has_type(crate::types::CardType::Planeswalker), "{filter:#?}");
+    assert!(
+        has_type(crate::types::CardType::Planeswalker),
+        "{filter:#?}"
+    );
     assert!(
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag == crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG)
-                && constraint.relation
-                    == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
         }),
         "expected mana-value-to-tagged constraint, got {filter:#?}"
     );
@@ -9917,8 +9925,8 @@ fn rewrite_lowered_intervening_counter_gate_binds_destroy_to_gate_filter()
 }
 
 #[test]
-fn rewrite_lowered_delayed_combat_damage_player_trigger_this_turn_compiles() -> Result<(), CardTextError>
-{
+fn rewrite_lowered_delayed_combat_damage_player_trigger_this_turn_compiles()
+-> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Delayed Combat Trigger")
         .card_types(vec![CardType::Sorcery]);
     let (definition, _) = parse_text_with_annotations_lowered(

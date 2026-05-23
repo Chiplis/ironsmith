@@ -7114,7 +7114,9 @@ fn test_parse_feral_encounter_avoids_tagged_play_marker_text() {
         "expected Feral Encounter cast permission text, got {rendered}"
     );
     assert!(
-        rendered.contains("deals damage equal to its power to up to one target creature you don't control"),
+        rendered.contains(
+            "deals damage equal to its power to up to one target creature you don't control"
+        ),
         "expected Feral Encounter damage text, got {rendered}"
     );
     assert!(

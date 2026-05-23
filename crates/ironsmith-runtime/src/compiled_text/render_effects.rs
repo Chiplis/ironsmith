@@ -29332,11 +29332,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
 
         let player = describe_player_filter(&may_cast_matching.player);
-        let has_tagged_mana_value_cap = may_cast_matching.filter.tagged_constraints.iter().any(
-            |constraint| {
-                constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
-            },
-        );
+        let has_tagged_mana_value_cap =
+            may_cast_matching
+                .filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
+                });
         let mut spell_text = describe_cast_limit_spell_filter(&may_cast_matching.filter);
         if has_tagged_mana_value_cap && !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
