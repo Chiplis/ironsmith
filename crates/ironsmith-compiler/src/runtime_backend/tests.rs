@@ -6092,6 +6092,23 @@ fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
 }
 
 #[test]
+fn academy_researchers_puts_aura_from_hand_onto_battlefield_attached() {
+    let text = "When this creature enters, you may put an Aura card from your hand onto the battlefield attached to this creature.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Academy Researchers")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("Academy Researchers should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(debug.contains("zone: Some("), "{debug}");
+    assert!(debug.contains("Hand"), "{debug}");
+    assert!(debug.contains("Aura"), "{debug}");
+    assert!(debug.contains("AttachObjectsEffect"), "{debug}");
+    assert!(debug.contains("this creature"), "{debug}");
+}
+
+#[test]
 fn cruel_reality_fallback_life_loss_targets_that_player() {
     let text = "Enchant player\nAt the beginning of enchanted player's upkeep, that player sacrifices a creature or planeswalker of their choice. If the player can't, they lose 5 life.";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cruel Reality")

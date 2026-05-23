@@ -976,55 +976,84 @@ pub(crate) fn parse_put_into_hand(
             )));
         }
 
-        let destination_words: Vec<&str> =
-            crate::runtime_backend::token_word_refs(dest_slice)
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
-        if destination_words.first() != Some(&"battlefield") {
+        let destination_tokens: Vec<OwnedLexToken> = dest_slice
+            .iter()
+            .filter(|token| !token.as_word().is_some_and(is_article))
+            .cloned()
+            .collect();
+        if !destination_tokens
+            .first()
+            .is_some_and(|token| token.is_word("battlefield"))
+        {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
-        let battlefield_attacking = slice_contains(&destination_tail, &"attacking");
-        let battlefield_tapped = slice_contains(&destination_tail, &"tapped");
-        if let Some(from_idx) =
-            find_word_sequence_start(&destination_tail, &["from", "command", "zone"])
+
+        let mut destination_tail: Vec<OwnedLexToken> = destination_tokens[1..].to_vec();
+        let battlefield_attacking = grammar::contains_word(&destination_tail, "attacking");
+        let battlefield_tapped = grammar::contains_word(&destination_tail, "tapped");
+        if let Some(from_idx) = find_index(&destination_tail, |token| token.is_word("from"))
+            && destination_tail
+                .get(from_idx + 1)
+                .is_some_and(|token| token.is_word("command"))
+            && destination_tail
+                .get(from_idx + 2)
+                .is_some_and(|token| token.is_word("zone"))
         {
             destination_tail.drain(from_idx..from_idx + 3);
         }
-        destination_tail.retain(|word| *word != "and");
-        destination_tail.retain(|word| *word != "tapped");
-        destination_tail.retain(|word| *word != "attacking");
+        destination_tail.retain(|token| !token.is_word("and"));
+        destination_tail.retain(|token| !token.is_word("tapped"));
+        destination_tail.retain(|token| !token.is_word("attacking"));
         if battlefield_attacking {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let supported_control_tail = destination_tail.is_empty()
-            || destination_tail.as_slice() == ["under", "your", "control"]
-            || destination_tail.as_slice() == ["under", "its", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "his", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "her", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "their", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "that", "players", "control"];
+
+        let mut attached_to_target: Option<TargetAst> = None;
+        if destination_tail
+            .first()
+            .is_some_and(|token| token.is_word("attached"))
+            && destination_tail
+                .get(1)
+                .is_some_and(|token| token.is_word("to"))
+        {
+            let attachment_target_tokens = trim_commas(&destination_tail[2..]);
+            if attachment_target_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing attachment target after 'attached to' (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            attached_to_target = Some(parse_target_phrase(&attachment_target_tokens)?);
+            destination_tail.clear();
+        }
+
+        let destination_tail_words = crate::runtime_backend::token_word_refs(&destination_tail);
+        let supported_control_tail = destination_tail_words.is_empty()
+            || destination_tail_words.as_slice() == ["under", "your", "control"]
+            || destination_tail_words.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "his", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "her", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "their", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "that", "players", "control"];
         if !supported_control_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let battlefield_controller = if destination_tail.as_slice() == ["under", "your", "control"]
-        {
+        let battlefield_controller = if destination_tail_words.as_slice() == ["under", "your", "control"] {
             ReturnControllerAst::You
-        } else if destination_tail.as_slice() == ["under", "its", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "his", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "her", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "their", "owners", "control"]
-            || destination_tail.as_slice() == ["under", "that", "players", "control"]
+        } else if destination_tail_words.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "his", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "her", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "their", "owners", "control"]
+            || destination_tail_words.as_slice() == ["under", "that", "players", "control"]
         {
             ReturnControllerAst::Owner
         } else {
@@ -1085,7 +1114,7 @@ pub(crate) fn parse_put_into_hand(
             false,
             battlefield_controller,
             battlefield_tapped,
-            None,
+            attached_to_target,
         ));
     }
 
