@@ -20,6 +20,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),
+        TriggerSpec::IsDealtCombatDamage(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
+        ),
         TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(
                 filter.clone(),
@@ -245,7 +248,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 compile_trigger_effects(Some(trigger), effects)?;
             let choices = Vec::new();
             match trigger {
-                TriggerSpec::IsDealtDamage(filter) => {
+                TriggerSpec::IsDealtDamage(filter) | TriggerSpec::IsDealtCombatDamage(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(

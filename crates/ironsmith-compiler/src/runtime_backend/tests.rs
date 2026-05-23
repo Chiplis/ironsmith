@@ -8085,6 +8085,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify gift-given trigger probe");
     let enchanted_upkeep_tokens = lex_line("the beginning of enchanted player's upkeep", 0)
         .expect("rewrite lexer should classify enchanted player's upkeep trigger probe");
+    let dealt_combat_damage_tokens = lex_line("this creature is dealt combat damage", 0)
+        .expect("rewrite lexer should classify dealt-combat-damage trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -8173,6 +8175,12 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         Ok(crate::cards::builders::TriggerSpec::PlayerGivesGift(
             crate::target::PlayerFilter::Opponent
         ))
+    ));
+    assert!(matches!(
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &dealt_combat_damage_tokens,
+        ),
+        Ok(crate::cards::builders::TriggerSpec::ThisIsDealtCombatDamage)
     ));
 }
 

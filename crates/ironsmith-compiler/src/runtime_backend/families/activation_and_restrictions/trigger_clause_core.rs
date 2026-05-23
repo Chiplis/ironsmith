@@ -2038,24 +2038,41 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
-    if slice_ends_with(&words, &["is", "dealt", "damage"])
+    if (slice_ends_with(&words, &["is", "dealt", "damage"])
+        || slice_ends_with(&words, &["is", "dealt", "combat", "damage"]))
         && words.len() >= 4
         && !slice_starts_with(&words, &["this", "creature", "is", "dealt", "damage"])
+        && !slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
         && !slice_starts_with(&words, &["this", "is", "dealt", "damage"])
+        && !slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
     {
-        let is_word_idx = words.len().saturating_sub(3);
+        let is_word_idx = if slice_ends_with(&words, &["is", "dealt", "combat", "damage"]) {
+            words.len().saturating_sub(4)
+        } else {
+            words.len().saturating_sub(3)
+        };
         let is_token_idx = ActivationRestrictionCompatWords::new(tokens)
             .token_index_for_word_index(is_word_idx)
             .unwrap_or(tokens.len());
         let subject_tokens = &tokens[..is_token_idx];
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
+            if slice_ends_with(&words, &["is", "dealt", "combat", "damage"]) {
+                return Ok(TriggerSpec::IsDealtCombatDamage(filter));
+            }
             return Ok(TriggerSpec::IsDealtDamage(filter));
         }
     }
 
     if slice_starts_with(&words, &["this", "creature", "is", "dealt", "damage"])
+        || slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
         || slice_starts_with(&words, &["this", "is", "dealt", "damage"])
+        || slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
     {
+        if slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
+            || slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
+        {
+            return Ok(TriggerSpec::ThisIsDealtCombatDamage);
+        }
         return Ok(TriggerSpec::ThisIsDealtDamage);
     }
 

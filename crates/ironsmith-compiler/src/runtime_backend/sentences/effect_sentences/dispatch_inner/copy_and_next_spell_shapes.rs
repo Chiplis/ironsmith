@@ -288,6 +288,8 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         trigger_core_words.as_slice(),
         ["that", "creature", "is", "dealt", "damage"]
             | ["that", "permanent", "is", "dealt", "damage"]
+            | ["that", "creature", "is", "dealt", "combat", "damage"]
+            | ["that", "permanent", "is", "dealt", "combat", "damage"]
     ) {
         let mut filter = if trigger_core_words[1] == "creature" {
             ObjectFilter::creature()
@@ -295,7 +297,11 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             ObjectFilter::permanent()
         };
         filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
-        TriggerSpec::IsDealtDamage(filter)
+        if trigger_core_words.contains(&"combat") {
+            TriggerSpec::IsDealtCombatDamage(filter)
+        } else {
+            TriggerSpec::IsDealtDamage(filter)
+        }
     } else {
         parse_trigger_clause_lexed(&trigger_core_tokens)?
     };

@@ -213,7 +213,16 @@ pub(crate) fn interpret_trigger_model(
         } => {
             crate::triggers::Trigger::ability_activated_qualified(activator, filter, non_mana_only)
         }
-        TriggerKind::IsDealtDamage { target } => crate::triggers::Trigger::is_dealt_damage(target),
+        TriggerKind::IsDealtDamage {
+            target,
+            combat_only,
+        } => {
+            if combat_only {
+                crate::triggers::Trigger::is_dealt_combat_damage(target)
+            } else {
+                crate::triggers::Trigger::is_dealt_damage(target)
+            }
+        }
         TriggerKind::YouGainLife => crate::triggers::Trigger::you_gain_life(),
         TriggerKind::YouGainLifeDuringTurn { during_turn } => {
             crate::triggers::Trigger::you_gain_life_during_turn(during_turn)
