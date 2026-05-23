@@ -7595,6 +7595,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ThisAbilityResolvedThisTurnCount => {
             "the number of times this ability has resolved this turn".to_string()
         }
+        Value::SourceRegeneratedThisTurnCount => {
+            "the number of times this permanent regenerated this turn".to_string()
+        }
         Value::SpellsCastThisTurnMatching {
             player,
             filter,

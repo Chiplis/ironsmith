@@ -600,6 +600,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         }
         game.clear_regeneration_shields(id);
     }
+    game.clear_regenerated_this_turn();
 
     // Clear one-shot replacement effects (like regeneration shields)
     // These only last "until end of turn" per MTG rules

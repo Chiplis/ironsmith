@@ -110,6 +110,7 @@ pub enum Value {
     },
     CommanderCastCount(PlayerFilter),
     ThisAbilityResolvedThisTurnCount,
+    SourceRegeneratedThisTurnCount,
     DamageDealtThisTurnByTaggedSpellCast(TagKey),
     CardTypesInGraveyard(PlayerFilter),
     Devotion {

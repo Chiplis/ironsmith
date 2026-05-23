@@ -458,6 +458,10 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     }
 
     match &words[idx..filter_end] {
+        ["time", "it", "regenerated", "this", "turn"]
+        | ["times", "it", "regenerated", "this", "turn"] => {
+            return Some((Value::SourceRegeneratedThisTurnCount, filter_end));
+        }
         [
             "card" | "cards",
             "youve" | "you've",

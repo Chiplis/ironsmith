@@ -8474,6 +8474,27 @@ fn parse_enters_with_counter_for_each_time_it_was_kicked_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_create_token_for_each_time_it_regenerated_this_turn_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spiny Starfish Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of each end step, if this creature regenerated this turn, create a 0/1 blue Starfish creature token for each time it regenerated this turn.",
+        )
+        .expect("for-each-regenerated-this-turn token clause should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        !debug.contains("RuleFallbackText"),
+        "for-each-regenerated-this-turn variant should not use placeholder fallback: {debug}"
+    );
+    assert!(
+        debug.contains("SourceRegeneratedThisTurnCount"),
+        "expected regenerated-this-turn value in triggered ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_enters_with_counter_for_each_creature_card_in_your_graveyard_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Golgari Raiders Variant")
         .card_types(vec![CardType::Creature])

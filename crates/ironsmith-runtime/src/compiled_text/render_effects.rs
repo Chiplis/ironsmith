@@ -17603,6 +17603,7 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             Some("color of mana spent to cast this spell".to_string())
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
+        Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
         _ => None,
     }
 }
@@ -17704,6 +17705,7 @@ pub(super) fn should_render_token_count_with_where_x(value: &Value) -> bool {
             | Value::TimesPaid(_)
             | Value::TimesPaidLabel(_)
             | Value::KickCount
+            | Value::SourceRegeneratedThisTurnCount
             | Value::MagicGamesLostToOpponentsSinceLastWin
     ) {
         return false;
@@ -17776,6 +17778,9 @@ pub(super) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
         }
         Value::ColorsOfManaSpentToCastThisSpell => {
             format!("a {token_name} token for each color of mana spent to cast this spell")
+        }
+        Value::SourceRegeneratedThisTurnCount => {
+            format!("a {token_name} token for each time it regenerated this turn")
         }
         _ => format!("{} {token_name} token(s)", describe_value(value)),
     }
@@ -27136,7 +27141,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
             text = append_token_entry_flags(text, true);
             text = append_token_ability_sentence(text, token_ability);
-            return append_token_cleanup_sentences(text, true);
+            text = append_token_cleanup_sentences(text, true);
+            if matches!(create_token.count.unhinted(), Value::SourceRegeneratedThisTurnCount) {
+                return format!("if this creature regenerated this turn, {}", lowercase_first(&text));
+            }
+            return text;
         }
         let use_where_x = should_render_token_count_with_where_x(&create_token.count);
         let singular_count = matches!(create_token.count, Value::Fixed(1)) && !use_where_x;
