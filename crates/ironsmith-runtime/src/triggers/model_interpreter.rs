@@ -439,6 +439,9 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::Blocks(filter) => Self::blocks(filter),
             ironsmith_core::DelayedTriggerSpec::Dies(filter) => Self::dies(filter),
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer { source, player } => {
+                Self::deals_combat_damage_to_player(source, player)
+            }
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }

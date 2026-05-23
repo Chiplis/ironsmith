@@ -58,6 +58,13 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
+        TriggerSpec::DealsCombatDamageToPlayer { source, player }
+        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                source: source.clone(),
+                player: player.clone(),
+            })
+        }
         TriggerSpec::SpellCast {
             filter,
             caster,
