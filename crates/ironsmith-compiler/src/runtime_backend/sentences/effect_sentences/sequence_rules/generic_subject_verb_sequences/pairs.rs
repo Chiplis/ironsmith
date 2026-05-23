@@ -1353,6 +1353,7 @@ pub(crate) fn parse_delayed_dies_exile_top_power_choose_play(
                 chosen_tag,
                 PlayerAst::You,
                 true,
+                false,
             ),
         ],
     }]))
