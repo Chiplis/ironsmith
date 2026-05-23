@@ -4162,7 +4162,9 @@ pub(crate) fn parse_this_spell_cost_condition(
         return Some(ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn);
     }
     if (slice_starts_with(&w, &["youve", "cast", "another"])
-        || slice_starts_with(&w, &["you", "cast", "another"]))
+        || slice_starts_with(&w, &["you've", "cast", "another"])
+        || slice_starts_with(&w, &["you", "cast", "another"])
+        || slice_starts_with(&w, &["you", "ve", "cast", "another"]))
         && slice_ends_with(&w, &["this", "turn"])
     {
         if slice_contains(&w, &"instant") || slice_contains(&w, &"sorcery") {
@@ -4183,7 +4185,10 @@ pub(crate) fn parse_this_spell_cost_condition(
             card_types: Vec::new(),
         });
     }
-    if (slice_starts_with(&w, &["youve", "cast"]) || slice_starts_with(&w, &["you", "cast"]))
+    if (slice_starts_with(&w, &["youve", "cast"])
+        || slice_starts_with(&w, &["you've", "cast"])
+        || slice_starts_with(&w, &["you", "cast"])
+        || slice_starts_with(&w, &["you", "ve", "cast"]))
         && slice_ends_with(&w, &["this", "turn"])
         && (slice_contains(&w, &"instant") || slice_contains(&w, &"sorcery"))
     {
