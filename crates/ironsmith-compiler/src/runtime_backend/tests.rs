@@ -10268,6 +10268,31 @@ fn rewrite_lexed_reveal_top_count_handles_their_library() {
 }
 
 #[test]
+fn rewrite_lexed_reveal_target_face_down_permanent_parses() {
+    let text = "Reveal target face-down permanent.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify reveal target face-down text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("RevealTagged"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_reveal_then_turn_it_face_up_parses() {
+    let text = "Reveal target face-down permanent. If it's a creature card, you may turn it face up.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify reveal-then-turn-face-up text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_consult_defers_dynamic_mana_value_gate_without_reveal_top_fallback() {
     let text = "Target opponent reveals cards from the top of their library until they reveal a card with mana value equal to 1 plus the exiled spell's mana value. Exile that card, then that player shuffles. You may cast that exiled card without paying its mana cost.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify mana-value consult text");

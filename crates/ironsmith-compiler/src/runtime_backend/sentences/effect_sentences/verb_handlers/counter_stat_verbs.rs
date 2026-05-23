@@ -530,6 +530,12 @@ pub(crate) fn parse_reveal(
     if reveals_conditional_it {
         return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
+    let reveals_target_face_down_permanent = words.as_slice()
+        == ["target", "face-down", "permanent"]
+        || words.as_slice() == ["target", "facedown", "permanent"];
+    if reveals_target_face_down_permanent {
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
+    }
     if grammar::contains_word(tokens, "hand") {
         let is_full_hand_reveal = matches!(words.as_slice(), ["your", "hand"] | ["their", "hand"])
             || words.as_slice() == ["his", "or", "her", "hand"];

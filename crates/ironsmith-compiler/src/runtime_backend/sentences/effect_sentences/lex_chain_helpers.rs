@@ -432,6 +432,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "reorders" | "reorder" => Verb::Reorder,
             "pays" | "pay" => Verb::Pay,
             "takes" | "take" => Verb::Take,
+            "turns" | "turn" => Verb::Turn,
             "detains" | "detain" => Verb::Detain,
             "goads" | "goad" => Verb::Goad,
             "suspects" | "suspect" => Verb::Suspect,

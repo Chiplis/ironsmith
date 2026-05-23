@@ -2784,6 +2784,7 @@ pub(crate) enum Verb {
     Reorder,
     Pay,
     Take,
+    Turn,
     Detain,
     Goad,
     Suspect,

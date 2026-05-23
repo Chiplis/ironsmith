@@ -124,10 +124,27 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Reorder => parse_reorder(tokens, subject),
         Verb::Pay => parse_pay(tokens, subject),
         Verb::Take => parse_take(tokens, subject),
+        Verb::Turn => parse_turn(tokens),
         Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
     }
+}
+
+fn parse_turn(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(words.as_slice(), ["it", "face", "up"])
+        || matches!(words.as_slice(), ["it", "face-up"])
+        || matches!(words.as_slice(), ["target", "face-down", "permanent", "face", "up"])
+        || matches!(words.as_slice(), ["target", "face-down", "permanent", "face-up"])
+    {
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported turn clause (clause: '{}')",
+        words.join(" ")
+    )))
 }
 
 fn parse_take(
