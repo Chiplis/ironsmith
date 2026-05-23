@@ -675,10 +675,16 @@ impl CardDefinitionBuilder {
     }
 
     pub fn amplify(self, amount: u32) -> Self {
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![crate::effect::Effect::amplify(amount)],
-        ))
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                effects: vec![crate::effect::Effect::amplify(amount)].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:amplify {amount}")),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn devour(self, multiplier: u32) -> Self {

@@ -29033,6 +29033,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Evolve".to_string();
     }
+    if let Some(amplify) = effect.downcast_ref::<crate::effects::AmplifyEffect>() {
+        return format!("Amplify {}", amplify.amount);
+    }
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
         return format!("Devour {}", devour.multiplier);
     }
@@ -30124,6 +30127,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(afflict);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(amplify) = describe_structural_amplify_keyword(triggered)
+    {
+        return Some(amplify);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(devour) = describe_structural_devour_keyword(triggered)
     {
         return Some(devour);
@@ -31186,6 +31194,29 @@ fn describe_structural_devour_keyword(
     };
     let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
     Some(format!("Devour {}", devour.multiplier))
+}
+
+fn describe_structural_amplify_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:amplify"))
+    {
+        return None;
+    }
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let amplify = effect.downcast_ref::<crate::effects::AmplifyEffect>()?;
+    Some(format!("Amplify {}", amplify.amount))
 }
 
 fn describe_structural_mentor_keyword(
