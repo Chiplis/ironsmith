@@ -34429,6 +34429,24 @@ fn parse_oracle_commanders_insignia_commander_cast_count_regression() {
 }
 
 #[test]
+fn parse_oracle_emissary_escort_greatest_mana_value_anthem_regression() {
+    let def = parse_oracle_card_definition("Emissary Escort");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("greatest mana value among other artifacts you control"),
+        "expected greatest-mana-value anthem wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("GreatestManaValueAmong"),
+        "expected greatest-mana-value anthem lowering in parsed ability, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
     let def = parse_oracle_card_definition("Clarion Ultimatum");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

@@ -3,6 +3,7 @@ use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter};
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
+    GreatestManaValueAmong(ObjectFilter),
     AttachedToSource(ObjectFilter),
     AttachedToAffected(ObjectFilter),
     AffectedAttackedThisTurn,
