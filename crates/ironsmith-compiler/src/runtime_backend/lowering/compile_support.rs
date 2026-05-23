@@ -470,6 +470,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
         }
+        PredicateAst::PlayerHasPoisonCountersOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasPoisonCountersOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCastSpellsThisTurnOrMore {

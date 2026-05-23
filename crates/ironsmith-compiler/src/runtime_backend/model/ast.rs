@@ -451,6 +451,10 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreCardsInHandThanEachOtherPlayer {
         player: PlayerAst,
     },
+    PlayerHasPoisonCountersOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     VoteOptionGetsMoreVotes {
         option: String,
     },

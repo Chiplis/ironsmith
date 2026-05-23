@@ -1824,6 +1824,25 @@ fn test_parse_canonist_style_nonartifact_cast_limit() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_each_opponent_with_poison_counter_threshold() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Corrupted Atlas Variant")
+        .parse_text(
+            "Corrupted - Whenever this artifact becomes tapped, each opponent who has three or more poison counters loses 1 life.",
+        )
+        .expect("parse each-opponent poison threshold trigger");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("each opponent who has three or more poison counters loses 1 life")
+            || rendered.contains("for each opponent, if that player has 3 or more poison counters, that player loses 1 life"),
+        "expected poison-threshold opponent life-loss trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_your_opponents_nonartifact_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lavinia Variant")
         .parse_text("Your opponents can't cast more than one nonartifact spell each turn.")

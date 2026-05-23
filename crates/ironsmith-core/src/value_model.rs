@@ -648,6 +648,10 @@ pub enum Condition {
     PlayerHasMoreCardsInHandThanEachOtherPlayer {
         player: PlayerFilter,
     },
+    PlayerHasPoisonCountersOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     YouHaveCardInHandMatching(ObjectFilter),
     YourTurn,
     YourFirstTurnsOfTheGameOrFewer(u32),
