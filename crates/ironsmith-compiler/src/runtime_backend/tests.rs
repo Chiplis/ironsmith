@@ -10634,6 +10634,8 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         .expect("parser should parse exile-from-hand cost");
     let reveal_source = parse_activation_cost_rewrite("Reveal this card from your hand")
         .expect("parser should parse reveal-source-from-hand cost");
+    let reveal_typed_source = parse_activation_cost_rewrite("Reveal this creature from your hand")
+        .expect("parser should parse typed reveal-source-from-hand cost");
 
     assert!(matches!(
         energy.segments.as_slice(),
@@ -10666,6 +10668,10 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     ));
     assert!(matches!(
         reveal_source.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RevealSourceFromHand]
+    ));
+    assert!(matches!(
+        reveal_typed_source.segments.as_slice(),
         [super::ActivationCostSegmentCst::RevealSourceFromHand]
     ));
 }
