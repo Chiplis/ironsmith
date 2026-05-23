@@ -3025,10 +3025,16 @@ impl CardDefinitionBuilder {
     /// that share a creature type with it. This creature enters with N times that many
     /// +1/+1 counters on it."
     pub fn amplify(self, amount: u32) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![Effect::amplify(amount)],
-        ))
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_enters_battlefield(),
+                effects: vec![Effect::amplify(amount)].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:amplify {amount}")),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add ravenous.

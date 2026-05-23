@@ -32342,6 +32342,20 @@ fn vote_regression_truth_or_consequences_keeps_random_choice_before_consequences
 }
 
 #[test]
+fn amplify_regression_glowering_rogon_renders_keyword_without_unsupported_placeholder() {
+    let def = parse_oracle_card_definition("Glowering Rogon");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Amplify 1"),
+        "expected Glowering Rogon to render amplify keyword, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported effect"),
+        "expected Glowering Rogon to avoid unsupported placeholder, got {rendered}"
+    );
+}
+
+#[test]
 fn vote_regression_elrond_preserves_voter_choice_branch_and_owner_attack_restriction() {
     let def = parse_oracle_card_definition("Elrond of the White Council");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
