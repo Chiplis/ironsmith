@@ -28570,6 +28570,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 protected
             );
         }
+        if matches!(prevent_all.until, Until::EndOfTurn) {
+            if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
+                return format!("Prevent {damage_type} that would be dealt this turn");
+            }
+            return format!(
+                "Prevent {damage_type} that would be dealt to {} this turn",
+                protected
+            );
+        }
         if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
             return format!(
                 "Prevent {} {}",

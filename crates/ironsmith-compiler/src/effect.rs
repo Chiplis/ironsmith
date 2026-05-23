@@ -1178,6 +1178,18 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_all_damage_from_filter(
+        source_filter: crate::target::ObjectFilter,
+        until: Until,
+    ) -> Self {
+        let mut damage_filter = ironsmith_core::DamageFilter::all();
+        damage_filter.from_source = Some(source_filter);
+        Self::new(crate::effects::PreventAllDamageEffect::all_with_filter(
+            damage_filter,
+            until,
+        ))
+    }
+
     pub fn gain_life(amount: impl Into<Value>) -> Self {
         Self::new(crate::effects::GainLifeEffect::new(
             amount.into(),

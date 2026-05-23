@@ -9028,7 +9028,11 @@ pub(super) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
     }
 
     if let Some(source_filter) = &filter.from_source {
-        parts.push(format!("from {}", source_filter.description()));
+        let mut source_text = source_filter.description();
+        if let Some(stripped) = source_text.strip_suffix(" permanent") {
+            source_text = stripped.to_string();
+        }
+        parts.push(format!("from {source_text} sources"));
     }
     if let Some(source_types) = &filter.from_card_types
         && !source_types.is_empty()

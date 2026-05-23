@@ -932,6 +932,10 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
     },
+    PreventAllDamageFromSourceFilter {
+        duration: Until,
+        source_filter: ObjectFilter,
+    },
     PreventDamageToTargetPutCounters {
         amount: Option<Value>,
         target: TargetAst,
@@ -2016,6 +2020,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PreventAllDamageToTarget")
                 .field("target", target)
                 .field("duration", duration)
+                .finish(),
+            Self::PreventAllDamageFromSourceFilter {
+                duration,
+                source_filter,
+            } => f
+                .debug_struct("PreventAllDamageFromSourceFilter")
+                .field("duration", duration)
+                .field("source_filter", source_filter)
                 .finish(),
             Self::PreventDamageToTargetPutCounters {
                 amount,
@@ -3327,6 +3339,20 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PreventAllDamageToTarget { target, duration },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_from_source_filter(
+        source_filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
+                duration,
+                source_filter,
+            },
         )
     }
 

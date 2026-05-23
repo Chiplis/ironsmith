@@ -1485,6 +1485,19 @@ fn compile_subject_verb_effect(
                 })
             }
         }
+        SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
+            duration,
+            source_filter,
+        } => {
+            let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::prevent_all_damage_from_filter(
+                    source_filter,
+                    duration.clone(),
+                )],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::PreventDamageToTargetPutCounters {
             amount,
             target,

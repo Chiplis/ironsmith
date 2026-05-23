@@ -1686,6 +1686,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
