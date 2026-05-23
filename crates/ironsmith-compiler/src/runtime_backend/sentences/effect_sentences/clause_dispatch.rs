@@ -14,8 +14,10 @@ use super::super::activation_and_restrictions::{
     parse_you_choose_player_clause, starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::keyword_static::{
-    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
+    keyword_action_to_static_ability, parse_ability_line, parse_cost_modifier_mana_cost,
+    parse_pt_modifier,
     parse_pt_modifier_values,
 };
 use super::super::lexer::OwnedLexToken;
@@ -292,6 +294,46 @@ impl<'a> CommonPlayerActionClause<'a> {
             Self::State(clause) => clause.lower(),
         }
     }
+}
+
+fn parse_next_spell_cost_reduction_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let words = TokenWordView::new(tokens);
+    let clause_words = words.to_word_refs();
+    if grammar::words_match_prefix(tokens, &["the", "next"]).is_none() {
+        return None;
+    }
+
+    let spell_idx = clause_words.iter().position(|word| *word == "spell")?;
+    let costs_idx = clause_words.iter().position(|word| *word == "costs")?;
+    let less_idx = clause_words.iter().position(|word| *word == "less")?;
+    if clause_words.get(spell_idx + 1).copied() != Some("you")
+        || clause_words.get(spell_idx + 2).copied() != Some("cast")
+        || clause_words.get(spell_idx + 3).copied() != Some("this")
+        || clause_words.get(spell_idx + 4).copied() != Some("turn")
+        || clause_words.get(less_idx + 1).copied() != Some("to")
+        || clause_words.get(less_idx + 2).copied() != Some("cast")
+        || costs_idx <= spell_idx
+    {
+        return None;
+    }
+
+    let filter_start = words.token_index_after_words(2).unwrap_or(spell_idx);
+    let spell_token_idx = words.token_index_for_word_index(spell_idx)?;
+    let costs_token_idx = words.token_index_for_word_index(costs_idx)?;
+    let less_token_idx = words.token_index_for_word_index(less_idx)?;
+    let spell_filter_tokens = trim_commas(&tokens[filter_start..spell_token_idx]).to_vec();
+    let reduction_tokens = trim_commas(&tokens[costs_token_idx + 1..less_token_idx]).to_vec();
+    let filter = parse_spell_filter_with_grammar_entrypoint(&spell_filter_tokens);
+    let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
+    if consumed != reduction_tokens.len() {
+        return None;
+    }
+
+    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
+        PlayerAst::You,
+        filter,
+        reduction,
+    ))
 }
 
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -802,6 +844,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             span_from_tokens(tokens),
             None,
         )));
+    }
+
+    if let Some(effect) = parse_next_spell_cost_reduction_clause(tokens) {
+        return Ok(effect);
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
