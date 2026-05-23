@@ -166,6 +166,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerSacrifices { player, filter } => {
             Trigger::player_sacrifices(player, filter)
         }
+        TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::DiesOneOrMore(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()

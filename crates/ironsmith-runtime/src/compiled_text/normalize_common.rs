@@ -4538,6 +4538,16 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Whenever this or another {rest}");
     }
+    if let Some(rest) = normalized.strip_prefix("When this creature leaves the battlefield or another ")
+        && rest.contains(" leaves the battlefield")
+    {
+        return format!("Whenever this creature or another {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("When this leaves the battlefield or another ")
+        && rest.contains(" leaves the battlefield")
+    {
+        return format!("Whenever this or another {rest}");
+    }
     if let Some((left, right)) = normalized.split_once(" or Whenever another ") {
         if left.starts_with("Whenever ") {
             return format!("{left} or another {right}");
@@ -4552,6 +4562,17 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return format!("Whenever this creature or another {rest}");
     }
     if let Some(rest) = lower.strip_prefix("whenever this or whenever another ") {
+        return format!("Whenever this or another {rest}");
+    }
+    if let Some(rest) =
+        lower.strip_prefix("when this creature leaves the battlefield or another ")
+        && rest.contains(" leaves the battlefield")
+    {
+        return format!("Whenever this creature or another {rest}");
+    }
+    if let Some(rest) = lower.strip_prefix("when this leaves the battlefield or another ")
+        && rest.contains(" leaves the battlefield")
+    {
         return format!("Whenever this or another {rest}");
     }
     if let Some(rest) = normalized

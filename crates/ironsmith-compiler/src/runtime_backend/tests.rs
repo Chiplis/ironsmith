@@ -8940,6 +8940,23 @@ fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_all_non_ogr
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_supports_this_or_another_leaves_battlefield() {
+    let tokens = lex_line(
+        "Whenever this creature or another creature you control leaves the battlefield, each opponent loses 1 life.",
+        0,
+    )
+    .expect("rewrite lexer should classify source-or-another leaves trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("source-or-another leaves trigger should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ThisLeavesBattlefield"), "{debug}");
+    assert!(debug.contains("LeavesBattlefield"), "{debug}");
+    assert!(debug.contains("LoseLife"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_swindlers_scheme_trigger_keeps_opponent_hand_reveal_and_followup_cast() {
     let text = "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Swindler's Scheme");
