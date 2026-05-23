@@ -12001,14 +12001,7 @@ pub(super) fn describe_tagged_target_then_power_damage(
         return None;
     }
 
-    let mut source_text = describe_choose_spec(&target_only.target);
-    if source_text != "it"
-        && !source_text.starts_with("this ")
-        && !source_text.starts_with("that ")
-        && !source_text.starts_with("target ")
-    {
-        source_text = format!("target {}", strip_leading_article(&source_text));
-    }
+    let source_text = describe_choose_spec(&target_only.target);
     if matches!(
         deal.target,
         ChooseSpec::Tagged(ref target_tag) if target_tag == source_tag

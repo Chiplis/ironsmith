@@ -5301,10 +5301,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
             "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
         )
-        .replace(
-            "a creature you control deals damage equal to its power to up to one target creature you don't control",
-            "target creature you control deals damage equal to its power to up to one target creature you don't control",
-        );
+        ;
     normalized
 }
 
