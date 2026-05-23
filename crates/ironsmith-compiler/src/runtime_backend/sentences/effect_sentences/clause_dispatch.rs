@@ -327,6 +327,40 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+
+    if word_slice_starts_with(
+        &clause_words,
+        &["cast", "any", "number", "of", "spells"],
+    ) && find_word_sequence_index(
+        &clause_words,
+        &["from", "among", "the", "nonland", "cards", "exiled", "this", "way"],
+    )
+    .is_some()
+        && word_slice_ends_with(
+        &clause_words,
+        &["without", "paying", "their", "mana", "costs"],
+    ) {
+        let cast_filter = ObjectFilter::nonland()
+            .in_zone(crate::zone::Zone::Exile)
+            .match_tagged(
+                TagKey::from(IT_TAG),
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        return Ok(EffectAst::ForEachObject {
+            filter: cast_filter,
+            effects: vec![EffectAst::May {
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    TagKey::from(IT_TAG),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+            }],
+        });
+    }
+
     if clause_words.starts_with(&["all", "abilities", "and"])
         && matches!(clause_words.get(3).copied(), Some("gain" | "gains"))
         && let Some(gain_idx) = tokens

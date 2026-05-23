@@ -9813,6 +9813,20 @@ fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseab
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_each_player_exile_top_cast_nonland_exiled_this_way() {
+    let text = "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify each-player exile-top cast text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ForEachPlayer"), "{debug}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_target_opponent_consult_until_eot_cast() {
     let text = "Target opponent exiles cards from the top of their library until they exile a nonland card. Until end of turn, you may cast that card without paying its mana cost.";
     let lexed =

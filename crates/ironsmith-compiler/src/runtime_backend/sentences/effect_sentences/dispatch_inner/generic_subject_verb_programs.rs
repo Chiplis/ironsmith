@@ -732,11 +732,20 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
         exile_words.as_slice(),
         &["exile", "top", "card", "of", "each"],
     );
+    let starts_with_each_player_exile_until_nonland = slice_starts_with(
+        exile_words.as_slice(),
+        &[
+            "each", "player", "exiles", "cards", "from", "the", "top", "of", "their",
+            "library", "until", "they", "exile", "a", "nonland", "card",
+        ],
+    );
     let mentions_player_library = exile_words
         .iter()
         .any(|word| matches!(*word, "player" | "players"))
-        && exile_words.last().is_some_and(|word| *word == "library");
-    if !starts_with_each_player_exile || !mentions_player_library {
+        && slice_contains(&exile_words, &"library");
+    if !(starts_with_each_player_exile || starts_with_each_player_exile_until_nonland)
+        || !mentions_player_library
+    {
         return Ok(None);
     }
 
@@ -750,24 +759,55 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
             cast_words.as_slice(),
             &["without", "paying", "their", "mana", "costs"],
         );
-    if !casts_any_number_from_those_cards {
+
+    let casts_any_number_from_nonland_exiled_this_way = slice_starts_with(
+        cast_words.as_slice(),
+        &["you", "may", "cast", "any", "number", "of", "spells"],
+    ) && contains_word_window(
+        cast_words.as_slice(),
+        &["from", "among", "the", "nonland", "cards", "exiled", "this", "way"],
+    ) && slice_ends_with(
+        cast_words.as_slice(),
+        &["without", "paying", "their", "mana", "costs"],
+    );
+
+    if !casts_any_number_from_those_cards && !casts_any_number_from_nonland_exiled_this_way {
         return Ok(None);
     }
 
     let exiled_tag = crate::runtime_backend::util::helper_tag_for_tokens(tokens, "exiled");
+    let consult_match_tag = crate::runtime_backend::util::helper_tag_for_tokens(tokens, "match");
+    let consult_filter = ObjectFilter::nonland();
+    let exile_effects = if starts_with_each_player_exile_until_nonland {
+        vec![EffectAst::subject_verb_consult_top_of_library(
+            PlayerAst::That,
+            crate::cards::builders::LibraryConsultModeAst::Exile,
+            consult_filter,
+            crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
+            exiled_tag.clone(),
+            consult_match_tag.clone(),
+        )]
+    } else {
+        vec![EffectAst::subject_verb_exile_top_of_library(
+            PlayerAst::That,
+            Value::Fixed(1),
+            Vec::new(),
+            vec![exiled_tag.clone()],
+        )]
+    };
+
     let cast_filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-        exiled_tag.clone(),
+        if starts_with_each_player_exile_until_nonland {
+            consult_match_tag
+        } else {
+            exiled_tag.clone()
+        },
         TaggedOpbjectRelation::IsTaggedObject,
     );
 
     Ok(Some(vec![
         EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_exile_top_of_library(
-                PlayerAst::That,
-                Value::Fixed(1),
-                Vec::new(),
-                vec![exiled_tag.clone()],
-            )],
+            effects: exile_effects,
         },
         EffectAst::ForEachObject {
             filter: cast_filter,
