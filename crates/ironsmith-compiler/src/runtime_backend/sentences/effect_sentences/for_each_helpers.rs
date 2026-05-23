@@ -683,11 +683,13 @@ pub(crate) fn parse_for_each_opponent_clause(
         if inner_words.get(cmp_idx).copied() == Some("or")
             && inner_words.get(cmp_idx + 1).copied() == Some("more")
             && inner_words.get(cmp_idx + 2).copied() == Some("poison")
-            && inner_words.get(cmp_idx + 3).is_some_and(|word| *word == "counter" || *word == "counters")
+            && inner_words
+                .get(cmp_idx + 3)
+                .is_some_and(|word| *word == "counter" || *word == "counters")
         {
             let effect_start = cmp_idx + 4;
-            let effect_token_start =
-                token_index_for_word_index(&inner_tokens, effect_start).unwrap_or(inner_tokens.len());
+            let effect_token_start = token_index_for_word_index(&inner_tokens, effect_start)
+                .unwrap_or(inner_tokens.len());
             let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
             if effect_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(

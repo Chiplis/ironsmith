@@ -581,7 +581,8 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     let without_paying_mana_cost = first_words
         .windows(5)
         .any(|window| window == ["without", "paying", "its", "mana", "cost"]);
-    let first_is_targeted_graveyard_cast = first_words.starts_with(&["you", "may", "cast", "target"])
+    let first_is_targeted_graveyard_cast = first_words
+        .starts_with(&["you", "may", "cast", "target"])
         && has_from_graveyard
         && first_words.contains(&"instant")
         && first_words.contains(&"sorcery")

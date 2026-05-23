@@ -14569,10 +14569,12 @@ mod tests {
             false,
         );
         let mut moved_filter = ObjectFilter::default();
-        moved_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: moved_tag.clone(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
+        moved_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: moved_tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
 
         let effects = vec![
             Effect::new(move_to_zone).tag(moved_tag),
@@ -23970,7 +23972,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else if let Some(tagged) =
                 for_each.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
             {
-                tagged.effect.downcast_ref::<crate::effects::DealDamageEffect>()
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
             } else {
                 None
             };

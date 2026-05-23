@@ -2042,7 +2042,10 @@ pub(crate) fn parse_trigger_clause_lexed(
         || slice_ends_with(&words, &["is", "dealt", "combat", "damage"]))
         && words.len() >= 4
         && !slice_starts_with(&words, &["this", "creature", "is", "dealt", "damage"])
-        && !slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
+        && !slice_starts_with(
+            &words,
+            &["this", "creature", "is", "dealt", "combat", "damage"],
+        )
         && !slice_starts_with(&words, &["this", "is", "dealt", "damage"])
         && !slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
     {
@@ -2064,12 +2067,17 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     if slice_starts_with(&words, &["this", "creature", "is", "dealt", "damage"])
-        || slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
+        || slice_starts_with(
+            &words,
+            &["this", "creature", "is", "dealt", "combat", "damage"],
+        )
         || slice_starts_with(&words, &["this", "is", "dealt", "damage"])
         || slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
     {
-        if slice_starts_with(&words, &["this", "creature", "is", "dealt", "combat", "damage"])
-            || slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
+        if slice_starts_with(
+            &words,
+            &["this", "creature", "is", "dealt", "combat", "damage"],
+        ) || slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
         {
             return Ok(TriggerSpec::ThisIsDealtCombatDamage);
         }

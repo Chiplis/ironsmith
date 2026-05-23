@@ -12,7 +12,9 @@ pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFil
         TargetAst::Object(filter, _, _) => Some(filter),
         TargetAst::Spell(_) => Some(ObjectFilter::spell()),
         TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),
-        TargetAst::AnyOtherTarget(_) => Some(ObjectFilter::default().not_tagged(TagKey::from(IT_TAG))),
+        TargetAst::AnyOtherTarget(_) => {
+            Some(ObjectFilter::default().not_tagged(TagKey::from(IT_TAG)))
+        }
         TargetAst::WithCount(inner, _) => target_ast_to_object_filter(*inner),
         _ => None,
     }

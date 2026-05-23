@@ -4082,7 +4082,7 @@ mod parse_compile_tests {
             debug.contains("subtype: Some(Orc)"),
             "amass subtype: {debug}"
         );
-        assert!(debug.contains("amount: 2"), "amass amount: {debug}");
+        assert!(debug.contains("amount: Fixed(2)"), "amass amount: {debug}");
         assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
     }
 

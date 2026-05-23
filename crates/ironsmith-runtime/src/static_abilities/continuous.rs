@@ -587,7 +587,10 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             subject
         }
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
-            format!("the greatest mana value among {}", pluralized_subject_text(filter))
+            format!(
+                "the greatest mana value among {}",
+                pluralized_subject_text(filter)
+            )
         }
         AnthemCountExpression::AttachedToSource(filter) => {
             format!(
@@ -702,7 +705,10 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
 fn describe_anthem_where_x_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
-            format!("the greatest mana value among {}", pluralized_subject_text(filter))
+            format!(
+                "the greatest mana value among {}",
+                pluralized_subject_text(filter)
+            )
         }
         _ => format!("the number of {}", describe_anthem_count_expression(expr)),
     }

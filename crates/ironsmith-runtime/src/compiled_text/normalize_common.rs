@@ -1639,6 +1639,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .join(" ")
         .to_ascii_lowercase();
     let lower_compact_trimmed = lower_compact.trim_end_matches('.').to_string();
+    if lower_compact_trimmed
+        == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
+    {
+        return "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
+    }
     if lower_compact
         == "each player loses 1 life. for each player, that player discards a card. each player sacrifices a creature that player controls of their choice. each player sacrifices a land that player controls of their choice."
     {
@@ -1723,6 +1728,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "create a lander token. you may sacrifice an artifact. if you do, for each creature, lithobraking deals 2 damage to that object"
+        || lower_compact_trimmed
+            == "create a lander token. you may sacrifice an artifact you control. if you do, lithobraking deals 2 damage to each creature"
         || (lower_compact.contains("create a lander token")
             && lower_compact.contains("you may sacrifice an artifact")
             && lower_compact

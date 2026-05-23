@@ -322,7 +322,7 @@ fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
         "expected opponent life-loss trigger with cast-tagged effect, got {debug}"
     );
     assert!(
-        debug.contains("RegisterZoneReplacementEffect"),
+        debug.contains("RegisterFutureZoneReplacementEffect"),
         "expected one-shot graveyard-to-exile replacement for cast spell, got {debug}"
     );
 
@@ -22419,7 +22419,7 @@ fn parse_arcbond_delayed_trigger_without_unsupported_fallback_in_allow_unsupport
         "expected delayed trigger to track a tagged watched object, got {spell_debug}"
     );
     assert!(
-        spell_debug.contains("IsDealtDamageTrigger { target: Source }"),
+        spell_debug.contains("IsDealtDamageTrigger { target: Source"),
         "expected delayed trigger to watch damage dealt to the tagged object source, got {spell_debug}"
     );
 }
@@ -31386,8 +31386,12 @@ fn proud_pack_rhino_modal_etb_renders_with_bullets() {
         }
         other => panic!("shield mode should target a permanent, got {other:?}"),
     }
+    let proliferate_effect = modal.modes[1].effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(&modal.modes[1].effects[0]);
     assert!(
-        modal.modes[1].effects[0]
+        proliferate_effect
             .downcast_ref::<crate::effects::ProliferateEffect>()
             .is_some(),
         "second mode should proliferate"

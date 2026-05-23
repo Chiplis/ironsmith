@@ -328,18 +328,19 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
 
-    if word_slice_starts_with(
-        &clause_words,
-        &["cast", "any", "number", "of", "spells"],
-    ) && find_word_sequence_index(
-        &clause_words,
-        &["from", "among", "the", "nonland", "cards", "exiled", "this", "way"],
-    )
-    .is_some()
+    if word_slice_starts_with(&clause_words, &["cast", "any", "number", "of", "spells"])
+        && find_word_sequence_index(
+            &clause_words,
+            &[
+                "from", "among", "the", "nonland", "cards", "exiled", "this", "way",
+            ],
+        )
+        .is_some()
         && word_slice_ends_with(
-        &clause_words,
-        &["without", "paying", "their", "mana", "costs"],
-    ) {
+            &clause_words,
+            &["without", "paying", "their", "mana", "costs"],
+        )
+    {
         let cast_filter = ObjectFilter::nonland()
             .in_zone(crate::zone::Zone::Exile)
             .match_tagged(
@@ -1240,10 +1241,7 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     let Some(is_word_idx) = find_word_index(&words, "is") else {
         return Ok(None);
     };
-    if !matches!(
-        words.get(is_word_idx + 1).copied(),
-        Some("goaded" | "goad")
-    ) {
+    if !matches!(words.get(is_word_idx + 1).copied(), Some("goaded" | "goad")) {
         return Ok(None);
     }
 
@@ -1267,7 +1265,10 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     }
 
     let subject_words = ClauseDispatchCompatWords::new(&subject_tokens).to_word_refs();
-    let target = if matches!(subject_words.as_slice(), ["the", "token"] | ["the", "tokens"]) {
+    let target = if matches!(
+        subject_words.as_slice(),
+        ["the", "token"] | ["the", "tokens"]
+    ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
     } else {
         parse_target_phrase(&subject_tokens)?

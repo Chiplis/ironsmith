@@ -126,12 +126,7 @@ impl EffectExecutor for AmassEffect {
         outcomes.push(counters_outcome);
 
         let action_event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                KeywordActionKind::Amass,
-                ctx.controller,
-                ctx.source,
-                amount,
-            ),
+            KeywordActionEvent::new(KeywordActionKind::Amass, ctx.controller, ctx.source, amount),
             ctx.provenance,
         );
         Ok(EffectOutcome::aggregate(outcomes)

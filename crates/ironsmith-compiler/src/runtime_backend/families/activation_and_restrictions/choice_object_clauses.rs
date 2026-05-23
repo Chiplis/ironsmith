@@ -153,7 +153,9 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         choose_filter.controller = Some(match chooser {
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::That => PlayerFilter::IteratedPlayer,
-            PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG)),
+            PlayerAst::ItsController => {
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+            }
             _ => PlayerFilter::target_player(),
         });
     }

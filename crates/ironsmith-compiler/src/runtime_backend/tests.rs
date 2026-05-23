@@ -2813,12 +2813,14 @@ fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
         .expect("rewrite lexer should classify attach clause");
     let parsed = parse_effect_sentence_lexed(&tokens).expect("attach clause should parse");
 
-    let [crate::cards::builders::EffectAst::SubjectVerb(
-        crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::Attach { object, target },
-            ..
-        },
-    )] = parsed.as_slice()
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Attach { object, target },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
     else {
         panic!("expected attach effect, got {parsed:?}");
     };
@@ -2843,12 +2845,14 @@ fn amass_where_x_clause_replaces_unbound_x() {
     .expect("rewrite lexer should classify amass where-x clause");
     let parsed = parse_effect_sentence_lexed(&tokens).expect("amass clause should parse");
 
-    let [crate::cards::builders::EffectAst::SubjectVerb(
-        crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::Amass { amount, .. },
-            ..
-        },
-    )] = parsed.as_slice()
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Amass { amount, .. },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
     else {
         panic!("expected amass effect, got {parsed:?}");
     };
@@ -4365,11 +4369,8 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
 
 #[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast() {
-    let tokens = lex_line(
-        "Until the end of your next turn, you may cast that card",
-        0,
-    )
-    .expect("rewrite lexer should classify until-next-turn cast permission clause");
+    let tokens = lex_line("Until the end of your next turn, you may cast that card", 0)
+        .expect("rewrite lexer should classify until-next-turn cast permission clause");
 
     assert!(matches!(
         super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
@@ -4412,8 +4413,9 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast_with_any_c
     )
     .expect("rewrite lexer should classify until-next-turn cast permission with any-color mana");
 
-    let effects = parse_effect_sentence_lexed(&tokens)
-        .expect("until-next-turn tagged cast permission with any-color mana should parse as an effect");
+    let effects = parse_effect_sentence_lexed(&tokens).expect(
+        "until-next-turn tagged cast permission with any-color mana should parse as an effect",
+    );
     assert!(
         effects.iter().any(|effect| matches!(
             effect,
@@ -6831,9 +6833,11 @@ fn rewrite_lexed_keyword_line_parses_mixed_protection_chain_targets() {
 
 #[test]
 fn rewrite_lexed_keyword_line_parses_protection_from_permanents_with_named_counters() {
-    let protection_tokens =
-        lex_line("Protection from permanents with corruption counters on them", 0)
-            .expect("rewrite lexer should classify counter-filtered protection");
+    let protection_tokens = lex_line(
+        "Protection from permanents with corruption counters on them",
+        0,
+    )
+    .expect("rewrite lexer should classify counter-filtered protection");
 
     let parsed = super::clause_support::parse_ability_line_lexed(&protection_tokens)
         .expect("counter-filtered protection should parse");
@@ -9399,7 +9403,7 @@ fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_replacement
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("ChooseObjects"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
 }
 
 #[test]
@@ -9421,7 +9425,7 @@ fn rewrite_sequence_registry_matches_may_cast_target_graveyard_artifact_or_spell
     assert!(debug.contains("ChooseObjects"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
 }
 
 #[test]
@@ -9594,7 +9598,10 @@ fn rewrite_source_exiled_counter_play_and_cast_permission_static_line() {
         })
         .expect("expected PlayFrom grant");
 
-    assert!(matches!(&grant.grantable, crate::grant::Grantable::PlayFrom));
+    assert!(matches!(
+        &grant.grantable,
+        crate::grant::Grantable::PlayFrom
+    ));
     assert_eq!(grant.zone, crate::zone::Zone::Exile);
     assert_eq!(grant.beneficiary, crate::filter::PlayerFilter::You);
     assert_eq!(grant.filter.any_of.len(), 2);
@@ -9610,7 +9617,9 @@ fn rewrite_source_exiled_counter_play_and_cast_permission_static_line() {
         candidate.excluded_card_types.contains(&CardType::Creature)
             && candidate.excluded_card_types.contains(&CardType::Land)
             && candidate.with_counter
-                == Some(crate::filter::CounterConstraint::Typed(CounterType::Named("fetch")))
+                == Some(crate::filter::CounterConstraint::Typed(CounterType::Named(
+                    "fetch",
+                )))
     }));
 
     let permission = direct_abilities
@@ -9644,7 +9653,10 @@ fn rewrite_source_exiled_counter_play_and_cast_permission_static_line() {
         .parse_text(line)
         .expect("Haldan-style line should parse");
     let debug = format!("{:#?}", def.abilities);
-    assert!(debug.contains("Grantable::PlayFrom") || debug.contains("grantable: PlayFrom"), "{debug}");
+    assert!(
+        debug.contains("Grantable::PlayFrom") || debug.contains("grantable: PlayFrom"),
+        "{debug}"
+    );
     assert!(debug.contains("fetch"), "{debug}");
     assert!(debug.contains("ManaSpendPermission"), "{debug}");
 }
@@ -10140,7 +10152,8 @@ fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseab
 #[test]
 fn rewrite_lexed_effect_sequence_parses_each_player_exile_top_cast_nonland_exiled_this_way() {
     let text = "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.";
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify each-player exile-top cast text");
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify each-player exile-top cast text");
 
     let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:#?}");
@@ -12043,8 +12056,8 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
 }
 
 #[test]
-fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction() -> Result<(), CardTextError>
-{
+fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction()
+-> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Trial of Agony")
         .card_types(vec![CardType::Sorcery]);
     let (definition, _) = parse_text_with_annotations_lowered(
@@ -12054,7 +12067,10 @@ fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction() -> R
     )?;
     let debug = format!("{definition:#?}");
 
-    assert!(debug.contains("CantEffect"), "expected can't effect, got {debug}");
+    assert!(
+        debug.contains("CantEffect"),
+        "expected can't effect, got {debug}"
+    );
     assert!(
         debug.contains("restriction: Block"),
         "expected block restriction, got {debug}"

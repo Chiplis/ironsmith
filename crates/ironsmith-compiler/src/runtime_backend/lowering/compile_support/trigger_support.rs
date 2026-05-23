@@ -114,9 +114,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             non_mana_only,
         } => Trigger::ability_activated_qualified(activator, filter, non_mana_only),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
-        TriggerSpec::ThisIsDealtCombatDamage => {
-            Trigger::is_dealt_combat_damage(ChooseSpec::Source)
-        }
+        TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
         TriggerSpec::IsDealtCombatDamage(filter) => {
             Trigger::is_dealt_combat_damage(ChooseSpec::Object(filter))

@@ -185,8 +185,7 @@ pub(super) fn run_split_top_and_face_down_look_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    let phrase =
-        "you may look at the top card of your library and at face-down creatures you don't control any time";
+    let phrase = "you may look at the top card of your library and at face-down creatures you don't control any time";
     if lower.trim_end_matches('.') != phrase {
         return Ok(None);
     }

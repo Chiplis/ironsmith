@@ -83,8 +83,8 @@ use super::util::{
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
     parse_counter_type_word, parse_filter_counter_constraint_words, parse_flashback_keyword_line,
-    parse_for_each_count_value_words, parse_number_word_i32, parse_subtype_flexible,
-    parse_value, parse_value_expr_words, parse_zone_word, preserve_keyword_prefix_for_parse,
+    parse_for_each_count_value_words, parse_number_word_i32, parse_subtype_flexible, parse_value,
+    parse_value_expr_words, parse_zone_word, preserve_keyword_prefix_for_parse,
     source_reference_surface_for_possessive_words, trim_commas, words,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
@@ -6828,8 +6828,19 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         "you", "may", "cast", "spells", "from", "among", "cards", "in", "exile",
     ];
     let play_lands_and_cast_prefix = [
-        "you", "may", "play", "lands", "and", "cast", "noncreature", "spells", "from",
-        "among", "cards", "you", "exiled",
+        "you",
+        "may",
+        "play",
+        "lands",
+        "and",
+        "cast",
+        "noncreature",
+        "spells",
+        "from",
+        "among",
+        "cards",
+        "you",
+        "exiled",
     ];
     let is_cast_from_exile_family = words.starts_with(&cast_prefix);
     let is_play_lands_and_cast_noncreature_family = words.starts_with(&play_lands_and_cast_prefix);
@@ -6842,35 +6853,34 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     else {
         return Ok(None);
     };
-    let (counter_start_idx, counters_idx) = if let Some(with_idx) =
-        words[..and_idx].iter().position(|word| *word == "with")
-    {
-        let Some(counters_idx) = words[with_idx + 1..and_idx]
-            .iter()
-            .position(|word| matches!(*word, "counter" | "counters"))
-            .map(|offset| with_idx + 1 + offset)
-        else {
+    let (counter_start_idx, counters_idx) =
+        if let Some(with_idx) = words[..and_idx].iter().position(|word| *word == "with") {
+            let Some(counters_idx) = words[with_idx + 1..and_idx]
+                .iter()
+                .position(|word| matches!(*word, "counter" | "counters"))
+                .map(|offset| with_idx + 1 + offset)
+            else {
+                return Ok(None);
+            };
+            (with_idx + 1, counters_idx)
+        } else if is_play_lands_and_cast_noncreature_family {
+            let that_have_prefix = ["that", "have"];
+            let Some(that_have_idx) =
+                find_keyword_static_phrase_start(&words[..and_idx], &that_have_prefix)
+            else {
+                return Ok(None);
+            };
+            let Some(counters_idx) = words[that_have_idx + that_have_prefix.len()..and_idx]
+                .iter()
+                .position(|word| matches!(*word, "counter" | "counters"))
+                .map(|offset| that_have_idx + that_have_prefix.len() + offset)
+            else {
+                return Ok(None);
+            };
+            (that_have_idx + that_have_prefix.len(), counters_idx)
+        } else {
             return Ok(None);
         };
-        (with_idx + 1, counters_idx)
-    } else if is_play_lands_and_cast_noncreature_family {
-        let that_have_prefix = ["that", "have"];
-        let Some(that_have_idx) =
-            find_keyword_static_phrase_start(&words[..and_idx], &that_have_prefix)
-        else {
-            return Ok(None);
-        };
-        let Some(counters_idx) = words[that_have_idx + that_have_prefix.len()..and_idx]
-            .iter()
-            .position(|word| matches!(*word, "counter" | "counters"))
-            .map(|offset| that_have_idx + that_have_prefix.len() + offset)
-        else {
-            return Ok(None);
-        };
-        (that_have_idx + that_have_prefix.len(), counters_idx)
-    } else {
-        return Ok(None);
-    };
     if counters_idx + 3 > and_idx
         || words.get(counters_idx + 1..counters_idx + 3) != Some(["on", "them"].as_slice())
     {

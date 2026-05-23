@@ -194,7 +194,8 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             && words.get(idx + 2).copied() == Some("with")
         {
             let counter_words = &words[idx + 3..];
-            if let Some((with_counter, consumed)) = parse_filter_counter_constraint_words(counter_words)
+            if let Some((with_counter, consumed)) =
+                parse_filter_counter_constraint_words(counter_words)
                 && consumed == counter_words.len()
             {
                 let mut filter = ObjectFilter::permanent();

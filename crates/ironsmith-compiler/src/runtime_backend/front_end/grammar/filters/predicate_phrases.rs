@@ -2188,32 +2188,26 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
         )));
     }
-    if filtered.len() >= 4
-        && filtered[filtered.len() - 3..] == ["cost", "was", "paid"]
-    {
+    if filtered.len() >= 4 && filtered[filtered.len() - 3..] == ["cost", "was", "paid"] {
         let start = usize::from(filtered.first().copied() == Some("the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
             return Ok(PredicateAst::ThisSpellPaidLabel(label));
         }
     }
-    if filtered.len() >= 4
-        && filtered[filtered.len() - 3..] == ["cost", "wasnt", "paid"]
-    {
+    if filtered.len() >= 4 && filtered[filtered.len() - 3..] == ["cost", "wasnt", "paid"] {
         let start = usize::from(filtered.first().copied() == Some("the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
-            return Ok(PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                label,
-            ))));
+            return Ok(PredicateAst::Not(Box::new(
+                PredicateAst::ThisSpellPaidLabel(label),
+            )));
         }
     }
-    if filtered.len() >= 5
-        && filtered[filtered.len() - 4..] == ["cost", "was", "not", "paid"]
-    {
+    if filtered.len() >= 5 && filtered[filtered.len() - 4..] == ["cost", "was", "not", "paid"] {
         let start = usize::from(filtered.first().copied() == Some("the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 4]) {
-            return Ok(PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                label,
-            ))));
+            return Ok(PredicateAst::Not(Box::new(
+                PredicateAst::ThisSpellPaidLabel(label),
+            )));
         }
     }
     if filtered.len() == 6

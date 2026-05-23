@@ -6937,7 +6937,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("ticket-labeled trigger should parse");
 
-        let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
         assert!(
             rendered.contains("{tk}{tk} — when this permanent leaves the battlefield")
                 && !rendered.contains("chosen option is"),

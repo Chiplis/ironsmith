@@ -124,14 +124,9 @@ fn parse_exile_top_library_then_play_bundle(
                     player, allow_land, ..
                 },
             ..
-        }) => {
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                tag,
-                player,
-                allow_land,
-                false,
-            )
-        }
+        }) => EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+            tag, player, allow_land, false,
+        ),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
@@ -1767,7 +1762,8 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_proliferate_then_choose_permanents_phase_out_single_sentence(tokens)
+    if let Some(effects) =
+        parse_proliferate_then_choose_permanents_phase_out_single_sentence(tokens)
     {
         return Some(effects);
     }
