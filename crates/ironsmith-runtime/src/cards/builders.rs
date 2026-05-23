@@ -7554,6 +7554,35 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_one_or_more_energy_pay_clause_includes_pay_any_energy_effect() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Flexible Energy Pay Trigger Variant")
+            .parse_text(
+                "Whenever this creature attacks, you may pay one or more {E}. If you do, put a +1/+1 counter on this creature.",
+            )
+            .expect("one-or-more energy pay trigger line should parse");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+
+        let debug = format!("{:?}", triggered.effects);
+        assert!(
+            debug.contains("PayAnyEnergyEffect"),
+            "expected pay any energy effect, got {debug}"
+        );
+        assert!(
+            debug.contains("PutCountersEffect"),
+            "expected +1/+1 counter effect in if-you-do branch, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_get_energy_equal_to_tagged_spell_mana_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Electrosiphon Variant")
             .parse_text("Counter target spell. You get an amount of {E} (energy counters) equal to its mana value.")
