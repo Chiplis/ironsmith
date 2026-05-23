@@ -9974,6 +9974,27 @@ fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permane
 }
 
 #[test]
+fn rewrite_lowered_supports_spent_to_cast_conditional_chain() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Firespout deals 3 damage to each creature without flying if {R} was spent to cast this spell and 3 damage to each creature with flying if {G} was spent to cast this spell."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("Red,"), "{debug}");
+    assert!(debug.contains("Green,"), "{debug}");
+    assert!(debug.contains("excluded_static_abilities"), "{debug}");
+    assert!(debug.contains("static_abilities"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+    Ok(())
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
     let text = "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.";
     let lexed =

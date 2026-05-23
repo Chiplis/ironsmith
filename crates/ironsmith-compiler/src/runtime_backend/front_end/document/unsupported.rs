@@ -344,11 +344,6 @@ pub(super) fn diagnose_known_unsupported_rewrite_line(
         } else {
             "unsupported lose-all-abilities static becomes clause"
         }
-    } else if ctx.phrase_count(&["spent", "to", "cast", "this", "spell"]) >= 2
-        && ctx.contains_word("if")
-        && !matches!(ctx.first_word(), Some("if" | "unless" | "when" | "as"))
-    {
-        "unsupported spent-to-cast conditional clause"
     } else if ctx.contains_phrase(&["for", "each", "odd", "result"])
         && ctx.contains_phrase(&["for", "each", "even", "result"])
     {

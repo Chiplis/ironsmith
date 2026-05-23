@@ -9266,13 +9266,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_rejects_spent_to_cast_conditional_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant").parse_text(
+    fn parse_supports_spent_to_cast_conditional_clause_chain() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant")
+            .parse_text(
             "Firespout deals 3 damage to each creature without flying if {R} was spent to cast this spell and 3 damage to each creature with flying if {G} was spent to cast this spell.",
-        );
+            )
+            .expect("spent-to-cast conditional chain should parse");
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&definition)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
-            result.is_err(),
-            "unsupported spent-to-cast conditional clause should fail parse instead of partially compiling damage effects"
+            joined.contains("if {r} was spent to cast this spell")
+                && joined.contains("if {g} was spent to cast this spell"),
+            "expected both spent-to-cast conditionals in compiled text, got {joined}"
         );
     }
 
