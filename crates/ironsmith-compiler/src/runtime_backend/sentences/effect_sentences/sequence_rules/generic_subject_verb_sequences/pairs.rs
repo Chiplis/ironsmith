@@ -575,25 +575,22 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     let first_words = sentence_words(&first);
     let second_words = sentence_words(&second);
 
-    if first_words.as_slice()
-        != [
-            "you",
-            "may",
-            "cast",
-            "target",
-            "instant",
-            "or",
-            "sorcery",
-            "card",
-            "from",
-            "your",
-            "graveyard",
-        ]
-    {
+    let has_from_graveyard = first_words
+        .windows(3)
+        .any(|window| window == ["from", "your", "graveyard"]);
+    let without_paying_mana_cost = first_words
+        .windows(5)
+        .any(|window| window == ["without", "paying", "its", "mana", "cost"]);
+    let first_is_targeted_graveyard_cast = first_words.starts_with(&["you", "may", "cast", "target"])
+        && has_from_graveyard
+        && first_words.contains(&"instant")
+        && first_words.contains(&"sorcery")
+        && first_words.contains(&"card");
+    if !first_is_targeted_graveyard_cast {
         return Ok(None);
     }
-    if second_words.as_slice()
-        != [
+    let second_is_that_spell_replacement = second_words.as_slice()
+        == [
             "if",
             "that",
             "spell",
@@ -606,16 +603,50 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
             "exile",
             "it",
             "instead",
-        ]
-    {
+        ];
+    let second_is_cast_this_way_replacement = second_words.as_slice()
+        == [
+            "if",
+            "an",
+            "instant",
+            "or",
+            "sorcery",
+            "spell",
+            "cast",
+            "this",
+            "way",
+            "would",
+            "be",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "exile",
+            "it",
+            "instead",
+        ];
+    if !second_is_that_spell_replacement && !second_is_cast_this_way_replacement {
         return Ok(None);
     }
 
-    let tag = TagKey::from("target_instant_or_sorcery_card");
+    let tag = TagKey::from(crate::cards::builders::IT_TAG);
     let mut filter = ObjectFilter::default();
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
     filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+    if first_words.contains(&"artifact") {
+        filter.card_types.push(CardType::Artifact);
+    }
+
+    let replacement_filter = ObjectFilter {
+        zone: Some(Zone::Stack),
+        card_types: vec![CardType::Instant, CardType::Sorcery],
+        tagged_constraints: vec![TaggedObjectConstraint {
+            tag: tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        }],
+        ..ObjectFilter::default()
+    };
 
     Ok(Some(vec![
         EffectAst::ChooseObjects {
@@ -631,12 +662,12 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
                 PlayerAst::You,
                 false,
                 false,
-                false,
+                without_paying_mana_cost,
                 None,
             )],
         },
-        EffectAst::subject_verb_register_zone_replacement(
-            TargetAst::Tagged(tag, None),
+        EffectAst::subject_verb_register_future_zone_replacement(
+            replacement_filter,
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Exile,

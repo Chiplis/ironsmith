@@ -4254,6 +4254,37 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
 }
 
 #[test]
+fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost() {
+    let tokens = lex_line(
+        "Cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify targeted graveyard free-cast clause");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("targeted graveyard free-cast should parse");
+
+    assert!(matches!(
+        effects.as_slice(),
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                subject: crate::cards::builders::SubjectVerbSubjectAst {
+                    role: crate::cards::builders::SubjectVerbRoleAst::Actor,
+                    player: crate::cards::builders::PlayerAst::Implicit,
+                },
+                action: crate::cards::builders::SubjectVerbActionAst::CastTagged {
+                    player: crate::cards::builders::PlayerAst::Implicit,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    ..
+                },
+            },
+        )]
+    ));
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
     let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify until-next-turn permission clause");
@@ -9167,6 +9198,28 @@ fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_replacement
     );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_may_cast_target_graveyard_artifact_or_spell_replacement() {
+    let sentences = registry_sentence_inputs(
+        "You may cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost. If an instant or sorcery spell cast this way would be put into your graveyard, exile it instead.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match targeted graveyard free-cast/replacement bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "may-cast-target-graveyard-spell-then-exile-replacement"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
 }
