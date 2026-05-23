@@ -14,7 +14,8 @@ use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
-    parse_permission_clause_spec_lexed, parse_unsupported_play_cast_permission_clause_lexed,
+    parse_cast_or_play_tagged_clause, parse_permission_clause_spec_lexed,
+    parse_unsupported_play_cast_permission_clause_lexed,
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::token_primitives::{
@@ -433,6 +434,10 @@ pub(crate) fn parse_effect_chain_lexed(
 
     if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
         return Ok(vec![unless_action]);
+    }
+
+    if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+        return Ok(vec![effect]);
     }
 
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
