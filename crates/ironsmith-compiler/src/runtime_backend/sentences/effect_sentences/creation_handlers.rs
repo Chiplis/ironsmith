@@ -1213,15 +1213,13 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     {
         return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
     }
-    if grammar::words_match_prefix(tokens, &["time", "it", "regenerated", "this", "turn"])
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["times", "it", "regenerated", "this", "turn"],
-        )
-        .is_some()
+    if grammar::words_match_prefix(tokens, &["time", "it", "regenerated", "this", "turn"]).is_some()
+        || grammar::words_match_prefix(tokens, &["times", "it", "regenerated", "this", "turn"])
+            .is_some()
     {
-        return Some(Value::SourceRegeneratedThisTurnCount.with_surface_hint(ValueSurfaceHint::ForEach));
+        return Some(
+            Value::SourceRegeneratedThisTurnCount.with_surface_hint(ValueSurfaceHint::ForEach),
+        );
     }
     let clause_words = token_word_refs(tokens);
     if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))

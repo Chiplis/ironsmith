@@ -27142,8 +27142,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             text = append_token_entry_flags(text, true);
             text = append_token_ability_sentence(text, token_ability);
             text = append_token_cleanup_sentences(text, true);
-            if matches!(create_token.count.unhinted(), Value::SourceRegeneratedThisTurnCount) {
-                return format!("if this creature regenerated this turn, {}", lowercase_first(&text));
+            if matches!(
+                create_token.count.unhinted(),
+                Value::SourceRegeneratedThisTurnCount
+            ) {
+                return format!(
+                    "if this creature regenerated this turn, {}",
+                    lowercase_first(&text)
+                );
             }
             return text;
         }

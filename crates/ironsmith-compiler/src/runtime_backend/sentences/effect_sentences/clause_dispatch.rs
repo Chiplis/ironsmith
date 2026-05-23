@@ -791,8 +791,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if clause_words.as_slice() == ["copy", "a", "card", "exiled", "with", "this", "artifact"]
-    {
+    if clause_words.as_slice() == ["copy", "a", "card", "exiled", "with", "this", "artifact"] {
         let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
             TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             crate::target::TaggedOpbjectRelation::IsTaggedObject,

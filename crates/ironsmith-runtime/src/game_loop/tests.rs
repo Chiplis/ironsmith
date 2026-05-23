@@ -10,6 +10,7 @@ use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
+use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
 use crate::ids::CardId;
@@ -23,6 +24,34 @@ use crate::types::{CardType, Subtype};
 
 fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
+}
+
+#[test]
+fn regeneration_count_tracks_used_shields_until_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let creature = create_creature(&mut game, "Regeneration Probe", alice, 1, 1);
+
+    assert_eq!(game.regenerated_this_turn_count(creature), 0);
+    assert!(!game.use_regeneration_shield(creature));
+    assert_eq!(
+        game.regenerated_this_turn_count(creature),
+        0,
+        "failed regeneration attempts must not count"
+    );
+
+    game.add_regeneration_shield(creature, 2);
+    assert!(game.use_regeneration_shield(creature));
+    assert!(game.use_regeneration_shield(creature));
+    assert_eq!(game.regeneration_shield_count(creature), 0);
+    assert_eq!(game.regenerated_this_turn_count(creature), 2);
+
+    execute_cleanup_step(&mut game);
+    assert_eq!(
+        game.regenerated_this_turn_count(creature),
+        0,
+        "regenerated-this-turn counts expire during cleanup"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
