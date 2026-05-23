@@ -10422,6 +10422,21 @@ fn rewrite_lexed_effect_sequence_parses_copy_cast_cost_reduction_followup() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_copy_exiled_card_then_cast_copy() {
+    let text = "You may copy a card exiled with this artifact. If you do, you may cast the copy without paying its mana cost.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify copy exiled card text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("TargetOnly"), "{debug}");
+    assert!(debug.contains("\"__source_exiled__\""), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("as_copy: true"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_return_all_not_chosen_this_way_tracks_it_tag_exclusion() {
     let text = "Return all nonland permanents not chosen this way to their owners' hands.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify chosen-this-way return");

@@ -62,6 +62,7 @@ use crate::cards::builders::{
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
 
 mod become_clause;
 mod helpers;
@@ -788,6 +789,19 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(effect) = parse_passive_goad_clause(tokens)? {
         return Ok(effect);
+    }
+
+    if clause_words.as_slice() == ["copy", "a", "card", "exiled", "with", "this", "artifact"]
+    {
+        let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Ok(EffectAst::subject_verb_target_only(TargetAst::Object(
+            filter,
+            span_from_tokens(tokens),
+            None,
+        )));
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
