@@ -1299,6 +1299,10 @@ pub fn resolve_value(
             ))
         }
 
+        Value::SourceRegeneratedThisTurnCount => {
+            Ok(game.regenerated_this_turn_count(ctx.source) as i32)
+        }
+
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
             let snapshot = ctx.get_tagged(tag.as_str()).ok_or_else(|| {
                 ExecutionError::UnresolvableValue(format!(

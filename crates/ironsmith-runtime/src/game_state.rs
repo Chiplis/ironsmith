@@ -1960,6 +1960,9 @@ pub struct GameState {
     /// Regeneration shields on permanents (expires at end of turn).
     pub regeneration_shields: HashMap<ObjectId, u32>,
 
+    /// Number of times each permanent successfully regenerated this turn.
+    pub regenerated_this_turn: HashMap<ObjectId, u32>,
+
     /// Creatures that are monstrous (from monstrosity ability).
     pub monstrous: HashSet<ObjectId>,
 
@@ -2121,6 +2124,7 @@ impl GameState {
             dealt_deathtouch_damage_since_sba: HashSet::new(),
             damage_persists: HashSet::new(),
             regeneration_shields: HashMap::new(),
+            regenerated_this_turn: HashMap::new(),
             monstrous: HashSet::new(),
             renowned: HashSet::new(),
             devoured_counts: HashMap::new(),
@@ -7835,9 +7839,20 @@ impl GameState {
             if *shields == 0 {
                 self.regeneration_shields.remove(&id);
             }
+            *self.regenerated_this_turn.entry(id).or_insert(0) += 1;
             return true;
         }
         false
+    }
+
+    /// Get how many times an object regenerated this turn.
+    pub fn regenerated_this_turn_count(&self, id: ObjectId) -> u32 {
+        self.regenerated_this_turn.get(&id).copied().unwrap_or(0)
+    }
+
+    /// Clear all per-object regeneration counts for this turn.
+    pub fn clear_regenerated_this_turn(&mut self) {
+        self.regenerated_this_turn.clear();
     }
 
     /// Clear all regeneration shields from an object.

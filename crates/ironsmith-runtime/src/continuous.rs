@@ -4363,6 +4363,7 @@ fn resolve_value_with_context(
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::ThisAbilityResolvedThisTurnCount
+        | Value::SourceRegeneratedThisTurnCount
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::EffectValue(_)
