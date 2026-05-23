@@ -197,6 +197,7 @@ pub enum StaticAbilityId {
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
     LookAtTopCardOfLibrary,
+    LookAtFaceDownCreaturesYouDontControl,
     AllPlayersLookAtTopCardsOfLibraries,
     AllPlayersLookAtYourTopLibraryCard,
     OpponentsPlayWithHandsRevealed,
@@ -431,6 +432,7 @@ impl StaticAbilityId {
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
             | LookAtTopCardOfLibrary
+            | LookAtFaceDownCreaturesYouDontControl
             | AllPlayersLookAtTopCardsOfLibraries
             | AllPlayersLookAtYourTopLibraryCard
             | OpponentsPlayWithHandsRevealed

@@ -180,6 +180,9 @@ impl StaticAbility {
                 Self::exile_would_die_instead(crate::target::ObjectFilter::creature())
             }
             Some(StaticAbilityId::LookAtTopCardOfLibrary) => Self::look_at_top_card_of_library(),
+            Some(StaticAbilityId::LookAtFaceDownCreaturesYouDontControl) => {
+                Self::look_at_face_down_creatures_you_dont_control()
+            }
             Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries) => {
                 Self::all_players_look_at_top_cards_of_libraries()
             }
