@@ -11568,6 +11568,33 @@ fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability() -> Result<(
 }
 
 #[test]
+fn rewrite_lowered_for_each_players_life_total_becomes_clause() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Shaman Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{9}{G}{G}, {T}: Each player's life total becomes the number of creatures they control."
+            .to_string(),
+        false,
+    )?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+
+    let debug = format!("{:#?}", ability);
+    assert!(
+        debug.contains("SetLifeTotalEffect"),
+        "expected set-life-total effect for each player, got {debug}"
+    );
+    assert!(
+        debug.contains("IteratedPlayer"),
+        "expected iterated player lowering for each player clause, got {debug}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rewrite_lowered_targeted_mana_production_is_not_a_mana_ability() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Font")
         .card_types(vec![CardType::Artifact]);

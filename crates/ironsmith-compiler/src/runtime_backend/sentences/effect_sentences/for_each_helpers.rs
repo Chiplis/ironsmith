@@ -2,6 +2,7 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
+use crate::diagnostics::TextSpan;
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 
@@ -28,6 +29,22 @@ use super::conditionals::negated_action_word_index;
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::runtime_backend::lexer::token_word_refs(tokens)
+}
+
+fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let words = token_words(tokens);
+    if !matches!(words.as_slice(), ["life", "total", "becomes", ..]) {
+        return tokens.to_vec();
+    }
+
+    let mut rewritten = Vec::with_capacity(tokens.len() + 2);
+    rewritten.push(OwnedLexToken::word("that".to_string(), TextSpan::synthetic()));
+    rewritten.push(OwnedLexToken::word(
+        "players".to_string(),
+        TextSpan::synthetic(),
+    ));
+    rewritten.extend_from_slice(tokens);
+    rewritten
 }
 
 const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
@@ -995,14 +1012,18 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    let effects = if inner_tokens.iter().any(|token| token.is_word("may")) {
-        let stripped = remove_first_word(&inner_tokens, "may");
+    let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
+    let effects = if normalized_inner_tokens
+        .iter()
+        .any(|token| token.is_word("may"))
+    {
+        let stripped = remove_first_word(&normalized_inner_tokens, "may");
         let inner_effects = parse_effect_chain_inner(&stripped)?;
         vec![EffectAst::May {
             effects: inner_effects,
         }]
     } else {
-        parse_effect_chain(&inner_tokens)?
+        parse_effect_chain(&normalized_inner_tokens)?
     };
     Ok(Some(wrap_for_each(effects)))
 }
@@ -1368,14 +1389,18 @@ pub(crate) fn parse_for_each_player_clause(
         }));
     }
 
-    let effects = if inner_tokens.iter().any(|token| token.is_word("may")) {
-        let stripped = remove_first_word(&inner_tokens, "may");
+    let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
+    let effects = if normalized_inner_tokens
+        .iter()
+        .any(|token| token.is_word("may"))
+    {
+        let stripped = remove_first_word(&normalized_inner_tokens, "may");
         let inner_effects = parse_effect_chain_inner(&stripped)?;
         vec![EffectAst::May {
             effects: inner_effects,
         }]
     } else {
-        parse_effect_chain(&inner_tokens)?
+        parse_effect_chain(&normalized_inner_tokens)?
     };
     Ok(Some(EffectAst::ForEachPlayer { effects }))
 }
