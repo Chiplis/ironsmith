@@ -1,0 +1,42 @@
+{
+  "generated_at_utc": "20260523T211925Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Aeon Engine",
+    "layout": "normal",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "This artifact enters tapped.\n{T}, Exile this artifact: Reverse the game's turn order. (For example, if play had proceeded clockwise around the table, it now goes counterclockwise.)",
+    "source_block": "Name: Aeon Engine\nMana cost: {5}\nType: Artifact\nThis artifact enters tapped.\n{T}, Exile this artifact: Reverse the game's turn order. (For example, if play had proceeded clockwise around the table, it now goes counterclockwise.)",
+    "parse_input": "Mana cost: {5}\nType: Artifact\nThis artifact enters tapped.\n{T}, Exile this artifact: Reverse the game's turn order. (For example, if play had proceeded clockwise around the table, it now goes counterclockwise.)"
+  },
+  "failure": {
+    "reason": "Aeon Engine requires modeling a global reversal of multiplayer turn progression, which cannot be expressed by existing parser/lowering outputs wired to current runtime effect families.",
+    "gaps": [
+      "Reusable effect model and executor support to reverse game turn order.",
+      "Compiled-text rendering support for turn-order reversal effects."
+    ]
+  },
+  "compile_probe": {
+    "strict": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Aeon Engine: ParseError(\\\"could not find verb in effect clause (clause: 'reverse the games turn order'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect)\\\")\""
+    },
+    "allow_unsupported": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Aeon Engine: ParseError(\\\"could not find verb in effect clause (clause: 'reverse the games turn order'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect)\\\")\""
+    }
+  }
+}
