@@ -589,7 +589,11 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
         (
             ["target creature you control deals damage equal to its power"].as_slice(),
-            ["target creature you control deals damage equal to its power"].as_slice(),
+            [
+                "target creature you control deals damage equal to its power",
+                "that creature deals damage equal to its power",
+            ]
+            .as_slice(),
             "target-creature-power-damage-source",
         ),
         (
@@ -3156,6 +3160,13 @@ CardDefinition {
         snapshot.normalized_oracle_text =
             "Destroy all permanents with the same name as that permanent.".to_string();
         snapshot.compiled_text = Some("Destroy all permanents with that name.".to_string());
+        assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
+
+        snapshot.normalized_oracle_text =
+            "Target creature you control deals damage equal to its power to target creature an opponent controls.".to_string();
+        snapshot.compiled_text = Some(
+            "Choose target creature you control. That creature deals damage equal to its power to target creature an opponent controls.".to_string(),
+        );
         assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
     }
 
