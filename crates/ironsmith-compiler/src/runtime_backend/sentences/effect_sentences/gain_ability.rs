@@ -356,9 +356,8 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
     let ability_words = GainAbilityWordView::new(&ability_tokens).to_word_refs();
-    if matches!(
-        ability_words.as_slice(),
-        [
+    const CANT_BE_BLOCKED_EXCEPT_BY_HASTE_PREFIXES: &[&[&str]] = &[
+        &[
             "cant",
             "be",
             "blocked",
@@ -368,8 +367,9 @@ fn parse_granted_ability_component_for_gain(
             "by",
             "creatures",
             "with",
-            "haste"
-        ] | [
+            "haste",
+        ],
+        &[
             "cant",
             "be",
             "blocked",
@@ -377,9 +377,13 @@ fn parse_granted_ability_component_for_gain(
             "by",
             "creatures",
             "with",
-            "haste"
-        ]
-    ) {
+            "haste",
+        ],
+    ];
+    if CANT_BE_BLOCKED_EXCEPT_BY_HASTE_PREFIXES
+        .iter()
+        .any(|prefix| word_slice_starts_with(&ability_words, prefix))
+    {
         let restriction = crate::effect::Restriction::block_specific_attacker(
             ObjectFilter::creature().without_static_ability(StaticAbilityId::Haste),
             ObjectFilter::source(),
@@ -1198,18 +1202,11 @@ pub(crate) fn parse_gain_ability_sentence(
         {
             tail_tokens = &tail_tokens[1..];
         }
-        let tail_words = GainAbilityWordView::new(tail_tokens).to_word_refs();
-        let is_restriction_tail = matches!(
-            tail_words.as_slice(),
-            ["cant", "be", "blocked", ..] | ["can't", "be", "blocked", ..]
-        );
-        if !is_restriction_tail {
-            let (trailing_abilities, trailing_is_choice) =
-                parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
-            if !trailing_abilities.is_empty() && !trailing_is_choice {
-                abilities.extend(trailing_abilities);
-                trailing_tail_tokens.clear();
-            }
+        let (trailing_abilities, trailing_is_choice) =
+            parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
+        if !trailing_abilities.is_empty() && !trailing_is_choice {
+            abilities.extend(trailing_abilities);
+            trailing_tail_tokens.clear();
         }
     }
     let removes_all_abilities = losing
@@ -2211,6 +2208,24 @@ mod tests {
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
                 && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
+        );
+    }
+
+    #[test]
+    fn gain_haste_and_except_by_haste_with_trailing_where_clause_keeps_unblockable_grant() {
+        let tokens = tokenize_line(
+            "Up to X target creatures you control each gain haste until end of turn and can't be blocked this turn except by creatures with haste, where X is the number of Bobbleheads you control as you activate this ability.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("agility bobblehead-style grant clause should parse")
+            .expect("agility bobblehead-style grant clause should produce effects");
+
+        let debug = format!("{effects:?}").to_ascii_lowercase();
+        assert!(
+            string_contains(&debug, "haste")
+                && string_contains(&debug, "can't be blocked except by creatures with haste"),
+            "expected haste plus except-by-haste unblockable grant, got {debug}"
         );
     }
 
