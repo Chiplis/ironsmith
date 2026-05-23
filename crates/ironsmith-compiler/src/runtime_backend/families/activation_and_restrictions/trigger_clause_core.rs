@@ -902,6 +902,65 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::ThisLeavesBattlefield);
     }
 
+    if let Some(leaves_word_idx) =
+        find_index(&words, |word| *word == "leaves" || *word == "leave")
+        && words.get(leaves_word_idx + 1).copied() == Some("the")
+        && words.get(leaves_word_idx + 2).copied() == Some("battlefield")
+    {
+        let leaves_token_idx = word_view
+            .token_index_for_word_index(leaves_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..leaves_token_idx];
+
+        if let Some(or_idx) = find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
+        {
+            let left_tokens = &subject_tokens[..or_idx];
+            let mut right_tokens = &subject_tokens[or_idx + 1..];
+            let left_words = ActivationRestrictionCompatWords::new(left_tokens)
+                .to_word_refs()
+                .into_iter()
+                .filter(|word| !is_article(word))
+                .collect::<Vec<_>>();
+            if is_source_reference_words(&left_words) && !right_tokens.is_empty() {
+                let mut other = false;
+                if right_tokens
+                    .first()
+                    .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+                {
+                    other = true;
+                    right_tokens = &right_tokens[1..];
+                }
+                let parsed_filter = parse_object_filter_lexed(right_tokens, other)
+                    .ok()
+                    .or_else(|| parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other));
+                if let Some(filter) = parsed_filter {
+                    return Ok(TriggerSpec::Either(
+                        Box::new(TriggerSpec::ThisLeavesBattlefield),
+                        Box::new(TriggerSpec::LeavesBattlefield(filter)),
+                    ));
+                }
+            }
+        }
+
+        let mut filtered_subject_tokens = subject_tokens;
+        let mut other = false;
+        if filtered_subject_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+        {
+            other = true;
+            filtered_subject_tokens = &filtered_subject_tokens[1..];
+        }
+        let parsed_filter = parse_object_filter_lexed(filtered_subject_tokens, other)
+            .ok()
+            .or_else(|| {
+                parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other)
+            });
+        if let Some(filter) = parsed_filter {
+            return Ok(TriggerSpec::LeavesBattlefield(filter));
+        }
+    }
+
     if let Some(dies_word_idx) = find_index(&words, |word| *word == "dies" || *word == "die") {
         let dies_token_idx = word_view
             .token_index_for_word_index(dies_word_idx)

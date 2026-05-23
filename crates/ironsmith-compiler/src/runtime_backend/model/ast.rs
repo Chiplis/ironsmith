@@ -220,6 +220,7 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DiesOneOrMore(ObjectFilter),
     HauntedCreatureDies,
