@@ -59,7 +59,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
-use crate::effect::{Until, Value};
+use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -796,11 +796,15 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             crate::target::TaggedOpbjectRelation::IsTaggedObject,
         );
-        return Ok(EffectAst::subject_verb_target_only(TargetAst::Object(
+        return Ok(EffectAst::ChooseObjectsAcrossZones {
             filter,
-            span_from_tokens(tokens),
-            None,
-        )));
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+            zones: vec![Zone::Exile],
+            search_mode: None,
+        });
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {

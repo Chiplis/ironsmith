@@ -10429,7 +10429,8 @@ fn rewrite_lexed_effect_sequence_parses_copy_exiled_card_then_cast_copy() {
     let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:#?}");
 
-    assert!(debug.contains("TargetOnly"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(!debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("\"__source_exiled__\""), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(debug.contains("as_copy: true"), "{debug}");
