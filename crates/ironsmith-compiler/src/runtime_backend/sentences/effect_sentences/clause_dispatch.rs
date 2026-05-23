@@ -13,6 +13,7 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause, starts_with_target_indicator,
 };
+use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
@@ -302,6 +303,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(spec) = parse_may_cast_it_sentence(tokens) {
         return Ok(build_may_cast_tagged_effect(&spec));
+    }
+
+    if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+        return Ok(effect);
     }
 
     if let Some(player) = parse_leading_player_may(tokens) {

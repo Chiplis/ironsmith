@@ -1213,6 +1213,143 @@ fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
         || word_slice_has_sequence(clause_words, &["cast", "one", "spell"])
 }
 
+fn parse_cast_with_tagged_mana_value_limit_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    fn parse_simple_spell_type_list_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+        let mut words = token_word_refs(tokens);
+        if matches!(words.first().copied(), Some("a" | "an")) {
+            words.remove(0);
+        }
+        if matches!(words.last().copied(), Some("spell" | "spells")) {
+            words.pop();
+        }
+        if words.is_empty() {
+            return None;
+        }
+
+        let mut card_types = Vec::new();
+        for word in words {
+            let card_type = match word {
+                "or" | "and" => continue,
+                "artifact" => CardType::Artifact,
+                "battle" => CardType::Battle,
+                "creature" => CardType::Creature,
+                "enchantment" => CardType::Enchantment,
+                "instant" => CardType::Instant,
+                "land" => CardType::Land,
+                "planeswalker" => CardType::Planeswalker,
+                "sorcery" => CardType::Sorcery,
+                _ => return None,
+            };
+            if !card_types.contains(&card_type) {
+                card_types.push(card_type);
+            }
+        }
+        if card_types.is_empty() {
+            return None;
+        }
+        Some(ObjectFilter {
+            card_types,
+            ..ObjectFilter::default()
+        })
+    }
+
+    let Some((lead, rest_tokens)) = parse_permission_lead_tokens(tokens) else {
+        return Ok(None);
+    };
+    if lead.allow_land {
+        return Ok(None);
+    }
+
+    let rest_words = token_word_refs(rest_tokens);
+    let normalized_words: Vec<String> = rest_words
+        .iter()
+        .map(|word| {
+            word.to_ascii_lowercase()
+                .replace(['\'', '’'], "")
+                .to_string()
+        })
+        .collect();
+    let Some(from_idx) = normalized_words.iter().position(|word| word == "from") else {
+        return Ok(None);
+    };
+    if from_idx == 0 {
+        return Ok(None);
+    }
+
+    let expected_tail_with_split_possessive = [
+        "from",
+        "your",
+        "graveyard",
+        "with",
+        "mana",
+        "value",
+        "less",
+        "than",
+        "or",
+        "equal",
+        "to",
+        "that",
+        "spell",
+        "s",
+        "mana",
+        "value",
+        "without",
+        "paying",
+        "its",
+        "mana",
+        "cost",
+    ];
+    let expected_tail_with_word_possessive = [
+        "from",
+        "your",
+        "graveyard",
+        "with",
+        "mana",
+        "value",
+        "less",
+        "than",
+        "or",
+        "equal",
+        "to",
+        "that",
+        "spells",
+        "mana",
+        "value",
+        "without",
+        "paying",
+        "its",
+        "mana",
+        "cost",
+    ];
+    let normalized_tail = &normalized_words[from_idx..];
+    if normalized_tail != expected_tail_with_split_possessive
+        && normalized_tail != expected_tail_with_word_possessive
+    {
+        return Ok(None);
+    }
+
+    let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
+    let Some(mut filter) = parse_simple_spell_type_list_filter(filter_tokens)
+        .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
+    else {
+        return Ok(None);
+    };
+    filter.owner = Some(crate::target::PlayerFilter::You);
+    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
+    });
+
+    Ok(Some(
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost(lead.player, filter, Zone::Graveyard),
+    ))
+}
+
 pub(crate) fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1243,6 +1380,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 spec.zone,
             ),
         ));
+    }
+
+    if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
+        return Ok(Some(effect));
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)

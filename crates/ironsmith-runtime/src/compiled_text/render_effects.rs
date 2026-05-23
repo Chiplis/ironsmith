@@ -29253,8 +29253,36 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(may_cast_matching) =
         effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
     {
+        fn join_with_or(items: &[String]) -> String {
+            match items.len() {
+                0 => String::new(),
+                1 => items[0].clone(),
+                2 => format!("{} or {}", items[0], items[1]),
+                _ => {
+                    let mut out = items[..items.len() - 1].join(", ");
+                    out.push_str(", or ");
+                    out.push_str(&items[items.len() - 1]);
+                    out
+                }
+            }
+        }
+
         let player = describe_player_filter(&may_cast_matching.player);
+        let has_tagged_mana_value_cap = may_cast_matching.filter.tagged_constraints.iter().any(
+            |constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
+            },
+        );
         let mut spell_text = describe_cast_limit_spell_filter(&may_cast_matching.filter);
+        if has_tagged_mana_value_cap && !may_cast_matching.filter.card_types.is_empty() {
+            let card_type_words: Vec<String> = may_cast_matching
+                .filter
+                .card_types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect();
+            spell_text = format!("a {} spell", join_with_or(&card_type_words));
+        }
         if spell_text == "spell" {
             spell_text = "a spell".to_string();
         } else if !spell_text.starts_with("a ")
@@ -29268,7 +29296,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "from {} hand",
                 describe_possessive_player_filter(&may_cast_matching.player)
             ),
-            Zone::Graveyard => "from a graveyard".to_string(),
+            Zone::Graveyard => {
+                if may_cast_matching.filter.owner == Some(crate::filter::PlayerFilter::You) {
+                    "from your graveyard".to_string()
+                } else {
+                    "from a graveyard".to_string()
+                }
+            }
             Zone::Library => "from a library".to_string(),
             Zone::Exile => "from exile".to_string(),
             Zone::Battlefield => "from the battlefield".to_string(),
@@ -29276,7 +29310,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Command => "from the command zone".to_string(),
             Zone::OutsideGame => "from outside the game".to_string(),
         };
-        return format!("{player} may cast {spell_text} {zone_text} without paying its mana cost");
+        let mana_value_limit_text = if has_tagged_mana_value_cap {
+            " with mana value less than or equal to that spell's mana value"
+        } else {
+            ""
+        };
+        return format!(
+            "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
+        );
     }
     if let Some(grant_next_spell_cost_reduction) =
         effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()

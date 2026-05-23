@@ -4350,6 +4350,71 @@ fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost() {
 }
 
 #[test]
+fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate() {
+    let tokens = lex_line(
+        "You may cast a creature, instant, sorcery, or planeswalker spell from your graveyard with mana value less than or equal to that spell's mana value without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Counterpoint follow-up clause");
+
+    let token_words = crate::runtime_backend::token_word_refs(&tokens);
+    assert!(
+        super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+            .expect("Counterpoint follow-up clause should not throw parser errors")
+            .is_some(),
+        "expected cast/play helper to parse Counterpoint follow-up clause; words={token_words:?}"
+    );
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Counterpoint follow-up clause should parse as a supported effect");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+        }] => (player, filter, zone),
+        [crate::cards::builders::EffectAst::MayByPlayer {
+            player: crate::cards::builders::PlayerAst::You,
+            effects,
+        }] => match effects.as_slice() {
+            [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+            }] => (player, filter, zone),
+            _ => panic!("expected nested free-cast effect, got {effects:#?}"),
+        },
+        _ => panic!("expected free-cast effect, got {effects:#?}"),
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Graveyard);
+    let has_type = |card_type: crate::types::CardType| {
+        filter.card_types.contains(&card_type)
+            || filter
+                .any_of
+                .iter()
+                .any(|branch| branch.card_types.contains(&card_type))
+    };
+    assert!(has_type(crate::types::CardType::Creature), "{filter:#?}");
+    assert!(has_type(crate::types::CardType::Instant), "{filter:#?}");
+    assert!(has_type(crate::types::CardType::Sorcery), "{filter:#?}");
+    assert!(has_type(crate::types::CardType::Planeswalker), "{filter:#?}");
+    assert!(
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG)
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
+        }),
+        "expected mana-value-to-tagged constraint, got {filter:#?}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
     let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify until-next-turn permission clause");
