@@ -4059,7 +4059,7 @@ mod parse_compile_tests {
         ctx.auto_tag_object_targets = true;
 
         let (effects, choices) = compile_effect(
-            &EffectAst::subject_verb_amass(Some(Subtype::Orc), 2),
+            &EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
             &mut ctx,
         )
         .expect("compile amass");

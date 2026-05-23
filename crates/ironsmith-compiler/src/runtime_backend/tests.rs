@@ -2808,6 +2808,58 @@ fn rewrite_if_clause_binds_that_enchantment_and_created_token_references() {
 }
 
 #[test]
+fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
+    let tokens = lex_line("Attach up to one target Equipment to it.", 0)
+        .expect("rewrite lexer should classify attach clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("attach clause should parse");
+
+    let [crate::cards::builders::EffectAst::SubjectVerb(
+        crate::cards::builders::SubjectVerbEffectAst {
+            action: crate::cards::builders::SubjectVerbActionAst::Attach { object, target },
+            ..
+        },
+    )] = parsed.as_slice()
+    else {
+        panic!("expected attach effect, got {parsed:?}");
+    };
+
+    assert!(
+        !matches!(object, crate::cards::builders::TargetAst::Source(_)),
+        "expected object side to remain a targetable attachment object"
+    );
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+}
+
+#[test]
+fn amass_where_x_clause_replaces_unbound_x() {
+    let tokens = lex_line(
+        "Amass Orcs X, where X is the number of Equipment attached to this creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify amass where-x clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("amass clause should parse");
+
+    let [crate::cards::builders::EffectAst::SubjectVerb(
+        crate::cards::builders::SubjectVerbEffectAst {
+            action: crate::cards::builders::SubjectVerbActionAst::Amass { amount, .. },
+            ..
+        },
+    )] = parsed.as_slice()
+    else {
+        panic!("expected amass effect, got {parsed:?}");
+    };
+
+    assert!(
+        !matches!(amount, crate::effect::Value::X),
+        "expected where-X clause to bind amass amount"
+    );
+}
+
+#[test]
 fn rewrite_triggered_attach_it_to_target_seeds_triggering_object_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attach Source Variant")
         .parse_text("When this Equipment enters, attach it to target creature you control.")

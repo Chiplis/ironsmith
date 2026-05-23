@@ -72,6 +72,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 
     if object_words.len() >= 2
+        && !object_words.contains(&"target")
         && object_words
             .iter()
             .all(|word| word.chars().all(|ch| ch.is_ascii_alphanumeric()))

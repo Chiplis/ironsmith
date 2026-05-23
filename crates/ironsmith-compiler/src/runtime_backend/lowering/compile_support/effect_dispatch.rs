@@ -340,7 +340,8 @@ fn compile_subject_verb_effect(
             Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
         }
         SubjectVerbActionAst::Amass { subtype, amount } => {
-            let mut effect = Effect::amass(*subtype, *amount);
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let mut effect = Effect::amass(*subtype, amount);
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("amassed");
                 ctx.last_object_tag = Some(tag.clone());

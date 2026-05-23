@@ -1774,12 +1774,15 @@ impl PayManaEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
-    pub amount: u32,
+    pub amount: Value,
 }
 
 impl AmassEffect {
-    pub fn new(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
-        Self { subtype, amount }
+    pub fn new(subtype: Option<crate::types::Subtype>, amount: impl Into<Value>) -> Self {
+        Self {
+            subtype,
+            amount: amount.into(),
+        }
     }
 }
 

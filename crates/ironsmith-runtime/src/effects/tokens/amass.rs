@@ -6,7 +6,7 @@ use crate::color::ColorSet;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, ExecutionFact};
-use crate::effects::helpers::normalize_object_selection;
+use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
@@ -61,6 +61,7 @@ impl EffectExecutor for AmassEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let amass_subtype = amass_token_subtype(self);
+        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let mut outcomes = Vec::new();
 
         let mut army_candidates = army_creature_candidates(game, ctx.controller);
@@ -77,7 +78,7 @@ impl EffectExecutor for AmassEffect {
                     KeywordActionKind::Amass,
                     ctx.controller,
                     ctx.source,
-                    self.amount,
+                    amount,
                 ),
                 ctx.provenance,
             );
@@ -118,7 +119,7 @@ impl EffectExecutor for AmassEffect {
 
         let counters_outcome = PutCountersEffect::new(
             CounterType::PlusOnePlusOne,
-            self.amount,
+            amount,
             ChooseSpec::SpecificObject(chosen_army),
         )
         .execute(game, ctx)?;
@@ -129,7 +130,7 @@ impl EffectExecutor for AmassEffect {
                 KeywordActionKind::Amass,
                 ctx.controller,
                 ctx.source,
-                self.amount,
+                amount,
             ),
             ctx.provenance,
         );

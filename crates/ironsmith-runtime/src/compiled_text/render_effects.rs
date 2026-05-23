@@ -27695,11 +27695,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
+        let amount = describe_value(&amass.amount);
         if let Some(subtype) = amass.subtype {
             let subtype_name = subtype.to_string().to_ascii_lowercase();
-            return format!("Amass {} {}", pluralize_word(&subtype_name), amass.amount);
+            return format!("Amass {} {amount}", pluralize_word(&subtype_name));
         }
-        return format!("Amass {}", amass.amount);
+        return format!("Amass {amount}");
     }
     if let Some(poison) = effect.downcast_ref::<crate::effects::PoisonCountersEffect>() {
         let amount = match poison.count {
