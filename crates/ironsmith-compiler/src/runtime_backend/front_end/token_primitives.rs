@@ -628,8 +628,6 @@ fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<T
         "until" => alt((
             grammar::phrase(&["until", "your", "next", "turn"])
                 .value(TurnDurationPhrase::UntilYourNextTurn),
-            grammar::phrase(&["until", "your", "next", "end", "step"])
-                .value(TurnDurationPhrase::UntilYourNextTurn),
             grammar::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
                 .value(TurnDurationPhrase::UntilYourNextTurn),
             grammar::phrase(&["until", "end", "of", "your", "next", "turn"])
@@ -648,7 +646,6 @@ fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<T
 fn turn_duration_from_suffix_phrase(phrase: &[&str]) -> Option<TurnDurationPhrase> {
     match phrase {
         ["until", "your", "next", "turn"]
-        | ["until", "your", "next", "end", "step"]
         | ["until", "the", "end", "of", "your", "next", "turn"]
         | ["until", "end", "of", "your", "next", "turn"] => {
             Some(TurnDurationPhrase::UntilYourNextTurn)
@@ -672,7 +669,6 @@ pub(crate) fn parse_turn_duration_suffix<'a>(
 ) -> Option<(&'a [OwnedLexToken], TurnDurationPhrase)> {
     let phrases = [
         &["until", "your", "next", "turn"][..],
-        &["until", "your", "next", "end", "step"][..],
         &["until", "the", "end", "of", "your", "next", "turn"][..],
         &["until", "end", "of", "your", "next", "turn"][..],
         &["until", "the", "end", "of", "turn"][..],
