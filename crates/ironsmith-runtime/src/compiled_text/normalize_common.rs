@@ -10054,6 +10054,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 describe_player_filter(player)
             )
         }
+        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
+            format!(
+                "{} has {} or more poison counters",
+                describe_player_filter(player),
+                count
+            )
+        }
         Condition::YouHaveCardInHandMatching(filter) => {
             let object_text = with_indefinite_article(&filter.description());
             format!("you have {object_text} in hand")
