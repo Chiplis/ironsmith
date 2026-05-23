@@ -7830,6 +7830,14 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             crate::static_abilities::StaticAbilityId::LookAtTopCardOfLibrary,
         ),
         (
+            "You may look at face-down creatures you don't control any time.",
+            super::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed
+                as Probe,
+            super::keyword_static::parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
+                as Parser,
+            crate::static_abilities::StaticAbilityId::LookAtFaceDownCreaturesYouDontControl,
+        ),
+        (
             "Players play with the top card of their libraries revealed.",
             super::grammar::abilities::is_players_play_top_card_libraries_revealed_line_lexed
                 as Probe,
@@ -7877,6 +7885,26 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             "{text}: {parsed:?}"
         );
     }
+}
+
+#[test]
+fn parse_lens_of_clarity_split_look_permissions() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lens of Clarity Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "You may look at the top card of your library and at face-down creatures you don't control any time.",
+        )
+        .expect("Lens of Clarity text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardOfLibrary"),
+        "expected top-card look permission, got {debug}"
+    );
+    assert!(
+        debug.contains("LookAtFaceDownCreaturesYouDontControl"),
+        "expected face-down look permission, got {debug}"
+    );
 }
 
 #[test]

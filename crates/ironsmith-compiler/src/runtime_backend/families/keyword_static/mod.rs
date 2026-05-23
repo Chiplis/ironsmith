@@ -38,7 +38,9 @@ use super::grammar::abilities::{
     is_shuffle_into_library_from_graveyard_line_lexed, is_skulk_rules_text_line_lexed,
     is_this_creature_cant_attack_alone_line_lexed,
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
-    is_you_have_shroud_line_lexed, is_you_may_look_top_card_any_time_line_lexed,
+    is_you_have_shroud_line_lexed,
+    is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed,
+    is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
@@ -394,6 +396,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
         "parse_you_may_look_top_card_any_time_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
+        "parse_you_may_look_face_down_creatures_you_dont_control_any_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
@@ -773,6 +779,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
+        single_static_ability_ast_rule!(
+            parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
+        ),
         single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
         single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
         single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
@@ -6977,6 +6986,17 @@ pub(crate) fn parse_you_may_look_top_card_any_time_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_you_may_look_top_card_any_time_line_lexed(tokens) {
         return Ok(Some(StaticAbility::look_at_top_card_of_library()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_you_may_look_face_down_creatures_you_dont_control_any_time_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::look_at_face_down_creatures_you_dont_control(),
+        ));
     }
     Ok(None)
 }
