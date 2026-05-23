@@ -1966,6 +1966,27 @@ fn test_parse_nonsource_cant_block_specific_attacker_restriction() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_multi_color_cant_block_this_turn_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flash of Defiance Test")
+        .parse_text("Green creatures and white creatures can't block this turn.")
+        .expect("parse multicolor cant-block-this-turn restriction");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("green creatures can't block this turn")
+            || rendered.contains("white creatures can't block this turn"),
+        "expected at least one parsed color cant-block-this-turn clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("green creatures") && rendered.contains("white creatures"),
+        "expected both colors in parsed restriction output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_bare_cant_be_blocked_by_more_than_one_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bare Unblockable Limit")
         .parse_text("Can't be blocked by more than one creature.")
