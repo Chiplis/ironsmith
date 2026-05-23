@@ -7769,6 +7769,12 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             crate::static_abilities::StaticAbilityId::LookAtTopCardOfLibrary,
         ),
         (
+            "You may look at face-down creatures you don't control any time.",
+            super::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed as Probe,
+            super::keyword_static::parse_you_may_look_face_down_creatures_you_dont_control_any_time_line as Parser,
+            crate::static_abilities::StaticAbilityId::LookAtFaceDownCreaturesYouDontControlAnyTime,
+        ),
+        (
             "Players play with the top card of their libraries revealed.",
             super::grammar::abilities::is_players_play_top_card_libraries_revealed_line_lexed
                 as Probe,

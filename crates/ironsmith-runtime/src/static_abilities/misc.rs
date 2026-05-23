@@ -4364,6 +4364,20 @@ impl StaticAbilityKind for LookAtTopCardOfLibrary {
     }
 }
 
+/// Allows a player to continuously see face-down creatures they do not control.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LookAtFaceDownCreaturesYouDontControlAnyTime;
+
+impl StaticAbilityKind for LookAtFaceDownCreaturesYouDontControlAnyTime {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LookAtFaceDownCreaturesYouDontControlAnyTime
+    }
+
+    fn display(&self) -> String {
+        "You may look at face-down creatures you don't control any time.".to_string()
+    }
+}
+
 /// Allows every player to continuously see the top card of every library.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllPlayersLookAtTopCardsOfLibraries;
@@ -4912,6 +4926,19 @@ mod tests {
         assert_eq!(
             ability.display(),
             "You may look at the top card of your library any time."
+        );
+    }
+
+    #[test]
+    fn test_look_at_face_down_creatures_you_dont_control_any_time() {
+        let ability = LookAtFaceDownCreaturesYouDontControlAnyTime;
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::LookAtFaceDownCreaturesYouDontControlAnyTime
+        );
+        assert_eq!(
+            ability.display(),
+            "You may look at face-down creatures you don't control any time."
         );
     }
 

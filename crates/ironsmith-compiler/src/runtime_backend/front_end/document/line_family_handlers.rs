@@ -569,6 +569,27 @@ pub(super) fn run_combined_static_line_family(
     }))
 }
 
+pub(super) fn run_face_down_look_any_time_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if ctx.line.info.normalized.normalized.as_str()
+        != "you may look at face-down creatures you don't control any time."
+    {
+        return Ok(None);
+    }
+
+    let Some(static_line) = parse_static_line_cst(ctx.line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower face-down look static line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(static_line),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

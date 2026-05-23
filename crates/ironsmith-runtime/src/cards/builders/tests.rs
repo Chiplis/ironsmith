@@ -27105,6 +27105,23 @@ fn parse_face_down_static_anthem_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_you_may_look_at_face_down_creatures_you_dont_control_any_time() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of the Lens Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("You may look at face-down creatures you don't control any time.")
+        .expect("face-down visibility static line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may look at face-down creatures you don't control any time"),
+        "expected face-down visibility line to be preserved, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Furnace Celebration Variant")
         .card_types(vec![CardType::Enchantment])
