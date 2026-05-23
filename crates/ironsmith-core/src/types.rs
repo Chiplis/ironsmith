@@ -383,6 +383,7 @@ pub enum Subtype {
     Cartouche,
     Class,
     Curse,
+    Room,
     Role,
     Rune,
     Saga,
@@ -662,6 +663,7 @@ impl Subtype {
             Subtype::Cartouche,
             Subtype::Class,
             Subtype::Curse,
+            Subtype::Room,
             Subtype::Role,
             Subtype::Rune,
             Subtype::Saga,
@@ -979,6 +981,7 @@ impl Subtype {
                 | Subtype::Cartouche
                 | Subtype::Class
                 | Subtype::Curse
+                | Subtype::Room
                 | Subtype::Role
                 | Subtype::Rune
                 | Subtype::Saga

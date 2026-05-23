@@ -14798,6 +14798,28 @@ mod tests {
     }
 
     #[test]
+    fn describe_may_unless_pay_mana_uses_or_surface() {
+        let effect = Effect::may_single(Effect::unless_action(
+            vec![Effect::discard_player_filtered(
+                Value::Fixed(1),
+                PlayerFilter::You,
+                false,
+                None,
+            )],
+            vec![Effect::new(crate::effects::PayManaEffect::new(
+                crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+                ChooseSpec::Player(PlayerFilter::You),
+            ))],
+            PlayerFilter::You,
+        ));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "You may discard a card or pay {2}"
+        );
+    }
+
+    #[test]
     fn describe_become_creature_type_choice_uses_each_for_all_creatures() {
         let effect = Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
             ChooseSpec::Object(ObjectFilter::creature()),
@@ -21843,7 +21865,7 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
     }
 
     let setup = describe_effect(&with_id.effect);
-    let triggered = describe_effect_list(&reflexive.effects);
+    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
@@ -24906,6 +24928,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
         let inner_text = describe_effect_list(&unless_action.effects);
+        if unless_action.alternative.len() == 1
+            && let Some(pay_mana) =
+                unless_action.alternative[0].downcast_ref::<crate::effects::PayManaEffect>()
+            && let ChooseSpec::Player(alternative_player) = &pay_mana.player
+            && *alternative_player == unless_action.player
+        {
+            let payment_text = pay_mana.cost.to_oracle();
+            return format!("{} or pay {}", inner_text, payment_text);
+        }
         if unless_action.alternative.len() == 1
             && let Some(lose_life) =
                 unless_action.alternative[0].downcast_ref::<crate::effects::LoseLifeEffect>()
