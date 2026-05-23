@@ -13681,6 +13681,55 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sneak_keyword_line_builds_hand_activated_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sneak Probe")
+        .parse_text("Sneak {2}{W}{B}")
+        .expect("sneak keyword line should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("expected activated sneak ability");
+    assert!(
+        ability.functional_zones.contains(&Zone::Hand),
+        "sneak should function from hand"
+    );
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("expected activated ability");
+    };
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::DuringCombat,
+        "sneak should use during-combat timing"
+    );
+
+    let cost_debug = format!("{:?}", activated.mana_cost);
+    assert!(
+        cost_debug.contains("NinjutsuCostEffect"),
+        "expected sneak to reuse ninjutsu return-attacker cost effect, got {cost_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_sneak_paid_this_turn_predicate_on_triggered_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sneak Condition Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Sneak {2}{W}{B}\nWhenever this creature deals combat damage to a player, if her sneak cost was paid this turn, draw a card.",
+        )
+        .expect("sneak paid-this-turn predicate should parse");
+
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("ThisSpellPaidLabel(\"Sneak\")"),
+        "expected parsed condition to track sneak paid label, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn source_cost_compiled_text_does_not_leak_placeholder_surfaces() {
     let memory_jar = CardDefinitionBuilder::new(CardId::new(), "Memory Jar Variant")
         .card_types(vec![CardType::Artifact])

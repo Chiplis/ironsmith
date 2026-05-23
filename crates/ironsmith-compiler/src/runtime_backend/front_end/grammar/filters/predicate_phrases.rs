@@ -162,6 +162,28 @@ fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
     Some(label)
 }
 
+fn paid_cost_label_from_words(words: &[&str]) -> Option<String> {
+    if let Some(label) = mana_cost_label_from_words(words) {
+        return Some(label);
+    }
+    if words.is_empty() || words.iter().any(|word| word.is_empty()) {
+        return None;
+    }
+    Some(
+        words
+            .iter()
+            .map(|word| {
+                let mut chars = word.chars();
+                let Some(first) = chars.next() else {
+                    return String::new();
+                };
+                format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
 fn ordinal_number_word(word: &str) -> Option<u32> {
     ironsmith_core::parse_ordinal_word(word).or_else(|| parse_named_number(word))
 }
@@ -2190,7 +2212,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
     if filtered.len() >= 4 && filtered[filtered.len() - 3..] == ["cost", "was", "paid"] {
         let start = usize::from(filtered.first().copied() == Some("the"));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
+        if let Some(label) = paid_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
+            return Ok(PredicateAst::ThisSpellPaidLabel(label));
+        }
+    }
+    if filtered.len() >= 7 && filtered[filtered.len() - 5..] == ["cost", "was", "paid", "this", "turn"] {
+        let start = if matches!(filtered.first().copied(), Some("the" | "its" | "his" | "her" | "their")) {
+            1
+        } else {
+            0
+        };
+        if let Some(label) = paid_cost_label_from_words(&filtered[start..filtered.len() - 5]) {
             return Ok(PredicateAst::ThisSpellPaidLabel(label));
         }
     }

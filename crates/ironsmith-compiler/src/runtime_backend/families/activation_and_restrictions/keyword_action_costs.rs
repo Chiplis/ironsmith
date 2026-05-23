@@ -449,6 +449,7 @@ pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "echo" => Some("echo"),
         "modular" => Some("modular"),
         "ninjutsu" => Some("ninjutsu"),
+        "sneak" => Some("sneak"),
         "outlast" => Some("outlast"),
         "scavenge" => Some("scavenge"),
         "suspend" => Some("suspend"),
@@ -484,7 +485,8 @@ pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
             let amount = words.get(1)?.parse::<u32>().ok()?;
             Some(format!("{title} {amount}"))
         }
-        "bestow" | "dash" | "disturb" | "embalm" | "emerge" | "ninjutsu" | "outlast"
+        "bestow" | "dash" | "disturb" | "embalm" | "emerge" | "ninjutsu" | "sneak"
+        | "outlast"
         | "scavenge" | "unearth" | "specialize" | "spectacle" | "plot" | "disguise"
         | "flashback" | "foretell" | "overload" => {
             let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
@@ -995,6 +997,15 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     if let Some(action) = parse_cost_keyword_action(
         &words,
+        "sneak",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Ninjutsu,
+    ) {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        &words,
         "dash",
         KeywordCostFallback::MarkerOrText,
         KeywordAction::Dash,
@@ -1305,6 +1316,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
                 | "echo"
                 | "modular"
                 | "ninjutsu"
+                | "sneak"
                 | "outlast"
                 | "suspend"
                 | "vanishing"

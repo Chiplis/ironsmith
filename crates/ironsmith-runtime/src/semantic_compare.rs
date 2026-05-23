@@ -1171,6 +1171,26 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = format!("Ninjutsu {}", cost.trim());
     }
+    if let Some(cost) = normalized.strip_prefix("Sneak ") {
+        let cost = cost.trim();
+        if !cost.is_empty() {
+            normalized = format!("Ninjutsu {cost}");
+        }
+    }
+    if normalized_lower.contains("sneak cost was paid this turn") {
+        normalized = normalized.replace("sneak cost was paid this turn", "sneak cost was paid");
+    }
+    if normalized_lower.contains("this spell's sneak cost was paid") {
+        normalized = normalized.replace("this spell's sneak cost was paid", "sneak cost was paid");
+    }
+    if normalized_lower.contains(
+        "instead return target creature card from your graveyard to the battlefield",
+    ) {
+        normalized = normalized.replace(
+            "instead return target creature card from your graveyard to the battlefield",
+            "instead return that card to the battlefield",
+        );
+    }
     if let Some((cost, _)) = normalized.split_once(", Exile this card from your graveyard:")
         && normalized_compact.contains("put this creature's power +1/+1 counter")
         && normalized_compact.contains("activate only as a sorcery")
@@ -6587,6 +6607,29 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for ninjutsu keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_sneak_keyword_and_paid_cost_wording() {
+        let oracle = "Sneak {2}{W}{B}\nWhenever this creature deals combat damage to a player, return target creature card from your graveyard to your hand. If her sneak cost was paid this turn, instead return that card to the battlefield.";
+        let compiled = vec![
+            String::from(
+                "Activated ability 1: {2}{W}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield tapped and attacking. Activate only during combat.",
+            ),
+            String::from(
+                "Triggered ability 2: Whenever this creature deals combat damage to a player, return target creature card from your graveyard to your hand. If this spell's sneak cost was paid, instead return target creature card from your graveyard to the battlefield.",
+            ),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected sneak keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for sneak keyword normalization"
         );
     }
 
