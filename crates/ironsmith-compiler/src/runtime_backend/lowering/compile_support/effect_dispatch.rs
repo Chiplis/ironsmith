@@ -1823,6 +1823,7 @@ fn compile_subject_verb_effect(
             tag,
             player,
             allow_land,
+            allow_any_color_for_cast,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1841,7 +1842,7 @@ fn compile_subject_verb_effect(
                     player_filter,
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
                     *allow_land,
-                    false,
+                    *allow_any_color_for_cast,
                 ))],
                 Vec::new(),
             ))

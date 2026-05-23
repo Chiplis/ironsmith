@@ -125,7 +125,12 @@ fn parse_exile_top_library_then_play_bundle(
                 },
             ..
         }) => {
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(tag, player, allow_land)
+            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                tag,
+                player,
+                allow_land,
+                false,
+            )
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:

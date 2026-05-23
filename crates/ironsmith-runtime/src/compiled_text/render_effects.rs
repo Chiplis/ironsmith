@@ -29095,8 +29095,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
+            if helper_tag
+                && !grant_play_tagged.allow_land
+                && grant_play_tagged.duration
+                    == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            {
+                return format!(
+                    "Until the end of your next turn, {} may cast that card and you may spend mana as though it were mana of any color to cast that spell",
+                    describe_player_filter(&grant_play_tagged.player),
+                );
+            }
             let pronoun = if object_text == "that card" {
-                "it"
+                "that spell"
             } else {
                 "them"
             };

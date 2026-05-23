@@ -4333,6 +4333,74 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast() {
+    let tokens = lex_line(
+        "Until the end of your next turn, you may cast that card",
+        0,
+    )
+    .expect("rewrite lexer should classify until-next-turn cast permission clause");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::Tagged {
+            player: crate::cards::builders::PlayerAst::You,
+            allow_land: false,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: super::PermissionLifetime::UntilYourNextTurn,
+            ..
+        }))
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("until-next-turn tagged cast permission should parse as an effect");
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                        player:
+                            crate::cards::builders::PlayerAst::You
+                            | crate::cards::builders::PlayerAst::Implicit,
+                        allow_land: false,
+                        ..
+                    }
+                )
+        )),
+        "expected until-next-turn tagged cast permission effect, got {effects:#?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast_with_any_color_mana() {
+    let tokens = lex_line(
+        "Until the end of your next turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell",
+        0,
+    )
+    .expect("rewrite lexer should classify until-next-turn cast permission with any-color mana");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("until-next-turn tagged cast permission with any-color mana should parse as an effect");
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                        allow_land: false,
+                        allow_any_color_for_cast: true,
+                        ..
+                    }
+                )
+        )),
+        "expected until-next-turn tagged cast permission effect with any-color mana, got {effects:#?}"
+    );
+}
+
+#[test]
 fn rewrite_token_primitives_cover_count_range_prefixes() {
     let up_to = lex_line("up to three target creatures", 0)
         .expect("rewrite lexer should classify up-to count range");

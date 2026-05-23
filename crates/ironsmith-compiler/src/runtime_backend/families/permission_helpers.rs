@@ -448,6 +448,9 @@ fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetime,
 ) -> Option<(PermissionLifetime, bool)> {
+    if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(tokens) {
+        return parse_permission_tail_tokens(stripped, default_lifetime);
+    }
     if tokens.is_empty() {
         return Some((default_lifetime, false));
     }
@@ -790,9 +793,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 clause_refs.join(" ")
             )));
         }
-        if lifetime == PermissionLifetime::UntilYourNextTurn
-            && (!allow_land || without_paying_mana_cost)
-        {
+        if lifetime == PermissionLifetime::UntilYourNextTurn && without_paying_mana_cost {
             return Err(CardTextError::ParseError(format!(
                 "unsupported until-next-turn play target (clause: '{}')",
                 clause_refs.join(" ")
@@ -1119,6 +1120,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
                 tag,
                 PlayerAst::You,
                 true,
+                false,
             ),
         )),
         _ => Ok(None),
@@ -1343,6 +1345,21 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
+                allow_any_color_for_cast,
+            ),
+        )),
+        Some(PermissionClauseSpec::Tagged {
+            tag,
+            player,
+            allow_land,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: PermissionLifetime::UntilYourNextTurn,
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
+            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                tag,
+                PlayerAst::Implicit,
+                allow_land,
                 allow_any_color_for_cast,
             ),
         )),
