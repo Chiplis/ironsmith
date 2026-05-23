@@ -5491,6 +5491,26 @@ fn incubate_its_controller_binds_controller_and_mana_value() {
 }
 
 #[test]
+fn destroy_target_nonland_permanent_with_life_equal_to_mana_value_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Feed the Swarm Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy target creature or enchantment an opponent controls. You lose life equal to that permanent's mana value.",
+        )
+        .expect("life-loss equal to that permanent's mana value should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("DestroyEffect")
+            && debug.contains("LoseLifeEffect")
+            && debug.contains("ManaValueOf")
+            && debug.contains("Tagged")
+            && debug.contains("it"),
+        "expected lose-life amount to use the destroyed permanent's mana value, got {debug}"
+    );
+}
+
+#[test]
 fn equal_to_dynamic_token_count_can_use_opponent_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Count Token Variant")
         .card_types(vec![CardType::Creature])
