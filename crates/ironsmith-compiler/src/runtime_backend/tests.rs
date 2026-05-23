@@ -3820,6 +3820,15 @@ fn rewrite_lexed_cant_sentence_supports_phase_out_until_next_upkeep() {
 }
 
 #[test]
+fn semantic_document_supports_proliferate_then_choose_permanents_phase_out() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Ripples of Potential")
+        .card_types(vec![CardType::Instant]);
+    let text = "Proliferate, then choose any number of permanents you control that had a counter put on them this way. Those permanents phase out.";
+    parse_text_to_semantic_document(builder, text.to_string(), false)
+        .expect("expected proliferate/phase-out line to parse in semantic document");
+}
+
+#[test]
 fn rewrite_parse_target_phrase_preserves_hyphenated_filter_before_random_suffix() {
     let text = "target non-Vampire creature chosen at random";
     let tokens =

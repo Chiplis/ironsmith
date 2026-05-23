@@ -39,6 +39,7 @@ impl EffectExecutor for ProliferateEffect {
 
         for _ in 0..count {
             let mut proliferated_count = 0;
+            let mut proliferated_permanents = Vec::new();
 
             let eligible_permanents: Vec<crate::ids::ObjectId> = game
                 .battlefield
@@ -108,6 +109,7 @@ impl EffectExecutor for ProliferateEffect {
                         outcome = outcome.with_event(event);
                     }
                 }
+                proliferated_permanents.push(perm_id);
                 proliferated_count += 1;
             }
 
@@ -146,6 +148,7 @@ impl EffectExecutor for ProliferateEffect {
             }
 
             proliferated_total += proliferated_count;
+            outcome = outcome.with_affected_objects(proliferated_permanents);
             action_events.push(TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(
                     KeywordActionKind::Proliferate,
@@ -240,6 +243,26 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1)); // 1 permanent proliferated
         let obj = game.object(creature_id).unwrap();
         assert_eq!(obj.counters.get(&CounterType::PlusOnePlusOne), Some(&4)); // 3 + 1
+    }
+
+    #[test]
+    fn test_proliferate_reports_affected_permanents_for_tagging() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Tagged Proliferate Creature",
+            alice,
+            CounterType::PlusOnePlusOne,
+            1,
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ProliferateEffect::new(1);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.affected_objects(), Some([creature_id].as_slice()));
     }
 
     #[test]

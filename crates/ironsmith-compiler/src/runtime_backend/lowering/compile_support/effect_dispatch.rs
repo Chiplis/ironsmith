@@ -297,7 +297,13 @@ fn compile_subject_verb_effect(
         ),
         SubjectVerbActionAst::Proliferate { count } => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
-            Ok((vec![Effect::proliferate(count)], Vec::new()))
+            let mut effect = Effect::proliferate(count);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("proliferated");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::Investigate { count } => compile_subject_verb_player_value_effect(
             role,
