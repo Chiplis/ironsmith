@@ -1523,7 +1523,10 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
         "looks at the top card",
     ]
     .into_iter()
-    .any(|needle| lower.contains(needle));
+    .any(|needle| lower.contains(needle))
+        || lower.contains("tagged '__source_exiled__' cards")
+        || ((lower.contains("you may exile a ") || lower.contains("you may exile an "))
+            && lower.contains(" from among them"));
     if !singular_source {
         return None;
     }
@@ -1537,6 +1540,8 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
         ("you may cast tagged 'revealed_", "cast"),
         ("you may play tagged '__sentence_helper_exiled_", "play"),
         ("you may cast tagged '__sentence_helper_exiled_", "cast"),
+        ("you may play tagged '__source_exiled__' cards", "play"),
+        ("you may cast tagged '__source_exiled__' cards", "cast"),
         ("you may play tagged '__sentence_helper_revealed_", "play"),
         ("you may cast tagged '__sentence_helper_revealed_", "cast"),
     ];
@@ -5274,6 +5279,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
             "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
+        )
+        .replace(
+            "a creature you control deals damage equal to its power to up to one target creature you don't control",
+            "target creature you control deals damage equal to its power to up to one target creature you don't control",
         );
     normalized
 }
