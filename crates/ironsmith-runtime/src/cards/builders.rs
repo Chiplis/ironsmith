@@ -4378,7 +4378,35 @@ impl CardDefinitionBuilder {
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
-    text == "compleated" || text.starts_with("prototype ") || text.starts_with("splice onto ")
+    text == "compleated"
+        || text.starts_with("prototype ")
+        || text.starts_with("splice onto ")
+        || is_ticket_power_toughness_sticker_marker_line(&text)
+}
+
+fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, pt_text)) = text.split_once('—') else {
+        return false;
+    };
+
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+    if !saw_ticket_symbol || !remainder.is_empty() {
+        return false;
+    }
+
+    let pt = pt_text.trim();
+    let Some((power, toughness)) = pt.split_once('/') else {
+        return false;
+    };
+    !power.is_empty()
+        && !toughness.is_empty()
+        && power.chars().all(|c| c.is_ascii_digit())
+        && toughness.chars().all(|c| c.is_ascii_digit())
 }
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
@@ -6877,6 +6905,37 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && !debug.contains("StaticAbilityId::KeywordFallbackText")
                 && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "daybound should not compile via placeholder/marker ability ids: {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_ticket_power_toughness_sticker_marker_line_uses_keyword_marker() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ticket Sticker Variant")
+            .parse_text("{TK}{TK} — 3/3\n{TK}{TK}{TK} — 6/2")
+            .expect("ticket sticker p/t lines should parse as keyword markers");
+
+        let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+        assert!(
+            debug.contains("keywordmarker") && !debug.contains("keywordfallbacktext"),
+            "expected ticket p/t sticker lines to avoid keyword fallback text, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_ticket_labeled_trigger_does_not_repeat_chosen_option_condition_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ticket Trigger Variant")
+            .parse_text(
+                "{TK}{TK} — When this permanent leaves the battlefield, create two Food tokens.",
+            )
+            .expect("ticket-labeled trigger should parse");
+
+        let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+        assert!(
+            rendered.contains("{tk}{tk} — when this permanent leaves the battlefield")
+                && !rendered.contains("chosen option is"),
+            "expected labeled trigger text without redundant chosen-option clause, got {rendered}"
         );
     }
 
