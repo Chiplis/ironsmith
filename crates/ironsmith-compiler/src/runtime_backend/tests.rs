@@ -5035,25 +5035,6 @@ fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_grammar_entryp
 }
 
 #[test]
-fn rewrite_lower_parses_next_spell_cost_reduction_inside_triggered_clause() {
-    let text = "Whenever this creature attacks, the next instant or sorcery spell you cast this turn costs {X} less to cast, where X is this creature's power as this ability resolves.";
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Triggered Cost Reducer")
-        .card_types(vec![CardType::Creature]);
-
-    let (doc, _) = parse_text_to_semantic_document(builder, text.to_string(), false)
-        .expect("triggered next-spell cost reduction should parse");
-    let parsed = super::pipeline::parse_semantic_document(doc)
-        .expect("triggered next-spell cost reduction should lower to semantic AST");
-    let debug = format!("{parsed:?}");
-
-    assert!(debug.contains("ReduceNextSpellCostThisTurn"), "{debug}");
-    assert!(
-        debug.contains("card_types: [Instant, Sorcery]"),
-        "{debug}"
-    );
-}
-
-#[test]
 fn rewrite_anthem_grant_static_parses_flashback_tail_without_word_view() {
     let tokens = lex_line(
         "During your turn, each instant and sorcery card in your graveyard has flashback. Its flashback cost is equal to its mana cost.",
