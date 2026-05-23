@@ -10040,12 +10040,20 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::LifeTotalOrGreater(n) => format!("your life total is {n} or greater"),
         Condition::CardsInHandOrMore(n) => format!("you have {n} or more cards in hand"),
         Condition::PlayerCardsInHandOrMore { player, count } => {
-            format!("{} has {} or more cards in hand", describe_player_filter(player), count)
+            let subject = describe_player_filter(player);
+            format!(
+                "{} {} {} or more cards in hand",
+                subject,
+                player_verb(&subject, "have", "has"),
+                count
+            )
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
+            let subject = describe_player_filter(player);
             format!(
-                "{} has {} or fewer cards in hand",
-                describe_player_filter(player),
+                "{} {} {} or fewer cards in hand",
+                subject,
+                player_verb(&subject, "have", "has"),
                 count
             )
         }
