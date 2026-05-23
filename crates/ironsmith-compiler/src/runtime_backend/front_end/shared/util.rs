@@ -1769,6 +1769,12 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "spell", "mana", "value"],
         &["that", "spell's", "mana", "value"],
         &["that", "spells", "mana", "value"],
+        &["that", "permanent", "mana", "value"],
+        &["that", "permanent's", "mana", "value"],
+        &["that", "permanents", "mana", "value"],
+        &["that", "object", "mana", "value"],
+        &["that", "object's", "mana", "value"],
+        &["that", "objects", "mana", "value"],
     ]) {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),

@@ -174,6 +174,22 @@ fn finalize_ast_surface_line(line: String) -> String {
         "Target creature or planeswalker an opponent controls",
     );
     line = line.replace(
+        "target creature an opponent controls or enchantment",
+        "target creature or enchantment an opponent controls",
+    );
+    line = line.replace(
+        "Target creature an opponent controls or enchantment",
+        "Target creature or enchantment an opponent controls",
+    );
+    line = line.replace(
+        "lose life equal to its mana value",
+        "lose life equal to that permanent's mana value",
+    );
+    line = line.replace(
+        "Lose life equal to its mana value",
+        "Lose life equal to that permanent's mana value",
+    );
+    line = line.replace(
         "At the beginning of the next end step, you lose 1 life. Return this card to its owner's hand",
         "At the beginning of the next end step, you lose 1 life and return this card to your hand",
     );
@@ -743,6 +759,24 @@ mod tests {
                     .to_string()
             ),
             "When an opponent casts a spell, sacrifice this enchantment and counter that spell."
+        );
+    }
+
+    #[test]
+    fn target_type_disjunction_keeps_shared_opponent_controller_clause() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Destroy target creature an opponent controls or enchantment".to_string()
+            ),
+            "Destroy target creature or enchantment an opponent controls."
+        );
+    }
+
+    #[test]
+    fn life_loss_mana_value_uses_that_permanent_surface() {
+        assert_eq!(
+            finalize_ast_surface_line("You lose life equal to its mana value".to_string()),
+            "You lose life equal to that permanent's mana value."
         );
     }
 
