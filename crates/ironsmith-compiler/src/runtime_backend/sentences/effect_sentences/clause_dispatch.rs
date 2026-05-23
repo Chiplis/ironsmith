@@ -754,6 +754,32 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_clear_suspected(None));
     }
 
+    if clause_words.first() == Some(&"cast")
+        && clause_words.get(1) == Some(&"target")
+        && let Some(without_word_idx) = clause_words
+            .windows(5)
+            .position(|window| window == ["without", "paying", "its", "mana", "cost"])
+        && let Some(target_token_end) = token_index_for_word_index(tokens, without_word_idx)
+    {
+        let _ = parse_target_phrase(&tokens[1..target_token_end])?;
+        return Ok(EffectAst::SubjectVerb(
+            crate::runtime_backend::ast::SubjectVerbEffectAst {
+                subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::Implicit,
+                },
+                action: SubjectVerbActionAst::CastTagged {
+                    tag: TagKey::from(IT_TAG),
+                    player: PlayerAst::Implicit,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    cost_reduction: None,
+                },
+            },
+        ));
+    }
+
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [
