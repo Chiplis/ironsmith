@@ -4515,6 +4515,8 @@ fn rewrite_token_primitives_cover_count_range_prefixes() {
 fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
     let prefixed = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify prefixed duration phrase");
+    let prefixed_next_end_step = lex_line("Until your next end step, you may play that card", 0)
+        .expect("rewrite lexer should classify next-end-step duration phrase");
     let suffixed = lex_line("Target creature can't attack this turn", 0)
         .expect("rewrite lexer should classify suffixed duration phrase");
 
@@ -4524,6 +4526,9 @@ fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
     let (suffix_remainder, suffix_duration) =
         super::token_primitives::parse_turn_duration_suffix(&suffixed)
             .expect("suffixed duration should parse");
+    let (next_end_step_duration, next_end_step_remainder) =
+        super::token_primitives::parse_turn_duration_prefix(&prefixed_next_end_step)
+            .expect("next-end-step prefix should parse");
 
     assert_eq!(
         prefix_duration,
@@ -4538,8 +4543,16 @@ fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
         super::token_primitives::TurnDurationPhrase::ThisTurn
     );
     assert_eq!(
+        next_end_step_duration,
+        super::token_primitives::TurnDurationPhrase::UntilYourNextTurn
+    );
+    assert_eq!(
         TokenWordView::new(suffix_remainder).to_word_refs(),
         vec!["target", "creature", "cant", "attack"]
+    );
+    assert_eq!(
+        TokenWordView::new(next_end_step_remainder).to_word_refs(),
+        vec!["you", "may", "play", "that", "card"]
     );
 }
 
@@ -4757,6 +4770,22 @@ fn rewrite_lexed_permission_helpers_preserve_any_color_cast_suffix() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("GrantPlayTaggedUntilEndOfTurn"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_parse_next_end_step_and_those_spells_suffix() {
+    let tokens = lex_line(
+        "Until your next end step, you may play those cards and mana of any type can be spent to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify next-end-step tagged permission with mana-spend suffix");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("next-end-step tagged permission clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("GrantPlayTaggedUntilYourNextTurn"), "{debug}");
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
 }
 

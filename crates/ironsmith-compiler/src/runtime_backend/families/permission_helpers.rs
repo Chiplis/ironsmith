@@ -360,6 +360,10 @@ fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
                 "spell",
             ][..],
             &[
+                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "those",
+                "spells",
+            ][..],
+            &[
                 "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
                 "any", "color", "to", "cast", "it",
             ][..],
