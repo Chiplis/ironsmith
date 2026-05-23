@@ -5295,12 +5295,10 @@ pub(crate) fn parse_cost_modifier_mana_cost(
         let Some(group) = mana_pips_from_token(token) else {
             break;
         };
-        if group.iter().any(|symbol| {
-            matches!(
-                symbol,
-                ManaSymbol::X | ManaSymbol::Snow | ManaSymbol::Life(_)
-            )
-        }) {
+        if group
+            .iter()
+            .any(|symbol| matches!(symbol, ManaSymbol::Snow | ManaSymbol::Life(_)))
+        {
             break;
         }
         pips.push(group);
