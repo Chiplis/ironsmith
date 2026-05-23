@@ -12001,7 +12001,14 @@ pub(super) fn describe_tagged_target_then_power_damage(
         return None;
     }
 
-    let source_text = describe_choose_spec(&target_only.target);
+    let mut source_text = describe_choose_spec(&target_only.target);
+    if source_text != "it"
+        && !source_text.starts_with("this ")
+        && !source_text.starts_with("that ")
+        && !source_text.starts_with("target ")
+    {
+        source_text = format!("target {}", strip_leading_article(&source_text));
+    }
     if matches!(
         deal.target,
         ChooseSpec::Tagged(ref target_tag) if target_tag == source_tag
@@ -29225,14 +29232,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "cast"
         };
         let helper_tag = grant_play_tagged.tag.as_str().starts_with("targeted_")
+            || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
+            || matches!(
+                grant_play_tagged.tag.as_str(),
+                "exiled" | "revealed" | "looked" | "chosen" | "searched"
+            )
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
         let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+            || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
+            || matches!(
+                grant_play_tagged.tag.as_str(),
+                "exiled" | "revealed" | "looked" | "chosen" | "searched"
+            )
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")

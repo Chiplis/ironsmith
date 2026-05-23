@@ -7093,6 +7093,38 @@ fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_feral_encounter_avoids_tagged_play_marker_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Feral Encounter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Look at the top five cards of your library. You may exile a creature card from among them. Put the rest on the bottom of your library in a random order. You may cast the exiled card this turn. At the beginning of the next combat phase this turn, target creature you control deals damage equal to its power to up to one target creature you don't control.",
+        )
+        .expect("feral encounter should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may cast that card this turn")
+            || rendered.contains("you may cast the exiled card this turn"),
+        "expected Feral Encounter cast permission text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("deals damage equal to its power to up to one target creature you don't control"),
+        "expected Feral Encounter damage text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        "expected Feral Encounter to avoid internal tagged markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_triggered_explore_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore Trigger Probe")
         .card_types(vec![CardType::Creature])
