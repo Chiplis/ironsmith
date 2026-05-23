@@ -2401,6 +2401,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_target_phrase_recognizes_bare_the_other_reference() {
+        let tokens = lex_line("the other", 0).unwrap();
+        let target = parse_target_phrase(&tokens).expect("the other should parse as other target");
+
+        assert!(
+            matches!(target, TargetAst::AnyOtherTarget(_)),
+            "expected AnyOtherTarget, got {target:?}"
+        );
+    }
+
+    #[test]
     fn parse_for_each_count_value_words_binds_revealed_this_way_to_it_tag() {
         let words = ["for", "each", "card", "revealed", "this", "way"];
 
@@ -2591,6 +2602,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         all_words.as_slice(),
         ["any", "other"] | ["any", "other", "target"] | ["any", "other", "targets"]
     ) {
+        return Ok(TargetAst::AnyOtherTarget(span));
+    }
+    if matches!(all_words.as_slice(), ["other"] | ["the", "other"]) {
         return Ok(TargetAst::AnyOtherTarget(span));
     }
     if words_have_prefix(all_words.as_slice(), &["up", "to"])
