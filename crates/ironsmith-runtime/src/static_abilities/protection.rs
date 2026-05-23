@@ -134,7 +134,28 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
         return pluralize_subtype_for_protection(filter.subtypes[0]);
     }
 
-    filter.description()
+    let description = filter.description();
+    if let Some(pluralized) = pluralize_permanent_counter_phrase(description.as_str()) {
+        return pluralized;
+    }
+    description
+}
+
+fn pluralize_permanent_counter_phrase(description: &str) -> Option<String> {
+    if let Some(rest) = description.strip_prefix("permanent with a ")
+        && let Some(counter_name) = rest.strip_suffix(" counter on it")
+    {
+        return Some(format!("permanents with {counter_name} counters on them"));
+    }
+    if let Some(rest) = description.strip_prefix("permanent with an ")
+        && let Some(counter_name) = rest.strip_suffix(" counter on it")
+    {
+        return Some(format!("permanents with {counter_name} counters on them"));
+    }
+    if description == "permanent with counter on it" {
+        return Some("permanents with counters on them".to_string());
+    }
+    None
 }
 
 fn pluralize_subtype_for_protection(subtype: crate::types::Subtype) -> String {
@@ -248,6 +269,8 @@ impl StaticAbilityKind for Ward {
 mod tests {
     use super::*;
     use crate::color::Color;
+    use crate::filter::CounterConstraint;
+    use crate::object::CounterType;
 
     #[test]
     fn test_protection_from_color() {
@@ -299,6 +322,17 @@ mod tests {
         let filter = ObjectFilter::artifact();
         let prot = Protection::new(ProtectionFrom::Permanents(filter));
         assert_eq!(prot.display(), "Protection from artifact");
+    }
+
+    #[test]
+    fn test_protection_display_permanents_with_counter_filter_pluralizes() {
+        let mut filter = ObjectFilter::permanent();
+        filter.with_counter = Some(CounterConstraint::Typed(CounterType::Charge));
+        let prot = Protection::new(ProtectionFrom::Permanents(filter));
+        assert_eq!(
+            prot.display(),
+            "Protection from permanents with charge counters on them"
+        );
     }
 
     #[test]

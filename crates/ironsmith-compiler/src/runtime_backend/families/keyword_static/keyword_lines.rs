@@ -87,6 +87,18 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
+        if matches!(value, "permanent" | "permanents")
+            && words.get(idx + 2).copied() == Some("with")
+        {
+            let counter_words = &words[idx + 3..];
+            if let Some((with_counter, consumed)) = parse_filter_counter_constraint_words(counter_words)
+                && consumed == counter_words.len()
+            {
+                let mut filter = ObjectFilter::permanent();
+                filter.with_counter = Some(with_counter);
+                return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
+        }
         match value {
             "the"
                 if words.get(idx + 2).copied() == Some("chosen")
