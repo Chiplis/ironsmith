@@ -771,6 +771,9 @@ pub(super) fn attacking_player_filter_from_words(
     ) {
         return Some(PlayerFilter::Opponent);
     }
+    if contains_any_filter_phrase(words, &[&["attacking", "one", "of", "your", "opponents"]]) {
+        return Some(PlayerFilter::Opponent);
+    }
 
     None
 }

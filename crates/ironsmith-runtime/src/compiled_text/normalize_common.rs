@@ -9356,6 +9356,7 @@ pub(super) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
         "discarded" => Some("discarded"),
         "died" => Some("died"),
         "milled" => Some("milled"),
+        "moved" => Some("put"),
         _ => None,
     }
 }

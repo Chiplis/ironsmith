@@ -299,6 +299,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_attacking_one_of_your_opponents_clause() {
+        let tokens = lex_line("creature attacking one of your opponents", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.attacking_player_or_planeswalker_controlled_by,
+            Some(PlayerFilter::Opponent)
+        );
+    }
+
+    #[test]
     fn temporal_graveyard_from_battlefield_phrase_parser_matches() {
         assert_eq!(
             parse_graveyard_from_battlefield_this_turn_words(&[

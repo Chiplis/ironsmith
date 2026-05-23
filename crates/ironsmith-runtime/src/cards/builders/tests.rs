@@ -10415,6 +10415,30 @@ fn search_reveal_named_card_branch_moves_the_searched_card() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn if_you_put_artifact_this_way_does_not_leak_tagged_object_markers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oviya Automech Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{G}, {T}: You may put a creature or Vehicle card from your hand onto the battlefield. \
+             If you put an artifact onto the battlefield this way, put two +1/+1 counters on it.",
+        )
+        .expect("parse oviya-like activated line");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if you put an artifact this way, put two +1/+1 counters on it"),
+        "expected moved-tag conditional to render as put-this-way text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        "expected compiled text to avoid internal tag references, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_if_you_do_still_wraps_antecedent_with_with_id() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "If You Do Probe")
         .card_types(vec![CardType::Creature])
