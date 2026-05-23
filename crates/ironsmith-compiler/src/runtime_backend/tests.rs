@@ -9317,6 +9317,86 @@ fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
 }
 
 #[test]
+fn rewrite_source_exiled_counter_play_and_cast_permission_static_line() {
+    let line = "You may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them, and you may spend mana as though it were mana of any color to cast those spells.";
+    let tokens = lex_line(line, 0).expect("Haldan-style permission line should lex");
+    let direct =
+        super::keyword_static::parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
+            &tokens,
+        )
+        .expect("direct parser should not error");
+    assert!(
+        direct.is_some(),
+        "expected direct parser to accept {:?}",
+        crate::runtime_backend::token_word_refs(&tokens)
+    );
+
+    let direct_abilities = direct.expect("direct parser should produce abilities");
+    assert_eq!(direct_abilities.len(), 2);
+    let grant = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::Grants(spec) => Some(spec),
+            _ => None,
+        })
+        .expect("expected PlayFrom grant");
+
+    assert!(matches!(&grant.grantable, crate::grant::Grantable::PlayFrom));
+    assert_eq!(grant.zone, crate::zone::Zone::Exile);
+    assert_eq!(grant.beneficiary, crate::filter::PlayerFilter::You);
+    assert_eq!(grant.filter.any_of.len(), 2);
+    assert!(grant.filter.any_of.iter().any(|candidate| {
+        candidate.card_types == vec![CardType::Land]
+            && candidate.zone == Some(crate::zone::Zone::Exile)
+            && candidate
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    }));
+    assert!(grant.filter.any_of.iter().any(|candidate| {
+        candidate.excluded_card_types.contains(&CardType::Creature)
+            && candidate.excluded_card_types.contains(&CardType::Land)
+            && candidate.with_counter
+                == Some(crate::filter::CounterConstraint::Typed(CounterType::Named("fetch")))
+    }));
+
+    let permission = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::ManaSpendPermission {
+                permission,
+                ..
+            } => {
+                assert_eq!(permission.player, crate::filter::PlayerFilter::You);
+                Some(permission)
+            }
+            _ => None,
+        })
+        .expect("expected mana spend permission");
+    let mana_filter = match &permission.scope {
+        ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter) => filter,
+        other => panic!("expected casting mana permission, got {other:?}"),
+    };
+    assert_eq!(mana_filter.any_of.len(), 2);
+    assert!(mana_filter.any_of.iter().all(|candidate| {
+        candidate.zone == Some(crate::zone::Zone::Exile)
+            && candidate
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    }));
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(line)
+        .expect("Haldan-style line should parse");
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("Grantable::PlayFrom") || debug.contains("grantable: PlayFrom"), "{debug}");
+    assert!(debug.contains("fetch"), "{debug}");
+    assert!(debug.contains("ManaSpendPermission"), "{debug}");
+}
+
+#[test]
 fn rewrite_source_you_control_noncombat_damage_to_opponent_creature_as_counters() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Soul-Scar Mage Variant")
         .card_types(vec![CardType::Creature])
