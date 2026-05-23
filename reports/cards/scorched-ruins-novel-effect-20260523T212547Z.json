@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "20260523T212547Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Scorched Ruins",
+    "layout": "normal",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "If this land would enter, sacrifice two untapped lands instead. If you do, put this land onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add {C}{C}{C}{C}.",
+    "source_block": "Name: Scorched Ruins\nType: Land\nIf this land would enter, sacrifice two untapped lands instead. If you do, put this land onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add {C}{C}{C}{C}.",
+    "parse_input": "Type: Land\nIf this land would enter, sacrifice two untapped lands instead. If you do, put this land onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add {C}{C}{C}{C}."
+  },
+  "failure": {
+    "reason": "Card text is an ETB replacement that requires sacrificing two untapped lands as the replacement payment before the land can enter; current runtime only supports InteractiveDiscardOrRedirect and InteractivePayLifeOrEnterTapped.",
+    "gaps": [
+      "Reusable interactive ETB replacement action for sacrificing N permanents matching a filter (including tapped-state constraints) or redirecting the entering object to a fallback zone when unpaid."
+    ]
+  },
+  "compile_probe": {
+    "strict": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Scorched Ruins: ParseError(\\\"unsupported predicate (predicate: 'this land would enter')\\\")\""
+    },
+    "allow_unsupported": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Scorched Ruins: ParseError(\\\"unsupported predicate (predicate: 'this land would enter')\\\")\""
+    }
+  }
+}
