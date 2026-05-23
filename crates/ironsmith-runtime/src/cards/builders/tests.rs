@@ -38590,3 +38590,21 @@ fn parse_suspect_it_clause() {
         "expected suspect-it surface, got {rendered}"
     );
 }
+
+#[test]
+fn parse_passive_goad_designation_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Passive Goad Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "When one or more Faeries you control deal combat damage to a player, that player creates a 4/2 red Pirate creature token with \"This token can't block.\" The token is goaded for the rest of the game.",
+        )
+        .expect("passive goad clause should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.to_ascii_lowercase().contains("goad that creature"),
+        "expected passive goad surface, got {rendered}"
+    );
+}
