@@ -49,6 +49,20 @@ fn describe_card_type(card_type: CardType) -> &'static str {
     card_type.name()
 }
 
+fn join_with_or(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        2 => format!("{} or {}", items[0], items[1]),
+        _ => {
+            let mut out = items[..items.len() - 1].join(", ");
+            out.push_str(", or ");
+            out.push_str(items.last().map(String::as_str).unwrap_or_default());
+            out
+        }
+    }
+}
+
 fn describe_colors(colors: ColorSet) -> String {
     let mut words = Vec::new();
     if colors.contains(Color::White) {
@@ -1120,11 +1134,6 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
             Some(format!("it targets {}", filter.description()))
         }
         ThisSpellCostCondition::YouCastSpellsThisTurnOrMore { count, card_types } => {
-            let amount = if *count <= 1 {
-                "another".to_string()
-            } else {
-                format!("{count} or more")
-            };
             let type_prefix = if card_types.is_empty() {
                 String::new()
             } else {
@@ -1132,7 +1141,21 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
                     .iter()
                     .map(|card_type| describe_card_type(*card_type).to_string())
                     .collect::<Vec<_>>();
-                format!("{} ", join_with_and(&names))
+                format!("{} ", join_with_or(&names))
+            };
+            let amount = if *count <= 1 {
+                if !card_types.is_empty()
+                    && matches!(
+                        card_types.first(),
+                        Some(CardType::Artifact | CardType::Enchantment | CardType::Instant)
+                    )
+                {
+                    "an".to_string()
+                } else {
+                    "a".to_string()
+                }
+            } else {
+                format!("{count} or more")
             };
             Some(format!(
                 "you've cast {amount} {type_prefix}spell{} this turn",
@@ -1621,7 +1644,7 @@ impl StaticAbilityKind for ThisSpellCostReduction {
             return line;
         };
 
-        format!("If {condition_text}, {line}")
+        format!("{line} if {condition_text}")
     }
 
     fn modifies_costs(&self) -> bool {
@@ -1665,7 +1688,7 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
             return format!("This spell costs {amount_text} less to cast");
         };
 
-        format!("If {condition_text}, this spell costs {amount_text} less to cast")
+        format!("This spell costs {amount_text} less to cast if {condition_text}")
     }
 
     fn modifies_costs(&self) -> bool {

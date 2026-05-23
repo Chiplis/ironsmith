@@ -9443,6 +9443,25 @@ fn parse_conditional_spell_cost_if_it_targets_compiles_target_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_conditional_spell_cost_if_you_ve_cast_instant_or_sorcery_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Storm Condition Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell costs {2} less to cast if you've cast an instant or sorcery spell this turn.\nFlying",
+        )
+        .expect("cast-history conditional spell-cost clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if you've cast an instant or sorcery spell this turn"),
+        "expected instant-or-sorcery cast-history condition in rendered text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_madness_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Madness Probe")
         .card_types(vec![CardType::Instant])
