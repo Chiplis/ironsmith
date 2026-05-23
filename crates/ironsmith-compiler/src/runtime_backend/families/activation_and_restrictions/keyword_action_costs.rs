@@ -1282,6 +1282,11 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
                 return Some(KeywordAction::Devour(multiplier));
             }
         }
+        if words.len() == 3 {
+            if let Ok(multiplier) = words[2].parse::<u32>() {
+                return Some(KeywordAction::Devour(multiplier));
+            }
+        }
         if words.len() == 1 {
             return Some(KeywordAction::Devour(1));
         }

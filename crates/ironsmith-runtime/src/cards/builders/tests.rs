@@ -1135,6 +1135,32 @@ fn test_parse_devour_keyword_line_compiles_without_unsupported_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_devour_artifact_keyword_line_compiles_without_unsupported_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Devour Artifact Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Devour artifact 1 (As this creature enters, you may sacrifice any number of artifacts. It enters with that many +1/+1 counters on it.)",
+        )
+        .expect("devour artifact keyword line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains("devour 1"),
+        "expected devour keyword render, got {rendered}"
+    );
+    assert!(
+        !debug.contains("KeywordMarker")
+            && !debug.contains("RuleFallbackText")
+            && !debug.contains("UnsupportedParserLine"),
+        "devour artifact parse should avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_afflict_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Afflict Parse Test")
         .card_types(vec![CardType::Creature])

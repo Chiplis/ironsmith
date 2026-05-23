@@ -392,8 +392,13 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("amplify", KeywordAction::Amplify) {
             return Some(action);
         }
-        if let Some(action) = parse_count_keyword("devour", KeywordAction::Devour) {
-            return Some(action);
+        if words.first().copied() == Some("devour") {
+            if let Some(multiplier) = words.get(1).and_then(|word| word.parse::<u32>().ok()) {
+                return Some(KeywordAction::Devour(multiplier));
+            }
+            if let Some(multiplier) = words.get(2).and_then(|word| word.parse::<u32>().ok()) {
+                return Some(KeywordAction::Devour(multiplier));
+            }
         }
         if words.first().copied() == Some("dredge")
             && let Some(amount) = words.get(1)
