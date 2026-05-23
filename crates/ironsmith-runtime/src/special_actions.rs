@@ -619,8 +619,10 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
         });
     }
 
-    // Check the object is a land
-    if !object.has_card_type(CardType::Land) {
+    // Check the object is a land, or can be played using its linked land face.
+    if !object.has_card_type(CardType::Land)
+        && crate::decision::linked_other_face_land_definition(game, object).is_none()
+    {
         return Err(ActionError::NotALand);
     }
 
@@ -640,6 +642,14 @@ fn perform_play_land(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
+    if let Some(linked_land_def) = game
+        .object(card_id)
+        .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))
+        && let Some(object) = game.object_mut(card_id)
+    {
+        object.apply_definition_face(&linked_land_def);
+    }
+
     // Move the land to the battlefield with ETB replacement processing.
     let result = game
         .move_object_with_etb_processing_with_dm_and_cause(

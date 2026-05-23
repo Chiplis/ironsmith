@@ -3508,7 +3508,11 @@ struct ExternalCardAliasSource {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 enum ExternalCardSourceGroup {
     Single {
         name: String,

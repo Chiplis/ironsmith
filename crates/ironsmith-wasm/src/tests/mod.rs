@@ -7770,6 +7770,53 @@ fn create_custom_card_registers_runtime_linked_face_lookup() {
 }
 
 #[test]
+fn external_linked_card_sources_accept_generated_camel_case_fields() {
+    let mut wasm = WasmGame::new();
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let sources = json!({
+        "version": 1,
+        "canonicalName": "Ondu Inversion",
+        "aliases": [
+            {
+                "alias": "Ondu Inversion // Ondu Skyruins",
+                "canonical": "Ondu Inversion"
+            }
+        ],
+        "group": {
+            "kind": "linked",
+            "layout": "transform_like",
+            "combinedName": "Ondu Inversion // Ondu Skyruins",
+            "hasFuse": false,
+            "faces": [
+                {
+                    "name": "Ondu Inversion",
+                    "block": "Mana cost: {6}{W}{W}\nType: Sorcery\nDestroy all nonland permanents.",
+                    "score": 1.0
+                },
+                {
+                    "name": "Ondu Skyruins",
+                    "block": "Type: Land\nThis land enters tapped.\n{T}: Add {W}.",
+                    "score": 1.0
+                }
+            ]
+        }
+    });
+
+    wasm.register_external_card_sources_json(sources.to_string())
+        .expect("generated linked source JSON should register");
+    let object_id = wasm
+        .add_card_to_hand(0, "Ondu Inversion".to_string())
+        .expect("front face should be addable after registration");
+    let object = wasm
+        .game
+        .object(ObjectId(object_id))
+        .expect("added object should exist");
+    assert_eq!(object.name, "Ondu Inversion");
+    assert_eq!(object.other_face_name.as_deref(), Some("Ondu Skyruins"));
+}
+
+#[test]
 fn snapshot_shows_foretold_card_only_to_the_player_allowed_to_look() {
     let mut game = setup_two_player_game();
     let alice = PlayerId::from_index(0);

@@ -2362,10 +2362,14 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             format!("Begin with {}", name)
         }
         LegalAction::PlayLand { land_id } => {
-            let name = game
-                .object(*land_id)
-                .map(|o| o.name.as_str())
-                .unwrap_or("?");
+            let name = game.object(*land_id).map_or_else(
+                || "?".to_string(),
+                |object| {
+                    crate::decision::linked_other_face_land_definition(game, object)
+                        .map(|def| def.card.name)
+                        .unwrap_or_else(|| object.name.clone())
+                },
+            );
             format!("Play {}", name)
         }
         LegalAction::CastSpell {

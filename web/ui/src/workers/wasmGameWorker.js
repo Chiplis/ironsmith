@@ -413,11 +413,60 @@ function registerFetchedCardSources(sources) {
     return null;
   }
   if (typeof game.registerExternalCardSourcesJson === "function") {
-    const raw = game.registerExternalCardSourcesJson(JSON.stringify(sources));
-    return raw ? JSON.parse(raw) : null;
+    try {
+      const raw = game.registerExternalCardSourcesJson(JSON.stringify(sources));
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      const summary = { loaded: 0, failed: [] };
+      for (const source of sources) {
+        try {
+          const raw = game.registerExternalCardSourcesJson(JSON.stringify(source));
+          const registered = raw ? JSON.parse(raw) : null;
+          summary.loaded += Number(registered?.loaded || 0);
+          if (Array.isArray(registered?.failed)) {
+            summary.failed.push(...registered.failed);
+          }
+        } catch (sourceError) {
+          summary.failed.push({
+            name: String(
+              source?.canonicalName
+                || source?.group?.name
+                || source?.group?.combinedName
+                || "unknown card source"
+            ),
+            error: String(sourceError?.message || sourceError || error),
+          });
+        }
+      }
+      return summary;
+    }
   }
   if (typeof game.registerExternalCardSources === "function") {
-    return game.registerExternalCardSources(sources);
+    try {
+      return game.registerExternalCardSources(sources);
+    } catch (error) {
+      const summary = { loaded: 0, failed: [] };
+      for (const source of sources) {
+        try {
+          const registered = game.registerExternalCardSources(source);
+          summary.loaded += Number(registered?.loaded || 0);
+          if (Array.isArray(registered?.failed)) {
+            summary.failed.push(...registered.failed);
+          }
+        } catch (sourceError) {
+          summary.failed.push({
+            name: String(
+              source?.canonicalName
+                || source?.group?.name
+                || source?.group?.combinedName
+                || "unknown card source"
+            ),
+            error: String(sourceError?.message || sourceError || error),
+          });
+        }
+      }
+      return summary;
+    }
   }
   return null;
 }

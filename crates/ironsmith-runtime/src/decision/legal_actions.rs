@@ -362,7 +362,9 @@ fn append_granted_land_play_actions_from_public_zone(
         let Some(card) = game.object(card_id) else {
             continue;
         };
-        if !card.is_land() {
+        if !card.is_land()
+            && crate::decision::linked_other_face_land_definition(game, card).is_none()
+        {
             continue;
         }
         if view
@@ -474,7 +476,9 @@ fn add_land_actions(
     use crate::special_actions::{SpecialAction, can_perform_check};
 
     for summary in hand_summaries {
-        if summary.is_land {
+        if summary.is_land
+            || crate::decision::linked_other_face_land_definition(game, summary.card).is_some()
+        {
             let action = SpecialAction::PlayLand {
                 card_id: summary.card_id,
             };
@@ -503,7 +507,8 @@ fn add_land_actions(
             .player(player)
             .and_then(|player_obj| player_obj.library.last().copied())
         && let Some(card) = game.object(card_id)
-        && card.is_land()
+        && (card.is_land()
+            || crate::decision::linked_other_face_land_definition(game, card).is_some())
         && !view
             .granted_play_from_for_card(card_id, Zone::Library, player)
             .is_empty()

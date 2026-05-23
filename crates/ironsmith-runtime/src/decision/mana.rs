@@ -1957,6 +1957,20 @@ pub(crate) fn linked_face_definition(
     game.linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)
 }
 
+pub fn linked_other_face_land_definition(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<crate::cards::CardDefinition> {
+    if spell.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+        || spell.has_card_type(crate::types::CardType::Land)
+    {
+        return None;
+    }
+
+    linked_face_definition(game, spell)
+        .filter(|def| def.card.card_types.contains(&crate::types::CardType::Land))
+}
+
 pub(crate) fn spell_has_adventure_half(game: &GameState, spell: &crate::object::Object) -> bool {
     linked_face_definition(game, spell).is_some_and(|def| {
         def.card

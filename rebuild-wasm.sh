@@ -120,10 +120,53 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 if expected.get("checksum") != existing.get("checksum"):
     sys.exit(1)
-if not (cards_dir / "index.json").is_file():
+
+index_path = cards_dir / "index.json"
+if not index_path.is_file():
     sys.exit(1)
 if not scores_file.is_file():
     sys.exit(1)
+
+try:
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    sys.exit(1)
+
+cards = index.get("cards")
+if not isinstance(cards, list):
+    sys.exit(1)
+
+expected_route_count = index.get("routeCount")
+if not isinstance(expected_route_count, int) or expected_route_count < 0:
+    sys.exit(1)
+
+route_files = [
+    path
+    for path in cards_dir.glob("*.json")
+    if path.name != "index.json"
+]
+
+reserved_manifest_routes = {"index"}
+reserved_route_count = sum(
+    1
+    for card in cards
+    if isinstance(card, dict)
+    and str(card.get("route") or "").strip() in reserved_manifest_routes
+)
+if len(route_files) != expected_route_count - reserved_route_count:
+    sys.exit(1)
+
+for card in cards:
+    if not isinstance(card, dict):
+        sys.exit(1)
+    route = str(card.get("route") or "").strip()
+    if not route:
+        sys.exit(1)
+    if route in reserved_manifest_routes:
+        continue
+    if not (cards_dir / f"{route}.json").is_file():
+        sys.exit(1)
+
 sys.exit(0)
 PY
 }

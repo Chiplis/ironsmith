@@ -447,6 +447,13 @@ pub fn apply_priority_response_with_dm(
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
             let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
+            if let Some(linked_land_def) = game
+                .object(*land_id)
+                .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))
+                && let Some(object) = game.object_mut(*land_id)
+            {
+                object.apply_definition_face(&linked_land_def);
+            }
             let result = game
                 .move_object_with_etb_processing_with_dm(
                     *land_id,

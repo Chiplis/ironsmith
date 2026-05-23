@@ -27,7 +27,7 @@ use ironsmith_compiler::{
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 10;
+const DB_SCHEMA_VERSION: i64 = 11;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &[
     "commander",
@@ -1075,6 +1075,19 @@ impl CardStatusDb {
             self.rename_compilation_text_columns_if_needed()?;
         }
 
+        if version > 0 && version < 11 {
+            let has_pr_created_column: bool = self
+                .conn
+                .prepare("SELECT pr_created FROM latest_card_observation LIMIT 0")
+                .is_ok();
+            if !has_pr_created_column {
+                self.conn.execute_batch(
+                    "ALTER TABLE latest_card_observation
+                     ADD COLUMN pr_created INTEGER NOT NULL DEFAULT 0;",
+                )?;
+            }
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS card_compilation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1104,7 +1117,8 @@ impl CardStatusDb {
             CREATE TABLE IF NOT EXISTS latest_card_observation (
                 card_name TEXT PRIMARY KEY,
                 compilation_id INTEGER NOT NULL,
-                agent_running INTEGER NOT NULL DEFAULT 0
+                agent_running INTEGER NOT NULL DEFAULT 0,
+                pr_created INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS card_tagging (
                 card_name TEXT NOT NULL,
@@ -1136,7 +1150,7 @@ impl CardStatusDb {
                 ON registry_card(content_hash);
             DROP VIEW IF EXISTS latest_card_compilation;
             CREATE VIEW latest_card_compilation AS
-            SELECT cc.*, latest.agent_running
+            SELECT cc.*, latest.agent_running, latest.pr_created
             FROM latest_card_observation latest
             JOIN card_compilation cc
             ON cc.id = latest.compilation_id;",
@@ -1157,7 +1171,7 @@ impl CardStatusDb {
         self.conn.execute_batch(
             "DROP VIEW IF EXISTS latest_card_compilation;
              CREATE VIEW latest_card_compilation AS
-             SELECT cc.*, latest.agent_running
+             SELECT cc.*, latest.agent_running, latest.pr_created
              FROM latest_card_observation latest
              JOIN card_compilation cc
              ON cc.id = latest.compilation_id;",
@@ -1349,6 +1363,14 @@ impl CardStatusDb {
     pub fn clear_all_agent_running(&self) -> Result<(), Box<dyn Error>> {
         self.conn
             .execute("UPDATE latest_card_observation SET agent_running = 0", [])?;
+        Ok(())
+    }
+
+    pub fn set_pr_created(&self, card_name: &str, created: bool) -> Result<(), Box<dyn Error>> {
+        self.conn.execute(
+            "UPDATE latest_card_observation SET pr_created = ?1 WHERE card_name = ?2",
+            params![created as i32, card_name],
+        )?;
         Ok(())
     }
 
@@ -3393,9 +3415,9 @@ CardDefinition {
         );
         db.connection()
             .prepare(
-                "SELECT normalized_oracle_text, compiled_text, parse_lossy, parse_loss_reasons, parse_loss_count FROM latest_card_compilation LIMIT 0",
+                "SELECT normalized_oracle_text, compiled_text, parse_lossy, parse_loss_reasons, parse_loss_count, pr_created FROM latest_card_compilation LIMIT 0",
             )
-            .expect("latest view should expose normalized oracle, compiled text, and parse loss columns");
+            .expect("latest view should expose normalized oracle, compiled text, parse loss, and PR tracking columns");
         assert!(
             db.connection()
                 .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")

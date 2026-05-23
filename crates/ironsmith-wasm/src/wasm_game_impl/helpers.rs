@@ -219,7 +219,15 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             }
         }
         LegalAction::PlayLand { land_id } => {
-            format!("Play {}", object_name(game, *land_id))
+            let name = game.object(*land_id).map_or_else(
+                || object_name(game, *land_id),
+                |object| {
+                    ironsmith::decision::linked_other_face_land_definition(game, object)
+                        .map(|def| def.card.name)
+                        .unwrap_or_else(|| object.name.clone())
+                },
+            );
+            format!("Play {}", name)
         }
         LegalAction::CastSpell {
             spell_id,

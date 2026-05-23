@@ -12,7 +12,9 @@ const CARD_LINE = /^(\d+)x?\s+(.+)$/;
 
 function normalizeCardName(raw) {
   return String(raw || "")
-    .replace(/\s*\([A-Z0-9]+\)\s*\d*\*?\s*$/, "")
+    .replace(/\s*(?:\*F\*|foil|nonfoil|etched|★)\s*$/i, "")
+    .replace(/\s*(?:\([a-z0-9]{2,8}\)|\[[a-z0-9]{2,8}\])\s*\d*[a-z]?\*?\s*$/i, "")
+    .replace(/\s*\[[a-z0-9]{2,8}:\d+[a-z]?\]\s*$/i, "")
     .trim();
 }
 

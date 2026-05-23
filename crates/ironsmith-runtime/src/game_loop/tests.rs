@@ -18479,6 +18479,28 @@ fn test_land_adventure_pair_definitions()
     (front, adventure)
 }
 
+fn test_spell_land_pair_definitions() -> (crate::cards::CardDefinition, crate::cards::CardDefinition)
+{
+    let spell_id = CardId::from_raw(9_888_210);
+    let land_id = CardId::from_raw(9_888_211);
+
+    let spell = CardDefinitionBuilder::new(spell_id, "Test Front Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Sorcery])
+        .other_face(land_id)
+        .other_face_name("Test Back Land")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+    let land = CardDefinitionBuilder::new(land_id, "Test Back Land")
+        .card_types(vec![CardType::Land])
+        .other_face(spell_id)
+        .other_face_name("Test Front Spell")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .build();
+
+    (spell, land)
+}
+
 fn register_test_adventure_pair(game: &mut GameState) -> crate::cards::CardDefinition {
     let (front, adventure) = test_adventure_pair_definitions();
     game.register_linked_face_definition(&front);
@@ -18491,6 +18513,13 @@ fn register_test_land_adventure_pair(game: &mut GameState) -> crate::cards::Card
     game.register_linked_face_definition(&front);
     game.register_linked_face_definition(&adventure);
     front
+}
+
+fn register_test_spell_land_pair(game: &mut GameState) -> crate::cards::CardDefinition {
+    let (spell, land) = test_spell_land_pair_definitions();
+    game.register_linked_face_definition(&spell);
+    game.register_linked_face_definition(&land);
+    spell
 }
 
 fn register_costed_test_adventure_pair(
@@ -18549,6 +18578,91 @@ fn add_test_play_from_grant_source(
         .abilities
         .push(Ability::static_ability(StaticAbility::grants(grant)));
     source_id
+}
+
+#[test]
+fn test_spell_land_linked_card_offers_cast_and_land_play_actions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_spell_land_pair(&mut game);
+    game.create_object_from_definition(&crate::cards::basic_forest(), alice, Zone::Battlefield);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == card_id
+            )
+        }),
+        "front-face spell should be castable from hand; got {actions:?}"
+    );
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::PlayLand { land_id } if *land_id == card_id
+            )
+        }),
+        "linked land face should be playable from hand; got {actions:?}"
+    );
+    assert_eq!(
+        crate::decision::format_action_short(&game, &LegalAction::PlayLand { land_id: card_id },),
+        "Play Test Back Land"
+    );
+}
+
+#[test]
+fn test_spell_land_linked_card_enters_as_land_face_when_played() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_test_spell_land_pair(&mut game);
+    let card_id = game.create_object_from_definition(&front, alice, Zone::Hand);
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::PlayLand { card_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("linked land face should be playable from hand");
+
+    let battlefield_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Test Back Land")
+        })
+        .expect("linked land face should enter the battlefield");
+    let land = game
+        .object(battlefield_id)
+        .expect("land object should exist");
+    assert!(land.card_types.contains(&CardType::Land));
+    assert_eq!(
+        game.player(alice)
+            .expect("player should exist")
+            .lands_played_this_turn,
+        1
+    );
 }
 
 #[test]
