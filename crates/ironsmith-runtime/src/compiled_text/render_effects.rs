@@ -2400,6 +2400,40 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_put_onto_battlefield_attached(effects: &[&Effect]) -> Option<String> {
+        let [move_effect, attach_effect] = effects else {
+            return None;
+        };
+
+        let tagged_move = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let move_to_zone = tagged_move
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || !choose_spec_references_exact_tag(&attach.objects, &tagged_move.tag)
+        {
+            return None;
+        }
+
+        let move_text = describe_effect(move_effect);
+        if !move_text
+            .to_ascii_lowercase()
+            .contains("onto the battlefield")
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{move_text} attached to {}",
+            describe_choose_spec(&attach.target)
+        ))
+    }
+
+    if let Some(compact) = describe_put_onto_battlefield_attached(&raw_effects) {
+        return compact;
+    }
+
     fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<String> {
         let [exile_effect, incubate_effect] = effects else {
             return None;
@@ -14517,6 +14551,40 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Sacrifice this enchantment, then put a creature card exiled with it onto the battlefield under your control with two additional +1/+1 counters on it"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_put_onto_battlefield_attached() {
+        let moved_tag = TagKey::from("moved_0");
+        let move_to_zone = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(
+                ObjectFilter::default()
+                    .with_subtype(Subtype::Aura)
+                    .in_zone(Zone::Hand)
+                    .owned_by(PlayerFilter::You),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+            Zone::Battlefield,
+            false,
+        );
+        let mut moved_filter = ObjectFilter::default();
+        moved_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: moved_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        let effects = vec![
+            Effect::new(move_to_zone).tag(moved_tag),
+            Effect::new(crate::effects::AttachObjectsEffect::new(
+                ChooseSpec::All(moved_filter),
+                ChooseSpec::Source,
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Put an Aura card in your hand onto the battlefield attached to this source"
         );
     }
 
