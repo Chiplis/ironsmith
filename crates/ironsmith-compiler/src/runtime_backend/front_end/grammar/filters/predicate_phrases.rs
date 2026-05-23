@@ -1662,7 +1662,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("has")
+        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = parse_named_number(count_word)
         && filtered.get(subject_len + 2).copied() == Some("or")

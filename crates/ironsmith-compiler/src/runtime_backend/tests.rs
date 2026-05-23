@@ -1251,6 +1251,21 @@ fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_output_for_c
 }
 
 #[test]
+fn rewrite_structure_predicate_parses_you_have_one_or_fewer_cards_in_hand() {
+    let text = "you have one or fewer cards in hand";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
+
+    let predicate =
+        super::parse_predicate_lexed(&lexed).expect("predicate should parse for you-have subject");
+    let debug = format!("{predicate:?}");
+
+    assert!(
+        debug.contains("PlayerCardsInHandOrFewer"),
+        "expected cards-in-hand threshold predicate, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_structure_if_tail_parser_extracts_predicate() {
     let tokens = lex_line("if it's white", 0).expect("rewrite lexer should classify if tail");
     let predicate = super::grammar::structure::parse_trailing_if_predicate_lexed(&tokens)
