@@ -136,6 +136,10 @@ pub enum DelayedTriggerSpec {
     AttacksOneOrMore(ObjectFilter),
     Blocks(ObjectFilter),
     Dies(ObjectFilter),
+    DealsCombatDamageToPlayer {
+        source: ObjectFilter,
+        player: PlayerFilter,
+    },
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),
     PutIntoGraveyardFromZone {

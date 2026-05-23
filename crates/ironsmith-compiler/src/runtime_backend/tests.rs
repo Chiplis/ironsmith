@@ -9832,6 +9832,25 @@ fn rewrite_lowered_intervening_counter_gate_binds_destroy_to_gate_filter()
 }
 
 #[test]
+fn rewrite_lowered_delayed_combat_damage_player_trigger_this_turn_compiles() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Delayed Combat Trigger")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "This turn, whenever a creature you control deals combat damage to a player, draw a card."
+            .to_string(),
+        false,
+    )?;
+    let debug = format!("{definition:#?}");
+
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("DealsCombatDamageToPlayer"), "{debug}");
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_consult_cast_bottom_bundle() {
     let sentences = registry_sentence_inputs(
         "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost. Put all cards exiled this way that weren't cast this way on the bottom of your library in a random order.",
