@@ -417,6 +417,19 @@ fn replace_names_with_map(
             return false;
         }
 
+        if prev.is_some_and(|word| word == b"to") {
+            let mut word_start = idx;
+            while word_start > 0 && !bytes[word_start - 1].is_ascii_alphanumeric() {
+                word_start -= 1;
+            }
+            while word_start > 0 && bytes[word_start - 1].is_ascii_alphanumeric() {
+                word_start -= 1;
+            }
+            if previous_word(bytes, word_start).is_some_and(|word| word == b"attached") {
+                return false;
+            }
+        }
+
         apostrophe_s
             || prev.is_some_and(|word| {
                 matches!(

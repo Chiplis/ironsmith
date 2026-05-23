@@ -637,7 +637,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Amass {
         subtype: Option<Subtype>,
-        amount: u32,
+        amount: Value,
     },
     Bolster {
         amount: u32,
@@ -4580,7 +4580,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_amass(subtype: Option<Subtype>, amount: u32) -> Self {
+    pub(crate) fn subject_verb_amass(subtype: Option<Subtype>, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,

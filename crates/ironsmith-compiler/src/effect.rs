@@ -1592,7 +1592,7 @@ impl Effect {
         Self::new(crate::effects::LearnEffect::new())
     }
 
-    pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
+    pub fn amass(subtype: Option<crate::types::Subtype>, amount: impl Into<Value>) -> Self {
         Self::new(crate::effects::AmassEffect::new(subtype, amount))
     }
 

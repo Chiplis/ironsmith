@@ -1596,17 +1596,25 @@ pub(crate) fn parse_keyword_mechanic_clause(
             amount_start += 1;
         }
 
-        let (amount, used) = parse_number(&clause_tokens[amount_start..]).ok_or_else(|| {
+        let (mut amount, used) = parse_value(&clause_tokens[amount_start..]).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing numeric amount for amass clause (clause: '{}')",
                 clause_words.join(" ")
             ))
         })?;
-        if amount_start + used != clause_tokens.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing amass clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+        let trailing_tokens = trim_commas(&clause_tokens[amount_start + used..]);
+        if !trailing_tokens.is_empty() {
+            let Some(where_value) = parse_value_binding_clause(&trailing_tokens) else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing amass clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            amount = super::super::util::replace_unbound_x_with_value(
+                amount,
+                &where_value,
+                &crate::runtime_backend::token_word_refs(&trailing_tokens).join(" "),
+            )?;
         }
 
         return Ok(Some(EffectAst::subject_verb_amass(subtype, amount)));
