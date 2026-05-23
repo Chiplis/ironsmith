@@ -327,6 +327,41 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+
+    if word_slice_starts_with(&clause_words, &["cast", "any", "number", "of", "spells"])
+        && find_word_sequence_index(
+            &clause_words,
+            &[
+                "from", "among", "the", "nonland", "cards", "exiled", "this", "way",
+            ],
+        )
+        .is_some()
+        && word_slice_ends_with(
+            &clause_words,
+            &["without", "paying", "their", "mana", "costs"],
+        )
+    {
+        let cast_filter = ObjectFilter::nonland()
+            .in_zone(crate::zone::Zone::Exile)
+            .match_tagged(
+                TagKey::from(IT_TAG),
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        return Ok(EffectAst::ForEachObject {
+            filter: cast_filter,
+            effects: vec![EffectAst::May {
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    TagKey::from(IT_TAG),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+            }],
+        });
+    }
+
     if clause_words.starts_with(&["all", "abilities", "and"])
         && matches!(clause_words.get(3).copied(), Some("gain" | "gains"))
         && let Some(gain_idx) = tokens
@@ -718,6 +753,36 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ]
     ) {
         return Ok(EffectAst::subject_verb_clear_suspected(None));
+    }
+
+    if clause_words.first() == Some(&"cast")
+        && clause_words.get(1) == Some(&"target")
+        && let Some(without_word_idx) = clause_words
+            .windows(5)
+            .position(|window| window == ["without", "paying", "its", "mana", "cost"])
+        && let Some(target_token_end) = token_index_for_word_index(tokens, without_word_idx)
+    {
+        let _ = parse_target_phrase(&tokens[1..target_token_end])?;
+        return Ok(EffectAst::SubjectVerb(
+            crate::runtime_backend::ast::SubjectVerbEffectAst {
+                subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::Implicit,
+                },
+                action: SubjectVerbActionAst::CastTagged {
+                    tag: TagKey::from(IT_TAG),
+                    player: PlayerAst::Implicit,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    cost_reduction: None,
+                },
+            },
+        ));
+    }
+
+    if let Some(effect) = parse_passive_goad_clause(tokens)? {
+        return Ok(effect);
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
@@ -1169,6 +1234,56 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         };
     }
     Ok(effect)
+}
+
+fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    let Some(is_word_idx) = find_word_index(&words, "is") else {
+        return Ok(None);
+    };
+    if !matches!(words.get(is_word_idx + 1).copied(), Some("goaded" | "goad")) {
+        return Ok(None);
+    }
+
+    let duration_tail = &words[is_word_idx + 2..];
+    let duration_ok = duration_tail.is_empty()
+        || matches!(
+            duration_tail,
+            ["for", "the", "rest", "of", "the", "game"]
+                | ["for", "the", "rest", "of", "this", "game"]
+        );
+    if !duration_ok {
+        return Ok(None);
+    }
+
+    let Some(is_token_idx) = token_index_for_word_index(tokens, is_word_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..is_token_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let subject_words = ClauseDispatchCompatWords::new(&subject_tokens).to_word_refs();
+    let target = if matches!(
+        subject_words.as_slice(),
+        ["the", "token"] | ["the", "tokens"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
+    } else {
+        parse_target_phrase(&subject_tokens)?
+    };
+    if matches!(
+        target,
+        TargetAst::Player(_, _) | TargetAst::PlayerOrPlaneswalker(_, _)
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "goad target must be a creature (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    Ok(Some(EffectAst::subject_verb_goad(target)))
 }
 
 fn parse_hexproof_targeting_override_clause(

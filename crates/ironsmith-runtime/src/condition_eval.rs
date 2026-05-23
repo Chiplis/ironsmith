@@ -477,6 +477,12 @@ fn player_has_more_life_than_each_other_player(game: &GameState, player_id: Play
         .all(|candidate| candidate.id == player_id || life > candidate.life)
 }
 
+fn player_poison_counters_or_more(game: &GameState, player_id: PlayerId, count: u32) -> bool {
+    game.player(player_id)
+        .map(|player| player.poison_counters >= count)
+        .unwrap_or(false)
+}
+
 fn player_has_no_opponent_with_more_life_than(game: &GameState, player_id: PlayerId) -> bool {
     let Some(life) = game.player(player_id).map(|p| p.life) else {
         return false;
@@ -944,6 +950,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
+        Condition::PlayerHasPoisonCountersOrMore { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
@@ -1191,6 +1198,11 @@ pub fn evaluate_condition_external(
                         .filter(|candidate| candidate.is_in_game())
                         .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 })
+        }
+        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
         }
         Condition::PlayerIsMonarch { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2259,6 +2271,11 @@ fn evaluate_condition_simple(
                         .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 })
         }
+        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
+        }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let filter_ctx = game.filter_context_for(controller, Some(source));
             let players: Vec<PlayerId> = match player {
@@ -2893,6 +2910,11 @@ fn evaluate_condition(
                         .filter(|candidate| candidate.is_in_game())
                         .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 }))
+        }
+        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| player_poison_counters_or_more(game, player_id, *count)))
         }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let filter_ctx = ctx.filter_context(game);

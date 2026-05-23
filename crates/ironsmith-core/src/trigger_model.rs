@@ -157,6 +157,7 @@ pub enum TriggerKind {
     },
     IsDealtDamage {
         target: ChooseSpec,
+        combat_only: bool,
     },
     YouGainLife,
     YouGainLifeDuringTurn {
@@ -627,7 +628,22 @@ impl Trigger {
         )
     }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
-        Self::typed("is_dealt_damage", TriggerKind::IsDealtDamage { target })
+        Self::typed(
+            "is_dealt_damage",
+            TriggerKind::IsDealtDamage {
+                target,
+                combat_only: false,
+            },
+        )
+    }
+    pub fn is_dealt_combat_damage(target: ChooseSpec) -> Self {
+        Self::typed(
+            "is_dealt_damage",
+            TriggerKind::IsDealtDamage {
+                target,
+                combat_only: true,
+            },
+        )
     }
     pub fn you_gain_life() -> Self {
         Self::typed("you_gain_life", TriggerKind::YouGainLife)

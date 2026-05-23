@@ -114,17 +114,30 @@ pub(crate) fn parse_cant_clauses(
         if segments.is_empty() {
             return Ok(None);
         }
+        let negated_anchor = segments
+            .iter()
+            .position(|segment| find_negation_span(segment).is_some());
+        let shared_negated_tail = negated_anchor.and_then(|anchor_idx| {
+            find_negation_span(&segments[anchor_idx])
+                .map(|(neg_start, _)| segments[anchor_idx][neg_start..].to_vec())
+        });
         let shared_subject = find_negation_span(&segments[0])
             .map(|(neg_start, _)| trim_commas(&segments[0][..neg_start]))
             .unwrap_or_default();
 
         let mut abilities = Vec::new();
         for (idx, segment) in segments.iter().enumerate() {
-            if find_negation_span(segment).is_none() {
-                continue;
-            }
             let mut expanded = segment.to_vec();
-            if idx > 0
+            if find_negation_span(segment).is_none() {
+                if let Some(anchor_idx) = negated_anchor
+                    && idx < anchor_idx
+                    && let Some(tail) = &shared_negated_tail
+                {
+                    expanded.extend(tail.iter().cloned());
+                } else {
+                    continue;
+                }
+            } else if idx > 0
                 && !shared_subject.is_empty()
                 && matches!(find_negation_span(segment), Some((0, _)))
             {
@@ -231,13 +244,6 @@ pub(crate) fn parse_cant_clause(
             return Ok(conditioned);
         }
     }
-    if let Some((_, remainder)) = parse_restriction_duration(tokens)?
-        && !remainder.is_empty()
-        && remainder.len() < tokens.len()
-    {
-        return Ok(None);
-    }
-
     let normalized_storage = normalize_cant_words(tokens);
     let normalized = normalized_storage
         .iter()

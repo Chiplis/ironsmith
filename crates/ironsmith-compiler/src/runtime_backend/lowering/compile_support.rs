@@ -470,6 +470,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
         }
+        PredicateAst::PlayerHasPoisonCountersOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasPoisonCountersOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCastSpellsThisTurnOrMore {
@@ -4059,7 +4066,7 @@ mod parse_compile_tests {
         ctx.auto_tag_object_targets = true;
 
         let (effects, choices) = compile_effect(
-            &EffectAst::subject_verb_amass(Some(Subtype::Orc), 2),
+            &EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
             &mut ctx,
         )
         .expect("compile amass");
@@ -4075,7 +4082,7 @@ mod parse_compile_tests {
             debug.contains("subtype: Some(Orc)"),
             "amass subtype: {debug}"
         );
-        assert!(debug.contains("amount: 2"), "amass amount: {debug}");
+        assert!(debug.contains("amount: Fixed(2)"), "amass amount: {debug}");
         assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
     }
 

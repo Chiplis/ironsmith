@@ -181,6 +181,46 @@ pub(super) fn run_learn_line_family(
     )))
 }
 
+pub(super) fn run_split_top_and_face_down_look_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
+    let phrase = "you may look at the top card of your library and at face-down creatures you don't control any time";
+    if lower.trim_end_matches('.') != phrase {
+        return Ok(None);
+    }
+
+    let top_card_line = rewrite_line_normalized(
+        ctx.line,
+        "You may look at the top card of your library any time.",
+    )?;
+    let face_down_line = rewrite_line_normalized(
+        ctx.line,
+        "You may look at face-down creatures you don't control any time.",
+    )?;
+
+    let Some(top_card_static) = parse_static_line_cst(&top_card_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower split top-card line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    let Some(face_down_static) = parse_static_line_cst(&face_down_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower split face-down line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    Ok(Some(LineDispatchResult {
+        lines: vec![
+            RewriteLineCst::Static(top_card_static),
+            RewriteLineCst::Static(face_down_static),
+        ],
+        next_idx: ctx.idx + 1,
+    }))
+}
+
 pub(super) fn run_champion_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

@@ -3041,6 +3041,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn look_at_face_down_creatures_you_dont_control() -> Self {
+        Self {
+            id: Some(StaticAbilityId::LookAtFaceDownCreaturesYouDontControl),
+            label: "You may look at face-down creatures you don't control any time.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn all_players_look_at_top_cards_of_libraries() -> Self {
         Self {
             id: Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries),

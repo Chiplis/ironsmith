@@ -2551,6 +2551,42 @@ pub(crate) fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexTok
     )
 }
 
+pub(crate) fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[
+            &[
+                "you",
+                "may",
+                "look",
+                "at",
+                "face-down",
+                "creatures",
+                "you",
+                "dont",
+                "control",
+                "any",
+                "time",
+            ],
+            &[
+                "you",
+                "may",
+                "look",
+                "at",
+                "face-down",
+                "creatures",
+                "you",
+                "don't",
+                "control",
+                "any",
+                "time",
+            ],
+        ],
+    )
+}
+
 pub(crate) fn is_players_play_top_card_libraries_revealed_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

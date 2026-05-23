@@ -11,11 +11,22 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 #[derive(Debug, Clone, PartialEq)]
 pub struct IsDealtDamageTrigger {
     pub target: ChooseSpec,
+    pub combat_only: bool,
 }
 
 impl IsDealtDamageTrigger {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            combat_only: false,
+        }
+    }
+
+    pub fn combat_only(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            combat_only: true,
+        }
     }
 }
 
@@ -27,6 +38,9 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         let Some(e) = event.downcast::<DamageEvent>() else {
             return false;
         };
+        if self.combat_only && !e.is_combat {
+            return false;
+        }
 
         match e.target {
             DamageTarget::Object(object_id) => target_matches_object(&self.target, object_id, ctx),
@@ -35,6 +49,11 @@ impl TriggerMatcher for IsDealtDamageTrigger {
     }
 
     fn display(&self) -> String {
+        let damage_text = if self.combat_only {
+            "combat damage"
+        } else {
+            "damage"
+        };
         fn base_spec(spec: &ChooseSpec) -> &ChooseSpec {
             match spec {
                 ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => base_spec(inner),
@@ -43,21 +62,31 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         }
 
         match base_spec(&self.target) {
-            ChooseSpec::Source => "Whenever this creature is dealt damage".to_string(),
-            ChooseSpec::SpecificObject(_) => "Whenever that permanent is dealt damage".to_string(),
+            ChooseSpec::Source => {
+                if self.combat_only {
+                    "Whenever this creature is dealt combat damage".to_string()
+                } else {
+                    "Whenever this creature is dealt damage".to_string()
+                }
+            }
+            ChooseSpec::SpecificObject(_) => {
+                format!("Whenever that permanent is dealt {damage_text}")
+            }
             ChooseSpec::Object(filter) => {
-                format!("Whenever {} is dealt damage", filter.description())
+                format!("Whenever {} is dealt {damage_text}", filter.description())
             }
             ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
-                "Whenever a target is dealt damage".to_string()
+                format!("Whenever a target is dealt {damage_text}")
             }
-            ChooseSpec::SourceController => "Whenever you are dealt damage".to_string(),
-            ChooseSpec::SourceOwner => "Whenever you are dealt damage".to_string(),
-            ChooseSpec::SpecificPlayer(_) => "Whenever that player is dealt damage".to_string(),
+            ChooseSpec::SourceController => format!("Whenever you are dealt {damage_text}"),
+            ChooseSpec::SourceOwner => format!("Whenever you are dealt {damage_text}"),
+            ChooseSpec::SpecificPlayer(_) => {
+                format!("Whenever that player is dealt {damage_text}")
+            }
             ChooseSpec::Player(filter) => {
-                format!("Whenever {} is dealt damage", filter.description())
+                format!("Whenever {} is dealt {damage_text}", filter.description())
             }
-            _ => "Whenever a target is dealt damage".to_string(),
+            _ => format!("Whenever a target is dealt {damage_text}"),
         }
     }
 }
@@ -111,5 +140,8 @@ mod tests {
     fn test_display() {
         let trigger = IsDealtDamageTrigger::new(ChooseSpec::creature());
         assert!(trigger.display().contains("dealt damage"));
+
+        let combat_trigger = IsDealtDamageTrigger::combat_only(ChooseSpec::creature());
+        assert!(combat_trigger.display().contains("combat damage"));
     }
 }

@@ -31,7 +31,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let (chooser, choose_start_idx) =
+    let (mut chooser, choose_start_idx) =
         if clause_words.first().copied() == Some("target") && clause_words.len() >= 4 {
             let chooser = match clause_words.get(1).copied() {
                 Some("player") => PlayerAst::Target,
@@ -133,6 +133,16 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         ))
     })?;
     choose_filter = expand_graveyard_or_hand_disjunction_filter(choose_filter, &clause_words);
+    if chooser == PlayerAst::That
+        && choose_filter.controller.is_none()
+        && choose_filter.owner.is_none()
+        && choose_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+    {
+        chooser = PlayerAst::ItsController;
+    }
     if matches!(
         choose_filter.zone,
         Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile)
@@ -143,6 +153,9 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         choose_filter.controller = Some(match chooser {
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::That => PlayerFilter::IteratedPlayer,
+            PlayerAst::ItsController => {
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+            }
             _ => PlayerFilter::target_player(),
         });
     }
@@ -775,6 +788,25 @@ mod tests {
         assert!(
             filter.controller.is_none(),
             "implicit choose should let lowering bind the controller to the chooser, got {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_that_player_chooses_one_of_those_uses_last_object_controller() {
+        let tokens = tokenize_line("That player chooses one of those creatures.", 0);
+
+        let (chooser, filter, count) = parse_target_player_choose_objects_clause(&tokens)
+            .expect("parse that-player chooses one-of-those clause")
+            .expect("expected target-player choose clause");
+
+        assert_eq!(chooser, PlayerAst::ItsController);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject),
+            "expected one-of-those choice to stay tied to tagged objects, got {filter:?}"
         );
     }
 

@@ -2240,6 +2240,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Surveil { count: amount }
             | SubjectVerbActionAst::Proliferate { count: amount }
             | SubjectVerbActionAst::Investigate { count: amount }
+            | SubjectVerbActionAst::Amass { amount, .. }
             | SubjectVerbActionAst::Monstrosity { amount }
             | SubjectVerbActionAst::Discover { count: amount }
             | SubjectVerbActionAst::Fateseal { count: amount }
@@ -2322,7 +2323,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
-            | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }

@@ -297,7 +297,13 @@ fn compile_subject_verb_effect(
         ),
         SubjectVerbActionAst::Proliferate { count } => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
-            Ok((vec![Effect::proliferate(count)], Vec::new()))
+            let mut effect = Effect::proliferate(count);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("proliferated");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::Investigate { count } => compile_subject_verb_player_value_effect(
             role,
@@ -334,7 +340,8 @@ fn compile_subject_verb_effect(
             Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
         }
         SubjectVerbActionAst::Amass { subtype, amount } => {
-            let mut effect = Effect::amass(*subtype, *amount);
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let mut effect = Effect::amass(*subtype, amount);
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("amassed");
                 ctx.last_object_tag = Some(tag.clone());
@@ -1816,6 +1823,7 @@ fn compile_subject_verb_effect(
             tag,
             player,
             allow_land,
+            allow_any_color_for_cast,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1834,7 +1842,7 @@ fn compile_subject_verb_effect(
                     player_filter,
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
                     *allow_land,
-                    false,
+                    *allow_any_color_for_cast,
                 ))],
                 Vec::new(),
             ))

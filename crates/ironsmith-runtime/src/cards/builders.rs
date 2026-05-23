@@ -3025,10 +3025,16 @@ impl CardDefinitionBuilder {
     /// that share a creature type with it. This creature enters with N times that many
     /// +1/+1 counters on it."
     pub fn amplify(self, amount: u32) -> Self {
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![Effect::amplify(amount)],
-        ))
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_enters_battlefield(),
+                effects: vec![Effect::amplify(amount)].into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:amplify {amount}")),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add ravenous.
@@ -4378,7 +4384,35 @@ impl CardDefinitionBuilder {
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
-    text == "compleated" || text.starts_with("prototype ") || text.starts_with("splice onto ")
+    text == "compleated"
+        || text.starts_with("prototype ")
+        || text.starts_with("splice onto ")
+        || is_ticket_power_toughness_sticker_marker_line(&text)
+}
+
+fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, pt_text)) = text.split_once('—') else {
+        return false;
+    };
+
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+    if !saw_ticket_symbol || !remainder.is_empty() {
+        return false;
+    }
+
+    let pt = pt_text.trim();
+    let Some((power, toughness)) = pt.split_once('/') else {
+        return false;
+    };
+    !power.is_empty()
+        && !toughness.is_empty()
+        && power.chars().all(|c| c.is_ascii_digit())
+        && toughness.chars().all(|c| c.is_ascii_digit())
 }
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
@@ -6882,6 +6916,39 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_ticket_power_toughness_sticker_marker_line_uses_keyword_marker() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ticket Sticker Variant")
+            .parse_text("{TK}{TK} — 3/3\n{TK}{TK}{TK} — 6/2")
+            .expect("ticket sticker p/t lines should parse as keyword markers");
+
+        let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+        assert!(
+            debug.contains("keywordmarker") && !debug.contains("keywordfallbacktext"),
+            "expected ticket p/t sticker lines to avoid keyword fallback text, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_ticket_labeled_trigger_does_not_repeat_chosen_option_condition_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ticket Trigger Variant")
+            .parse_text(
+                "{TK}{TK} — When this permanent leaves the battlefield, create two Food tokens.",
+            )
+            .expect("ticket-labeled trigger should parse");
+
+        let rendered = unprocessed_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("{tk}{tk} — when this permanent leaves the battlefield")
+                && !rendered.contains("chosen option is"),
+            "expected labeled trigger text without redundant chosen-option clause, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn daybound_runtime_transforms_source_for_day_night_designation() {
         use crate::ids::PlayerId;
 
@@ -7486,6 +7553,35 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             debug.contains("PayEnergyEffect"),
             "expected pay energy effect, got {debug}"
+        );
+        assert!(
+            debug.contains("PutCountersEffect"),
+            "expected +1/+1 counter effect in if-you-do branch, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_one_or_more_energy_pay_clause_includes_pay_any_energy_effect() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Flexible Energy Pay Trigger Variant")
+            .parse_text(
+                "Whenever this creature attacks, you may pay one or more {E}. If you do, put a +1/+1 counter on this creature.",
+            )
+            .expect("one-or-more energy pay trigger line should parse");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+
+        let debug = format!("{:?}", triggered.effects);
+        assert!(
+            debug.contains("PayAnyEnergyEffect"),
+            "expected pay any energy effect, got {debug}"
         );
         assert!(
             debug.contains("PutCountersEffect"),
@@ -9266,13 +9362,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_rejects_spent_to_cast_conditional_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant").parse_text(
+    fn parse_supports_spent_to_cast_conditional_clause_chain() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant")
+            .parse_text(
             "Firespout deals 3 damage to each creature without flying if {R} was spent to cast this spell and 3 damage to each creature with flying if {G} was spent to cast this spell.",
-        );
+            )
+            .expect("spent-to-cast conditional chain should parse");
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&definition)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
-            result.is_err(),
-            "unsupported spent-to-cast conditional clause should fail parse instead of partially compiling damage effects"
+            joined.contains("if {r} was spent to cast this spell")
+                && joined.contains("if {g} was spent to cast this spell"),
+            "expected both spent-to-cast conditionals in compiled text, got {joined}"
         );
     }
 

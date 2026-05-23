@@ -23,7 +23,8 @@ use super::grammar::structure::{
 };
 use super::lexer::{OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences};
 use super::util::{
-    parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
+    parse_card_type, parse_color, parse_filter_counter_constraint_words,
+    parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
 };
 
 fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
@@ -189,6 +190,19 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
+        if matches!(value, "permanent" | "permanents")
+            && words.get(idx + 2).copied() == Some("with")
+        {
+            let counter_words = &words[idx + 3..];
+            if let Some((with_counter, consumed)) =
+                parse_filter_counter_constraint_words(counter_words)
+                && consumed == counter_words.len()
+            {
+                let mut filter = ObjectFilter::permanent();
+                filter.with_counter = Some(with_counter);
+                return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
+        }
         match value {
             "the"
                 if words.get(idx + 2).copied() == Some("chosen")
@@ -479,6 +493,19 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
         let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
             let value = *words.get(idx + 1)?;
+            if matches!(value, "permanent" | "permanents")
+                && words.get(idx + 2).copied() == Some("with")
+            {
+                let counter_words = &words[idx + 3..];
+                if let Some((with_counter, consumed)) =
+                    parse_filter_counter_constraint_words(counter_words)
+                    && consumed == counter_words.len()
+                {
+                    let mut filter = ObjectFilter::permanent();
+                    filter.with_counter = Some(with_counter);
+                    return Some(KeywordAction::ProtectionFromFilter(filter));
+                }
+            }
             match value {
                 "the"
                     if words.get(idx + 2).copied() == Some("chosen")

@@ -184,7 +184,9 @@ pub(crate) enum TriggerSpec {
         non_mana_only: bool,
     },
     ThisIsDealtDamage,
+    ThisIsDealtCombatDamage,
     IsDealtDamage(ObjectFilter),
+    IsDealtCombatDamage(ObjectFilter),
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
@@ -457,6 +459,10 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreCardsInHandThanEachOtherPlayer {
         player: PlayerAst,
     },
+    PlayerHasPoisonCountersOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     VoteOptionGetsMoreVotes {
         option: String,
     },
@@ -643,7 +649,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Amass {
         subtype: Option<Subtype>,
-        amount: u32,
+        amount: Value,
     },
     Bolster {
         amount: u32,
@@ -981,6 +987,7 @@ pub(crate) enum SubjectVerbActionAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+        allow_any_color_for_cast: bool,
     },
     GrantPlayTaggedForAsLongAsExiled {
         tag: TagKey,
@@ -2116,11 +2123,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tag,
                 player,
                 allow_land,
+                allow_any_color_for_cast,
             } => f
                 .debug_struct("GrantPlayTaggedUntilYourNextTurn")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
+                .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsExiled {
                 tag,
@@ -3487,6 +3496,7 @@ impl EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+        allow_any_color_for_cast: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3495,6 +3505,7 @@ impl EffectAst {
                 tag,
                 player,
                 allow_land,
+                allow_any_color_for_cast,
             },
         )
     }
@@ -4586,7 +4597,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_amass(subtype: Option<Subtype>, amount: u32) -> Self {
+    pub(crate) fn subject_verb_amass(subtype: Option<Subtype>, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,

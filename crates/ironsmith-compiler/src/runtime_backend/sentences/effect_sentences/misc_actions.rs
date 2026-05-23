@@ -640,6 +640,11 @@ pub(crate) fn parse_pay(
     {
         return Ok(EffectAst::subject_verb_pay_any_energy(player));
     }
+    if grammar::words_match_any_prefix(tokens, &[&["one", "or", "more"]]).is_some()
+        && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
+    {
+        return Ok(EffectAst::subject_verb_pay_any_energy(player));
+    }
     let has_for_each = clause_words
         .windows(2)
         .any(|window| window == ["for", "each"]);

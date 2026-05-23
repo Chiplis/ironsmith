@@ -13,7 +13,7 @@ use crate::continuous::{
 };
 use crate::effect::{Comparison, Value};
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::{PlayerFilterExt, TaggedOpbjectRelation};
+use crate::filter::{PlayerFilterExt, TaggedConstraintSubject, TaggedOpbjectRelation};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -586,6 +586,12 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             }
             subject
         }
+        AnthemCountExpression::GreatestManaValueAmong(filter) => {
+            format!(
+                "the greatest mana value among {}",
+                pluralized_subject_text(filter)
+            )
+        }
         AnthemCountExpression::AttachedToSource(filter) => {
             format!(
                 "{} attached to this creature",
@@ -693,6 +699,18 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             player.description()
         )),
         _ => None,
+    }
+}
+
+fn describe_anthem_where_x_count_expression(expr: &AnthemCountExpression) -> String {
+    match expr {
+        AnthemCountExpression::GreatestManaValueAmong(filter) => {
+            format!(
+                "the greatest mana value among {}",
+                pluralized_subject_text(filter)
+            )
+        }
+        _ => format!("the number of {}", describe_anthem_count_expression(expr)),
     }
 }
 
@@ -1224,6 +1242,13 @@ pub(crate) fn resolve_anthem_count_expression(
             .filter_map(|id| game.object(id))
             .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
             .count() as i32,
+        AnthemCountExpression::GreatestManaValueAmong(filter) => all_game_object_ids(game)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            .map(|obj| obj.subject_mana_value())
+            .max()
+            .unwrap_or(0) as i32,
         AnthemCountExpression::AttachedToSource(filter)
         | AnthemCountExpression::AttachedToAffected(filter) => game
             .object(source)
@@ -1537,8 +1562,8 @@ impl StaticAbilityKind for Anthem {
                     return format!("{subject} {verb} +1/+1 for each {count_subject}");
                 }
                 format!(
-                    "{subject} {verb} +X/+X, where X is the number of {}",
-                    describe_anthem_count_expression(power_count),
+                    "{subject} {verb} +X/+X, where X is {}",
+                    describe_anthem_where_x_count_expression(power_count),
                 )
             }
             (
@@ -1585,10 +1610,10 @@ impl StaticAbilityKind for Anthem {
                     )
                 } else {
                     format!(
-                        "{subject} {verb} {}/{}, where X is the number of {}",
+                        "{subject} {verb} {}/{}, where X is {}",
                         x_component(*power),
                         signed(*toughness),
-                        describe_anthem_count_expression(count),
+                        describe_anthem_where_x_count_expression(count),
                     )
                 }
             }
@@ -1599,10 +1624,10 @@ impl StaticAbilityKind for Anthem {
                 },
                 AnthemValue::Fixed(toughness),
             ) => format!(
-                "{subject} {verb} {}/{}, where X is the number of {}",
+                "{subject} {verb} {}/{}, where X is {}",
                 x_component(*power),
                 signed(*toughness),
-                describe_anthem_count_expression(count),
+                describe_anthem_where_x_count_expression(count),
             ),
             (
                 AnthemValue::Fixed(power),
@@ -1618,10 +1643,10 @@ impl StaticAbilityKind for Anthem {
                     )
                 } else {
                     format!(
-                        "{subject} {verb} {}/{}, where X is the number of {}",
+                        "{subject} {verb} {}/{}, where X is {}",
                         signed(*power),
                         x_component(*toughness),
-                        describe_anthem_count_expression(count),
+                        describe_anthem_where_x_count_expression(count),
                     )
                 }
             }

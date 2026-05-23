@@ -635,6 +635,11 @@ impl Trigger {
         Self::new(IsDealtDamageTrigger::new(target))
     }
 
+    /// Create a "when [target] is dealt combat damage" trigger.
+    pub fn is_dealt_combat_damage(target: ChooseSpec) -> Self {
+        Self::new(IsDealtDamageTrigger::combat_only(target))
+    }
+
     // === Spell/Ability Triggers ===
 
     /// Create a "when [player] casts a spell" trigger.

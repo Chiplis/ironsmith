@@ -137,6 +137,31 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
     ))
 }
 
+fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
+    if words.is_empty() {
+        return None;
+    }
+
+    let mut label = String::new();
+    for word in words {
+        if word.chars().all(|ch| ch.is_ascii_digit()) {
+            label.push('{');
+            label.push_str(word);
+            label.push('}');
+            continue;
+        }
+        if parse_mana_symbol(word).is_ok() {
+            label.push('{');
+            label.push_str(&word.to_ascii_uppercase());
+            label.push('}');
+            continue;
+        }
+        return None;
+    }
+
+    Some(label)
+}
+
 fn ordinal_number_word(word: &str) -> Option<u32> {
     ironsmith_core::parse_ordinal_word(word).or_else(|| parse_named_number(word))
 }
@@ -2162,6 +2187,28 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::Not(Box::new(
             PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
         )));
+    }
+    if filtered.len() >= 4 && filtered[filtered.len() - 3..] == ["cost", "was", "paid"] {
+        let start = usize::from(filtered.first().copied() == Some("the"));
+        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
+            return Ok(PredicateAst::ThisSpellPaidLabel(label));
+        }
+    }
+    if filtered.len() >= 4 && filtered[filtered.len() - 3..] == ["cost", "wasnt", "paid"] {
+        let start = usize::from(filtered.first().copied() == Some("the"));
+        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
+            return Ok(PredicateAst::Not(Box::new(
+                PredicateAst::ThisSpellPaidLabel(label),
+            )));
+        }
+    }
+    if filtered.len() >= 5 && filtered[filtered.len() - 4..] == ["cost", "was", "not", "paid"] {
+        let start = usize::from(filtered.first().copied() == Some("the"));
+        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 4]) {
+            return Ok(PredicateAst::Not(Box::new(
+                PredicateAst::ThisSpellPaidLabel(label),
+            )));
+        }
     }
     if filtered.len() == 6
         && filtered[0] == "this"

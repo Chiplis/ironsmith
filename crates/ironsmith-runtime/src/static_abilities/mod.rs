@@ -2834,6 +2834,10 @@ impl StaticAbility {
         Self::new(LookAtTopCardOfLibrary)
     }
 
+    pub fn look_at_face_down_creatures_you_dont_control() -> Self {
+        Self::new(LookAtFaceDownCreaturesYouDontControl)
+    }
+
     pub fn all_players_look_at_top_cards_of_libraries() -> Self {
         Self::new(AllPlayersLookAtTopCardsOfLibraries)
     }

@@ -322,7 +322,7 @@ fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
         "expected opponent life-loss trigger with cast-tagged effect, got {debug}"
     );
     assert!(
-        debug.contains("RegisterZoneReplacementEffect"),
+        debug.contains("RegisterFutureZoneReplacementEffect"),
         "expected one-shot graveyard-to-exile replacement for cast spell, got {debug}"
     );
 
@@ -1824,6 +1824,25 @@ fn test_parse_canonist_style_nonartifact_cast_limit() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_each_opponent_with_poison_counter_threshold() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Corrupted Atlas Variant")
+        .parse_text(
+            "Corrupted - Whenever this artifact becomes tapped, each opponent who has three or more poison counters loses 1 life.",
+        )
+        .expect("parse each-opponent poison threshold trigger");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("each opponent who has three or more poison counters loses 1 life")
+            || rendered.contains("for each opponent, if that player has 3 or more poison counters, that player loses 1 life"),
+        "expected poison-threshold opponent life-loss trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_your_opponents_nonartifact_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lavinia Variant")
         .parse_text("Your opponents can't cast more than one nonartifact spell each turn.")
@@ -1943,6 +1962,27 @@ fn test_parse_nonsource_cant_block_specific_attacker_restriction() {
     });
 
     assert!(has_rule_restriction);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_multi_color_cant_block_this_turn_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flash of Defiance Test")
+        .parse_text("Green creatures and white creatures can't block this turn.")
+        .expect("parse multicolor cant-block-this-turn restriction");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("green creatures can't block this turn")
+            || rendered.contains("white creatures can't block this turn"),
+        "expected at least one parsed color cant-block-this-turn clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("green creatures") && rendered.contains("white creatures"),
+        "expected both colors in parsed restriction output, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -22379,7 +22419,7 @@ fn parse_arcbond_delayed_trigger_without_unsupported_fallback_in_allow_unsupport
         "expected delayed trigger to track a tagged watched object, got {spell_debug}"
     );
     assert!(
-        spell_debug.contains("IsDealtDamageTrigger { target: Source }"),
+        spell_debug.contains("IsDealtDamageTrigger { target: Source"),
         "expected delayed trigger to watch damage dealt to the tagged object source, got {spell_debug}"
     );
 }
@@ -27105,6 +27145,23 @@ fn parse_face_down_static_anthem_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_you_may_look_at_face_down_creatures_you_dont_control_any_time() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of the Lens Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("You may look at face-down creatures you don't control any time.")
+        .expect("face-down visibility static line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may look at face-down creatures you don't control any time"),
+        "expected face-down visibility line to be preserved, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Furnace Celebration Variant")
         .card_types(vec![CardType::Enchantment])
@@ -31329,8 +31386,12 @@ fn proud_pack_rhino_modal_etb_renders_with_bullets() {
         }
         other => panic!("shield mode should target a permanent, got {other:?}"),
     }
+    let proliferate_effect = modal.modes[1].effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(&modal.modes[1].effects[0]);
     assert!(
-        modal.modes[1].effects[0]
+        proliferate_effect
             .downcast_ref::<crate::effects::ProliferateEffect>()
             .is_some(),
         "second mode should proliferate"
@@ -32338,6 +32399,20 @@ fn vote_regression_truth_or_consequences_keeps_random_choice_before_consequences
     assert!(
         truth_idx < choose_idx && choose_idx < consequences_idx,
         "expected random opponent choice to stay between the truth and consequences loops, got {debug}"
+    );
+}
+
+#[test]
+fn amplify_regression_glowering_rogon_renders_keyword_without_unsupported_placeholder() {
+    let def = parse_oracle_card_definition("Glowering Rogon");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Amplify 1"),
+        "expected Glowering Rogon to render amplify keyword, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported effect"),
+        "expected Glowering Rogon to avoid unsupported placeholder, got {rendered}"
     );
 }
 
@@ -34425,6 +34500,24 @@ fn parse_oracle_commanders_insignia_commander_cast_count_regression() {
     assert!(
         debug.contains("CommanderCastCount(You)"),
         "expected commander-cast-count lowering in parsed ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_emissary_escort_greatest_mana_value_anthem_regression() {
+    let def = parse_oracle_card_definition("Emissary Escort");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("greatest mana value among other artifacts you control"),
+        "expected greatest-mana-value anthem wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("GreatestManaValueAmong"),
+        "expected greatest-mana-value anthem lowering in parsed ability, got {debug}"
     );
 }
 
@@ -38588,5 +38681,23 @@ fn parse_suspect_it_clause() {
     assert!(
         rendered.contains("suspect it"),
         "expected suspect-it surface, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_passive_goad_designation_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Passive Goad Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "When one or more Faeries you control deal combat damage to a player, that player creates a 4/2 red Pirate creature token with \"This token can't block.\" The token is goaded for the rest of the game.",
+        )
+        .expect("passive goad clause should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.to_ascii_lowercase().contains("goad that creature"),
+        "expected passive goad surface, got {rendered}"
     );
 }

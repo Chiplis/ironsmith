@@ -2808,6 +2808,62 @@ fn rewrite_if_clause_binds_that_enchantment_and_created_token_references() {
 }
 
 #[test]
+fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
+    let tokens = lex_line("Attach up to one target Equipment to it.", 0)
+        .expect("rewrite lexer should classify attach clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("attach clause should parse");
+
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Attach { object, target },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
+    else {
+        panic!("expected attach effect, got {parsed:?}");
+    };
+
+    assert!(
+        !matches!(object, crate::cards::builders::TargetAst::Source(_)),
+        "expected object side to remain a targetable attachment object"
+    );
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+}
+
+#[test]
+fn amass_where_x_clause_replaces_unbound_x() {
+    let tokens = lex_line(
+        "Amass Orcs X, where X is the number of Equipment attached to this creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify amass where-x clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("amass clause should parse");
+
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Amass { amount, .. },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
+    else {
+        panic!("expected amass effect, got {parsed:?}");
+    };
+
+    assert!(
+        !matches!(amount, crate::effect::Value::X),
+        "expected where-X clause to bind amass amount"
+    );
+}
+
+#[test]
 fn rewrite_triggered_attach_it_to_target_seeds_triggering_object_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attach Source Variant")
         .parse_text("When this Equipment enters, attach it to target creature you control.")
@@ -3820,6 +3876,15 @@ fn rewrite_lexed_cant_sentence_supports_phase_out_until_next_upkeep() {
 }
 
 #[test]
+fn semantic_document_supports_proliferate_then_choose_permanents_phase_out() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Ripples of Potential")
+        .card_types(vec![CardType::Instant]);
+    let text = "Proliferate, then choose any number of permanents you control that had a counter put on them this way. Those permanents phase out.";
+    parse_text_to_semantic_document(builder, text.to_string(), false)
+        .expect("expected proliferate/phase-out line to parse in semantic document");
+}
+
+#[test]
 fn rewrite_parse_target_phrase_preserves_hyphenated_filter_before_random_suffix() {
     let text = "target non-Vampire creature chosen at random";
     let tokens =
@@ -4254,6 +4319,37 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
 }
 
 #[test]
+fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost() {
+    let tokens = lex_line(
+        "Cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify targeted graveyard free-cast clause");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("targeted graveyard free-cast should parse");
+
+    assert!(matches!(
+        effects.as_slice(),
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                subject: crate::cards::builders::SubjectVerbSubjectAst {
+                    role: crate::cards::builders::SubjectVerbRoleAst::Actor,
+                    player: crate::cards::builders::PlayerAst::Implicit,
+                },
+                action: crate::cards::builders::SubjectVerbActionAst::CastTagged {
+                    player: crate::cards::builders::PlayerAst::Implicit,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    ..
+                },
+            },
+        )]
+    ));
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
     let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify until-next-turn permission clause");
@@ -4269,6 +4365,72 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
             ..
         }))
     ));
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast() {
+    let tokens = lex_line("Until the end of your next turn, you may cast that card", 0)
+        .expect("rewrite lexer should classify until-next-turn cast permission clause");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::Tagged {
+            player: crate::cards::builders::PlayerAst::You,
+            allow_land: false,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: super::PermissionLifetime::UntilYourNextTurn,
+            ..
+        }))
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("until-next-turn tagged cast permission should parse as an effect");
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                        player:
+                            crate::cards::builders::PlayerAst::You
+                            | crate::cards::builders::PlayerAst::Implicit,
+                        allow_land: false,
+                        ..
+                    }
+                )
+        )),
+        "expected until-next-turn tagged cast permission effect, got {effects:#?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast_with_any_color_mana() {
+    let tokens = lex_line(
+        "Until the end of your next turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell",
+        0,
+    )
+    .expect("rewrite lexer should classify until-next-turn cast permission with any-color mana");
+
+    let effects = parse_effect_sentence_lexed(&tokens).expect(
+        "until-next-turn tagged cast permission with any-color mana should parse as an effect",
+    );
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                        allow_land: false,
+                        allow_any_color_for_cast: true,
+                        ..
+                    }
+                )
+        )),
+        "expected until-next-turn tagged cast permission effect with any-color mana, got {effects:#?}"
+    );
 }
 
 #[test]
@@ -5963,6 +6125,23 @@ fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
 }
 
 #[test]
+fn academy_researchers_puts_aura_from_hand_onto_battlefield_attached() {
+    let text = "When this creature enters, you may put an Aura card from your hand onto the battlefield attached to this creature.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Academy Researchers")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("Academy Researchers should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(debug.contains("zone: Some("), "{debug}");
+    assert!(debug.contains("Hand"), "{debug}");
+    assert!(debug.contains("Aura"), "{debug}");
+    assert!(debug.contains("AttachObjectsEffect"), "{debug}");
+    assert!(debug.contains("this creature"), "{debug}");
+}
+
+#[test]
 fn cruel_reality_fallback_life_loss_targets_that_player() {
     let text = "Enchant player\nAt the beginning of enchanted player's upkeep, that player sacrifices a creature or planeswalker of their choice. If the player can't, they lose 5 life.";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cruel Reality")
@@ -6650,6 +6829,26 @@ fn rewrite_lexed_keyword_line_parses_mixed_protection_chain_targets() {
                     crate::cards::builders::KeywordAction::ProtectionFromAllColors,
                 ]
     ));
+}
+
+#[test]
+fn rewrite_lexed_keyword_line_parses_protection_from_permanents_with_named_counters() {
+    let protection_tokens = lex_line(
+        "Protection from permanents with corruption counters on them",
+        0,
+    )
+    .expect("rewrite lexer should classify counter-filtered protection");
+
+    let parsed = super::clause_support::parse_ability_line_lexed(&protection_tokens)
+        .expect("counter-filtered protection should parse");
+    assert_eq!(parsed.len(), 1, "{parsed:?}");
+
+    let crate::cards::builders::KeywordAction::ProtectionFromFilter(filter) = &parsed[0] else {
+        panic!("expected protection-from-filter action, got {parsed:?}");
+    };
+    let debug = format!("{filter:?}");
+    assert!(debug.contains("with_counter: Some"), "{debug}");
+    assert!(debug.to_ascii_lowercase().contains("corruption"), "{debug}");
 }
 
 #[test]
@@ -7769,6 +7968,14 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             crate::static_abilities::StaticAbilityId::LookAtTopCardOfLibrary,
         ),
         (
+            "You may look at face-down creatures you don't control any time.",
+            super::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed
+                as Probe,
+            super::keyword_static::parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
+                as Parser,
+            crate::static_abilities::StaticAbilityId::LookAtFaceDownCreaturesYouDontControl,
+        ),
+        (
             "Players play with the top card of their libraries revealed.",
             super::grammar::abilities::is_players_play_top_card_libraries_revealed_line_lexed
                 as Probe,
@@ -7816,6 +8023,26 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             "{text}: {parsed:?}"
         );
     }
+}
+
+#[test]
+fn parse_lens_of_clarity_split_look_permissions() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lens of Clarity Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "You may look at the top card of your library and at face-down creatures you don't control any time.",
+        )
+        .expect("Lens of Clarity text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardOfLibrary"),
+        "expected top-card look permission, got {debug}"
+    );
+    assert!(
+        debug.contains("LookAtFaceDownCreaturesYouDontControl"),
+        "expected face-down look permission, got {debug}"
+    );
 }
 
 #[test]
@@ -8090,6 +8317,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         0,
     )
     .expect("rewrite lexer should classify exile zone-change trigger probe");
+    let dealt_combat_damage_tokens = lex_line("this creature is dealt combat damage", 0)
+        .expect("rewrite lexer should classify dealt-combat-damage trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -8193,6 +8422,12 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         ),
         "{exile:?}"
     );
+    assert!(matches!(
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &dealt_combat_damage_tokens,
+        ),
+        Ok(crate::cards::builders::TriggerSpec::ThisIsDealtCombatDamage)
+    ));
 }
 
 #[test]
@@ -9206,7 +9441,29 @@ fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_replacement
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("ChooseObjects"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_may_cast_target_graveyard_artifact_or_spell_replacement() {
+    let sentences = registry_sentence_inputs(
+        "You may cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost. If an instant or sorcery spell cast this way would be put into your graveyard, exile it instead.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match targeted graveyard free-cast/replacement bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "may-cast-target-graveyard-spell-then-exile-replacement"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
 }
 
 #[test]
@@ -9352,6 +9609,94 @@ fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
     assert!(debug.contains("Ice"), "{debug}");
     assert!(debug.contains("ManaSpendPermission"), "{debug}");
     assert!(debug.contains("CastingSpellsMatching"), "{debug}");
+}
+
+#[test]
+fn rewrite_source_exiled_counter_play_and_cast_permission_static_line() {
+    let line = "You may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them, and you may spend mana as though it were mana of any color to cast those spells.";
+    let tokens = lex_line(line, 0).expect("Haldan-style permission line should lex");
+    let direct =
+        super::keyword_static::parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
+            &tokens,
+        )
+        .expect("direct parser should not error");
+    assert!(
+        direct.is_some(),
+        "expected direct parser to accept {:?}",
+        crate::runtime_backend::token_word_refs(&tokens)
+    );
+
+    let direct_abilities = direct.expect("direct parser should produce abilities");
+    assert_eq!(direct_abilities.len(), 2);
+    let grant = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::Grants(spec) => Some(spec),
+            _ => None,
+        })
+        .expect("expected PlayFrom grant");
+
+    assert!(matches!(
+        &grant.grantable,
+        crate::grant::Grantable::PlayFrom
+    ));
+    assert_eq!(grant.zone, crate::zone::Zone::Exile);
+    assert_eq!(grant.beneficiary, crate::filter::PlayerFilter::You);
+    assert_eq!(grant.filter.any_of.len(), 2);
+    assert!(grant.filter.any_of.iter().any(|candidate| {
+        candidate.card_types == vec![CardType::Land]
+            && candidate.zone == Some(crate::zone::Zone::Exile)
+            && candidate
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    }));
+    assert!(grant.filter.any_of.iter().any(|candidate| {
+        candidate.excluded_card_types.contains(&CardType::Creature)
+            && candidate.excluded_card_types.contains(&CardType::Land)
+            && candidate.with_counter
+                == Some(crate::filter::CounterConstraint::Typed(CounterType::Named(
+                    "fetch",
+                )))
+    }));
+
+    let permission = direct_abilities
+        .iter()
+        .find_map(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::ManaSpendPermission {
+                permission,
+                ..
+            } => {
+                assert_eq!(permission.player, crate::filter::PlayerFilter::You);
+                Some(permission)
+            }
+            _ => None,
+        })
+        .expect("expected mana spend permission");
+    let mana_filter = match &permission.scope {
+        ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter) => filter,
+        other => panic!("expected casting mana permission, got {other:?}"),
+    };
+    assert_eq!(mana_filter.any_of.len(), 2);
+    assert!(mana_filter.any_of.iter().all(|candidate| {
+        candidate.zone == Some(crate::zone::Zone::Exile)
+            && candidate
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    }));
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(line)
+        .expect("Haldan-style line should parse");
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("Grantable::PlayFrom") || debug.contains("grantable: PlayFrom"),
+        "{debug}"
+    );
+    assert!(debug.contains("fetch"), "{debug}");
+    assert!(debug.contains("ManaSpendPermission"), "{debug}");
 }
 
 #[test]
@@ -9843,6 +10188,21 @@ fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseab
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_each_player_exile_top_cast_nonland_exiled_this_way() {
+    let text = "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify each-player exile-top cast text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ForEachPlayer"), "{debug}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_target_opponent_consult_until_eot_cast() {
     let text = "Target opponent exiles cards from the top of their library until they exile a nonland card. Until end of turn, you may cast that card without paying its mana cost.";
     let lexed =
@@ -10009,6 +10369,27 @@ fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permane
         debug.contains("Artifact") && debug.contains("Creature"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lowered_supports_spent_to_cast_conditional_chain() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Firespout deals 3 damage to each creature without flying if {R} was spent to cast this spell and 3 damage to each creature with flying if {G} was spent to cast this spell."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("Red,"), "{debug}");
+    assert!(debug.contains("Green,"), "{debug}");
+    assert!(debug.contains("excluded_static_abilities"), "{debug}");
+    assert!(debug.contains("static_abilities"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+    Ok(())
 }
 
 #[test]
@@ -10672,6 +11053,8 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         .expect("parser should parse exile-from-hand cost");
     let reveal_source = parse_activation_cost_rewrite("Reveal this card from your hand")
         .expect("parser should parse reveal-source-from-hand cost");
+    let reveal_typed_source = parse_activation_cost_rewrite("Reveal this creature from your hand")
+        .expect("parser should parse typed reveal-source-from-hand cost");
 
     assert!(matches!(
         energy.segments.as_slice(),
@@ -10704,6 +11087,10 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     ));
     assert!(matches!(
         reveal_source.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RevealSourceFromHand]
+    ));
+    assert!(matches!(
+        reveal_typed_source.segments.as_slice(),
         [super::ActivationCostSegmentCst::RevealSourceFromHand]
     ));
 }
@@ -11702,6 +12089,34 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
     }
 
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Trial of Agony")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Choose two target creatures controlled by the same opponent. That player chooses one of those creatures. Trial of Agony deals 5 damage to that creature, and the other can't block this turn.".to_string(),
+        false,
+    )?;
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("CantEffect"),
+        "expected can't effect, got {debug}"
+    );
+    assert!(
+        debug.contains("restriction: Block"),
+        "expected block restriction, got {debug}"
+    );
+    assert!(
+        debug.contains("IsNotTaggedObject"),
+        "expected other-reference tagging, got {debug}"
+    );
 
     Ok(())
 }

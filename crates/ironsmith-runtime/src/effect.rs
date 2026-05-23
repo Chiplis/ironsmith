@@ -1580,7 +1580,7 @@ impl Effect {
     }
 
     /// Create an "amass" effect.
-    pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
+    pub fn amass(subtype: Option<crate::types::Subtype>, amount: impl Into<Value>) -> Self {
         use crate::effects::AmassEffect;
         Self::new(AmassEffect::new(subtype, amount))
     }

@@ -2925,6 +2925,9 @@ pub(crate) fn parse_anthem_clause(
             })?;
             scale = Some(match x_value {
                 Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
+                Value::GreatestManaValue(filter) => {
+                    AnthemCountExpression::GreatestManaValueAmong(filter)
+                }
                 Value::CountersOnSource(counter_type) => {
                     AnthemCountExpression::CountersOnSource(counter_type)
                 }

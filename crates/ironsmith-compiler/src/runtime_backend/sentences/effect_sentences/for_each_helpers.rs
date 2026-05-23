@@ -674,6 +674,41 @@ pub(crate) fn parse_for_each_opponent_clause(
             if_false: Vec::new(),
         }])));
     }
+    if inner_words.len() >= 7
+        && inner_words.first().copied() == Some("who")
+        && inner_words.get(1).copied() == Some("has")
+        && let Some((count, used)) = parse_number(&inner_tokens[2..])
+    {
+        let cmp_idx = 2 + used;
+        if inner_words.get(cmp_idx).copied() == Some("or")
+            && inner_words.get(cmp_idx + 1).copied() == Some("more")
+            && inner_words.get(cmp_idx + 2).copied() == Some("poison")
+            && inner_words
+                .get(cmp_idx + 3)
+                .is_some_and(|word| *word == "counter" || *word == "counters")
+        {
+            let effect_start = cmp_idx + 4;
+            let effect_token_start = token_index_for_word_index(&inner_tokens, effect_start)
+                .unwrap_or(inner_tokens.len());
+            let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
+            if effect_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing effect after 'each opponent who has ... poison counters' (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let mut branch_effects = parse_effect_chain(&effect_tokens)?;
+            force_implicit_token_controller_you(&mut branch_effects);
+            return Ok(Some(wrap_for_each(vec![EffectAst::Conditional {
+                predicate: PredicateAst::PlayerHasPoisonCountersOrMore {
+                    player: PlayerAst::That,
+                    count,
+                },
+                if_true: branch_effects,
+                if_false: Vec::new(),
+            }])));
+        }
+    }
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {

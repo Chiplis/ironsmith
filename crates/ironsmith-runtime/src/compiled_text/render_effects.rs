@@ -2400,6 +2400,40 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_put_onto_battlefield_attached(effects: &[&Effect]) -> Option<String> {
+        let [move_effect, attach_effect] = effects else {
+            return None;
+        };
+
+        let tagged_move = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let move_to_zone = tagged_move
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || !choose_spec_references_exact_tag(&attach.objects, &tagged_move.tag)
+        {
+            return None;
+        }
+
+        let move_text = describe_effect(move_effect);
+        if !move_text
+            .to_ascii_lowercase()
+            .contains("onto the battlefield")
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{move_text} attached to {}",
+            describe_choose_spec(&attach.target)
+        ))
+    }
+
+    if let Some(compact) = describe_put_onto_battlefield_attached(&raw_effects) {
+        return compact;
+    }
+
     fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<String> {
         let [exile_effect, incubate_effect] = effects else {
             return None;
@@ -14521,6 +14555,42 @@ mod tests {
     }
 
     #[test]
+    fn describe_effect_list_compacts_put_onto_battlefield_attached() {
+        let moved_tag = TagKey::from("moved_0");
+        let move_to_zone = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(
+                ObjectFilter::default()
+                    .with_subtype(Subtype::Aura)
+                    .in_zone(Zone::Hand)
+                    .owned_by(PlayerFilter::You),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+            Zone::Battlefield,
+            false,
+        );
+        let mut moved_filter = ObjectFilter::default();
+        moved_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: moved_tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+
+        let effects = vec![
+            Effect::new(move_to_zone).tag(moved_tag),
+            Effect::new(crate::effects::AttachObjectsEffect::new(
+                ChooseSpec::All(moved_filter),
+                ChooseSpec::Source,
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Put an Aura card in your hand onto the battlefield attached to this source"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_search_reveal_move_then_shuffle() {
         let tag = TagKey::from("searched");
         let choose = crate::effects::ChooseObjectsEffect::new(
@@ -14794,6 +14864,28 @@ mod tests {
         assert_eq!(
             describe_effect(&effect),
             "Unless any player pays {2}, search your library for a card, put it into your hand, then shuffle"
+        );
+    }
+
+    #[test]
+    fn describe_may_unless_pay_mana_uses_or_surface() {
+        let effect = Effect::may_single(Effect::unless_action(
+            vec![Effect::discard_player_filtered(
+                Value::Fixed(1),
+                PlayerFilter::You,
+                false,
+                None,
+            )],
+            vec![Effect::new(crate::effects::PayManaEffect::new(
+                crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+                ChooseSpec::Player(PlayerFilter::You),
+            ))],
+            PlayerFilter::You,
+        ));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "You may discard a card or pay {2}"
         );
     }
 
@@ -21843,7 +21935,7 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
     }
 
     let setup = describe_effect(&with_id.effect);
-    let triggered = describe_effect_list(&reflexive.effects);
+    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
@@ -23872,6 +23964,45 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_until(&gain_control.duration)
             );
         }
+        if for_each.effects.len() == 1 {
+            let deal = if let Some(deal) =
+                for_each.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()
+            {
+                Some(deal)
+            } else if let Some(tagged) =
+                for_each.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+            {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+            } else {
+                None
+            };
+            if let Some(deal) = deal
+                && matches!(deal.target, ChooseSpec::Iterated)
+            {
+                let effect_text = describe_effect_list(&for_each.effects);
+                let replacements = [
+                    " to that object",
+                    " to that creature",
+                    " to that permanent",
+                    " to that artifact",
+                    " to that enchantment",
+                    " to that land",
+                    " to that spell",
+                    " to that card",
+                ];
+                if let Some(suffix) = replacements
+                    .iter()
+                    .find(|suffix| effect_text.ends_with(**suffix))
+                {
+                    let subject_text = effect_text.trim_end_matches(*suffix);
+                    let description = for_each.filter.description();
+                    let filter_text = strip_indefinite_article(&description);
+                    return format!("{subject_text} to each {filter_text}");
+                }
+            }
+        }
         let description = for_each.filter.description();
         let filter_text = strip_indefinite_article(&description);
         return format!(
@@ -24906,6 +25037,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
         let inner_text = describe_effect_list(&unless_action.effects);
+        if unless_action.alternative.len() == 1
+            && let Some(pay_mana) =
+                unless_action.alternative[0].downcast_ref::<crate::effects::PayManaEffect>()
+            && let ChooseSpec::Player(alternative_player) = &pay_mana.player
+            && *alternative_player == unless_action.player
+        {
+            let payment_text = pay_mana.cost.to_oracle();
+            return format!("{} or pay {}", inner_text, payment_text);
+        }
         if unless_action.alternative.len() == 1
             && let Some(lose_life) =
                 unless_action.alternative[0].downcast_ref::<crate::effects::LoseLifeEffect>()
@@ -27664,11 +27804,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
+        let amount = describe_value(&amass.amount);
         if let Some(subtype) = amass.subtype {
             let subtype_name = subtype.to_string().to_ascii_lowercase();
-            return format!("Amass {} {}", pluralize_word(&subtype_name), amass.amount);
+            return format!("Amass {} {amount}", pluralize_word(&subtype_name));
         }
-        return format!("Amass {}", amass.amount);
+        return format!("Amass {amount}");
     }
     if let Some(poison) = effect.downcast_ref::<crate::effects::PoisonCountersEffect>() {
         let amount = match poison.count {
@@ -28896,6 +29037,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Evolve".to_string();
     }
+    if let Some(amplify) = effect.downcast_ref::<crate::effects::AmplifyEffect>() {
+        return format!("Amplify {}", amplify.amount);
+    }
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
         return format!("Devour {}", devour.multiplier);
     }
@@ -29063,8 +29207,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
+            if helper_tag
+                && !grant_play_tagged.allow_land
+                && grant_play_tagged.duration
+                    == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            {
+                return format!(
+                    "Until the end of your next turn, {} may cast that card and you may spend mana as though it were mana of any color to cast that spell",
+                    describe_player_filter(&grant_play_tagged.player),
+                );
+            }
             let pronoun = if object_text == "that card" {
-                "it"
+                "that spell"
             } else {
                 "them"
             };
@@ -29975,6 +30129,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(afflict) = describe_structural_afflict_keyword(triggered)
     {
         return Some(afflict);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(amplify) = describe_structural_amplify_keyword(triggered)
+    {
+        return Some(amplify);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(devour) = describe_structural_devour_keyword(triggered)
@@ -31039,6 +31198,29 @@ fn describe_structural_devour_keyword(
     };
     let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
     Some(format!("Devour {}", devour.multiplier))
+}
+
+fn describe_structural_amplify_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:amplify"))
+    {
+        return None;
+    }
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let amplify = effect.downcast_ref::<crate::effects::AmplifyEffect>()?;
+    Some(format!("Amplify {}", amplify.amount))
 }
 
 fn describe_structural_mentor_keyword(

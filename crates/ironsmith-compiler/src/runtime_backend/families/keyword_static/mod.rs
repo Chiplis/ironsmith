@@ -38,7 +38,9 @@ use super::grammar::abilities::{
     is_shuffle_into_library_from_graveyard_line_lexed, is_skulk_rules_text_line_lexed,
     is_this_creature_cant_attack_alone_line_lexed,
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
-    is_you_have_shroud_line_lexed, is_you_may_look_top_card_any_time_line_lexed,
+    is_you_have_shroud_line_lexed,
+    is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed,
+    is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
@@ -80,9 +82,9 @@ use super::token_primitives::{
 use super::util::{
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_flashback_keyword_line, parse_for_each_count_value_words,
-    parse_number_word_i32, parse_subtype_flexible, parse_value, parse_value_expr_words,
-    parse_zone_word, preserve_keyword_prefix_for_parse,
+    parse_counter_type_word, parse_filter_counter_constraint_words, parse_flashback_keyword_line,
+    parse_for_each_count_value_words, parse_number_word_i32, parse_subtype_flexible, parse_value,
+    parse_value_expr_words, parse_zone_word, preserve_keyword_prefix_for_parse,
     source_reference_surface_for_possessive_words, trim_commas, words,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
@@ -209,12 +211,38 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
     text.starts_with("prototype ")
         || text.starts_with("splice onto ")
+        || is_ticket_power_toughness_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."
         || (text.starts_with("this creature crews vehicles as though its power were ")
             && text.ends_with(" greater."))
         || (text.starts_with(
             "you may remove a loyalty counter from a planeswalker you control rather than pay ",
         ) && text.ends_with("'s crew cost."))
+}
+
+fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, pt_text)) = text.split_once('—') else {
+        return false;
+    };
+
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+    if !saw_ticket_symbol || !remainder.is_empty() {
+        return false;
+    }
+
+    let pt = pt_text.trim();
+    let Some((power, toughness)) = pt.split_once('/') else {
+        return false;
+    };
+    !power.is_empty()
+        && !toughness.is_empty()
+        && power.chars().all(|c| c.is_ascii_digit())
+        && toughness.chars().all(|c| c.is_ascii_digit())
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -368,6 +396,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
         "parse_you_may_look_top_card_any_time_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
+        "parse_you_may_look_face_down_creatures_you_dont_control_any_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
@@ -747,6 +779,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
+        single_static_ability_ast_rule!(
+            parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
+        ),
         single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
         single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
         single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
@@ -6792,7 +6827,24 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     let cast_prefix = [
         "you", "may", "cast", "spells", "from", "among", "cards", "in", "exile",
     ];
-    if !words.starts_with(&cast_prefix) {
+    let play_lands_and_cast_prefix = [
+        "you",
+        "may",
+        "play",
+        "lands",
+        "and",
+        "cast",
+        "noncreature",
+        "spells",
+        "from",
+        "among",
+        "cards",
+        "you",
+        "exiled",
+    ];
+    let is_cast_from_exile_family = words.starts_with(&cast_prefix);
+    let is_play_lands_and_cast_noncreature_family = words.starts_with(&play_lands_and_cast_prefix);
+    if !is_cast_from_exile_family && !is_play_lands_and_cast_noncreature_family {
         return Ok(None);
     }
 
@@ -6801,34 +6853,55 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     else {
         return Ok(None);
     };
-    let Some(with_idx) = words[..and_idx].iter().position(|word| *word == "with") else {
-        return Ok(None);
-    };
-    let Some(counters_idx) = words[with_idx + 1..and_idx]
-        .iter()
-        .position(|word| matches!(*word, "counter" | "counters"))
-        .map(|offset| with_idx + 1 + offset)
-    else {
-        return Ok(None);
-    };
+    let (counter_start_idx, counters_idx) =
+        if let Some(with_idx) = words[..and_idx].iter().position(|word| *word == "with") {
+            let Some(counters_idx) = words[with_idx + 1..and_idx]
+                .iter()
+                .position(|word| matches!(*word, "counter" | "counters"))
+                .map(|offset| with_idx + 1 + offset)
+            else {
+                return Ok(None);
+            };
+            (with_idx + 1, counters_idx)
+        } else if is_play_lands_and_cast_noncreature_family {
+            let that_have_prefix = ["that", "have"];
+            let Some(that_have_idx) =
+                find_keyword_static_phrase_start(&words[..and_idx], &that_have_prefix)
+            else {
+                return Ok(None);
+            };
+            let Some(counters_idx) = words[that_have_idx + that_have_prefix.len()..and_idx]
+                .iter()
+                .position(|word| matches!(*word, "counter" | "counters"))
+                .map(|offset| that_have_idx + that_have_prefix.len() + offset)
+            else {
+                return Ok(None);
+            };
+            (that_have_idx + that_have_prefix.len(), counters_idx)
+        } else {
+            return Ok(None);
+        };
     if counters_idx + 3 > and_idx
         || words.get(counters_idx + 1..counters_idx + 3) != Some(["on", "them"].as_slice())
     {
         return Ok(None);
     }
 
-    let owner_words = &words[cast_prefix.len()..with_idx];
-    let owner = match owner_words {
-        [] => None,
-        ["your", "opponents", "own"]
-        | ["your", "opponent", "owns"]
-        | ["opponents", "own"]
-        | ["opponent", "owns"] => Some(PlayerFilter::Opponent),
-        _ => return Ok(None),
+    let owner = if is_play_lands_and_cast_noncreature_family {
+        None
+    } else {
+        let owner_words = &words[cast_prefix.len()..counter_start_idx.saturating_sub(1)];
+        match owner_words {
+            [] => None,
+            ["your", "opponents", "own"]
+            | ["your", "opponent", "owns"]
+            | ["opponents", "own"]
+            | ["opponent", "owns"] => Some(PlayerFilter::Opponent),
+            _ => return Ok(None),
+        }
     };
 
-    let counter_start = with_idx + 1;
-    let counter_tokens = &tokens[counter_start..counters_idx + 1];
+    let counter_tokens = &tokens[counter_start_idx..counters_idx + 1];
     let Some(counter_type) = parse_counter_type_from_tokens(counter_tokens) else {
         return Ok(None);
     };
@@ -6853,12 +6926,40 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         return Ok(None);
     }
 
-    let mut filter = ObjectFilter {
+    let mut base_filter = ObjectFilter {
         zone: Some(Zone::Exile),
         owner,
-        excluded_card_types: vec![CardType::Land],
         with_counter: Some(crate::filter::CounterConstraint::Typed(counter_type)),
         ..ObjectFilter::default()
+    };
+    if is_play_lands_and_cast_noncreature_family {
+        base_filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
+    }
+
+    let mut filter = if is_play_lands_and_cast_noncreature_family {
+        ObjectFilter {
+            any_of: vec![
+                ObjectFilter {
+                    card_types: vec![CardType::Land],
+                    ..base_filter.clone()
+                },
+                ObjectFilter {
+                    excluded_card_types: vec![CardType::Creature, CardType::Land],
+                    ..base_filter.clone()
+                },
+            ],
+            ..ObjectFilter::default()
+        }
+    } else {
+        ObjectFilter {
+            excluded_card_types: vec![CardType::Land],
+            ..base_filter
+        }
     };
     filter.has_mana_cost = false;
 
@@ -6951,6 +7052,17 @@ pub(crate) fn parse_you_may_look_top_card_any_time_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_you_may_look_top_card_any_time_line_lexed(tokens) {
         return Ok(Some(StaticAbility::look_at_top_card_of_library()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_you_may_look_face_down_creatures_you_dont_control_any_time_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::look_at_face_down_creatures_you_dont_control(),
+        ));
     }
     Ok(None)
 }

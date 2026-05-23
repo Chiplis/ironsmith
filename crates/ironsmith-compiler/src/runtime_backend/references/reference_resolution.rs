@@ -66,7 +66,9 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::PlayerLosesLife(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage
+            | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
+            | TriggerSpec::IsDealtCombatDamage(_)
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::DealsDamage(_)
@@ -3215,7 +3217,7 @@ mod tests {
     #[test]
     fn annotate_effect_sequence_sets_followup_in_env_from_amassed_tag() {
         let effects = vec![
-            EffectAst::subject_verb_amass(Some(Subtype::Orc), 2),
+            EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 TagKey::from(IT_TAG),
                 PlayerAst::You,
