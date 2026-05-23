@@ -751,6 +751,7 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
 pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
+    let block_this_turn_tail = " creatures can't block this turn";
     while idx < lines.len() {
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
@@ -761,6 +762,20 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
                 merged.push("This creature can't block and can't be blocked".to_string());
                 idx += 2;
                 continue;
+            }
+            let left_no_period = left.trim_end_matches('.');
+            let right_no_period = right.trim_end_matches('.');
+            if let (Some(left_subject), Some(right_subject)) = (
+                left_no_period.strip_suffix(block_this_turn_tail),
+                right_no_period.strip_suffix(block_this_turn_tail),
+            ) {
+                if !left_subject.is_empty() && !right_subject.is_empty() {
+                    merged.push(format!(
+                        "{left_subject} creatures and {right_subject} creatures can't block this turn"
+                    ));
+                    idx += 2;
+                    continue;
+                }
             }
         }
         merged.push(lines[idx].clone());
