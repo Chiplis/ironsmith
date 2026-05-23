@@ -1585,6 +1585,17 @@ fn parse_reveal_segment_tokens(
         return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
     }
 
+    if lowered.len() == 6
+        && lowered[0] == "reveal"
+        && lowered[1] == "this"
+        && lowered[3] == "from"
+        && lowered[4] == "your"
+        && lowered[5] == "hand"
+        && parse_card_type_word(lowered[2]).is_some()
+    {
+        return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
+    }
+
     Err(CardTextError::ParseError(format!(
         "rewrite reveal-cost parser does not yet support '{raw}'"
     )))
