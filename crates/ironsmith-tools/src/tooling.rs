@@ -589,11 +589,7 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
         (
             ["target creature you control deals damage equal to its power"].as_slice(),
-            [
-                "target creature you control deals damage equal to its power",
-                "a creature you control deals damage equal to its power",
-            ]
-            .as_slice(),
+            ["target creature you control deals damage equal to its power"].as_slice(),
             "target-creature-power-damage-source",
         ),
         (
@@ -2955,16 +2951,6 @@ CardDefinition {
             authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
             Some("compiled text contains internal marker: object-predicate-debug")
         );
-
-        snapshot.compiled_text = Some(
-            "A creature you control deals damage equal to its power to target creature."
-                .to_string(),
-        );
-        assert_eq!(
-            authoritative_semantic_marker_parse_error(&snapshot),
-            None,
-            "generic source-creature power-damage phrasing should satisfy marker requirements"
-        );
     }
 
     #[test]
@@ -3131,6 +3117,11 @@ CardDefinition {
             (
                 "Target creature you control deals damage equal to its power to each other creature.",
                 "For each other creature, this spell deals X damage to that object, where X is this creature's power.",
+                "compiled text dropped required semantic marker: target-creature-power-damage-source",
+            ),
+            (
+                "Target creature you control deals damage equal to its power to up to one target creature you don't control.",
+                "A creature you control deals damage equal to its power to up to one target creature you don't control.",
                 "compiled text dropped required semantic marker: target-creature-power-damage-source",
             ),
             (
