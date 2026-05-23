@@ -975,10 +975,46 @@ pub(crate) fn parse_prevent_all_damage_clause(
     let prefix_duration_then_target = [
         "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
     ];
+    let prefix_duration_then_source = [
+        "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "by",
+    ];
     if !word_slice_starts_with(&clause_words, &prefix_target_then_duration)
         && !word_slice_starts_with(&clause_words, &prefix_duration_then_target)
+        && !word_slice_starts_with(&clause_words, &prefix_duration_then_source)
     {
         return Ok(None);
+    }
+    if word_slice_starts_with(&clause_words, &prefix_duration_then_source) {
+        let source_words = &clause_words[prefix_duration_then_source.len()..];
+        if source_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing prevent-all damage source filter (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if source_words.last().copied() != Some("sources") {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported prevent-all damage source phrase (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let source_filter_tokens = source_words[..source_words.len() - 1]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let source_filter_target = parse_target_phrase(&source_filter_tokens)?;
+        let TargetAst::Object(source_filter, _, _) = source_filter_target else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported prevent-all damage source filter target (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_damage_from_source_filter(
+                source_filter,
+                Until::EndOfTurn,
+            ),
+        ));
     }
     let target_words = if word_slice_starts_with(&clause_words, &prefix_duration_then_target) {
         &clause_words[prefix_duration_then_target.len()..]

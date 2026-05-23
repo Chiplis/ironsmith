@@ -666,6 +666,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
         | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
         | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+        | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
         | SubjectVerbActionAst::PutOrRemoveCounters { .. }
         | SubjectVerbActionAst::CopySpellForEachTarget { .. }

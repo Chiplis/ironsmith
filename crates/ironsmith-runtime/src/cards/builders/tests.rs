@@ -7884,6 +7884,24 @@ fn test_parse_prevent_all_damage_to_explicit_target_stays_targeted() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_prevent_all_damage_from_non_human_sources_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Repel Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Prevent all damage that would be dealt this turn by non-Human sources.")
+        .expect("prevent-all damage from source filter clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("preventalldamageeffect")
+            && spell_debug.contains("from_source")
+            && spell_debug.contains("excluded_subtypes")
+            && spell_debug.contains("human"),
+        "expected non-Human source-filter prevent-all-damage effect, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bouncing Beebles Probe")
         .card_types(vec![CardType::Creature])
@@ -29722,6 +29740,35 @@ fn parse_oracle_liquimetal_coating_type_addition_render_regression() {
     assert!(
         !rendered.contains("unsupported effect"),
         "expected Liquimetal Coating to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_repel_the_abominable_prevention_regression() {
+    let def = parse_oracle_card_definition("Repel the Abominable");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("preventalldamageeffect")
+            && raw.contains("from_source")
+            && raw.contains("excluded_subtypes")
+            && raw.contains("human"),
+        "expected Repel the Abominable to keep a non-Human source damage filter, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all damage")
+            && rendered.contains("that would be dealt this turn")
+            && rendered.contains("non-human")
+            && rendered.contains("sources"),
+        "expected Repel the Abominable prevention wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Repel the Abominable to avoid unsupported markers, got {rendered}"
     );
 }
 
