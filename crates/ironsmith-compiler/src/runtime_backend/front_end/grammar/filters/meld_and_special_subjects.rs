@@ -542,6 +542,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_room_subtype_target() {
+        let tokens = lex_line("room", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Room]);
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_its_attached_to_reference_alias() {
         let tokens = lex_line("creature its attached to", 0).unwrap();
 
