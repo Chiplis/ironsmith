@@ -571,6 +571,10 @@ fn parse_enters_with_counter_condition_clause(
     {
         return Some(crate::ConditionExpr::ThisSpellWasKicked);
     }
+    if condition_words == ["this", "spell", "escaped"] || condition_words == ["it", "escaped"]
+    {
+        return Some(crate::ConditionExpr::ThisSpellEscaped);
+    }
     if condition_words == ["a", "creature", "died", "this", "turn"]
         || condition_words == ["one", "or", "more", "creatures", "died", "this", "turn"]
     {
