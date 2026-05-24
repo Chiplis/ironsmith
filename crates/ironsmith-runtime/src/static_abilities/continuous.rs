@@ -739,6 +739,44 @@ fn comparison_display(cmp: &Comparison) -> String {
     }
 }
 
+fn describe_static_condition_value(value: &Value) -> String {
+    match value {
+        Value::Fixed(n) => number_word_u32(*n as u32).unwrap_or_else(|| n.to_string()),
+        Value::Add(left, right)
+            if matches!(left.as_ref(), Value::Devotion { .. })
+                && matches!(right.as_ref(), Value::Devotion { .. }) =>
+        {
+            let (Value::Devotion { player: left_player, color: left_color }, Value::Devotion { player: right_player, color: right_color }) =
+                (left.as_ref(), right.as_ref())
+            else {
+                unreachable!();
+            };
+            if left_player == right_player {
+                return format!(
+                    "{} devotion to {} and {}",
+                    describe_static_possessive_player(left_player),
+                    left_color.name(),
+                    right_color.name()
+                );
+            }
+            format!(
+                "{} plus {}",
+                describe_static_condition_value(left),
+                describe_static_condition_value(right)
+            )
+        }
+        Value::Devotion { player, color } => {
+            format!("{} devotion to {}", describe_static_possessive_player(player), color.name())
+        }
+        Value::Add(left, right) => format!(
+            "{} plus {}",
+            describe_static_condition_value(left),
+            describe_static_condition_value(right)
+        ),
+        other => format!("{other:?}"),
+    }
+}
+
 fn flatten_static_condition_and(
     condition: &crate::ConditionExpr,
     out: &mut Vec<crate::ConditionExpr>,
@@ -955,6 +993,30 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             format!(
                 "as long as there are {comparison} cards in {} graveyard",
                 describe_static_possessive_player(player)
+            )
+        }
+        crate::ConditionExpr::ValueComparison {
+            left,
+            operator,
+            right,
+        } => {
+            let operator_text = match operator {
+                crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    "is greater than or equal to"
+                }
+                crate::effect::ValueComparisonOperator::Equal => "is equal to",
+                crate::effect::ValueComparisonOperator::LessThan => "is less than",
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                    "is less than or equal to"
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => "is not equal to",
+            };
+            format!(
+                "as long as {} {} {}",
+                describe_static_condition_value(left),
+                operator_text,
+                describe_static_condition_value(right)
             )
         }
         crate::ConditionExpr::PlayerIsMonarch { player } => match player {
@@ -3956,6 +4018,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::color::Color;
     use crate::filter::StackObjectKind;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -4012,6 +4075,53 @@ mod tests {
                 }
             ),
             "as long as your life total is less than or equal to half your starting life total"
+        );
+    }
+
+    #[test]
+    fn describe_static_condition_displays_devotion_value_comparison() {
+        assert_eq!(
+            describe_static_condition(&crate::ConditionExpr::ValueComparison {
+                left: Value::Add(
+                    Box::new(Value::Devotion {
+                        player: PlayerFilter::You,
+                        color: Color::Black,
+                    }),
+                    Box::new(Value::Devotion {
+                        player: PlayerFilter::You,
+                        color: Color::Red,
+                    }),
+                ),
+                operator: crate::effect::ValueComparisonOperator::LessThan,
+                right: Value::Fixed(7),
+            }),
+            "as long as your devotion to black and red is less than seven"
+        );
+    }
+
+    #[test]
+    fn remove_card_types_display_keeps_source_creature_subject() {
+        let remove = RemoveCardTypesForFilter::new(
+            ObjectFilter::source().with_type(CardType::Creature),
+            vec![CardType::Creature],
+        )
+        .with_condition(crate::ConditionExpr::ValueComparison {
+            left: Value::Add(
+                Box::new(Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: Color::Black,
+                }),
+                Box::new(Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: Color::Red,
+                }),
+            ),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Fixed(7),
+        });
+        assert_eq!(
+            remove.display(),
+            "this creature is no longer creature as long as your devotion to black and red is less than seven"
         );
     }
 
