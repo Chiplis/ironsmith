@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const COMPACT_PHASE_LABELS = {
   Untap: "Untap",
-  Upkeep: "Keep",
+  Upkeep: "Upkeep",
   Draw: "Draw",
   Main: "Main",
   Combat: "Combat",
