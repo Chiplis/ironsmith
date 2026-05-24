@@ -1625,6 +1625,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_cst_rewrites_surge_keyword_line_to_alternative_cost()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Surge Parse Test")
+                .card_types(vec![CardType::Sorcery]),
+            "Surge {3}{U}{U} (You may cast this spell for its surge cost if you or a teammate has cast another spell this turn.)\nReturn all nonland permanents to their owners' hands.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Keyword(keyword), super::RewriteLineCst::Statement(_)] => {
+                assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
+                assert_eq!(
+                    render_token_slice(&keyword.parse_tokens),
+                    "If you've cast another spell this turn, you may pay {3}{U}{U} rather than pay this spell's mana cost."
+                );
+            }
+            other => panic!("expected surge keyword plus statement line, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn static_line_cst_recognizes_compound_unblockable_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Enchanted creature gets +2/+2 and can't be blocked.");
 

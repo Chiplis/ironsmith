@@ -556,6 +556,44 @@ pub(super) fn run_escape_enters_with_counter_line_family(
     }))
 }
 
+pub(super) fn run_surge_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let Some(rest) = raw.strip_prefix("Surge ") else {
+        return Ok(None);
+    };
+    let cost_text = rest
+        .split_once('(')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    if cost_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "surge keyword missing cost: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let rewritten = format!(
+        "If you've cast another spell this turn, you may pay {cost_text} rather than pay this spell's mana cost."
+    );
+    let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let Some(keyword) = parse_keyword_line_cst(&alternative_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower surge keyword line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Keyword(keyword),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

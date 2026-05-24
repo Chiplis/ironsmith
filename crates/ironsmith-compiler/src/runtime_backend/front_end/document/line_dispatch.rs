@@ -6,6 +6,7 @@ use super::line_family_handlers::{
     run_max_speed_labeled_line_family, run_non_turn_conditional_untap_line_family,
     run_partner_with_keyword_line_family, run_split_top_and_face_down_look_line_family,
     run_split_top_look_and_top_land_play_line_family, run_start_your_engines_line_family,
+    run_surge_line_family,
     run_statement_line_family, run_statement_probe_line_family, run_static_line_family,
     run_station_line_family, run_station_threshold_line_family,
     run_trailing_keyword_activation_line_family, run_triggered_line_family,
@@ -46,7 +47,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 23] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 24] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -130,6 +131,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 23] = [
         priority: 42,
         heads: &[],
         run: run_escape_enters_with_counter_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "surge-line",
+        priority: 43,
+        heads: &["surge"],
+        run: run_surge_line_family,
     },
     LineFamilyRuleDef {
         id: "keyword-line",

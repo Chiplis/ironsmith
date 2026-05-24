@@ -2225,7 +2225,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered[0] == "this"
         && matches!(
             filtered[1],
-            "spell's" | "card's" | "creature's" | "permanent's"
+            "spell's" | "spells" | "card's" | "creature's" | "permanent's"
         )
         && filtered[3] == "cost"
         && filtered[4] == "was"
@@ -3109,8 +3109,29 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    Err(CardTextError::ParseError(format!(
+Err(CardTextError::ParseError(format!(
         "unsupported predicate (predicate: '{}')",
         filtered.join(" ")
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn parse_predicate_accepts_unapostrophed_spell_paid_label() -> Result<(), CardTextError> {
+        let tokens = lex_line("If this spells surge cost was paid", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::ThisSpellPaidLabel("Surge".to_string()));
+        Ok(())
+    }
 }
