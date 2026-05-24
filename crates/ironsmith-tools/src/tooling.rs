@@ -480,6 +480,61 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
             "noted-creature-types",
         ),
         ("noted for", ["noted"].as_slice(), "noted-creature-types"),
+        (
+            "controlled by the same opponent",
+            ["same opponent"].as_slice(),
+            "same-opponent-controlled",
+        ),
+        (
+            "that player chooses one of those creatures",
+            ["chooses"].as_slice(),
+            "that-player-chooses",
+        ),
+        (
+            "deals 5 damage to that creature",
+            ["deals 5 damage"].as_slice(),
+            "damage-to-chosen-creature",
+        ),
+        (
+            "target instant, sorcery, or artifact card from your graveyard",
+            ["target", "from your graveyard"].as_slice(),
+            "target-card-from-your-graveyard",
+        ),
+        (
+            "spell cast this way would be put into your graveyard",
+            ["cast this way", "graveyard", "exile"].as_slice(),
+            "cast-this-way-replacement",
+        ),
+        (
+            "number of equipment attached",
+            ["equipment attached"].as_slice(),
+            "equipment-attached-count",
+        ),
+        (
+            "goaded for the rest of the game",
+            ["goaded", "rest of the game"].as_slice(),
+            "goaded-rest-of-game",
+        ),
+        (
+            "until they exile a nonland card",
+            ["until", "nonland"].as_slice(),
+            "exile-until-nonland",
+        ),
+        (
+            "nonland cards exiled this way",
+            ["nonland", "exiled this way"].as_slice(),
+            "nonland-cards-exiled-this-way",
+        ),
+        (
+            "had a counter put on them this way",
+            ["counter", "this way"].as_slice(),
+            "counter-put-this-way",
+        ),
+        (
+            "as you activate this ability",
+            ["as you activate this ability"].as_slice(),
+            "as-you-activate-this-ability",
+        ),
     ];
     for (oracle_marker, compiled_markers, label) in dropped_required_all {
         if oracle.contains(oracle_marker)
@@ -606,6 +661,11 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
             ["one or more cards leave your graveyard"].as_slice(),
             ["one or more cards leave your graveyard"].as_slice(),
             "cards-leave-your-graveyard",
+        ),
+        (
+            ["one or more {e}"].as_slice(),
+            ["one or more {e}", "at least one {e}"].as_slice(),
+            "one-or-more-energy",
         ),
         (
             ["enter as a copy"].as_slice(),
@@ -3105,6 +3165,61 @@ CardDefinition {
                 "compiled text dropped required semantic marker: noted-creature-types",
             ),
             (
+                "Choose two target creatures controlled by the same opponent.",
+                "Choose two target creatures.",
+                "compiled text dropped required semantic marker: same-opponent-controlled",
+            ),
+            (
+                "That player chooses one of those creatures.",
+                "Choose a target creature.",
+                "compiled text dropped required semantic marker: that-player-chooses",
+            ),
+            (
+                "Trial of Agony deals 5 damage to that creature.",
+                "Target creature can't block this turn.",
+                "compiled text dropped required semantic marker: damage-to-chosen-creature",
+            ),
+            (
+                "You may cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost.",
+                "You may choose an instant, sorcery, or artifact card. You may cast it without paying its mana cost.",
+                "compiled text dropped required semantic marker: target-card-from-your-graveyard",
+            ),
+            (
+                "If an instant or sorcery spell cast this way would be put into your graveyard, exile it instead.",
+                "The next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead.",
+                "compiled text dropped required semantic marker: cast-this-way-replacement",
+            ),
+            (
+                "Then amass Orcs X, where X is the number of Equipment attached to Shagrat.",
+                "Amass orcs the number of Equipments on the battlefield.",
+                "compiled text dropped required semantic marker: equipment-attached-count",
+            ),
+            (
+                "The token is goaded for the rest of the game.",
+                "Goad that creature.",
+                "compiled text dropped required semantic marker: goaded-rest-of-game",
+            ),
+            (
+                "Each player exiles cards from the top of their library until they exile a nonland card.",
+                "Each player exiles the top card of that player's library.",
+                "compiled text dropped required semantic marker: exile-until-nonland",
+            ),
+            (
+                "You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.",
+                "You may cast each nonland card in exile without paying its mana cost.",
+                "compiled text dropped required semantic marker: nonland-cards-exiled-this-way",
+            ),
+            (
+                "Choose any number of permanents you control that had a counter put on them this way.",
+                "You choose any number permanents you control on the battlefield.",
+                "compiled text dropped required semantic marker: counter-put-this-way",
+            ),
+            (
+                "Where X is the number of Bobbleheads you control as you activate this ability.",
+                "Choose up to X target creatures you control.",
+                "compiled text dropped required semantic marker: as-you-activate-this-ability",
+            ),
+            (
                 "Target player reveals their hand.",
                 "Target player discards a card.",
                 "compiled text dropped required semantic marker: reveals-hand",
@@ -3138,6 +3253,11 @@ CardDefinition {
                 "Whenever one or more cards leave your graveyard, this creature deals 1 damage to each opponent.",
                 "Whenever a creature card in your graveyard leaves, this creature deals 1 damage.",
                 "compiled text dropped required semantic marker: cards-leave-your-graveyard",
+            ),
+            (
+                "Then you may pay one or more {E}.",
+                "You may pay any amount of {E}.",
+                "compiled text dropped required semantic marker: one-or-more-energy",
             ),
             (
                 "You may have this creature enter as a copy of any creature on the battlefield.",
