@@ -1635,7 +1635,10 @@ mod tests {
         let cst = super::parse_document_cst(&preprocessed, false)?;
 
         match cst.lines.as_slice() {
-            [super::RewriteLineCst::Keyword(keyword), super::RewriteLineCst::Statement(_)] => {
+            [
+                super::RewriteLineCst::Keyword(keyword),
+                super::RewriteLineCst::Statement(_),
+            ] => {
                 assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
                 assert_eq!(
                     render_token_slice(&keyword.parse_tokens),

@@ -3542,6 +3542,32 @@ fn casting_method_matches_alternative_name(
     method.is_some_and(|method| method.name().eq_ignore_ascii_case(expected_name))
 }
 
+fn alternative_cast_label(
+    game: &GameState,
+    caster: PlayerId,
+    obj_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> Option<String> {
+    let obj = game.object(obj_id)?;
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
+            .or_else(|| obj.cast_alternative_method.clone()),
+        _ => None,
+    }?;
+    let name = method.name();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
 /// Finalize a spell cast by paying remaining costs and creating the stack entry.
 /// Returns the spell cast info for trigger checking.
 ///
@@ -3795,6 +3821,18 @@ pub(super) fn finalize_spell_cast(
         optional_costs_paid.mark_label_paid("Evoke");
         if let Some(spell_obj) = game.object_mut(new_id) {
             spell_obj.optional_costs_paid.mark_label_paid("Evoke");
+        }
+    }
+    if let Some(label) = alternative_cast_label(game, caster, new_id, &casting_method)
+        && !label.eq_ignore_ascii_case("Parsed alternative cost")
+        && !matches!(
+            label.to_ascii_lowercase().as_str(),
+            "escape" | "blitz" | "evoke"
+        )
+    {
+        optional_costs_paid.mark_label_paid(&label);
+        if let Some(spell_obj) = game.object_mut(new_id) {
+            spell_obj.optional_costs_paid.mark_label_paid(&label);
         }
     }
 

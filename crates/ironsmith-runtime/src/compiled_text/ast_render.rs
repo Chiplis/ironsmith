@@ -1745,6 +1745,17 @@ pub(super) fn describe_alternative_cast_line(
                 .map(|cost| format!("Emerge {}", cost.to_oracle()))
                 .unwrap_or_else(|| "Emerge".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Surge") => {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Surge {} (You may cast this spell for its surge cost if you or a teammate has cast another spell this turn.)",
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Surge".to_string())
+        }
         method if method.is_composed_cost() => {
             let name = method.name();
             let mana_cost = method.mana_cost();

@@ -581,12 +581,13 @@ pub(super) fn run_surge_line_family(
         "If you've cast another spell this turn, you may pay {cost_text} rather than pay this spell's mana cost."
     );
     let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
-    let Some(keyword) = parse_keyword_line_cst(&alternative_line)? else {
+    let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower surge keyword line: '{}'",
             ctx.line.info.raw_line
         )));
     };
+    keyword.text = ctx.line.info.raw_line.clone();
 
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Keyword(keyword),

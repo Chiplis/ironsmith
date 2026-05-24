@@ -29,10 +29,11 @@ use super::token_primitives::{
     str_strip_suffix,
 };
 use super::util::{
-    parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
-    parse_blitz_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed,
-    parse_entwine_line_lexed, parse_epic_line_lexed, parse_escalate_line_lexed,
-    parse_escape_line_lexed, parse_eternalize_line_lexed, parse_evoke_line_lexed,
+    leading_mana_cost_from_tokens, parse_additional_cost_choice_options_lexed,
+    parse_bargain_line_lexed, parse_bestow_line_lexed, parse_blitz_line_lexed,
+    parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
+    parse_epic_line_lexed, parse_escalate_line_lexed, parse_escape_line_lexed,
+    parse_eternalize_line_lexed, parse_evoke_line_lexed,
     parse_flash_with_additional_cost_line_lexed, parse_flashback_line_lexed,
     parse_harmonize_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
     parse_jump_start_line_lexed, parse_kicker_line_lexed, parse_madness_line_lexed,
@@ -211,6 +212,36 @@ pub(super) fn lower_alternative_cast(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if line.text.trim_start().starts_with("Surge ") {
+        let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
+        let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
+        let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!("surge keyword missing cost '{}'", line.text))
+        })?;
+        let condition = crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+            condition: crate::ConditionExpr::Or(
+                Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                    player: crate::target::PlayerFilter::You,
+                    count: 1,
+                }),
+                Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                    player: crate::target::PlayerFilter::Teammate,
+                    count: 1,
+                }),
+            ),
+            display: "you or a teammate has cast another spell this turn".to_string(),
+        };
+        return Ok(LineAst::AlternativeCastingMethod(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost_with_condition(
+                "Surge",
+                Some(cost),
+                Vec::new(),
+                condition,
+            )
+            .into(),
+        ));
+    }
+
     let line_text = line.text.to_ascii_lowercase();
     if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
         return Ok(LineAst::Abilities(vec![

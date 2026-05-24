@@ -3109,7 +3109,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-Err(CardTextError::ParseError(format!(
+    Err(CardTextError::ParseError(format!(
         "unsupported predicate (predicate: '{}')",
         filtered.join(" ")
     )))
@@ -3131,7 +3131,10 @@ mod tests {
 
         let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(parsed, PredicateAst::ThisSpellPaidLabel("Surge".to_string()));
+        assert_eq!(
+            parsed,
+            PredicateAst::ThisSpellPaidLabel("Surge".to_string())
+        );
         Ok(())
     }
 }

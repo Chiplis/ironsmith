@@ -5845,9 +5845,7 @@ fn gain_life_equal_to_the_power_of_target_creature_you_control_parses() {
 
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("GainLifeEffect")
-            && debug.contains("PowerOf")
-            && debug.contains("Target("),
+        debug.contains("GainLifeEffect") && debug.contains("PowerOf") && debug.contains("Target("),
         "expected life gain amount to use target creature power, got {debug}"
     );
 }
