@@ -8154,6 +8154,28 @@ fn parse_lens_of_clarity_split_look_permissions() {
 }
 
 #[test]
+fn parse_radha_split_top_look_and_top_land_play_permissions() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Radha Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "You may look at the top card of your library any time, and you may play lands from the top of your library.",
+        )
+        .expect("Radha static line should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardOfLibrary"),
+        "expected top-card look permission, got {debug}"
+    );
+    assert!(
+        debug.contains("PlayFromZone")
+            || debug.contains("lands from the top of your library")
+            || debug.contains("GrantSpec"),
+        "expected top-library land-play grant, got {debug}"
+    );
+}
+
+#[test]
 fn parse_lantern_of_insight_public_top_library_static_and_shuffle() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
         .card_types(vec![CardType::Artifact])
