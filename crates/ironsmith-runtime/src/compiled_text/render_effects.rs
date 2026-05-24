@@ -30760,6 +30760,9 @@ fn describe_craft_material_filter(filter: &ObjectFilter, count: ChoiceCount) -> 
     if count == ChoiceCount::exactly(1) && is_craft_artifact_material_filter(filter) {
         return Some("artifact".to_string());
     }
+    if count == ChoiceCount::exactly(1) && is_craft_creature_material_filter(filter) {
+        return Some("creature".to_string());
+    }
     if count == ChoiceCount::at_least(1) && is_craft_one_or_more_material_filter(filter) {
         return Some("one or more".to_string());
     }
@@ -30784,6 +30787,24 @@ fn is_craft_artifact_material_filter(filter: &ObjectFilter) -> bool {
                 && branch.controller.is_none()
                 && branch.other
                 && branch.card_types == vec![CardType::Artifact]
+        })
+}
+
+fn is_craft_creature_material_filter(filter: &ObjectFilter) -> bool {
+    filter.any_of.len() == 2
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Battlefield)
+                && branch.controller == Some(PlayerFilter::You)
+                && branch.owner.is_none()
+                && !branch.other
+                && branch.card_types == vec![CardType::Creature]
+        })
+        && filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Graveyard)
+                && branch.owner == Some(PlayerFilter::You)
+                && branch.controller.is_none()
+                && !branch.other
+                && branch.card_types == vec![CardType::Creature]
         })
 }
 

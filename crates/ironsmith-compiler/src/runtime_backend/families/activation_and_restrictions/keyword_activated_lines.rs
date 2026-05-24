@@ -226,6 +226,11 @@ fn parse_craft_material_spec(
             ChoiceCount::exactly(1),
             "artifact".to_string(),
         )),
+        ["creature"] => Ok((
+            craft_creature_battlefield_or_graveyard_filter(),
+            ChoiceCount::exactly(1),
+            "creature".to_string(),
+        )),
         ["one", "or", "more"] => {
             let mut filter = ObjectFilter::default();
             filter.any_of = vec![
@@ -300,6 +305,21 @@ fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
             .in_zone(Zone::Graveyard)
             .owned_by(PlayerFilter::You)
             .other(),
+    ];
+    filter
+}
+
+fn craft_creature_battlefield_or_graveyard_filter() -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::You),
+        ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You),
     ];
     filter
 }
