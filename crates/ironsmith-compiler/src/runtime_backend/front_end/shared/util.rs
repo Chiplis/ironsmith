@@ -1544,6 +1544,27 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::EventValue(EventValueSpec::Amount), 6));
     }
     if matches!(
+        words.get(..6),
+        Some(["the", "amount", "of", "e", "you", "have"])
+    ) {
+        return Some((
+            Value::CountersOn(
+                Box::new(ChooseSpec::Player(PlayerFilter::You)),
+                Some(CounterType::Energy),
+            ),
+            6,
+        ));
+    }
+    if matches!(words.get(..5), Some(["amount", "of", "e", "you", "have"])) {
+        return Some((
+            Value::CountersOn(
+                Box::new(ChooseSpec::Player(PlayerFilter::You)),
+                Some(CounterType::Energy),
+            ),
+            5,
+        ));
+    }
+    if matches!(
         words.get(..5),
         Some(["that", "amount", "of", "excess", "damage"])
     ) {
