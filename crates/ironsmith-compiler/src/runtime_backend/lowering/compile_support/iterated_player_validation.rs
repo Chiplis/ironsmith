@@ -57,6 +57,12 @@ fn validate_effect_for_iterated_player(
     iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
+    if !iterated_player_bound
+        && let Some(skip_turn) = effect.downcast_ref::<crate::effects::SkipTurnEffect>()
+        && matches!(skip_turn.player, PlayerFilter::IteratedPlayer)
+    {
+        return Ok(());
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         return validate_effects_for_iterated_player(
             &sequence.effects,

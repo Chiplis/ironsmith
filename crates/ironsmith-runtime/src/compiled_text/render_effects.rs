@@ -28249,6 +28249,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(skip_turn) = effect.downcast_ref::<crate::effects::SkipTurnEffect>() {
+        if skip_turn.player == PlayerFilter::IteratedPlayer {
+            return "that player skips that turn instead".to_string();
+        }
         return format!(
             "{} skips their next turn",
             describe_player_filter(&skip_turn.player)

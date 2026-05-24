@@ -5261,6 +5261,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "that player sacrifices an untapped land.",
             "that player sacrifices an untapped land of their choice.",
         )
+        .replace(
+            "If an opponent would begin an extra turn, that player skips that turn.",
+            "If an opponent would begin an extra turn, that player skips that turn instead.",
+        )
         ;
     if normalized.starts_with("At the beginning of each end step, if ")
         && normalized.contains(", that player ")
@@ -10984,7 +10988,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{player:?}'s graveyard has {count} or more cards")
         }
         Condition::XValueAtLeast(min) => format!("X is {min} or more"),
-        Condition::Custom(id) => format!("custom condition {id}"),
+        Condition::Custom(id) => match *id {
+            "opponent_would_begin_extra_turn" => {
+                "an opponent would begin an extra turn".to_string()
+            }
+            "player_would_begin_extra_turn" => "a player would begin an extra turn".to_string(),
+            _ => format!("custom condition {id}"),
+        },
         Condition::Not(inner) => {
             if let Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,
