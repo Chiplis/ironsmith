@@ -29507,6 +29507,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
             }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
+                "for as long as you control this source"
+            }
         };
         let verb = if grant_play_tagged.allow_land {
             "play"

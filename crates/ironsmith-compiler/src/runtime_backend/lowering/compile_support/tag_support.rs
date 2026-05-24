@@ -678,6 +678,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
         | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
         | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+        | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
         | SubjectVerbActionAst::ReturnToBattlefield { .. }
         | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
         | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
@@ -1006,7 +1007,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 ..
             }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
-            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. } => {
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. } => {
                 tag.as_str() == IT_TAG
             }
             SubjectVerbActionAst::PutRestOnBottomOfLibrary => true,

@@ -32400,6 +32400,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Orcish Bowmasters",
     "Pawn of Ulamog",
     "Genesis Chamber",
+    "Gwen Stacy // Ghost-Spider",
     "Sacrifice",
     "Sefris of the Hidden Ways",
     "Sephiroth, Fabled SOLDIER",
@@ -32455,6 +32456,10 @@ strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
 strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");
+strict_parse_card_test!(
+    strict_parse_gwen_stacy_ghost_spider,
+    "Gwen Stacy // Ghost-Spider"
+);
 strict_parse_card_expected_fail_test!(
     strict_parse_hancock_ghoulish_mayor,
     "Hancock, Ghoulish Mayor"
@@ -32631,6 +32636,19 @@ fn strict_parse_shared_parser_regression_cards() {
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Gwen Stacy // Ghost-Spider");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("play that card for as long as you control this creature"),
+        "expected Gwen Stacy // Ghost-Spider permission duration clause, got {rendered}"
+    );
 }
 
 #[test]

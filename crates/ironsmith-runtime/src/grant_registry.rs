@@ -29,6 +29,11 @@ pub enum GrantSource {
         /// Turn number when this grant expires (at end of that turn).
         expires_end_of_turn: u32,
     },
+    /// From a resolving effect that lasts while the source remains controlled by a player.
+    EffectWhileControlled {
+        source_id: ObjectId,
+        controller: PlayerId,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -50,6 +55,7 @@ impl GrantSource {
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
+            GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id } => *source_id,
         }
     }
@@ -68,6 +74,12 @@ impl GrantSource {
                 // Valid only while source is on battlefield
                 game.battlefield.contains(source_id)
             }
+            GrantSource::EffectWhileControlled {
+                source_id,
+                controller,
+            } => game.object(*source_id).is_some_and(|source| {
+                source.zone == Zone::Battlefield && game.controller_of(source) == *controller
+            }),
         }
     }
 
@@ -85,6 +97,7 @@ impl GrantSource {
                 // Valid only while source is on battlefield
                 battlefield.contains(source_id)
             }
+            GrantSource::EffectWhileControlled { source_id, .. } => battlefield.contains(source_id),
         }
     }
 }
@@ -96,6 +109,10 @@ pub enum GrantLifetime {
     UntilEndOfTurn { source_id: ObjectId, turn: u32 },
     /// Valid while the source remains on the battlefield.
     WhileSourceOnBattlefield(ObjectId),
+    WhileSourceControlledBy {
+        source_id: ObjectId,
+        controller: PlayerId,
+    },
 }
 
 impl GrantLifetime {
@@ -103,6 +120,7 @@ impl GrantLifetime {
         match self {
             GrantLifetime::UntilEndOfTurn { source_id, .. } => *source_id,
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
+            GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
         }
     }
 }
@@ -120,6 +138,13 @@ impl GrantSource {
             GrantSource::StaticAbility { source_id } => {
                 GrantLifetime::WhileSourceOnBattlefield(*source_id)
             }
+            GrantSource::EffectWhileControlled {
+                source_id,
+                controller,
+            } => GrantLifetime::WhileSourceControlledBy {
+                source_id: *source_id,
+                controller: *controller,
+            },
         }
     }
 }
@@ -483,6 +508,7 @@ impl GrantRegistry {
         self.grants.retain(|grant| {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
+                GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
             )

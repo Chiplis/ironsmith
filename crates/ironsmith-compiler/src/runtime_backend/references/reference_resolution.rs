@@ -733,6 +733,12 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { player, .. } => {
                     track_effect_player(*player, frame, true, true)?;
                 }
+                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+                    player,
+                    ..
+                } => {
+                    track_effect_player(*player, frame, true, true)?;
+                }
                 SubjectVerbActionAst::RevealHand => {
                     frame.last_object_tag = None;
                 }
@@ -1752,6 +1758,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
@@ -2550,7 +2557,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
-            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. } => {
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
             SubjectVerbActionAst::ReturnToBattlefield {

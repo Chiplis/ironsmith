@@ -1888,6 +1888,34 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
+        SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+            tag,
+            player,
+            allow_land,
+            allow_any_color_for_cast,
+        } => {
+            let player_filter =
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let resolved_tag = if tag.as_str() == IT_TAG {
+                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "unable to resolve 'it' without prior reference".to_string(),
+                    )
+                })?)
+            } else {
+                tag.clone()
+            };
+            Ok((
+                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                    resolved_tag,
+                    player_filter,
+                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
+                    *allow_land,
+                    *allow_any_color_for_cast,
+                ))],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

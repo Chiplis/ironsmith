@@ -2467,6 +2467,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
             | SubjectVerbActionAst::ReturnToBattlefield { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
