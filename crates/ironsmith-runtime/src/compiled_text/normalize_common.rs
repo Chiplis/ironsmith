@@ -10144,7 +10144,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasLessLifeThanYou { player } => {
-            format!("{} has less life than you", describe_player_filter(player))
+            if *player == PlayerFilter::Opponent {
+                "you have more life than an opponent".to_string()
+            } else {
+                format!("{} has less life than you", describe_player_filter(player))
+            }
         }
         Condition::PlayerHasMoreLifeThanYou { player } => {
             format!("{} has more life than you", describe_player_filter(player))

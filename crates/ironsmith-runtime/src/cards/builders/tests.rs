@@ -32390,6 +32390,7 @@ strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
+strict_parse_card_test!(strict_parse_feudkillers_verdict, "Feudkiller's Verdict");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
 strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
@@ -32453,6 +32454,19 @@ fn strict_parse_regression_batch_target_cards() {
         failures.is_empty(),
         "strict parse regression batch failures:\n{}",
         failures.join("\n")
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feudkillers_verdict_compiled_text_mentions_life_lead_condition() {
+    let def = parse_oracle_card_definition("Feudkiller's Verdict");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("You gain 10 life")
+            && rendered.contains("If you have more life than an opponent")
+            && rendered.contains("create a 5/5 white Giant Warrior creature token"),
+        "expected compiled text to preserve Feudkiller's Verdict condition and token clause, got: {rendered}"
     );
 }
 

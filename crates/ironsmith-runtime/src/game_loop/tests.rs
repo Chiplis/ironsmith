@@ -873,6 +873,103 @@ fn bought_back_instant_returns_to_owners_hand_after_resolution() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn feudkillers_verdict_creates_token_when_you_have_more_life_than_an_opponent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.player_mut(alice).expect("alice should exist").life = 21;
+    game.player_mut(bob).expect("bob should exist").life = 20;
+
+    let verdict = CardDefinitionBuilder::new(CardId::new(), "Feudkiller's Verdict")
+        .card_types(vec![CardType::Kindred, CardType::Sorcery])
+        .parse_text(
+            "You gain 10 life. Then if you have more life than an opponent, create a 5/5 white Giant Warrior creature token.",
+        )
+        .expect("Feudkiller's Verdict should parse");
+    let permanents_before = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
+        .count();
+    let spell_id = game.create_object_from_definition(&verdict, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    resolve_stack_entry(&mut game).expect("Feudkiller's Verdict should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice should exist").life,
+        31,
+        "Feudkiller's Verdict should gain 10 life before checking the condition"
+    );
+
+    let permanents_after = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
+        .count();
+    assert_eq!(
+        permanents_after,
+        permanents_before + 1,
+        "Feudkiller's Verdict should add one permanent when the condition is true"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feudkillers_verdict_skips_token_when_no_opponent_has_less_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.player_mut(alice).expect("alice should exist").life = 5;
+    game.player_mut(bob).expect("bob should exist").life = 20;
+
+    let verdict = CardDefinitionBuilder::new(CardId::new(), "Feudkiller's Verdict")
+        .card_types(vec![CardType::Kindred, CardType::Sorcery])
+        .parse_text(
+            "You gain 10 life. Then if you have more life than an opponent, create a 5/5 white Giant Warrior creature token.",
+        )
+        .expect("Feudkiller's Verdict should parse");
+    let permanents_before = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
+        .count();
+    let spell_id = game.create_object_from_definition(&verdict, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    resolve_stack_entry(&mut game).expect("Feudkiller's Verdict should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice should exist").life,
+        15,
+        "Feudkiller's Verdict should still gain 10 life even if token clause fails"
+    );
+
+    let permanents_after = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
+        .count();
+    assert_eq!(
+        permanents_after, permanents_before,
+        "Feudkiller's Verdict should not add a permanent when no opponent has less life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
