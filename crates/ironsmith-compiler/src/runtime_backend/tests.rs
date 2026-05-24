@@ -5149,6 +5149,25 @@ fn rewrite_anthem_grant_static_parses_escape_tail_without_word_view() {
 }
 
 #[test]
+fn rewrite_anthem_grant_static_parses_miracle_reduction_tail_without_word_view() {
+    let tokens = lex_line(
+        "Each enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}.",
+        0,
+    )
+    .expect("rewrite lexer should classify granted miracle static line");
+
+    let parsed = super::keyword_static::parse_granted_keyword_static_line(&tokens)
+        .expect("granted miracle static line should parse")
+        .expect("granted miracle static line should be recognized");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("MiracleFromCardManaCostReducedBy") && debug.contains("reduction: 4"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_anthem_static_condition_normalizes_apostrophe_shapes() {
     let tokens = lex_line("It's enchanted", 0)
         .expect("rewrite lexer should classify static-condition clause");

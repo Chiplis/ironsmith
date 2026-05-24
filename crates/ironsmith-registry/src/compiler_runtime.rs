@@ -335,6 +335,11 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::EmergeFromCardManaCost => {
             ironsmith::grant::DerivedAlternativeCast::EmergeFromCardManaCost
         }
+        compiler::grant::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy {
+            reduction,
+        } => ironsmith::grant::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy {
+            reduction,
+        },
         compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
             ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }
