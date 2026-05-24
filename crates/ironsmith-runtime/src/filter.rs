@@ -4596,6 +4596,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &crate::effect::Value) -> String {
         use crate::effect::Value;
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
@@ -4643,6 +4644,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
                 {
                     "the exiled spell's mana value".to_string()
+                } else if let ChooseSpec::Tagged(tag) = spec.base()
+                    && tag.as_str().starts_with("sacrificed")
+                {
+                    "the sacrificed creature's mana value".to_string()
                 } else {
                     "that card's mana value".to_string()
                 }
@@ -4687,7 +4692,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
         Comparison::LessThanOrEqualExpr(value) => {
-            format!("{} or less", describe_value_expr(value))
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs) {
+                format!("X or less, where X is {}", describe_value_expr(value.unhinted()))
+            } else {
+                format!("{} or less", describe_value_expr(value))
+            }
         }
         Comparison::GreaterThanExpr(value) => {
             format!("greater than {}", describe_value_expr(value))

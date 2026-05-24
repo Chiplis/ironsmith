@@ -401,7 +401,7 @@ pub(crate) fn split_search_library_count_value_clause_lexed(
 
     let count_value_tokens = trim_lexed_commas(&filter_tokens[where_idx..]).to_vec();
     let Some(count_value) =
-        super::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+        crate::runtime_backend::keyword_static::parse_value_binding_clause_lexed(
             count_value_tokens.as_slice(),
         )
     else {

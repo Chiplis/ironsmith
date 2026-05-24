@@ -2378,6 +2378,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
 fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &Value) -> String {
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
@@ -2434,6 +2435,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     && tag.as_str() == crate::SOURCE_EXILED_TAG
                 {
                     "the exiled spell's mana value".to_string()
+                } else if let ChooseSpec::Tagged(tag) = spec.base()
+                    && tag.as_str().starts_with("sacrificed")
+                {
+                    "the sacrificed creature's mana value".to_string()
                 } else {
                     "that card's mana value".to_string()
                 }
@@ -2478,7 +2483,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
         Comparison::LessThanOrEqualExpr(value) => {
-            format!("{} or less", describe_value_expr(value))
+            if value.has_surface_hint(crate::ValueSurfaceHint::WhereXIs) {
+                format!("X or less, where X is {}", describe_value_expr(value.unhinted()))
+            } else {
+                format!("{} or less", describe_value_expr(value))
+            }
         }
         Comparison::GreaterThanExpr(value) => {
             format!("greater than {}", describe_value_expr(value))
@@ -2509,10 +2518,11 @@ fn describe_value_choose_spec_possessive(spec: &ChooseSpec) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ObjectRef, ParityRequirement, PlayerFilter, PtReference, StackObjectKind,
+        ChooseSpec, Comparison, ObjectFilter, ObjectRef, ParityRequirement, PlayerFilter,
+        PtReference, StackObjectKind,
         TaggedObjectConstraint, TaggedOpbjectRelation,
     };
-    use crate::{CardType, ObjectId, TagKey};
+    use crate::{CardType, ObjectId, TagKey, Value};
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {
@@ -2584,6 +2594,29 @@ mod tests {
         assert_eq!(
             ParityRequirement::Chosen.describe_axis("power"),
             "with power of the chosen quality"
+        );
+    }
+
+    #[test]
+    fn mana_value_expr_description_unwraps_surface_hints() {
+        let mut filter = ObjectFilter::creature();
+        filter.mana_value = Some(Comparison::LessThanOrEqualExpr(Box::new(
+            Value::Add(
+                Box::new(Value::Fixed(2)),
+                Box::new(
+                    Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("sacrificed_0"))))
+                    .with_surface_hint(crate::ValueSurfaceHint::WhereXIs),
+                ),
+            )
+            .with_surface_hint(crate::ValueSurfaceHint::WhereXIs),
+        )));
+
+        let rendered = filter.description();
+        assert!(
+            rendered.contains(
+                "with mana value X or less, where X is 2 plus the sacrificed creature's mana value"
+            ),
+            "{rendered}"
         );
     }
 }

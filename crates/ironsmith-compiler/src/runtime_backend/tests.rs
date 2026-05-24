@@ -6814,6 +6814,22 @@ fn rewrite_lexed_search_library_sentence_parses_disjunction_filter_via_grammar_s
 }
 
 #[test]
+fn rewrite_lexed_search_library_sentence_parses_where_x_fixed_plus_sacrificed_mana_value_clause() {
+    let text = "Search your library for a creature card with mana value X or less, where X is 2 plus the sacrificed creature's mana value, put that card onto the battlefield, then shuffle.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify where-x fixed-plus search clause");
+
+    let parsed = super::parse_search_library_sentence_lexed(&lexed)
+        .expect("lexed search-library sentence should parse")
+        .expect("search-library sentence should produce effects");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Add"), "{debug}");
+    assert!(debug.contains("Fixed(2)"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+}
+
+#[test]
 fn rewrite_gain_ability_keyword_lists_route_through_grammar_separator_helpers() {
     let text = "Target creature gains flying and vigilance until end of turn.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-ability keyword list");

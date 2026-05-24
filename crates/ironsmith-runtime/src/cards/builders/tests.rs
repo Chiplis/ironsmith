@@ -29217,6 +29217,13 @@ fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
             .contains("put it onto the battlefield, then shuffle"),
         "expected eldritch evolution search destination to survive compilation"
     );
+    assert!(
+        unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase()
+            .contains("mana value 2 plus"),
+        "expected eldritch evolution to preserve fixed-plus mana-value text"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
