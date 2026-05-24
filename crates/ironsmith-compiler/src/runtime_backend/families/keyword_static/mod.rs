@@ -740,7 +740,11 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_source_can_attack_as_though_no_defender_as_long_as_line
         ),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_attacks_or_blocks_each_combat_if_able_line
+        ),
         single_static_ability_ast_passthrough_rule!(parse_attacks_each_combat_if_able_line),
+        single_static_ability_ast_passthrough_rule!(parse_blocks_each_combat_if_able_line),
         single_static_ability_ast_rule!(parse_source_must_be_blocked_if_able_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_composed_anthem_effects_line),
@@ -7268,6 +7272,93 @@ pub(crate) fn parse_attacks_each_combat_if_able_line(
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_attack())),
             condition: None,
         })),
+    }
+}
+
+pub(crate) fn parse_blocks_each_combat_if_able_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(block_idx) = find_index(&words, |word| *word == "block" || *word == "blocks")
+    else {
+        return Ok(None);
+    };
+    if words[block_idx..] != ["blocks", "each", "combat", "if", "able"]
+        && words[block_idx..] != ["block", "each", "combat", "if", "able"]
+    {
+        return Ok(None);
+    }
+
+    if block_idx == 0 {
+        return Ok(Some(StaticAbilityAst::Static(StaticAbility::must_block())));
+    }
+
+    let subject_tokens = trim_commas(&tokens[..block_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(Some(StaticAbilityAst::Static(StaticAbility::must_block())));
+    }
+    let subject = parse_anthem_subject(&subject_tokens)?;
+    match subject {
+        AnthemSubjectAst::Source => Ok(Some(StaticAbilityAst::Static(StaticAbility::must_block()))),
+        AnthemSubjectAst::Filter(filter) => Ok(Some(StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
+            condition: None,
+        })),
+    }
+}
+
+pub(crate) fn parse_attacks_or_blocks_each_combat_if_able_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(action_idx) = find_index(&words, |word| *word == "attack" || *word == "attacks")
+    else {
+        return Ok(None);
+    };
+    let tail = &words[action_idx..];
+    if tail != ["attacks", "or", "blocks", "each", "combat", "if", "able"]
+        && tail != ["attack", "or", "block", "each", "combat", "if", "able"]
+        && tail != ["attacks", "or", "block", "each", "combat", "if", "able"]
+        && tail != ["attack", "or", "blocks", "each", "combat", "if", "able"]
+    {
+        return Ok(None);
+    }
+
+    let mk_pair = |subject: Option<ObjectFilter>| {
+        if let Some(filter) = subject {
+            vec![
+                StaticAbilityAst::GrantStaticAbility {
+                    filter: filter.clone(),
+                    ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_attack())),
+                    condition: None,
+                },
+                StaticAbilityAst::GrantStaticAbility {
+                    filter,
+                    ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
+                    condition: None,
+                },
+            ]
+        } else {
+            vec![
+                StaticAbilityAst::Static(StaticAbility::must_attack()),
+                StaticAbilityAst::Static(StaticAbility::must_block()),
+            ]
+        }
+    };
+
+    if action_idx == 0 {
+        return Ok(Some(mk_pair(None)));
+    }
+
+    let subject_tokens = trim_commas(&tokens[..action_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(Some(mk_pair(None)));
+    }
+    let subject = parse_anthem_subject(&subject_tokens)?;
+    match subject {
+        AnthemSubjectAst::Source => Ok(Some(mk_pair(None))),
+        AnthemSubjectAst::Filter(filter) => Ok(Some(mk_pair(Some(filter)))),
     }
 }
 

@@ -4011,6 +4011,26 @@ fn semantic_document_supports_next_turn_silence() {
 }
 
 #[test]
+fn semantic_document_supports_attacks_or_blocks_each_combat_if_able() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Iron Golem")
+        .card_types(vec![CardType::Artifact, CardType::Creature]);
+    let text = "This creature attacks or blocks each combat if able.";
+
+    parse_text_to_semantic_document(builder, text.to_string(), false)
+        .expect("expected attacks-or-blocks-each-combat line to parse");
+}
+
+#[test]
+fn semantic_document_supports_blocks_each_combat_if_able() {
+    let builder =
+        CardDefinitionBuilder::new(CardId::new(), "Watchdog").card_types(vec![CardType::Creature]);
+    let text = "This creature blocks each combat if able.";
+
+    parse_text_to_semantic_document(builder, text.to_string(), false)
+        .expect("expected blocks-each-combat line to parse");
+}
+
+#[test]
 fn rewrite_lexed_restriction_duration_handles_for_as_long_as_token_shapes() {
     let prefix = lex_line(
         "For as long as you control this, target creature can't attack.",
