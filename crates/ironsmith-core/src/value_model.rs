@@ -664,6 +664,7 @@ pub enum Condition {
     YourFirstTurnsOfTheGameOrFewer(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
+    CreatureCardPutIntoYourGraveyardThisTurn,
     CastSpellThisTurn,
     PlayerCastSpellsThisTurnOrMore {
         player: PlayerFilter,

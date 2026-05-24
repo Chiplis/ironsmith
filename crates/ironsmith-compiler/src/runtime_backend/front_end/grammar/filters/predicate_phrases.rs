@@ -1841,6 +1841,38 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        [
+            "a",
+            "creature",
+            "card",
+            "was",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
+            "anywhere",
+            "this",
+            "turn"
+        ] | [
+            "creature",
+            "card",
+            "was",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
+            "anywhere",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
         ["no", "permanent", "left", "battlefield", "this", "turn"]
             | ["no", "permanents", "left", "battlefield", "this", "turn"]
     ) {
@@ -3214,6 +3246,7 @@ mod tests {
     #[test]
     fn parse_predicate_supports_you_have_more_life_than_opponent() -> Result<(), CardTextError> {
         let tokens = lex_line("if you have more life than an opponent", 0)?;
+
         let predicate_tokens = tokens
             .iter()
             .filter(|token| !token.is_word("if"))
@@ -3228,6 +3261,25 @@ mod tests {
                 player: PlayerAst::Opponent,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_creature_card_put_into_your_graveyard_this_turn(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If a creature card was put into your graveyard from anywhere this turn",
+            0,
+        )?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn);
         Ok(())
     }
 }

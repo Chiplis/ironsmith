@@ -12891,6 +12891,20 @@ fn rewrite_grammar_land_you_controlled_put_into_graveyard_predicate_parses() {
 }
 
 #[test]
+fn rewrite_grammar_creature_card_put_into_your_graveyard_from_anywhere_predicate_parses() {
+    let tokens = lex_line(
+        "a creature card was put into your graveyard from anywhere this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify creature-card graveyard-history predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+    );
+}
+
+#[test]
 fn rewrite_grammar_artifact_entered_under_your_control_predicate_parses() {
     let tokens = lex_line(
         "an artifact entered the battlefield under your control this turn",
