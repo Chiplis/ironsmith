@@ -12001,6 +12001,13 @@ pub(super) fn describe_tagged_target_then_power_damage(
         return None;
     }
 
+    if let ChooseSpec::Player(PlayerFilter::ControllerOf(controller_ref) | PlayerFilter::OwnerOf(controller_ref)) =
+        deal.target.base()
+        && matches!(controller_ref, crate::filter::ObjectRef::Tagged(tag) if tag.as_str() == source_tag.as_str())
+    {
+        return None;
+    }
+
     let source_text = describe_choose_spec(&target_only.target);
     if matches!(
         deal.target,
@@ -12999,6 +13006,22 @@ mod tests {
         assert_eq!(
             describe_effect(&effect),
             "this creature deals damage equal to the number of artifacts they control to that player"
+        );
+    }
+
+    #[test]
+    fn power_damage_to_tagged_controllers_keeps_spell_source_surface() {
+        let tagged = TagKey::from("destroyed_0");
+        let effect = Effect::deal_damage(
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(tagged.clone()))),
+            ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(
+                tagged,
+            ))),
+        );
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Deal damage equal to that creature's power to that object's controller"
         );
     }
 
@@ -24849,6 +24872,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         if let Value::PowerOf(source) | Value::ToughnessOf(source) = &deal_damage.amount {
+            let target_matches_power_source = matches!(
+                (source.base(), deal_damage.target.base()),
+                (
+                    ChooseSpec::Tagged(source_tag),
+                    ChooseSpec::Player(
+                        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(target_tag))
+                            | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(target_tag))
+                    )
+                ) if source_tag.as_str() == target_tag.as_str()
+            );
+            if target_matches_power_source {
+                let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
+                    "toughness"
+                } else {
+                    "power"
+                };
+                let amount_text = describe_dynamic_counter_basis(source, stat);
+                return format!(
+                    "Deal damage equal to {amount_text} to {}",
+                    describe_choose_spec(&deal_damage.target)
+                );
+            }
             let mut subject = describe_choose_spec(source);
             if subject == "this source" {
                 subject = "this creature".to_string();

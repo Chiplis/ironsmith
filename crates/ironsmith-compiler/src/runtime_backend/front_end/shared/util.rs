@@ -3239,6 +3239,36 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count,
         ));
     }
+    if remaining_words.len() >= 2 {
+        let object_head = strip_possessive_suffix(remaining_words[0]);
+        if matches!(remaining_words[1], "controller" | "controllers" | "owner" | "owners")
+            && (matches!(
+                object_head,
+                "creature"
+                    | "creatures"
+                    | "permanent"
+                    | "permanents"
+                    | "spell"
+                    | "spells"
+                    | "source"
+                    | "sources"
+                    | "card"
+                    | "cards"
+            ) || parse_card_type(object_head).is_some()
+                || str_strip_suffix(object_head, "s")
+                    .is_some_and(|singular| parse_card_type(singular).is_some()))
+        {
+            let player = if str_starts_with(remaining_words[1], "owner") {
+                PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+            } else {
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+            };
+            return Ok(wrap_target_count(
+                TargetAst::Player(player, target_span),
+                target_count,
+            ));
+        }
+    }
     if words_have_prefix(&remaining_words, &["its", "owner"])
         || words_have_prefix(&remaining_words, &["its", "owners"])
         || words_have_prefix(&remaining_words, &["their", "owner"])
