@@ -592,6 +592,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_revealed_cards_reference() {
+        let tokens = lex_line("revealed cards", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            *constraint
+                == TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                }
+        }));
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_same_mana_value_as_sacrificed_reference() {
         let tokens = lex_line(
             "creature with same mana value as the sacrificed creature",

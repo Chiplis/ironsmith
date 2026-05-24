@@ -1023,6 +1023,14 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.remove(0);
     }
 
+    if starts_with_any_filter_phrase(all_words, &[&["revealed", "card"], &["revealed", "cards"]]) {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: IT_TAG.into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        all_words.drain(..2);
+    }
+
     let has_share_card_type = (contains_filter_word(all_words, "share")
         || contains_filter_word(all_words, "shares"))
         && (contains_filter_word(all_words, "card")
