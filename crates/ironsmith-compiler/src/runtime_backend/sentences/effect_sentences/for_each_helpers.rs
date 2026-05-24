@@ -373,7 +373,11 @@ pub(crate) fn parse_has_base_power_toughness_clause(
             return Ok(None);
         }
     }
-    if !tail.is_empty() && !is_until_end_of_turn(tail) {
+    if !tail.is_empty()
+        && !is_until_end_of_turn(tail)
+        && !word_slice_starts_with(tail, &["and", "gain"])
+        && !word_slice_starts_with(tail, &["and", "gains"])
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
             words_all.join(" ")
