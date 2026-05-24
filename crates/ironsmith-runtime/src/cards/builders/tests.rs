@@ -11861,6 +11861,25 @@ fn parse_gain_life_equal_to_devotion_value() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_gain_life_equal_to_the_power_of_target_creature_you_control() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Wall of Reverence Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nAt the beginning of your end step, you may gain life equal to the power of target creature you control.",
+        )
+        .expect("target-creature power life gain should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GainLifeEffect")
+            && abilities_debug.contains("PowerOf")
+            && abilities_debug.contains("Target("),
+        "expected gain-life amount to use target creature power, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_gain_life_equal_to_your_speed() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Momentum Breaker Variant")
         .card_types(vec![CardType::Enchantment])
