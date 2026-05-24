@@ -58,6 +58,33 @@ pub(crate) fn parse_lose_life(
                 SubjectVerbActionAst::LoseLife { amount },
             ));
         }
+        let base_effect = subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife { amount },
+        );
+        if let Some(predicate) = parse_trailing_if_predicate_lexed(&trailing) {
+            return Ok(EffectAst::Conditional {
+                predicate,
+                if_true: vec![base_effect],
+                if_false: Vec::new(),
+            });
+        }
+        if trailing
+            .first()
+            .is_some_and(|token| token.is_word("unless"))
+        {
+            let mut unless_as_if_tokens = Vec::with_capacity(trailing.len() + 1);
+            unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
+            unless_as_if_tokens.extend_from_slice(&trailing[1..]);
+            if let Some(predicate) = parse_trailing_if_predicate_lexed(&unless_as_if_tokens) {
+                return Ok(EffectAst::Conditional {
+                    predicate,
+                    if_true: Vec::new(),
+                    if_false: vec![base_effect],
+                });
+            }
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing life-loss clause (clause: '{}')",
             clause_words.join(" ")

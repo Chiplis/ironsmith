@@ -2623,6 +2623,20 @@ fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
 }
 
 #[test]
+fn rewrite_parse_lose_life_unless_you_attacked_this_turn_clause() {
+    let tokens = lex_line("You lose 4 life unless you attacked this turn.", 0)
+        .expect("rewrite lexer should classify life-loss unless clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("life-loss unless clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("LoseLife"), "{debug}");
+    assert!(debug.contains("YouAttackedThisTurn"), "{debug}");
+}
+
+#[test]
 fn rewrite_zone_counter_helpers_parse_multiple_counter_sentence() {
     let tokens = lex_line(
         "Put a +1/+1 counter and a flying counter on target creature",
