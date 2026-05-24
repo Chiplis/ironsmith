@@ -4522,6 +4522,48 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast_with_any_c
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_cast_from_among_cards_exiled_with_it() {
+    let tokens = lex_line(
+        "cast an instant or sorcery spell from among cards exiled with it",
+        0,
+    )
+    .expect("rewrite lexer should classify tagged cast-from-exiled clause");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::Tagged {
+            tag,
+            player: crate::cards::builders::PlayerAst::Implicit,
+            allow_land: false,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: super::PermissionLifetime::Immediate,
+        })) if tag == crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG)
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("cast-from-among-cards-exiled-with-it clause should parse as an effect");
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    crate::cards::builders::SubjectVerbActionAst::CastTagged {
+                        tag,
+                        player: crate::cards::builders::PlayerAst::Implicit,
+                        allow_land: false,
+                        as_copy: false,
+                        without_paying_mana_cost: false,
+                        ..
+                    } if tag.as_str() == crate::cards::builders::IT_TAG
+                )
+        )),
+        "expected cast tagged effect, got {effects:#?}"
+    );
+}
+
+#[test]
 fn rewrite_token_primitives_cover_count_range_prefixes() {
     let up_to = lex_line("up to three target creatures", 0)
         .expect("rewrite lexer should classify up-to count range");

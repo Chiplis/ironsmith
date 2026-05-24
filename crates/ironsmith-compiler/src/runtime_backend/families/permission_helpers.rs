@@ -100,44 +100,64 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
 ) -> Result<TaggedPermissionTarget, ErrMode<ContextError>> {
     alt((
         alt((
-            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
-                TaggedPermissionTarget {
+            alt((
+                grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
+                    TaggedPermissionTarget {
+                        tag: TagKey::from(IT_TAG),
+                        as_copy: false,
+                    },
+                ),
+                grammar::phrase(&["spells", "from", "among", "them"]).value(
+                    TaggedPermissionTarget {
+                        tag: TagKey::from(IT_TAG),
+                        as_copy: false,
+                    },
+                ),
+                grammar::phrase(&["one", "of", "those", "cards"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: false,
-                },
-            ),
-            grammar::phrase(&["spells", "from", "among", "them"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["one", "of", "those", "cards"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["one", "of", "those", "card"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["one", "of", "them"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["it"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["them"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["that", "card"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
-            grammar::phrase(&["those", "cards"]).value(TaggedPermissionTarget {
-                tag: TagKey::from(IT_TAG),
-                as_copy: false,
-            }),
+                }),
+                grammar::phrase(&["one", "of", "those", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["one", "of", "them"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["it"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+            )),
+            alt((
+                grammar::phrase(&["them"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["that", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["those", "cards"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                alt((
+                    grammar::phrase(&[
+                        "an", "instant", "or", "sorcery", "spell", "from", "among", "cards",
+                        "exiled", "with", "it",
+                    ]),
+                    grammar::phrase(&[
+                        "a", "instant", "or", "sorcery", "spell", "from", "among", "cards",
+                        "exiled", "with", "it",
+                    ]),
+                ))
+                .value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+            )),
         )),
         alt((
             grammar::phrase(&["that", "spell"]).value(TaggedPermissionTarget {
