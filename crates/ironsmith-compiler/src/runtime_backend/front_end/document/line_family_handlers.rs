@@ -221,6 +221,42 @@ pub(super) fn run_split_top_and_face_down_look_line_family(
     }))
 }
 
+pub(super) fn run_split_top_look_and_top_land_play_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
+    let phrase = "you may look at the top card of your library any time, and you may play lands from the top of your library";
+    if lower.trim_end_matches('.') != phrase {
+        return Ok(None);
+    }
+
+    let top_card_line =
+        rewrite_line_normalized(ctx.line, "You may look at the top card of your library any time.")?;
+    let play_lands_line =
+        rewrite_line_normalized(ctx.line, "You may play lands from the top of your library.")?;
+
+    let Some(top_card_static) = parse_static_line_cst(&top_card_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower split top-card look line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    let Some(play_lands_static) = parse_static_line_cst(&play_lands_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower split top-library land-play line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    Ok(Some(LineDispatchResult {
+        lines: vec![
+            RewriteLineCst::Static(top_card_static),
+            RewriteLineCst::Static(play_lands_static),
+        ],
+        next_idx: ctx.idx + 1,
+    }))
+}
+
 pub(super) fn run_champion_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
