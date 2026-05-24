@@ -8442,6 +8442,24 @@ fn parse_final_parting_search_two_split_destinations() {
 }
 
 #[test]
+fn parse_search_up_to_two_reveal_split_hand_and_graveyard_then_shuffle() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fork in the Road Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for up to two basic land cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle.",
+        )
+        .expect("up-to-two search split should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("is_search: true"), "{debug}");
+    assert!(debug.contains("RevealTaggedEffect"), "{debug}");
+    assert!(debug.contains("Basic"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+    assert!(debug.contains("ShuffleLibraryEffect"), "{debug}");
+}
+
+#[test]
 fn rewrite_grammar_chosen_type_static_line_probes_match_keyword_static_shapes() {
     type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(

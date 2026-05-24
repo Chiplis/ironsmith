@@ -470,7 +470,15 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
     let first_effects = effect_sentences::parse_effect_chain(&first_tokens)?;
-    let (mut search_filter, count, count_value, chooser, library_player, search_mode) =
+    let (
+        mut search_filter,
+        count,
+        count_value,
+        chooser,
+        library_player,
+        search_mode,
+        preserve_reveal,
+    ) =
         match first_effects.as_slice() {
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -493,6 +501,7 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
                 *chooser,
                 *player,
                 *search_mode,
+                false,
             ),
             [
                 EffectAst::ChooseObjectsAcrossZones {
@@ -511,10 +520,37 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
                 *player,
                 *player,
                 search_mode.unwrap_or(crate::effect::SearchSelectionMode::Exact),
+                false,
+            ),
+            [
+                EffectAst::ChooseObjectsAcrossZones {
+                    filter,
+                    count,
+                    count_value,
+                    player,
+                    tag,
+                    zones,
+                    search_mode,
+                    ..
+                },
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::RevealTagged { tag: reveal_tag },
+                    ..
+                }),
+            ] if zones.as_slice() == [Zone::Library] && reveal_tag == tag => (
+                filter.clone(),
+                *count,
+                count_value.clone(),
+                *player,
+                *player,
+                search_mode.unwrap_or(crate::effect::SearchSelectionMode::Exact),
+                true,
             ),
             _ => return Ok(None),
         };
-    if count.min != 2 || count.max != Some(2) || count_value.is_some() {
+    let is_exactly_two = count.min == 2 && count.max == Some(2) && count_value.is_none();
+    let is_up_to_two = count.min == 0 && count.max == Some(2) && count_value.is_none();
+    if !is_exactly_two && !is_up_to_two {
         return Ok(None);
     }
 
@@ -548,10 +584,15 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
     let hand_tag = helper_tag_for_tokens(&second_tokens, "hand");
     let mut hand_filter = ObjectFilter::tagged(searched_tag.clone());
     hand_filter.zone = Some(Zone::Library);
+    let hand_count = if is_up_to_two {
+        ChoiceCount::up_to(1)
+    } else {
+        ChoiceCount::exactly(1)
+    };
     let iterated_is_hand_card =
         ObjectFilter::default().same_stable_id_as_tagged(TagKey::from(IT_TAG));
 
-    Ok(Some(vec![
+    let mut effects = vec![
         EffectAst::ChooseObjectsAcrossZones {
             filter: search_filter,
             count,
@@ -561,9 +602,14 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
             zones: vec![Zone::Library],
             search_mode: Some(search_mode),
         },
+    ];
+    if preserve_reveal {
+        effects.push(EffectAst::subject_verb_reveal_tagged(searched_tag.clone()));
+    }
+    effects.extend([
         EffectAst::ChooseObjects {
             filter: hand_filter,
-            count: ChoiceCount::exactly(1),
+            count: hand_count,
             count_value: None,
             player: chooser,
             tag: hand_tag.clone(),
@@ -596,7 +642,8 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
             library_player,
             SubjectVerbActionAst::ShuffleLibrary,
         ),
-    ]))
+    ]);
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_search_face_down_exile_conditional_cast_else_hand(

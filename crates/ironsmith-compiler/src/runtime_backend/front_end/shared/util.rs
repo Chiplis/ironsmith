@@ -2422,6 +2422,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_target_phrase_recognizes_bare_numeric_reference_as_it_tag() {
+        let tokens = lex_line("one", 0).unwrap();
+        let target = parse_target_phrase(&tokens).expect("bare one should parse");
+
+        let TargetAst::WithCount(inner, count) = target else {
+            panic!("expected counted IT-tag object target, got {target:?}");
+        };
+        let TargetAst::Object(filter, _, _) = *inner else {
+            panic!("expected inner object target, got {inner:?}");
+        };
+
+        assert_eq!(count.min, 1, "expected one selected object");
+        assert_eq!(count.max, Some(1), "expected exactly one selected object");
+        assert!(
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }),
+            "expected bare numeric target to bind IT tag, got {filter:?}"
+        );
+    }
+
+    #[test]
     fn parse_for_each_count_value_words_binds_revealed_this_way_to_it_tag() {
         let words = ["for", "each", "card", "revealed", "this", "way"];
 
@@ -2602,6 +2625,18 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     let mut explicit_target = false;
 
     let all_words = crate::runtime_backend::token_word_refs(tokens);
+    if all_words.len() == 1
+        && let Some(count) = parse_number_word_u32(all_words[0])
+    {
+        let mut chosen_count = ChoiceCount::exactly(count as usize);
+        if random_choice {
+            chosen_count = chosen_count.at_random();
+        }
+        return Ok(wrap_target_count(
+            TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), None, span),
+            Some(chosen_count),
+        ));
+    }
     if matches!(
         all_words.as_slice(),
         ["any"] | ["any", "target"] | ["any", "targets"]
