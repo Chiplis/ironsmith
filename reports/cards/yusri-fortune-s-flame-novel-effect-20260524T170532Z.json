@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "20260524T170532Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Yusri, Fortune's Flame",
+    "layout": "normal",
+    "mana_cost": "{1}{U}{R}",
+    "type_line": "Legendary Creature \u2014 Efreet",
+    "oracle_text": "Flying\nWhenever Yusri attacks, choose a number between 1 and 5. Flip that many coins. For each flip you win, draw a card. For each flip you lose, Yusri deals 2 damage to you. If you won five flips this way, you may cast spells from your hand this turn without paying their mana costs.",
+    "source_block": "Name: Yusri, Fortune's Flame\nMana cost: {1}{U}{R}\nType: Legendary Creature \u2014 Efreet\nPower/Toughness: 2/3\nFlying\nWhenever Yusri attacks, choose a number between 1 and 5. Flip that many coins. For each flip you win, draw a card. For each flip you lose, Yusri deals 2 damage to you. If you won five flips this way, you may cast spells from your hand this turn without paying their mana costs.",
+    "parse_input": "Mana cost: {1}{U}{R}\nType: Legendary Creature \u2014 Efreet\nPower/Toughness: 2/3\nFlying\nWhenever Yusri attacks, choose a number between 1 and 5. Flip that many coins. For each flip you win, draw a card. For each flip you lose, Yusri deals 2 damage to you. If you won five flips this way, you may cast spells from your hand this turn without paying their mana costs."
+  },
+  "failure": {
+    "reason": "The compiler lacks a reusable choose-number effect AST/lowering path for bounded numeric selections, and this card's subsequent clauses depend on the chosen numeric value for coin-flip count and win-count condition evaluation.",
+    "gaps": [
+      "Add a reusable ChooseNumber effect family (bounded ranges like between N and M) with lowering/runtime execution facts so downstream clauses can reference the selected number (e.g., 'that many' coin flips and 'if you won five flips this way')."
+    ]
+  },
+  "compile_probe": {
+    "strict": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Yusri, Fortune's Flame: ParseError(\\\"unsupported chosen object filter in choose clause (clause: 'choose a number between 1 and 5')\\\")\""
+    },
+    "allow_unsupported": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Yusri, Fortune's Flame: ParseError(\\\"unsupported chosen object filter in choose clause (clause: 'choose a number between 1 and 5')\\\")\""
+    }
+  }
+}
