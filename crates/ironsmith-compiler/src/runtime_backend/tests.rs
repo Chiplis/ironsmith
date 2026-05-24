@@ -8941,6 +8941,50 @@ fn rewrite_lexed_effect_sentence_parses_triple_target_pt_body() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_parses_double_its_power_body() {
+    let tokens = lex_line("double its power until end of turn", 0)
+        .expect("rewrite lexer should classify double its power effect");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("double its power effect should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Pump"), "{debug}");
+    assert!(debug.contains("__it__"), "{debug}");
+    assert!(debug.contains("PowerOf"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_double_its_power_body() {
+    let tokens = lex_line(
+        "Whenever this creature attacks, double its power until end of turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify attack trigger with double its power");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("attack trigger with double its power should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Attacks"), "{debug}");
+    assert!(debug.contains("__it__"), "{debug}");
+    assert!(debug.contains("PowerOf"), "{debug}");
+}
+
+#[test]
+fn rewrite_etb_where_x_that_excess_damage_clause_binds_event_amount() {
+    let tokens = lex_line("where x is that excess damage", 0)
+        .expect("rewrite lexer should classify where-x excess damage clause");
+
+    let parsed = super::keyword_static::parse_value_binding_clause(&tokens)
+        .expect("where-x excess damage clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("EventValue"), "{debug}");
+    assert!(debug.contains("Amount"), "{debug}");
+}
+
+#[test]
 fn rewrite_effect_entrypoint_keeps_exact_bundle_graveyard_copy_shape_without_lowering() {
     let tokens = lex_line(
         "If this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy.",
