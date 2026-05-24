@@ -809,6 +809,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = subject_word_view.to_word_refs();
         if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
             let tail_words = &words[activate_idx + 1..];
+            if let Some((owner_filter, marker)) = parse_possessive_ability_trigger_tail_lexed(
+                &tokens[activate_idx + 1..],
+                tail_words,
+            )? {
+                let filter = match marker {
+                    Some(marker) => owner_filter.with_ability_marker(marker),
+                    None => owner_filter,
+                };
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter,
+                    non_mana_only: false,
+                });
+            }
             if tail_words == ["an", "ability"]
                 || tail_words == ["abilities"]
                 || tail_words == ["an", "ability", "that", "isnt", "a", "mana", "ability"]
@@ -3156,4 +3170,46 @@ pub(crate) fn parse_trigger_clause_lexed(
             words.join(" ")
         ))),
     }
+}
+
+fn parse_possessive_ability_trigger_tail_lexed<'a>(
+    tail_tokens: &'a [OwnedLexToken],
+    tail_words: &[&str],
+) -> Result<Option<(ObjectFilter, Option<String>)>, CardTextError> {
+    let Some(ability_idx) = find_index(tail_tokens, |token| {
+        token.is_word("ability") || token.is_word("abilities")
+    }) else {
+        return Ok(None);
+    };
+    if ability_idx == 0 || ability_idx + 1 != tail_tokens.len() {
+        return Ok(None);
+    }
+
+    let owner_tokens = &tail_tokens[..ability_idx];
+    let owner_words = &tail_words[..ability_idx];
+    let Some(possessive_idx) = owner_words
+        .iter()
+        .rposition(|word| word.ends_with('s') && !matches!(*word, "this" | "its"))
+    else {
+        return Ok(None);
+    };
+
+    let owner_subject_tokens = &owner_tokens[..=possessive_idx];
+    if owner_subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let owner_filter = parse_object_filter_lexed(owner_subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported activated-ability trigger source filter (clause: '{}')",
+            tail_words.join(" ")
+        ))
+    })?;
+
+    let marker = if possessive_idx + 1 < owner_words.len() {
+        Some(owner_words[possessive_idx + 1].to_string())
+    } else {
+        None
+    };
+
+    Ok(Some((owner_filter, marker)))
 }
