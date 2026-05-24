@@ -587,6 +587,15 @@ pub(super) fn lower_gift(
     lower_gift_keyword_line(line)
 }
 
+pub(super) fn lower_demonstrate(
+    _line: &RewriteKeywordLine,
+    _tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::StaticAbility(
+        crate::static_abilities::StaticAbility::keyword_marker("Demonstrate").into(),
+    ))
+}
+
 pub(super) fn lower_warp(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -844,6 +853,13 @@ pub(super) fn matches_gift(
     _tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(is_standard_gift_keyword_line(line.info.raw_line.as_str()))
+}
+
+pub(super) fn matches_demonstrate(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(token_words_have_prefix(tokens, &["demonstrate"]))
 }
 
 pub(super) fn matches_warp(

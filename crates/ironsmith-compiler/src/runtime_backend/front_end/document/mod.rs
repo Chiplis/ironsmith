@@ -1608,6 +1608,20 @@ mod tests {
     }
 
     #[test]
+    fn keyword_line_cst_recognizes_demonstrate_from_tokens() -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)",
+        );
+
+        let parsed =
+            parse_keyword_line_cst(&line)?.expect("expected demonstrate line to parse as keyword");
+
+        assert!(matches!(parsed.kind, super::KeywordLineKindCst::Demonstrate));
+
+        Ok(())
+    }
+
+    #[test]
     fn keyword_line_cst_recognizes_exert_attack_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line(
             "You may exert this creature as it attacks. (An exerted creature won't untap during your next untap step.)",

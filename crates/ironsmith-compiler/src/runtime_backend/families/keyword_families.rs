@@ -56,6 +56,7 @@ pub(super) enum KeywordDispatchHint {
     Transmute,
     CastThisSpellOnly,
     Gift,
+    Demonstrate,
     Warp,
     Exploit,
 }
@@ -241,6 +242,12 @@ mod spell_keywords {
             lower: registry::lower_evoke,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Demonstrate,
+            hints: &[KeywordDispatchHint::Demonstrate],
+            matches: registry::matches_demonstrate,
+            lower: registry::lower_demonstrate,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Epic,
             hints: &[KeywordDispatchHint::Epic],
             matches: registry::matches_epic,
@@ -353,6 +360,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
             )),
             winnow::combinator::alt((
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),
+                grammar::kw("demonstrate").value(KeywordDispatchHint::Demonstrate),
                 grammar::kw("warp").value(KeywordDispatchHint::Warp),
                 grammar::kw("escalate").value(KeywordDispatchHint::Escalate),
                 grammar::kw("evoke").value(KeywordDispatchHint::Evoke),
