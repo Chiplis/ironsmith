@@ -12301,6 +12301,65 @@ fn parse_sacrifice_unless_clause_fails_instead_of_ignoring_unless_tail() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_war_elemental_strictly_parses_etb_sacrifice_unless_opponent_damage_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "War Elemental")
+        .parse_text(
+            "When this creature enters, sacrifice it unless an opponent was dealt damage this turn.\nWhenever an opponent is dealt damage, put that many +1/+1 counters on this creature.",
+        )
+        .expect("War Elemental should parse");
+    let joined = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("unless an opponent was dealt damage this turn, sacrifice it"),
+        "expected compiled text to preserve ETB unless-opponent-damage semantics, got {joined}"
+    );
+    assert!(
+        joined.contains("whenever an opponent is dealt damage, put that many +1/+1 counters on this creature"),
+        "expected damage-counter trigger to remain intact, got {joined}"
+    );
+}
+
+#[test]
+fn war_elemental_runtime_condition_matches_when_opponent_lost_life_this_turn() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = crate::ObjectId::from_raw(77);
+    let bob = crate::PlayerId::from_index(1);
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::life::LifeLossEvent::from_effect(bob, 2),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.stage_turn_history_event(&damage_event);
+
+    assert!(
+        crate::condition_eval::evaluate_condition_cast_time(
+            &game,
+            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            crate::PlayerId::from_index(0),
+            source,
+        ),
+        "War Elemental ETB unless-condition should pass when an opponent lost life this turn"
+    );
+}
+
+#[test]
+fn war_elemental_runtime_condition_fails_when_no_opponent_lost_life_this_turn() {
+    let game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = crate::ObjectId::from_raw(77);
+
+    assert!(
+        !crate::condition_eval::evaluate_condition_cast_time(
+            &game,
+            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            crate::PlayerId::from_index(0),
+            source,
+        ),
+        "War Elemental ETB unless-condition should fail when no opponent lost life this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
         .parse_text("Creatures you control with power or toughness 1 or less can't be blocked.")

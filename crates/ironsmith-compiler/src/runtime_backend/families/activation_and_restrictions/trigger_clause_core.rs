@@ -2320,6 +2320,12 @@ pub(crate) fn parse_trigger_clause_lexed(
             .token_index_for_word_index(is_word_idx)
             .unwrap_or(tokens.len());
         let subject_tokens = &tokens[..is_token_idx];
+        if let Some(player) = trigger_subject_player_selector_lexed(subject_tokens) {
+            return Ok(TriggerSpec::DealsDamageToPlayer {
+                source: ObjectFilter::default(),
+                player,
+            });
+        }
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
             if slice_ends_with(&words, &["is", "dealt", "combat", "damage"]) {
                 return Ok(TriggerSpec::IsDealtCombatDamage(filter));

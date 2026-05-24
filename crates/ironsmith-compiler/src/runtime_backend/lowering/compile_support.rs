@@ -484,6 +484,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
+        PredicateAst::OpponentLostLifeThisTurn => Condition::OpponentLostLifeThisTurn,
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
         }
