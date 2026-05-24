@@ -992,13 +992,18 @@ pub(crate) fn parse_prevent_all_damage_clause(
                 clause_words.join(" ")
             )));
         }
-        if source_words.last().copied() != Some("sources") {
+        let source_filter_words = if source_words.last().copied() == Some("sources") {
+            &source_words[..source_words.len() - 1]
+        } else {
+            source_words
+        };
+        if source_filter_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported prevent-all damage source phrase (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let source_filter_tokens = source_words[..source_words.len() - 1]
+        let source_filter_tokens = source_filter_words
             .iter()
             .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
             .collect::<Vec<_>>();

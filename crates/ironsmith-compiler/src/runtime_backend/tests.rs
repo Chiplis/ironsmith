@@ -8023,6 +8023,23 @@ fn rewrite_grammar_prevention_static_line_probes_match_keyword_static_shapes() {
 }
 
 #[test]
+fn parse_prevent_all_damage_by_opponents_creatures_effect_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Effect Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Prevent all damage that would be dealt this turn by creatures your opponents control.")
+        .expect("prevent-all damage clause with opponent creature source filter should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("preventalldamageeffect")
+            && spell_debug.contains("from_source")
+            && spell_debug.contains("creature")
+            && spell_debug.contains("opponent"),
+        "expected source-filter prevent-all-damage effect, got {spell_debug}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_skulk_rules_text_probe_matches_static_line() {
     let tokens = lex_line(
         "Creatures with power less than this creature's power can't block this creature.",
