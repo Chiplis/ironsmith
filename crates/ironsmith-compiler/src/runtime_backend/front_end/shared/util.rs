@@ -4613,6 +4613,28 @@ pub(crate) fn parse_warp_line_lexed(
     parse_warp_line(tokens)
 }
 
+pub(crate) fn parse_cleave_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("cleave")) {
+        return Ok(None);
+    }
+
+    let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("cleave keyword missing mana cost".to_string()))?;
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Cleave",
+        total_cost: TotalCost::mana(cost),
+        condition: None,
+    }))
+}
+
+pub(crate) fn parse_cleave_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_cleave_line(tokens)
+}
+
 pub(crate) fn parse_bestow_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

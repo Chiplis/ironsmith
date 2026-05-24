@@ -1625,6 +1625,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_cst_recognizes_cleave_keyword_line() -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Dig Up").card_types(vec![CardType::Sorcery]),
+            "Cleave {1}{B}{B}{G} (You may cast this spell for its cleave cost. If you do, remove the words in square brackets.)\nSearch your library for a [basic land] card, [reveal it,] put it into your hand, then shuffle.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        assert!(
+            matches!(
+                cst.lines.as_slice(),
+                [super::RewriteLineCst::Keyword(_), super::RewriteLineCst::Statement(_)]
+            ),
+            "expected cleave line to parse as keyword and body as statement, got {:?}",
+            cst.lines
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn static_line_cst_recognizes_compound_unblockable_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Enchanted creature gets +2/+2 and can't be blocked.");
 

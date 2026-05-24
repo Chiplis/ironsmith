@@ -369,6 +369,9 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
 
     let word_view = TokenWordView::new(tokens);
     let first = word_view.get(0)?;
+    if first == "cleave" {
+        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
+    }
     if first == "basic" {
         if word_view.get(1) == Some("landcycling") {
             return Some(KeywordDispatchHint::Cycling);

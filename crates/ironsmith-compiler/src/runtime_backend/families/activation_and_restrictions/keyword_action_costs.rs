@@ -439,6 +439,7 @@ pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "foretell" => Some("foretell"),
         "bestow" => Some("bestow"),
         "dash" => Some("dash"),
+        "cleave" => Some("cleave"),
         "overload" => Some("overload"),
         "soulshift" => Some("soulshift"),
         "adapt" => Some("adapt"),
@@ -486,7 +487,7 @@ pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
         }
         "bestow" | "dash" | "disturb" | "embalm" | "emerge" | "ninjutsu" | "outlast"
         | "scavenge" | "unearth" | "specialize" | "spectacle" | "plot" | "disguise"
-        | "flashback" | "foretell" | "overload" => {
+        | "flashback" | "foretell" | "overload" | "cleave" => {
             let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
             Some(format!("{title} {cost}"))
         }
@@ -1295,6 +1296,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
                 | "foretell"
                 | "bestow"
                 | "dash"
+                | "cleave"
                 | "overload"
                 | "soulshift"
                 | "adapt"
