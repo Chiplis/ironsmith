@@ -9119,7 +9119,21 @@ pub(super) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
     }
 
     if let Some(source_filter) = &filter.from_source {
-        let mut source_text = source_filter.description();
+        let mut source_text = if source_filter.zone == Some(Zone::Battlefield)
+            && source_filter.controller == Some(PlayerFilter::Opponent)
+        {
+            let mut bare = source_filter.clone();
+            bare.controller = None;
+            let subject = pluralize_noun_phrase(
+                strip_indefinite_article(&bare.description())
+                    .trim()
+                    .trim_end_matches(" on the battlefield")
+                    .trim(),
+            );
+            format!("{subject} your opponents control")
+        } else {
+            source_filter.description()
+        };
         if let Some(stripped) = source_text.strip_suffix(" permanent") {
             source_text = stripped.to_string();
         }

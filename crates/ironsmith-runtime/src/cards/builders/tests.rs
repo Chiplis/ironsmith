@@ -7953,6 +7953,25 @@ fn test_parse_prevent_all_damage_from_non_human_sources_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_prevent_all_damage_from_opponents_creatures_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Prevent all damage that would be dealt this turn by creatures your opponents control.")
+        .expect("prevent-all damage from opponent-controlled creatures clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("preventalldamageeffect")
+            && spell_debug.contains("from_source")
+            && spell_debug.contains("card_types")
+            && spell_debug.contains("creature")
+            && spell_debug.contains("opponent"),
+        "expected source-filter prevent-all-damage effect for opponent-controlled creatures, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bouncing Beebles Probe")
         .card_types(vec![CardType::Creature])

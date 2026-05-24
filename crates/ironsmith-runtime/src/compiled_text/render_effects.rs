@@ -13175,6 +13175,25 @@ mod tests {
     }
 
     #[test]
+    fn prevent_all_damage_from_opponents_creatures_uses_by_clause_surface() {
+        let mut source_filter = ObjectFilter::creature();
+        source_filter.zone = Some(Zone::Battlefield);
+        source_filter.controller = Some(PlayerFilter::Opponent);
+        let mut damage_filter = crate::prevention::DamageFilter::all();
+        damage_filter.from_source = Some(source_filter);
+
+        let effect = Effect::new(crate::effects::PreventAllDamageEffect::all_with_filter(
+            damage_filter,
+            Until::EndOfTurn,
+        ));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Prevent all damage that would be dealt this turn by creatures your opponents control"
+        );
+    }
+
+    #[test]
     fn sacrifice_source_then_extra_turn_renders_as_single_clause() {
         let effects = vec![
             Effect::new(crate::effects::SacrificeTargetEffect::new(
@@ -28813,6 +28832,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if matches!(prevent_all.until, Until::EndOfTurn) {
             if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
+                if let Some(source_phrase) = damage_type
+                    .strip_prefix("all damage from ")
+                    .and_then(|rest| rest.strip_suffix(" sources"))
+                {
+                    return format!(
+                        "Prevent all damage that would be dealt this turn by {source_phrase}"
+                    );
+                }
                 return format!("Prevent {damage_type} that would be dealt this turn");
             }
             return format!(
