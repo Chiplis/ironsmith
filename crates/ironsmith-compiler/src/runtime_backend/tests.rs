@@ -5607,14 +5607,14 @@ fn look_at_top_reveal_up_to_cards_bargain_branch_tracks_revealed_subset() {
         .expect("bargain reveal subset branch should parse");
 
     let debug = format!("{def:#?}");
+    let compact = debug.split_whitespace().collect::<String>();
     assert!(
         debug.contains("ChooseObjectsEffect")
-            && debug.contains("max: Some(2)")
-            && debug
-                .contains("card_types: [\n                                            Creature")
-            && debug.contains("ThisSpellPaidLabel(\n                                \"Bargain\"")
-            && debug.contains("zone: Battlefield")
-            && debug.contains("zone: Hand"),
+            && compact.contains("max:Some(2")
+            && compact.contains("card_types:[Creature")
+            && compact.contains("ThisSpellPaidLabel(\"Bargain\"")
+            && compact.contains("zone:Battlefield")
+            && compact.contains("zone:Hand"),
         "expected revealed creature subset to drive bargain battlefield/hand branch, got {debug}"
     );
 }
