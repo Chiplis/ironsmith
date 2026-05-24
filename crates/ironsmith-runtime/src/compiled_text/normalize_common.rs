@@ -9188,6 +9188,12 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::PoisonCounters(filter) => {
+            format!(
+                "{} can't get poison counters",
+                describe_player_set_filter(filter)
+            )
+        }
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",

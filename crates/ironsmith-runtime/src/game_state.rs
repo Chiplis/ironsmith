@@ -598,6 +598,9 @@ pub struct CantEffectTracker {
     /// Example: Narset, Parter of Veils ("Your opponents can't draw more than one card each turn")
     pub cant_draw_extra_cards: HashSet<PlayerId>,
 
+    /// Players who can't get poison counters.
+    pub cant_get_poison_counters: HashSet<PlayerId>,
+
     /// Creatures that can't be blocked.
     /// Example: Whispersilk Cloak, Invisible Stalker
     pub cant_be_blocked: HashSet<ObjectId>,
@@ -844,6 +847,8 @@ impl CantEffectTracker {
         self.cant_draw.extend(other.cant_draw);
         self.cant_draw_extra_cards
             .extend(other.cant_draw_extra_cards);
+        self.cant_get_poison_counters
+            .extend(other.cant_get_poison_counters);
         self.cant_be_blocked.extend(other.cant_be_blocked);
         self.cant_have_counters_placed
             .extend(other.cant_have_counters_placed);
@@ -887,6 +892,7 @@ impl CantEffectTracker {
         self.cant_cast_limit_filters.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
+        self.cant_get_poison_counters.clear();
         self.cant_be_blocked.clear();
         self.cant_have_counters_placed.clear();
         self.damage_cant_be_prevented = false;
@@ -1031,6 +1037,11 @@ impl CantEffectTracker {
     /// Check if a player can draw extra cards this turn.
     pub fn can_draw_extra_cards(&self, player: PlayerId) -> bool {
         !self.cant_draw_extra_cards.contains(&player)
+    }
+
+    /// Check if a player can get poison counters.
+    pub fn can_get_poison_counters(&self, player: PlayerId) -> bool {
+        !self.cant_get_poison_counters.contains(&player)
     }
 
     /// Check if a player can cast spells.
@@ -5062,6 +5073,12 @@ impl GameState {
         source_controller: Option<PlayerId>,
     ) -> Option<crate::triggers::TriggerEvent> {
         if amount == 0 {
+            return None;
+        }
+
+        if matches!(counter_type, crate::object::CounterType::Poison)
+            && !self.effect_store.cant_effects.can_get_poison_counters(player_id)
+        {
             return None;
         }
 

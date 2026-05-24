@@ -263,6 +263,7 @@ pub enum Restriction {
     CastMoreThanOneSpellEachTurn(PlayerFilter, ObjectFilter),
     DrawCards(PlayerFilter),
     DrawExtraCards(PlayerFilter),
+    PoisonCounters(PlayerFilter),
     ChangeLifeTotal(PlayerFilter),
     LoseGame(PlayerFilter),
     WinGame(PlayerFilter),
@@ -452,6 +453,10 @@ impl Restriction {
 
     pub fn draw_extra_cards(filter: PlayerFilter) -> Self {
         Self::DrawExtraCards(filter)
+    }
+
+    pub fn poison_counters(filter: PlayerFilter) -> Self {
+        Self::PoisonCounters(filter)
     }
 
     pub fn change_life_total(filter: PlayerFilter) -> Self {
