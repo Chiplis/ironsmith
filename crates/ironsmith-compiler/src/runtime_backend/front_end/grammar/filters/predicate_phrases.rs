@@ -1602,6 +1602,34 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::PlayerHasMoreLifeThanYou { player });
     }
 
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
+        && filtered.len() == subject_len + 5
+        && filtered.get(subject_len + 2).copied() == Some("or")
+        && matches!(filtered.get(subject_len + 3).copied(), Some("less" | "fewer"))
+        && filtered.get(subject_len + 4).copied() == Some("life")
+        && let Some(amount) = filtered[subject_len + 1]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(filtered[subject_len + 1]).map(|n| n as i32))
+    {
+        let player_filter = match player {
+            PlayerAst::You => Some(PlayerFilter::You),
+            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+            PlayerAst::Any => Some(PlayerFilter::Any),
+            PlayerAst::Defending => Some(PlayerFilter::Defending),
+            PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+            _ => None,
+        };
+        if let Some(player_filter) = player_filter {
+            return Ok(PredicateAst::ValueComparison {
+                left: crate::effect::Value::LifeTotal(player_filter),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: crate::effect::Value::Fixed(amount),
+            });
+        }
+    }
+
     if filtered.len() >= 8
         && filtered[0] == "no"
         && matches!(filtered[1], "opponent" | "opponents")
