@@ -1684,6 +1684,23 @@ fn test_parse_cant_gain_life_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_cant_get_additional_poison_counters_from_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Poison Shield")
+        .parse_text("You can't get additional poison counters this turn.")
+        .expect("parse poison-counter restriction");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you can't get additional poison counters this turn")
+            || rendered.contains("you cant get additional poison counters this turn"),
+        "expected poison-counter restriction text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_deafening_silence_noncreature_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Deafening Silence Variant")
         .parse_text("Each player can't cast more than one noncreature spell each turn.")

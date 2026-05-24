@@ -1,0 +1,27 @@
+{
+  "generated_at_utc": "20260524T014908Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Melira, the Living Cure",
+    "oracle_text": "If you would get one or more poison counters, instead you get one poison counter and you can't get additional poison counters this turn.\nExile Melira: Choose another target creature or artifact. When it's put into a graveyard this turn, return that card to the battlefield under its owner's control."
+  },
+  "failure": {
+    "reason": "Strict parsing still fails because replacement-condition parsing does not support event predicates of the form 'you would get one or more poison counters'.",
+    "gaps": [
+      "Reusable replacement-predicate support for player counter-acquisition events (including poison counters) in the front-end grammar and lowering.",
+      "End-to-end wiring so those predicates compile into replacement matching without card-specific logic."
+    ]
+  },
+  "compile_probe": {
+    "strict": "parse failed: unsupported predicate (predicate: 'you would get one or more poison counters')",
+    "allow_unsupported": "parse failed: unsupported predicate (predicate: 'you would get one or more poison counters')"
+  }
+}
