@@ -32000,8 +32000,8 @@ fn parse_oracle_ilharg_tapped_attacking_stays_deferred() {
 }
 
 #[test]
-fn parse_oracle_winota_tapped_attacking_stays_deferred() {
-    assert_oracle_card_fails_strict("Winota, Joiner of Forces");
+fn parse_oracle_winota_tapped_attacking_regression() {
+    assert_oracle_card_parses_strict("Winota, Joiner of Forces");
 }
 
 #[test]
