@@ -1756,6 +1756,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        ["opponent", "would", "begin", "extra", "turn"]
+            | ["an", "opponent", "would", "begin", "an", "extra", "turn"]
+            | ["opponents", "would", "begin", "extra", "turn"]
+    ) {
+        return Ok(PredicateAst::PlayerWouldBeginExtraTurn {
+            player: PlayerAst::Opponent,
+        });
+    }
+
+    if matches!(
+        filtered.as_slice(),
         ["it", "your", "turn"] | ["its", "your", "turn"] | ["your", "turn"]
     ) {
         return Ok(PredicateAst::YourTurn);
@@ -3134,6 +3145,26 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::ThisSpellPaidLabel("Surge".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_opponent_would_begin_extra_turn() -> Result<(), CardTextError> {
+        let tokens = lex_line("If an opponent would begin an extra turn", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerWouldBeginExtraTurn {
+                player: PlayerAst::Opponent,
+            }
         );
         Ok(())
     }

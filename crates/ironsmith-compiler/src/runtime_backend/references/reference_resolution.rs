@@ -189,6 +189,20 @@ fn track_effect_player(
     Ok(())
 }
 
+fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilter> {
+    match predicate {
+        PredicateAst::PlayerWouldBeginExtraTurn { player } => match player {
+            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+            _ => None,
+        },
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_bound_player_filter(left).or_else(|| predicate_bound_player_filter(right))
+        }
+        PredicateAst::Not(inner) => predicate_bound_player_filter(inner),
+        _ => None,
+    }
+}
+
 fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
     match target {
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
@@ -1001,18 +1015,29 @@ fn advance_reference_frame_for_effect(
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::Conditional {
-            if_true, if_false, ..
+            predicate,
+            if_true,
+            if_false,
         }
         | EffectAst::SelfReplacement {
-            if_true, if_false, ..
+            predicate,
+            if_true,
+            if_false,
+            ..
         } => {
             let saved = frame.clone();
             let mut true_frame = saved.clone();
+            if let Some(player_filter) = predicate_bound_player_filter(predicate) {
+                true_frame.last_player_filter = Some(player_filter);
+            }
             advance_reference_frames(&if_true, id_gen, &mut true_frame)?;
             if if_false.is_empty() {
                 *frame = true_frame;
             } else {
                 let mut false_frame = saved.clone();
+                if let Some(player_filter) = predicate_bound_player_filter(predicate) {
+                    false_frame.last_player_filter = Some(player_filter);
+                }
                 advance_reference_frames(&if_false, id_gen, &mut false_frame)?;
                 frame.last_object_tag = saved.last_object_tag;
                 frame.last_player_filter = saved.last_player_filter;
@@ -1436,6 +1461,9 @@ fn advance_reference_env_for_effect(
         } => {
             let mut branch_env = env.clone();
             branch_env.source_object_antecedent |= predicate.establishes_source_object_antecedent();
+            if let Some(player_filter) = predicate_bound_player_filter(predicate) {
+                branch_env.last_player_filter = RefState::Known(player_filter);
+            }
             let true_sequence = annotate_effect_sequence_with_env_internal(
                 if_true,
                 branch_env.clone(),

@@ -483,6 +483,9 @@ pub(crate) enum PredicateAst {
         count: u32,
     },
     YouHaveNoCardsInHand,
+    PlayerWouldBeginExtraTurn {
+        player: PlayerAst,
+    },
     SourceIsTapped,
     SourceIsSaddled,
     SourceMatches(ObjectFilter),
