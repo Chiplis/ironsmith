@@ -12533,6 +12533,11 @@ fn describe_static_ability_with_subject(
             lowercase_first(keyword)
         );
     }
+    if let Some(rest) = line.strip_prefix("During your turn, this creature has ")
+        && rest.to_ascii_lowercase().starts_with("prevent ")
+    {
+        return format!("During your turn, {}", lowercase_first(rest));
+    }
     if let Some(rest) = line.strip_prefix("This creature gets ")
         && let Some(pump) = rest.strip_suffix(" as long as it's your turn")
     {

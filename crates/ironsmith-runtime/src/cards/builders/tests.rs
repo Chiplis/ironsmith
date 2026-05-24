@@ -36117,6 +36117,44 @@ fn parse_traveling_chocobo_top_library_lines_compile() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_guardian_naga_banishing_coils_creature_face_strict() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Guardian Naga // Banishing Coils")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Vigilance\nDuring your turn, prevent all damage that would be dealt to this creature.",
+        )
+        .expect("guardian naga creature face should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("vigilance")
+            && rendered.contains("during your turn")
+            && rendered.contains("prevent all damage that would be dealt to this creature"),
+        "expected guardian naga prevention clause to compile, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_guardian_naga_banishing_coils_adventure_face_strict() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Guardian Naga // Banishing Coils")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Exile target artifact or enchantment.")
+        .expect("banishing coils adventure face should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile target artifact or enchantment"),
+        "expected banishing coils exile clause to compile, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_starfield_vocalist_with_warp_keyword() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Starfield Vocalist")
         .card_types(vec![CardType::Creature])

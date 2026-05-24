@@ -86,6 +86,11 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
 
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
+    if let Some(rest) = line.strip_prefix("During your turn, this creature has ") {
+        if rest.to_ascii_lowercase().starts_with("prevent ") {
+            line = format!("During your turn, {}", lowercase_first(rest));
+        }
+    }
     line = line
         .replace(
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
@@ -817,6 +822,17 @@ mod tests {
                 "At the beginning of each combat, creatures you control gain first strike until end of turn if a creature you control has first strike. The same is true for flying and vigilance."
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn during_your_turn_prevent_clause_drops_extra_has() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "During your turn, this creature has Prevent all damage that would be dealt to this creature."
+                    .to_string()
+            ),
+            "During your turn, prevent all damage that would be dealt to this creature."
         );
     }
 }

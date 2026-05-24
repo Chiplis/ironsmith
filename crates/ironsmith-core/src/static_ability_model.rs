@@ -2991,6 +2991,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn prevent_all_damage_to_self() -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllDamageToSelf),
+            label: "prevent all damage to self".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn prevent_all_noncombat_damage_to_other_creatures_you_control() -> Self {
         Self {
             id: Some(StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl),

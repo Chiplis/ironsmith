@@ -8057,6 +8057,14 @@ fn rewrite_grammar_prevention_static_line_probes_match_keyword_static_shapes() {
             crate::static_abilities::StaticAbilityId::PreventDamageToOtherCreatureYouControlPutCountersInstead,
         ),
         (
+            "During your turn, prevent all damage that would be dealt to this creature.",
+            super::grammar::abilities::is_during_your_turn_prevent_all_damage_to_source_line_lexed
+                as Probe,
+            super::keyword_static::parse_during_your_turn_prevent_all_damage_to_source_line
+                as Parser,
+            crate::static_abilities::StaticAbilityId::PreventAllDamageToSelf,
+        ),
+        (
             "Prevent all combat damage that would be dealt to this creature.",
             super::grammar::abilities::is_prevent_all_combat_damage_to_source_line_lexed as Probe,
             super::keyword_static::parse_prevent_all_combat_damage_to_source_line as Parser,

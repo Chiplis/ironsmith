@@ -115,6 +115,7 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllDamageDealtToCreatures) => {
                 Self::prevent_all_damage_dealt_to_creatures()
             }
+            Some(StaticAbilityId::PreventAllDamageToSelf) => Self::prevent_all_damage_to_self(),
             Some(StaticAbilityId::PreventAllCombatDamageToSelf) => {
                 Self::prevent_all_combat_damage_to_self()
             }

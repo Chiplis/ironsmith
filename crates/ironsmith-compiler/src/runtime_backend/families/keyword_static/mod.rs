@@ -17,6 +17,7 @@ use super::grammar::abilities::{
     is_discard_or_redirect_replacement_line_lexed, is_doctors_companion_marker_line_lexed,
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
     is_draw_replace_exile_top_face_down_line_lexed, is_draw_replacement_double_line_lexed,
+    is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
@@ -763,6 +764,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
+        single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
         single_static_ability_ast_rule!(
             parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
@@ -6546,6 +6548,18 @@ pub(crate) fn parse_prevent_all_combat_damage_to_source_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_prevent_all_combat_damage_to_source_line_lexed(tokens) {
         return Ok(Some(StaticAbility::prevent_all_combat_damage_to_self()));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn parse_during_your_turn_prevent_all_damage_to_source_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_during_your_turn_prevent_all_damage_to_source_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::prevent_all_damage_to_self().with_condition(crate::ConditionExpr::YourTurn),
+        ));
     }
 
     Ok(None)
