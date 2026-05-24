@@ -11785,7 +11785,7 @@ pub(super) fn describe_false_only_conditional(
     }
 
     format!(
-        "If it isn't true that {}, {}",
+        "Unless {}, {}",
         lowercase_first(&describe_condition(condition)),
         false_branch
     )
@@ -13028,6 +13028,17 @@ mod tests {
             PlayerFilter::You,
         ));
         assert_eq!(describe_effect(&scaled), "Add {R} for each creature");
+    }
+
+    #[test]
+    fn describe_false_only_conditional_prefers_unless_surface() {
+        assert_eq!(
+            describe_false_only_conditional(
+                &crate::effect::Condition::AttackedThisTurn,
+                "you lose 4 life"
+            ),
+            "Unless you attacked this turn, you lose 4 life"
+        );
     }
 
     #[test]
