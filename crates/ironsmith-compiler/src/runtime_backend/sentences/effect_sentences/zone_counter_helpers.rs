@@ -290,6 +290,19 @@ fn parse_put_counter_count_value(
         if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
             return Ok((value, 3));
         }
+        if let Some(equal_idx) = find_token_index(tokens, |token| token.is_word("equal"))
+            && tokens
+                .get(equal_idx + 1)
+                .is_some_and(|token| token.is_word("to"))
+            && let Some(on_idx) = find_token_index(&tokens[equal_idx + 2..], |token| token.is_word("on"))
+        {
+            let value_tokens = trim_commas(&tokens[equal_idx + 2..equal_idx + 2 + on_idx]);
+            if let Some((value, used)) = parse_value(&value_tokens)
+                && used == value_tokens.len()
+            {
+                return Ok((value, 3));
+            }
+        }
         return Err(CardTextError::ParseError(format!(
             "missing counter amount (clause: '{}')",
             clause
