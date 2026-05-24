@@ -29005,7 +29005,7 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fallen Shinobi")
         .card_types(vec![CardType::Creature])
         .parse_text(
-            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
         )
         .expect("fallen shinobi should parse");
 
@@ -29043,6 +29043,10 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
         (rendered.contains("play those cards") || rendered.contains("play that card"))
             && rendered.contains("without paying their mana costs"),
         "expected plural play-from-exile wording in compiled output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        "expected Fallen Shinobi output to avoid internal tagged markers, got {rendered}"
     );
 }
 
