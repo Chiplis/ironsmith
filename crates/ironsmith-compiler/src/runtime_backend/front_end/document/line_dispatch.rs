@@ -3,6 +3,7 @@ use super::line_family_handlers::{
     run_championed_with_this_trigger_line_family, run_colon_nonactivation_statement_line_family,
     run_combined_static_line_family, run_keyword_line_family, run_labeled_line_family,
     run_learn_line_family, run_max_speed_labeled_line_family, run_partner_with_keyword_line_family,
+    run_non_turn_conditional_untap_line_family,
     run_split_top_and_face_down_look_line_family, run_start_your_engines_line_family,
     run_statement_line_family, run_statement_probe_line_family, run_static_line_family,
     run_station_line_family, run_station_threshold_line_family,
@@ -44,7 +45,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 20] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 21] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -140,6 +141,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 20] = [
         priority: 70,
         heads: &["as", "if"],
         run: run_combined_static_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "non-turn-conditional-untap",
+        priority: 75,
+        heads: &["creatures"],
+        run: run_non_turn_conditional_untap_line_family,
     },
     LineFamilyRuleDef {
         id: "statement-probe",

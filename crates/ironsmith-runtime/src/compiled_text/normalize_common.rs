@@ -2340,8 +2340,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Then that player shuffles.",
         );
     }
-    let preserve_plural_creatures_you_control =
-        normalized.contains("from the command zone this game");
+    if normalized.starts_with("Creatures you control get ")
+        && normalized.contains(" until end of turn. If it is not your turn, untap them.")
+    {
+        normalized = normalized.replace(
+            " until end of turn. If it is not your turn, untap them.",
+            " until end of turn. If it's not your turn, untap those creatures.",
+        );
+    }
+    let preserve_plural_creatures_you_control = normalized.contains("from the command zone this game")
+        || normalized
+            .to_ascii_lowercase()
+            .contains("if it is not your turn, untap them");
     if !preserve_plural_creatures_you_control {
         if normalized.starts_with("creatures you control get ") {
             normalized = normalized.replacen(
@@ -10863,6 +10873,8 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } = inner.as_ref()
             {
                 "no mana was spent to cast the target spell".to_string()
+            } else if let Condition::YourTurn = inner.as_ref() {
+                "it is not your turn".to_string()
             } else if let Condition::PermanentLeftBattlefieldThisTurn = inner.as_ref() {
                 "no permanents left the battlefield this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {

@@ -1232,6 +1232,24 @@ fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_output() {
 }
 
 #[test]
+fn rewrite_structure_predicate_parse_entrypoint_parses_not_your_turn() {
+    let text = "it's not your turn";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
+
+    let grammar = super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+        .expect("grammar predicate entrypoint should parse");
+    let parser_root = super::parse_predicate_lexed(&lexed)
+        .expect("parser-root predicate entrypoint should parse");
+    let debug = format!("{grammar:?}");
+
+    assert_eq!(grammar, parser_root);
+    assert!(
+        debug.contains("Not") && debug.contains("YourTurn"),
+        "expected negated your-turn predicate AST, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_output_for_conjoined_predicate()
 {
     let text = "it's your turn and you have no cards in hand";

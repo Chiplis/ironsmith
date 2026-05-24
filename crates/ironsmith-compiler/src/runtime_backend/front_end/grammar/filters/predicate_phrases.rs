@@ -1763,6 +1763,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        ["it", "not", "your", "turn"]
+            | ["its", "not", "your", "turn"]
+            | ["it", "is", "not", "your", "turn"]
+            | ["its", "is", "not", "your", "turn"]
+            | ["not", "your", "turn"]
+    ) {
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::YourTurn)));
+    }
+
+    if matches!(
+        filtered.as_slice(),
         ["creature", "died", "this", "turn"] | ["creatures", "died", "this", "turn"]
     ) {
         return Ok(PredicateAst::CreatureDiedThisTurn);

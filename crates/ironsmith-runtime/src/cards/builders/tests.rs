@@ -35468,6 +35468,47 @@ fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_zealous_display_non_turn_conditional_untap_clause() {
+    let oracle =
+        "Creatures you control get +2/+0 until end of turn. If it's not your turn, untap those creatures.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Zealous Display")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Zealous Display conditional untap clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        (rendered_lower.contains("creatures you control get +2/+0 until end of turn")
+            || rendered_lower.contains("each creature you control gets +2/+0 until end of turn"))
+            && rendered_lower.contains("if it's not your turn")
+            && rendered_lower.contains("untap those creatures"),
+        "expected Zealous Display wording to preserve conditional untap follow-up, got {rendered}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        similarity >= 0.99,
+        "expected Zealous Display to clear strict semantic threshold, got score={similarity}, lines={compiled:?}"
+    );
+    assert!(
+        !mismatch,
+        "expected Zealous Display to avoid semantic mismatch, got lines={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_choose_color_then_add_devotion_to_that_color() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nykthos Variant")
         .card_types(vec![CardType::Land])
