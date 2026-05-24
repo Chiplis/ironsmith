@@ -1353,6 +1353,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CardsInLibrary(_)
         | Value::LifeGainedThisTurn(_)
         | Value::LifeLostThisTurn(_)
+        | Value::CardsDiscardedThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
         | Value::MaxCardsDrawnThisTurn(_)

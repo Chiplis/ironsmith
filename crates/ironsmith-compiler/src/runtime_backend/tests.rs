@@ -4989,6 +4989,40 @@ fn flashback_keyword_accepts_non_mana_total_cost() {
 }
 
 #[test]
+fn jump_start_keyword_line_is_classified_as_alternative_cast() {
+    let tokens = lex_line(
+        "Jump-start (You may cast this card from your graveyard by discarding a card in addition to paying its other costs. Then exile this card.)",
+        0,
+    )
+    .expect("rewrite lexer should classify jump-start keyword line");
+
+    assert!(matches!(
+        super::families::keyword_families::parse_keyword_dispatch_hint(&tokens),
+        Some(super::families::keyword_families::KeywordDispatchHint::AlternativeOrExertFamily)
+    ));
+
+    let parsed = super::front_end::shared::util::parse_jump_start_line_lexed(&tokens)
+        .expect("jump-start parse should not error")
+        .expect("jump-start keyword line should parse");
+    assert!(format!("{parsed:?}").contains("JumpStart"));
+}
+
+#[test]
+fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
+    let tokens = lex_line("equal to the number of cards you've discarded this turn", 0)
+        .expect("rewrite lexer should classify value clause");
+
+    let parsed =
+        super::front_end::shared::value_helpers::parse_equal_to_number_of_filter_value(&tokens)
+            .expect("discarded this turn count should parse");
+
+    assert!(matches!(
+        parsed,
+        crate::Value::CardsDiscardedThisTurn(crate::PlayerFilter::You)
+    ));
+}
+
+#[test]
 fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_grammar_entrypoint() {
     let text = "{T}: The next noncreature spell you cast this turn costs {2} less to cast.";
     let builder = CardDefinitionBuilder::new(CardId::new(), "Cost Reducer")

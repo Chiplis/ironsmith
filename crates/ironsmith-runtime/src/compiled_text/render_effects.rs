@@ -25531,6 +25531,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::Speed(_)
                 | Value::LifeGainedThisTurn(_)
                 | Value::LifeLostThisTurn(_)
+                | Value::CardsDiscardedThisTurn(_)
                 | Value::EffectMetric { .. }
                 | Value::EffectMetricOffset { .. }
                 | Value::PendingEffectMetric { .. }
