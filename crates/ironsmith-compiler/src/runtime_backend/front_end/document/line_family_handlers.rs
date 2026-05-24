@@ -510,38 +510,12 @@ pub(super) fn run_escape_enters_with_counter_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    let Some(with_idx) = lower.find(" escapes with ") else {
-        return Ok(None);
-    };
-
-    let subject = raw[..with_idx].trim();
-    if subject.is_empty() {
+    if !lower.contains(" escapes with ") {
         return Ok(None);
     }
-    if subject.eq_ignore_ascii_case("this") {
-        return Ok(None);
-    }
-
-    let rest_start = with_idx + " escapes with ".len();
-    let rest = raw[rest_start..].trim().trim_end_matches('.').trim();
-    if rest.is_empty() {
-        return Ok(None);
-    }
-
-    let rewritten = format!(
-        "{subject} enters with {rest} if this spell escaped.",
-    );
-    let rewritten_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
-    let Some(static_cst) = parse_static_line_cst(&rewritten_line)? else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not lower escapes-with-counters line: '{}'",
-            ctx.line.info.raw_line
-        )));
-    };
-    Ok(Some(LineDispatchResult::single(
-        RewriteLineCst::Static(static_cst),
-        ctx.idx + 1,
-    )))
+    Ok(parse_static_line_cst(ctx.line)?.map(|static_cst| {
+        LineDispatchResult::single(RewriteLineCst::Static(static_cst), ctx.idx + 1)
+    }))
 }
 
 pub(super) fn run_keyword_line_family(

@@ -12098,9 +12098,13 @@ fn parse_time_counter_on_it_or_suspended_card_compiles() {
             "When this creature enters, choose one —\n• Remove two time counters from target permanent or suspended card.\n• Put two time counters on target permanent with a time counter on it or suspended card.",
         )
         .expect("time-counter or suspended-card clause should parse");
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        rendered.contains("put two time counters on target permanent with a time counter on it or suspended card"),
+        rendered.contains(
+            "put two time counters on target permanent with a time counter on it or suspended card"
+        ),
         "expected rendered text to preserve the counter-state suspended-card disjunction, got {rendered}"
     );
 }
@@ -38740,7 +38744,7 @@ fn card_fixer_parse_escapes_with_counter_line_lowers_to_escape_condition() {
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 1))
         .parse_text(
-            "Haste\nEscape-{R}, Exile three other cards from your graveyard.\nThis creature escapes with a +1/+1 counter on it.",
+            "Haste\nEscape—{R}, Exile three other cards from your graveyard.\nThis creature escapes with a +1/+1 counter on it.",
         )
         .expect("escape enters-with-counter line should parse");
 
@@ -38756,7 +38760,7 @@ fn card_fixer_parse_escapes_with_counter_line_lowers_to_escape_condition() {
 
     let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
     assert!(
-        rendered.contains("enters with a +1/+1 counter on it if this spell escaped"),
+        rendered.contains("escapes with a +1/+1 counter on it"),
         "expected escaped conditional enters-with-counter surface, got {rendered}"
     );
 }

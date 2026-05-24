@@ -1168,6 +1168,12 @@ impl StaticAbilityKind for EntersWithCountersIfCondition {
 
     fn display(&self) -> String {
         let mut base = EntersWithCounters::new(self.counter_type, self.count.clone()).display();
+        if self.condition == Condition::ThisSpellEscaped
+            && self.added_abilities.is_empty()
+            && let Some(rest) = base.strip_prefix("Enters the battlefield with ")
+        {
+            return format!("Escapes with {rest}");
+        }
         if !self.added_abilities.is_empty() {
             let ability_text = self
                 .added_abilities

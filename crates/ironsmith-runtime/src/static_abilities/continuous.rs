@@ -746,8 +746,16 @@ fn describe_static_condition_value(value: &Value) -> String {
             if matches!(left.as_ref(), Value::Devotion { .. })
                 && matches!(right.as_ref(), Value::Devotion { .. }) =>
         {
-            let (Value::Devotion { player: left_player, color: left_color }, Value::Devotion { player: right_player, color: right_color }) =
-                (left.as_ref(), right.as_ref())
+            let (
+                Value::Devotion {
+                    player: left_player,
+                    color: left_color,
+                },
+                Value::Devotion {
+                    player: right_player,
+                    color: right_color,
+                },
+            ) = (left.as_ref(), right.as_ref())
             else {
                 unreachable!();
             };
@@ -766,7 +774,11 @@ fn describe_static_condition_value(value: &Value) -> String {
             )
         }
         Value::Devotion { player, color } => {
-            format!("{} devotion to {}", describe_static_possessive_player(player), color.name())
+            format!(
+                "{} devotion to {}",
+                describe_static_possessive_player(player),
+                color.name()
+            )
         }
         Value::Add(left, right) => format!(
             "{} plus {}",
@@ -2851,6 +2863,14 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
     }
 
     fn display(&self) -> String {
+        if self.filter.source && self.card_types == [CardType::Creature] {
+            let mut text = "this card isn't a creature".to_string();
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         let types = self
@@ -4121,7 +4141,7 @@ mod tests {
         });
         assert_eq!(
             remove.display(),
-            "this creature is no longer creature as long as your devotion to black and red is less than seven"
+            "this card isn't a creature as long as your devotion to black and red is less than seven"
         );
     }
 

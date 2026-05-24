@@ -437,6 +437,26 @@ pub(crate) fn try_build_unless(
         )));
     }
 
+    if matches!(
+        action_words.first().copied(),
+        Some("sacrifice" | "sacrifices")
+    ) && let Ok(mut alternative) = super::super::zone_handlers::parse_sacrifice(
+        action_tokens,
+        Some(SubjectAst::Player(player)),
+        None,
+    )
+    .map(|effect| vec![effect])
+    {
+        for effect in &mut alternative {
+            bind_unless_player_context(effect, player);
+        }
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        }));
+    }
+
     if let Some(cost) = parse_unless_payment_clause_as_cost(action_tokens)? {
         return Ok(Some(EffectAst::UnlessPays {
             effects,

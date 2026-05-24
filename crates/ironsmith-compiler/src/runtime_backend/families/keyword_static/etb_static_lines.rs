@@ -140,8 +140,17 @@ pub(crate) fn parse_enters_with_counters_line(
     }
 
     let clause_words = etb_token_words(&clause_tokens);
-    let enters_idx = etb_word_offset(&clause_words, |word| word == "enters").unwrap_or(usize::MAX);
-    let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, enters_idx) else {
+    let enters_idx = etb_word_offset(&clause_words, |word| word == "enters");
+    let escapes_idx = etb_word_offset(&clause_words, |word| word == "escapes");
+    let (verb_idx, escaped_line) = match (enters_idx, escapes_idx) {
+        (Some(idx), _) => (idx, false),
+        (None, Some(idx)) => (idx, true),
+        (None, None) => return Ok(None),
+    };
+    if escaped_line {
+        condition = Some((crate::ConditionExpr::ThisSpellEscaped, "it escaped".to_string()));
+    }
+    let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, verb_idx) else {
         return Ok(None);
     };
     if clause_tokens[..enter_token_idx]
@@ -150,7 +159,7 @@ pub(crate) fn parse_enters_with_counters_line(
     {
         return Ok(None);
     }
-    let subject_words = clause_words.get(..enters_idx).unwrap_or_default();
+    let subject_words = clause_words.get(..verb_idx).unwrap_or_default();
     let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
     if !is_source_reference_words(subject_words) && !source_pronoun_subject {
         return Ok(None);

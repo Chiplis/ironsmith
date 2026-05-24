@@ -66,12 +66,12 @@ pub(crate) fn resolve_non_target_player_filter(
             }
         }
         PlayerAst::That => {
-            if let Some(filter) = refs.known_last_player_filter()
+            if refs.iterated_player {
+                Ok(PlayerFilter::IteratedPlayer)
+            } else if let Some(filter) = refs.known_last_player_filter()
                 && !filter.mentions_iterated_player()
             {
                 Ok(filter.clone())
-            } else if refs.iterated_player {
-                Ok(PlayerFilter::IteratedPlayer)
             } else if let Some(filter) = refs.known_last_player_filter() {
                 Ok(filter.clone())
             } else {

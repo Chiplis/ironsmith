@@ -12001,8 +12001,9 @@ pub(super) fn describe_tagged_target_then_power_damage(
         return None;
     }
 
-    if let ChooseSpec::Player(PlayerFilter::ControllerOf(controller_ref) | PlayerFilter::OwnerOf(controller_ref)) =
-        deal.target.base()
+    if let ChooseSpec::Player(
+        PlayerFilter::ControllerOf(controller_ref) | PlayerFilter::OwnerOf(controller_ref),
+    ) = deal.target.base()
         && matches!(controller_ref, crate::filter::ObjectRef::Tagged(tag) if tag.as_str() == source_tag.as_str())
     {
         return None;
@@ -12412,6 +12413,9 @@ fn describe_static_ability_with_subject(
     if trimmed.starts_with("This spell ") || trimmed.starts_with("this spell ") {
         return trimmed.to_string();
     }
+    if trimmed.starts_with("This card ") || trimmed.starts_with("this card ") {
+        return capitalize_first(trimmed);
+    }
     if trimmed.starts_with("Cards in ") || trimmed.starts_with("Each ") {
         if let Some(body) = trimmed.strip_suffix(" as long as it's your turn") {
             return format!("During your turn, {}", lowercase_first(body));
@@ -12439,6 +12443,10 @@ fn describe_static_ability_with_subject(
         format!("{capitalized_subject} enters {rest}")
     } else if let Some(rest) = trimmed.strip_prefix("enters ") {
         format!("{subject} enters {rest}")
+    } else if let Some(rest) = trimmed.strip_prefix("Escapes ") {
+        format!("{capitalized_subject} escapes {rest}")
+    } else if let Some(rest) = trimmed.strip_prefix("escapes ") {
+        format!("{subject} escapes {rest}")
     } else if let Some(rest) = trimmed.strip_prefix("Can't ") {
         format!("{capitalized_subject} can't {rest}")
     } else if let Some(rest) = trimmed.strip_prefix("can't ") {
@@ -13014,9 +13022,9 @@ mod tests {
         let tagged = TagKey::from("destroyed_0");
         let effect = Effect::deal_damage(
             Value::PowerOf(Box::new(ChooseSpec::Tagged(tagged.clone()))),
-            ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(
-                tagged,
-            ))),
+            ChooseSpec::Player(PlayerFilter::ControllerOf(
+                crate::target::ObjectRef::Tagged(tagged),
+            )),
         );
 
         assert_eq!(
@@ -25174,6 +25182,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let alt_text = describe_effect_list(&unless_action.alternative);
         let player = describe_player_filter(&unless_action.player);
+        if inner_text.contains("to that player")
+            && alt_text.contains("sacrifices a creature")
+            && alt_text.starts_with("target player")
+        {
+            let sacrifice = alt_text
+                .trim_start_matches("target player")
+                .trim_start()
+                .trim_start_matches("target player")
+                .trim_start();
+            return format!("{inner_text} unless that player {sacrifice}");
+        }
         let unless_clause = if alt_text == player || alt_text.starts_with(&format!("{player} ")) {
             alt_text
         } else {

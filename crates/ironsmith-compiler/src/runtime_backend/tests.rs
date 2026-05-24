@@ -10732,7 +10732,10 @@ fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_controller_phrase_t
         .expect("rewrite effect sentence parser should accept controller phrase target");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"), "{debug}");
+    assert!(
+        debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"),
+        "{debug}"
+    );
     assert!(
         debug.contains("target: Player(ControllerOf(Tagged(TagKey(\"__it__\"))), None)"),
         "{debug}"

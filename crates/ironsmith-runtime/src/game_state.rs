@@ -5077,7 +5077,10 @@ impl GameState {
         }
 
         if matches!(counter_type, crate::object::CounterType::Poison)
-            && !self.effect_store.cant_effects.can_get_poison_counters(player_id)
+            && !self
+                .effect_store
+                .cant_effects
+                .can_get_poison_counters(player_id)
         {
             return None;
         }

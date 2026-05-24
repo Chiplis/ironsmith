@@ -1098,8 +1098,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             words if slice_starts_with(words, &["draw", "more", "than", "one", "card"]) => {
                 Restriction::draw_extra_cards(player)
             }
-            words if slice_starts_with(words, &["get", "additional", "poison", "counters"])
-                || slice_starts_with(words, &["get", "poison", "counters"]) =>
+            words
+                if slice_starts_with(words, &["get", "additional", "poison", "counters"])
+                    || slice_starts_with(words, &["get", "poison", "counters"]) =>
             {
                 Restriction::poison_counters(player)
             }

@@ -449,10 +449,7 @@ pub(super) fn parse_object_filter_inner(
     );
     let has_supported_suspended_disjunction = contains_any_filter_phrase(
         &all_words,
-        &[
-            &["or", "suspended", "card"],
-            &["or", "suspended", "cards"],
-        ],
+        &[&["or", "suspended", "card"], &["or", "suspended", "cards"]],
     );
     if has_counter_state_or_clause && !has_supported_suspended_disjunction {
         return Err(CardTextError::ParseError(format!(
