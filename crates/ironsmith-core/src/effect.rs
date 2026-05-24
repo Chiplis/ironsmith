@@ -90,6 +90,7 @@ pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
     ForAsLongAsExiled,
+    ForAsLongAsYouControlSource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

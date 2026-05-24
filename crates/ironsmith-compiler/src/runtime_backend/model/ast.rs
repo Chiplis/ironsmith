@@ -1012,6 +1012,12 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         allow_any_color_for_cast: bool,
     },
+    GrantPlayTaggedForAsLongAsYouControlSource {
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: bool,
+    },
     ReturnToBattlefield {
         target: TargetAst,
         tapped: bool,
@@ -2163,6 +2169,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_any_color_for_cast,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
+                .field("tag", tag)
+                .field("player", player)
+                .field("allow_land", allow_land)
+                .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .finish(),
+            Self::GrantPlayTaggedForAsLongAsYouControlSource {
+                tag,
+                player,
+                allow_land,
+                allow_any_color_for_cast,
+            } => f
+                .debug_struct("GrantPlayTaggedForAsLongAsYouControlSource")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
@@ -3559,6 +3577,24 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                tag,
+                player,
+                allow_land,
+                allow_any_color_for_cast,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
                 player,
                 allow_land,

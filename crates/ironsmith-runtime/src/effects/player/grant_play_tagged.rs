@@ -129,6 +129,7 @@ impl GrantPlayTaggedEffect {
                 Self::next_turn_number_for_player(game, player)
             }
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
+            GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
         }
     }
 }
@@ -169,9 +170,16 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            let source = GrantSource::Effect {
-                source_id: ctx.source,
-                expires_end_of_turn,
+            let source = if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
+                GrantSource::EffectWhileControlled {
+                    source_id: ctx.source,
+                    controller: player_id,
+                }
+            } else {
+                GrantSource::Effect {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                }
             };
             if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
                 game.effect_store.grant_registry.grant_to_stable_card(
@@ -432,6 +440,101 @@ mod tests {
                 alice
             ),
             "grant remains tied to the exile zone"
+        );
+    }
+
+    #[test]
+    fn gwen_stacy_grant_play_permission_ends_when_you_lose_control_of_source() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(10), "Gwen Stacy source").build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        let card = CardBuilder::new(CardId::from_raw(11), "Exiled Card").build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_tagged_objects(tags);
+
+        let effect = GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
+            true,
+            false,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
+            "Gwen Stacy permission should apply while you control the source"
+        );
+
+        game.set_current_controller(source_id, bob);
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
+            "Gwen Stacy permission should end once you lose control of the source"
+        );
+    }
+
+    #[test]
+    fn gwen_stacy_grant_play_permission_survives_turn_changes_while_controlled() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(12), "Gwen Stacy source").build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        let card = CardBuilder::new(CardId::from_raw(13), "Exiled Card").build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_tagged_objects(tags);
+
+        let effect = GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
+            true,
+            false,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        game.turn.turn_number = game.turn.turn_number.saturating_add(5);
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
+            "Gwen Stacy permission should not expire by turn count while source stays controlled"
         );
     }
 }

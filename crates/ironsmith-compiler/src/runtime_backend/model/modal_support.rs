@@ -454,6 +454,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
             | SubjectVerbActionAst::ReturnToBattlefield { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
