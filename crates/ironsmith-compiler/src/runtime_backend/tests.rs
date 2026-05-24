@@ -10683,6 +10683,23 @@ fn rewrite_lexed_effect_sentence_supports_equal_to_compound_damage_to_objects_an
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_controller_phrase_target() {
+    let text = "It deals damage equal to that creature's power to the creature's controller.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify equal-to damage with controller phrase target");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should accept controller phrase target");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"), "{debug}");
+    assert!(
+        debug.contains("target: Player(ControllerOf(Tagged(TagKey(\"__it__\"))), None)"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_target_gain_then_get_where_x() {
     let text = "Target creature gains trample and gets +X/+0 until end of turn, where X is the number of creatures you control.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-then-get sentence");
