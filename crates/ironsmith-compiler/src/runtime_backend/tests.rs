@@ -7142,6 +7142,22 @@ fn rewrite_lexed_triggered_and_static_entrypoints_work_natively() {
 }
 
 #[test]
+fn rewrite_lexed_trigger_parses_possessive_keyword_ability_activation() {
+    let tokens = lex_line(
+        "Whenever you activate this creature's outlast ability, create a 1/1 white Warrior creature token.",
+        0,
+    )
+    .expect("rewrite lexer should classify possessive keyword-ability trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("trigger should parse through ability-activated shape");
+
+    let debug = format!("{parsed:?}").to_ascii_lowercase();
+    assert!(debug.contains("abilityactivated"), "{debug}");
+    assert!(debug.contains("outlast"), "{debug}");
+}
+
+#[test]
 fn rewrite_grammar_activated_abilities_cant_be_activated_splitter_matches_keyword_static_shape() {
     let tokens = lex_line(
         "Activated abilities of artifacts and creatures can't be activated unless they're mana abilities.",
