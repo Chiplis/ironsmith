@@ -10821,12 +10821,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
-                Value::LifeTotal(PlayerFilter::You),
+                Value::LifeTotal(player),
                 crate::effect::ValueComparisonOperator::LessThanOrEqual,
                 Value::Fixed(count),
             ) = (left, operator, right)
             {
-                return format!("you have {count} or less life");
+                let subject = describe_player_filter(player);
+                return format!(
+                    "{} {} {count} or less life",
+                    subject,
+                    player_verb(&subject, "have", "has")
+                );
             }
             if let (
                 Value::Count(filter),
@@ -11205,6 +11210,18 @@ mod tests {
                 right: Value::Fixed(5),
             }),
             "you have 5 or less life"
+        );
+    }
+
+    #[test]
+    fn describe_opponent_life_total_at_most_condition_uses_or_less_life_surface() {
+        assert_eq!(
+            describe_condition(&Condition::ValueComparison {
+                left: Value::LifeTotal(PlayerFilter::Opponent),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: Value::Fixed(0),
+            }),
+            "an opponent has 0 or less life"
         );
     }
 

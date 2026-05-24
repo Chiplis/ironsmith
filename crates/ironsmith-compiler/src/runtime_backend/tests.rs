@@ -12685,6 +12685,36 @@ fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predicate_parses()
 }
 
 #[test]
+fn rewrite_grammar_opponent_has_zero_or_less_life_predicate_parses() {
+    let tokens = lex_line("opponent has 0 or less life", 0)
+        .expect("rewrite lexer should classify opponent life-threshold predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::LifeTotal(crate::filter::PlayerFilter::Opponent),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: crate::effect::Value::Fixed(0),
+        }
+    );
+}
+
+#[test]
+fn heaven_sent_strict_compile_succeeds() {
+    let oracle_text = "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II - Investigate.\nIII - This Saga deals 1 damage to each opponent. Then if an opponent has 0 or less life, draw seven cards. Otherwise, exile this Saga and you may cast it this turn.";
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Heaven Sent Variant")
+        .parse_text(oracle_text)
+        .expect("Heaven Sent text should parse");
+    let debug = format!("{:?}", def.abilities);
+
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("LifeTotal(Opponent)"), "{debug}");
+    assert!(debug.contains("LessThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(0)"), "{debug}");
+}
+
+#[test]
 fn rewrite_grammar_battlefield_count_predicate_parses_other_creatures() {
     let tokens = lex_line(
         "there are two or more other creatures on the battlefield",

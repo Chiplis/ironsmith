@@ -13091,6 +13091,19 @@ mod tests {
     }
 
     #[test]
+    fn sentence_helper_exiled_grant_play_renders_singular_card_reference() {
+        let effect = Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+            PlayerFilter::You,
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+            false,
+            false,
+        ));
+
+        assert_eq!(describe_effect(&effect), "you may cast that card this turn");
+    }
+
+    #[test]
     fn each_player_may_discard_draw_commander_value_compaction_preserves_equal_to_hint() {
         let mut commanders = ObjectFilter::default();
         commanders.any_of = vec![
@@ -29466,26 +29479,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text =
-            if crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled") {
-                "those cards".to_string()
-            } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
-                || grant_play_tagged.tag.as_str().starts_with("__source_")
-                || grant_play_tagged.tag.as_str() == "__it__"
-                || matches!(
-                    grant_play_tagged.tag.as_str(),
-                    "exiled" | "revealed" | "looked" | "chosen" | "searched"
-                )
-                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
-                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
-                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
-                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
-                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
-            {
-                "that card".to_string()
-            } else {
-                format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
-            };
+        let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+            || grant_play_tagged.tag.as_str().starts_with("__source_")
+            || grant_play_tagged.tag.as_str() == "__it__"
+            || matches!(
+                grant_play_tagged.tag.as_str(),
+                "exiled" | "revealed" | "looked" | "chosen" | "searched"
+            )
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
+        {
+            "that card".to_string()
+        } else {
+            format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
+        };
         if grant_play_tagged.allow_any_color_for_cast {
             if helper_tag
                 && !grant_play_tagged.allow_land
