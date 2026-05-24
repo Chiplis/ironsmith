@@ -1881,6 +1881,30 @@ fn rewrite_keyword_lowering_reuses_token_sentences_for_optional_cost_cast_trigge
 }
 
 #[test]
+fn rewrite_keyword_lowering_parses_additional_cost_activation_clause_without_effect_verb()
+-> Result<(), CardTextError> {
+    let text = "as an additional cost to cast this spell, waterbend {x}.";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify additional-cost activation clause");
+
+    let parsed = super::lower_rewrite_keyword_to_chunk(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        RewriteKeywordLineKind::AdditionalCost,
+    )?;
+
+    match parsed {
+        crate::cards::builders::LineAst::AdditionalCost { effects } => {
+            assert!(!effects.is_empty());
+        }
+        other => panic!("expected additional cost line, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line() -> Result<(), CardTextError> {
     let text = "search your library for a green creature card, reveal it, put it into your hand, then shuffle. at the beginning of your next upkeep, pay {2}{G}{G}. if you don't, you lose the game.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify pact statement line");

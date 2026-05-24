@@ -9997,6 +9997,49 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
 
         if idx + 1 < filtered.len()
+            && let Some(tagged_exile) =
+                filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(exile) = tagged_exile
+                .effect
+                .downcast_ref::<crate::effects::ExileEffect>()
+            && tagged_exile
+                .tag
+                .as_str()
+                .starts_with("__sentence_helper_exiled")
+            && let Some(schedule) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            && schedule.one_shot
+            && schedule
+                .trigger
+                .display()
+                .to_ascii_lowercase()
+                .contains("end step")
+            && schedule.effects.len() == 1
+            && let Some(move_to_zone) = unwrap_tag_wrappers(&schedule.effects[0])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && move_to_zone.zone == Zone::Battlefield
+            && matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &tagged_exile.tag)
+            && move_to_zone.battlefield_controller == crate::effects::BattlefieldController::Owner
+        {
+            let target = describe_choose_spec(&exile.spec);
+            let return_object = if choose_spec_allows_multiple(&exile.spec) {
+                "those cards"
+            } else {
+                "that card"
+            };
+            let owner_control_suffix = if choose_spec_allows_multiple(&exile.spec) {
+                " under their owner's control"
+            } else {
+                " under its owner's control"
+            };
+            parts.push(format!(
+                "Exile {target}. At the beginning of the next end step, return {return_object} to the battlefield{owner_control_suffix}"
+            ));
+            idx += 2;
+            continue;
+        }
+
+        if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(schedule) =

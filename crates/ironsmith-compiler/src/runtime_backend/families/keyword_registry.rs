@@ -159,7 +159,22 @@ pub(super) fn lower_additional_cost(
             ))
         })?
     };
-    let effects = parse_effect_sentences_lexed(effect_tokens)?;
+    let effects = match parse_effect_sentences_lexed(effect_tokens) {
+        Ok(effects) => effects,
+        Err(parse_err) => {
+            let total_cost = parse_activation_cost(effect_tokens).map_err(|_| parse_err.clone())?;
+            if total_cost.non_mana_costs().next().is_some() {
+                return Err(parse_err);
+            }
+            let Some(mana_cost) = total_cost.mana_cost() else {
+                return Err(parse_err);
+            };
+            vec![EffectAst::subject_verb_pay_mana(
+                PlayerAst::You,
+                mana_cost.clone(),
+            )]
+        }
+    };
     Ok(LineAst::AdditionalCost { effects })
 }
 
