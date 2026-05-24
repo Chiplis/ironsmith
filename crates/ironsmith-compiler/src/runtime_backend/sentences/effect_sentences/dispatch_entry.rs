@@ -2412,6 +2412,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
+            | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }

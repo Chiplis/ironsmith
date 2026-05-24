@@ -2234,6 +2234,12 @@ impl Effect {
         Self::new(MoveAllCountersEffect::new(from, to))
     }
 
+    /// Create a "move one counter from one permanent to another" effect.
+    pub fn move_one_counter(from: ChooseSpec, to: ChooseSpec) -> Self {
+        use crate::effects::MoveOneCounterEffect;
+        Self::new(MoveOneCounterEffect::new(from, to))
+    }
+
     /// Create a "proliferate" effect.
     pub fn proliferate(count: impl Into<Value>) -> Self {
         use crate::effects::ProliferateEffect;

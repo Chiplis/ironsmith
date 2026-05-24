@@ -4346,6 +4346,18 @@ impl MoveAllCountersEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MoveOneCounterEffect {
+    pub from: ChooseSpec,
+    pub to: ChooseSpec,
+}
+
+impl MoveOneCounterEffect {
+    pub fn new(from: ChooseSpec, to: ChooseSpec) -> Self {
+        Self { from, to }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MoveCountersEffect {
     pub counter_type: crate::counter::CounterType,
     pub count: Value,

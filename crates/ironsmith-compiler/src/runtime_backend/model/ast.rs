@@ -1462,6 +1462,10 @@ pub(crate) enum SubjectVerbActionAst {
         from: TargetAst,
         to: TargetAst,
     },
+    MoveOneCounter {
+        from: TargetAst,
+        to: TargetAst,
+    },
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
     },
@@ -2830,6 +2834,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::MoveAllCounters { from, to } => f
                 .debug_struct("MoveAllCounters")
+                .field("from", from)
+                .field("to", to)
+                .finish(),
+            Self::MoveOneCounter { from, to } => f
+                .debug_struct("MoveOneCounter")
                 .field("from", from)
                 .field("to", to)
                 .finish(),
@@ -5559,6 +5568,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::MoveAllCounters { from, to },
+        )
+    }
+
+    pub(crate) fn subject_verb_move_one_counter(from: TargetAst, to: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::MoveOneCounter { from, to },
         )
     }
 
