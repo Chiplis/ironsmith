@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "20260523T232628Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Intrepid Paleontologist",
+    "layout": "normal",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature \u2014 Human Druid",
+    "oracle_text": "{T}: Add one mana of any color.\n{2}: Exile target card from a graveyard.\nYou may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)",
+    "source_block": "Name: Intrepid Paleontologist\nMana cost: {1}{G}\nType: Creature \u2014 Human Druid\nPower/Toughness: 2/2\n{T}: Add one mana of any color.\n{2}: Exile target card from a graveyard.\nYou may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)",
+    "parse_input": "Mana cost: {1}{G}\nType: Creature \u2014 Human Druid\nPower/Toughness: 2/2\n{T}: Add one mana of any color.\n{2}: Exile target card from a graveyard.\nYou may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)"
+  },
+  "failure": {
+    "reason": "Card requires cast-permission-linked ETB counter application ('If you cast a spell this way, that creature enters with a finality counter on it') and current parser/runtime models play permissions and mana-spend restrictions separately, with no reusable bridge from a PlayFrom permission to enter-with-counter replacement on the resulting permanent.",
+    "gaps": [
+      "Reusable runtime capability to attach conditional cast-result modifiers (for example enters-with counters) to spells cast through a tagged cast permission, including parser/lowering support for 'If you cast a spell this way' references."
+    ]
+  },
+  "compile_probe": {
+    "strict": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Intrepid Paleontologist: ParseError(\\\"parser does not yet support line family: 'You may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)'\\\")\""
+    },
+    "allow_unsupported": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Intrepid Paleontologist: ParseError(\\\"parser does not yet support line family: 'You may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)'\\\")\""
+    }
+  }
+}
