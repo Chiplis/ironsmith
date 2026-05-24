@@ -11700,6 +11700,30 @@ fn parse_swift_reconfiguration_vehicle_transform_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_ensoul_artifact_style_transform_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ensoul Artifact")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant artifact\nEnchanted artifact is a creature with base power and toughness 5/5 in addition to its other types.",
+        )
+        .expect("ensoul-artifact-style transform should parse");
+
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("enchanted artifact is creature"),
+        "expected creature type-setting text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("base power and toughness 5/5"),
+        "expected base power/toughness text, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partial_compile() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unsupported Grant Variant")
             .parse_text(

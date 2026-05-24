@@ -1466,6 +1466,42 @@ fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
     Some(rewritten)
 }
 
+fn normalize_attached_creature_with_base_pt(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let (first, second) = trimmed.split_once(". ")?;
+    let first = first.trim_end_matches('.').trim();
+    let second = second.trim_end_matches('.').trim();
+
+    let first_lower = first.to_ascii_lowercase();
+    let subject = if let Some(subject) = first_lower.strip_suffix(" is creature") {
+        subject
+    } else if let Some(subject) = first_lower.strip_suffix(" is a creature") {
+        subject
+    } else {
+        return None;
+    };
+    if subject.is_empty() {
+        return None;
+    }
+
+    let second_lower = second.to_ascii_lowercase();
+    let marker = " has base power and toughness ";
+    let idx = second_lower.find(marker)?;
+    if second_lower[..idx] != *subject {
+        return None;
+    }
+    let pt = second[idx + marker.len()..].trim();
+    if pt.is_empty() || !pt.contains('/') {
+        return None;
+    }
+
+    Some(format!(
+        "{} is a creature with base power and toughness {} in addition to its other types.",
+        capitalize_first(subject),
+        pt
+    ))
+}
+
 fn split_choose_sacrifice_tail<'a>(rest: &'a str) -> Option<(&'a str, &'a str)> {
     for needle in [
         ". you sacrifice all permanents you control",
@@ -1637,6 +1673,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(compacted) = compact_repeated_process_once_surface(&normalized) {
         normalized = compacted;
+    }
+    if let Some(attached_with_pt) = normalize_attached_creature_with_base_pt(&normalized) {
+        normalized = attached_with_pt;
     }
     let lower_compact = normalized
         .split_whitespace()
@@ -11279,6 +11318,16 @@ mod tests {
         assert_eq!(
             normalize_common_semantic_phrasing("Draw a card. Draw a card."),
             "Draw a card. Draw a card."
+        );
+    }
+
+    #[test]
+    fn normalize_attached_creature_with_base_pt_combines_sentences() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted artifact is creature. Enchanted artifact has base power and toughness 5/5."
+            ),
+            "Enchanted artifact is a creature with base power and toughness 5/5 in addition to its other types."
         );
     }
 

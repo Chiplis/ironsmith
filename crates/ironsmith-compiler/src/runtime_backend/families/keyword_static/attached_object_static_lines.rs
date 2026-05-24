@@ -75,6 +75,34 @@ fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
     items.push(item);
 }
 
+fn parse_attached_with_base_power_toughness_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(i32, i32, bool)>, CardTextError> {
+    let words = token_words(tokens);
+    if words.len() < 5 || !word_slice_starts_with(&words, &["base", "power", "and", "toughness"]) {
+        return Ok(None);
+    }
+
+    let (power, toughness) = parse_pt_modifier(words[4]).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "invalid attached transform base power/toughness value (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+
+    let trailing = &words[5..];
+    let preserve_other_types = matches!(
+        trailing,
+        ["in", "addition", "to", "its", "other", "types"]
+            | ["in", "addition", "to", "their", "other", "types"]
+    );
+    if !trailing.is_empty() && !preserve_other_types {
+        return Ok(None);
+    }
+
+    Ok(Some((power, toughness, preserve_other_types)))
+}
+
 pub(crate) fn display_text_for_tokens(
     tokens: &[OwnedLexToken],
     capitalize_effect_start: bool,
@@ -928,18 +956,7 @@ pub(crate) fn parse_attached_type_transform_line(
     }
 
     let mut out = Vec::new();
-    if !set_card_types.is_empty() {
-        out.push(StaticAbility::set_card_types(filter.clone(), set_card_types).into());
-    }
-    if !add_subtypes.is_empty() {
-        out.push(StaticAbility::add_subtypes(filter.clone(), add_subtypes).into());
-    }
-    if !set_colors.is_empty() {
-        out.push(StaticAbility::set_colors(filter.clone(), set_colors).into());
-    }
-    if make_colorless {
-        out.push(StaticAbility::make_colorless(filter.clone()).into());
-    }
+    let mut preserve_other_types = false;
 
     if let Some(with_idx) = with_idx {
         let ability_end = lose_idx.unwrap_or(remainder.len());
@@ -958,7 +975,12 @@ pub(crate) fn parse_attached_type_transform_line(
             )));
         }
 
-        if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
+        if let Some((power, toughness, with_preserve_other_types)) =
+            parse_attached_with_base_power_toughness_clause(&ability_tokens)?
+        {
+            preserve_other_types = with_preserve_other_types;
+            out.push(StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into());
+        } else if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
             out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability: parsed,
                 display: format!(
@@ -981,6 +1003,23 @@ pub(crate) fn parse_attached_type_transform_line(
                 line_words.join(" ")
             )));
         }
+    }
+
+    if !set_card_types.is_empty() {
+        if preserve_other_types {
+            out.push(StaticAbility::add_card_types(filter.clone(), set_card_types).into());
+        } else {
+            out.push(StaticAbility::set_card_types(filter.clone(), set_card_types).into());
+        }
+    }
+    if !add_subtypes.is_empty() {
+        out.push(StaticAbility::add_subtypes(filter.clone(), add_subtypes).into());
+    }
+    if !set_colors.is_empty() {
+        out.push(StaticAbility::set_colors(filter.clone(), set_colors).into());
+    }
+    if make_colorless {
+        out.push(StaticAbility::make_colorless(filter.clone()).into());
     }
 
     if let Some(lose_idx) = lose_idx {
