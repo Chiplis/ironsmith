@@ -3,9 +3,16 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     use winnow::Parser as _;
 
     // "all counters from <source> onto/to <destination>"
-    let Some(after_prefix) =
+    // "a counter from <source> onto/to <destination>"
+    let (after_prefix, move_all) = if let Some(rest) =
         grammar::strip_lexed_prefix_phrase(tokens, &["all", "counters", "from"])
-    else {
+    {
+        (rest, true)
+    } else if let Some(rest) =
+        grammar::strip_lexed_prefix_phrase(tokens, &["a", "counter", "from"])
+    {
+        (rest, false)
+    } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported move clause (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -26,7 +33,11 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     let from = parse_target_phrase(from_tokens)?;
     let to = parse_target_phrase(to_tokens)?;
 
-    Ok(EffectAst::subject_verb_move_all_counters(from, to))
+    Ok(if move_all {
+        EffectAst::subject_verb_move_all_counters(from, to)
+    } else {
+        EffectAst::subject_verb_move_one_counter(from, to)
+    })
 }
 
 pub(crate) fn parse_draw(

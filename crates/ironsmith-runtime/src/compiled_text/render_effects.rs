@@ -29763,6 +29763,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&move_counters.to)
         );
     }
+    if let Some(move_counter) = effect.downcast_ref::<crate::effects::MoveOneCounterEffect>() {
+        let mut to_text = describe_choose_spec(&move_counter.to);
+        if let Some(rest) = to_text.strip_prefix("another target ") {
+            to_text = format!("a second target {rest}");
+        }
+        return format!(
+            "Move a counter from {} onto {}",
+            describe_choose_spec(&move_counter.from),
+            to_text
+        );
+    }
     if effect
         .downcast_ref::<crate::effects::NinjutsuCostEffect>()
         .is_some()

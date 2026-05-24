@@ -493,7 +493,8 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
-                SubjectVerbActionAst::MoveAllCounters { from, to } => {
+                SubjectVerbActionAst::MoveAllCounters { from, to }
+                | SubjectVerbActionAst::MoveOneCounter { from, to } => {
                     if frame.auto_tag_object_targets {
                         let _ = next_reference_tag(id_gen, "from");
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "to"));
@@ -1696,6 +1697,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
+            | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
@@ -2278,7 +2280,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::MoveAllCounters { from, to } => {
+            SubjectVerbActionAst::MoveAllCounters { from, to }
+            | SubjectVerbActionAst::MoveOneCounter { from, to } => {
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }

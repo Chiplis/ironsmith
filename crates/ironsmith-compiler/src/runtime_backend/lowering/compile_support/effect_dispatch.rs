@@ -4503,6 +4503,27 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::MoveOneCounter { from, to } => {
+            let (from_spec, mut choices) =
+                resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
+            let (to_spec, to_choices) =
+                resolve_target_spec_with_choices(to, &current_reference_env(ctx))?;
+            for choice in to_choices {
+                push_choice(&mut choices, choice);
+            }
+            let effect = tag_object_target_effect(
+                tag_object_target_effect(
+                    Effect::move_one_counter(from_spec.clone(), to_spec.clone()),
+                    &from_spec,
+                    ctx,
+                    "from",
+                ),
+                &to_spec,
+                ctx,
+                "to",
+            );
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

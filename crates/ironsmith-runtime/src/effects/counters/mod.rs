@@ -6,6 +6,7 @@
 mod for_each_counter_kind_put_or_remove;
 mod move_all_counters;
 mod move_counters;
+mod move_one_counter;
 mod proliferate;
 mod put_counters;
 mod remove_any_counters_among;
@@ -17,6 +18,7 @@ mod remove_up_to_counters;
 pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect;
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;
+pub use move_one_counter::MoveOneCounterEffect;
 pub use proliferate::ProliferateEffect;
 pub use put_counters::PutCountersEffect;
 pub use remove_any_counters_among::RemoveAnyCountersAmongEffect;

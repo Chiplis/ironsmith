@@ -40,7 +40,7 @@ pub use ironsmith_core::{
     ManifestDreadEffect, ManifestTopCardOfLibraryEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
-    MoveAllCountersEffect, MoveCountersEffect, MoveToLibraryNthFromTopEffect,
+    MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneEffect, NewTargetRestriction,
     NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect, PayAnyEnergyEffect, PayEnergyEffect,
     PayManaEffect, PhaseInEffect, PhaseOutEffect, PoisonCountersEffect, PopulateEffect,

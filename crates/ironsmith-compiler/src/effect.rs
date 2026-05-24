@@ -577,6 +577,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
             return Some(&payload.from);
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::MoveOneCounterEffect>() {
+            return Some(&payload.from);
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::TransformEffect>() {
             return Some(&payload.target);
         }
@@ -1970,6 +1973,13 @@ impl Effect {
         to: crate::target::ChooseSpec,
     ) -> Self {
         Self::new(crate::effects::MoveAllCountersEffect::new(from, to))
+    }
+
+    pub fn move_one_counter(
+        from: crate::target::ChooseSpec,
+        to: crate::target::ChooseSpec,
+    ) -> Self {
+        Self::new(crate::effects::MoveOneCounterEffect::new(from, to))
     }
 
     pub fn pump_for_each(

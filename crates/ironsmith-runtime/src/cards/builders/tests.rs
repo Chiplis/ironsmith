@@ -32333,6 +32333,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Imoen, Mystic Trickster",
     "Maskwood Nexus",
     "Mox Amber",
+    "Nesting Grounds",
     "Nexus of Fate",
     "Nykthos, Shrine to Nyx",
     "Nine-Lives Familiar",
@@ -32402,6 +32403,7 @@ strict_parse_card_expected_fail_test!(
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
+strict_parse_card_test!(strict_parse_nesting_grounds, "Nesting Grounds");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
 strict_parse_card_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
 strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
@@ -32416,6 +32418,84 @@ strict_parse_card_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
 strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Madara");
 strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
+
+#[test]
+fn nesting_grounds_compiled_text_matches_counter_move_clause() {
+    let def = parse_oracle_card_definition("Nesting Grounds");
+    let rendered = debug_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "{1}, {T}: Move a counter from target permanent you control onto a second target permanent. Activate only as a sorcery."
+        ),
+        "expected Nesting Grounds counter-move clause in compiled text, got {rendered}"
+    );
+}
+
+#[test]
+fn nesting_grounds_move_counter_effect_moves_exactly_one_counter() {
+    let def = parse_oracle_card_definition("Nesting Grounds");
+    let move_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<crate::effects::MoveOneCounterEffect>()),
+            _ => None,
+        })
+        .expect("Nesting Grounds should compile to a move-one-counter activated effect");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let controller = PlayerId::from_index(0);
+    let source = game.new_object_id();
+    let from_id = game.new_object_id();
+    let to_id = game.new_object_id();
+    let mut from_obj = crate::object::Object::new_token(
+        from_id,
+        controller,
+        "From Permanent".to_string(),
+        vec![CardType::Creature],
+        Vec::new(),
+        Some(2),
+        Some(2),
+        crate::color::ColorSet::COLORLESS,
+    );
+    from_obj
+        .counters
+        .insert(crate::object::CounterType::PlusOnePlusOne, 2);
+    let to_obj = crate::object::Object::new_token(
+        to_id,
+        controller,
+        "To Permanent".to_string(),
+        vec![CardType::Creature],
+        Vec::new(),
+        Some(2),
+        Some(2),
+        crate::color::ColorSet::COLORLESS,
+    );
+    game.add_object(from_obj);
+    game.add_object(to_obj);
+
+    let mut ctx = crate::effects::EffectContext::new_default(source, controller).with_targets(vec![
+        crate::effects::ResolvedTarget::Object(from_id),
+        crate::effects::ResolvedTarget::Object(to_id),
+    ]);
+    let result = move_effect
+        .execute(&mut game, &mut ctx)
+        .expect("Nesting Grounds move-counter effect should execute");
+    assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+    assert_eq!(
+        game.counter_count(from_id, crate::object::CounterType::PlusOnePlusOne),
+        1
+    );
+    assert_eq!(
+        game.counter_count(to_id, crate::object::CounterType::PlusOnePlusOne),
+        1
+    );
+}
 
 #[test]
 fn strict_parse_regression_batch_target_cards() {

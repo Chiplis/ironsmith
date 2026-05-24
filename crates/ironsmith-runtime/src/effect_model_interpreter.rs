@@ -870,6 +870,10 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::MoveCountersEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::MoveOneCounterEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ProliferateEffect>(&effect) {
         return Ok(converted);
     }
