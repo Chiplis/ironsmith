@@ -6143,6 +6143,45 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
 
+    let normalized = clause_words
+        .iter()
+        .map(|word| {
+            if *word == "didn't" {
+                "didnt"
+            } else {
+                *word
+            }
+        })
+        .collect::<Vec<_>>();
+    if let Some(can_idx) = anthem_find_word_sequence_index(
+        &normalized,
+        &["can", "attack", "as", "though", "it", "didnt", "have", "defender"],
+    ) {
+        if can_idx > 0
+            && anthem_word_slice_starts_with(&normalized[can_idx..], &["can", "attack"])
+            && normalized.last().copied() == Some("defender")
+            && let Some(subject_end) = token_index_for_word_index(tokens, can_idx)
+        {
+            let subject_tokens = trim_commas(&tokens[..subject_end]);
+            if !subject_tokens.is_empty() {
+                let subject = parse_anthem_subject(&subject_tokens)?;
+                let granted = match subject {
+                    AnthemSubjectAst::Source => StaticAbilityAst::Static(
+                        StaticAbility::can_attack_as_though_no_defender(),
+                    ),
+                    AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+                        filter,
+                        ability: Box::new(StaticAbilityAst::Static(
+                            StaticAbility::can_attack_as_though_no_defender(),
+                        )),
+                        condition: None,
+                    },
+                };
+                return Ok(Some(vec![granted]));
+            }
+        }
+    }
+
     let mut deferred_error: Option<CardTextError> = None;
     let mut inside_quotes = false;
     for (has_idx, token) in tokens.iter().enumerate() {

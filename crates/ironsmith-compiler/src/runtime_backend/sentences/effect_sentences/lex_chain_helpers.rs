@@ -660,7 +660,6 @@ fn is_can_attack_as_though_no_defender_clause_words_lexed(words: &[&str]) -> boo
     let tail = &words[can_idx..];
     word_slice_starts_with(tail, &["can", "attack"])
         && word_slice_contains_sequence(tail, &["as", "though"])
-        && word_slice_contains(tail, "turn")
         && word_slice_contains(tail, "have")
         && tail.last().copied() == Some("defender")
 }

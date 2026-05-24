@@ -1064,12 +1064,10 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
     let tail = &clause_words[can_idx..];
     let has_full_core = word_slice_starts_with(tail, &["can", "attack"])
         && word_slice_contains_sequence(tail, &["as", "though"])
-        && word_slice_contains(tail, "turn")
         && word_slice_contains(tail, "have")
         && tail.last().copied() == Some("defender");
     let has_split_core = word_slice_starts_with(tail, &["can", "attack"])
         && word_slice_contains_sequence(tail, &["as", "though"])
-        && word_slice_contains(tail, "turn")
         && matches!(tail.last().copied(), Some("didnt" | "didn't"));
     if !has_full_core && !has_split_core {
         return Ok(None);

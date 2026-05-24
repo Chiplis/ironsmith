@@ -35458,6 +35458,23 @@ fn parse_tidal_barracuda_any_player_flash_permission_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_animate_wall_as_though_no_defender_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Animate Wall")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Enchanted Wall can attack as though it didn't have defender.")
+        .expect("animate wall as-though clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("as though") && rendered.contains("defender"),
+        "expected as-though no-defender wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_valley_floodcaller_keeps_flash_grant_and_them_reference_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Valley Floodcaller")
         .card_types(vec![CardType::Creature])
