@@ -647,6 +647,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_negated_object_restriction_clause_supports_activated_abilities_of_that_permanent() {
+        let tokens = tokenize_line("Activated abilities of that permanent can't be activated.", 0);
+
+        let parsed = parse_negated_object_restriction_clause(&tokens)
+            .expect("parse activated-abilities restriction")
+            .expect("expected restriction");
+
+        assert!(matches!(
+            parsed.restriction,
+            Restriction::ActivateAbilitiesOf(_)
+        ));
+    }
+
+    #[test]
     fn parse_you_choose_objects_clause_supports_bare_card_from_it() {
         let tokens = tokenize_line("You choose a card from it.", 0);
 

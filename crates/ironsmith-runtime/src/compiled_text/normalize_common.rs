@@ -9174,6 +9174,15 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             let subject = description
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
+            let subject = if subject.eq_ignore_ascii_case("permanent")
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                "that permanent"
+            } else {
+                subject
+            };
             format!("activated abilities of {} can't be activated", subject)
         }
         crate::effect::Restriction::ActivateTapAbilitiesOf(filter) => {
@@ -9181,6 +9190,15 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             let subject = description
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
+            let subject = if subject.eq_ignore_ascii_case("permanent")
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                "that permanent"
+            } else {
+                subject
+            };
             format!(
                 "activated abilities with {{T}} in their costs of {} can't be activated",
                 subject
@@ -9191,6 +9209,15 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             let subject = description
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
+            let subject = if subject.eq_ignore_ascii_case("permanent")
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                "that permanent"
+            } else {
+                subject
+            };
             format!(
                 "non-mana activated abilities of {} can't be activated",
                 subject
@@ -10383,6 +10410,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if let Some(condition) = describe_attached_object_color_condition(tag, filter) {
                 return condition;
             }
+            if tag.as_str().starts_with("countered_")
+                && strip_leading_article(&desc)
+                    .eq_ignore_ascii_case("permanent")
+            {
+                return "a permanent's ability is countered this way".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
@@ -10569,15 +10602,22 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     let noun = if card_context { "land card" } else { "land" };
                     return is_clause(noun);
                 }
-	                if stripped == "creature" {
-	                    let noun = if card_context {
-	                        "creature card"
-	                    } else {
-	                        "creature"
-	                    };
-	                    return is_clause(noun);
-	                }
-	                return format!("{subject} matches {desc}");
+                if stripped == "permanent" {
+                    return if subject == "it" {
+                        "it's a permanent".to_string()
+                    } else {
+                        "that object is a permanent".to_string()
+                    };
+                }
+                if stripped == "creature" {
+                    let noun = if card_context {
+                        "creature card"
+                    } else {
+                        "creature"
+                    };
+                    return is_clause(noun);
+                }
+                return format!("{subject} matches {desc}");
                 }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
@@ -11108,6 +11148,30 @@ mod tests {
         );
 
         assert_eq!(describe_condition(&condition), "equipped creature is green");
+    }
+
+    #[test]
+    fn describe_countered_permanent_condition_uses_countered_this_way_surface() {
+        let condition = Condition::TaggedObjectMatches(TagKey::from("countered_0"), ObjectFilter::permanent());
+
+        assert_eq!(
+            describe_condition(&condition),
+            "a permanent's ability is countered this way"
+        );
+    }
+
+    #[test]
+    fn describe_activate_abilities_of_tagged_permanent_uses_that_permanent() {
+        let mut filter = ObjectFilter::permanent();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("countered_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        assert_eq!(
+            describe_restriction(&crate::effect::Restriction::ActivateAbilitiesOf(filter)),
+            "activated abilities of that permanent can't be activated"
+        );
     }
 
     #[test]
