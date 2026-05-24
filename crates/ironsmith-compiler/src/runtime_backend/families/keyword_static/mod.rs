@@ -30,6 +30,7 @@ use super::grammar::abilities::{
     is_players_cant_pay_life_or_sacrifice_line_lexed,
     is_players_play_top_card_libraries_revealed_line_lexed, is_players_skip_upkeep_line_lexed,
     is_prevent_all_combat_damage_to_source_line_lexed,
+    is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
     is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed,
@@ -763,6 +764,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
+        single_static_ability_ast_rule!(
+            parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
+        ),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
         single_static_ability_ast_rule!(
             parse_prevent_damage_to_other_creature_you_control_put_counters_line
@@ -6542,6 +6546,18 @@ pub(crate) fn parse_prevent_all_combat_damage_to_source_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_prevent_all_combat_damage_to_source_line_lexed(tokens) {
         return Ok(Some(StaticAbility::prevent_all_combat_damage_to_self()));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::prevent_all_noncombat_damage_to_other_creatures_you_control(),
+        ));
     }
 
     Ok(None)

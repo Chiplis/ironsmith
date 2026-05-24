@@ -2014,12 +2014,40 @@ impl StaticAbilityKind for PreventDamageToOtherCreatureYouControlPutCountersInst
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            DamageToOtherCreatureYouControlMatcher,
+            DamageToOtherCreatureYouControlMatcher::new(),
             ReplacementAction::Instead(vec![Effect::put_counters(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
                 ChooseSpec::AnyTarget,
             )]),
+        ))
+    }
+}
+
+/// "Prevent all noncombat damage that would be dealt to other creatures you control."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreventAllNoncombatDamageToOtherCreaturesYouControl;
+
+impl StaticAbilityKind for PreventAllNoncombatDamageToOtherCreaturesYouControl {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl
+    }
+
+    fn display(&self) -> String {
+        "Prevent all noncombat damage that would be dealt to other creatures you control."
+            .to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageToOtherCreatureYouControlMatcher::noncombat_only(),
+            ReplacementAction::Prevent,
         ))
     }
 }
@@ -5556,6 +5584,67 @@ mod tests {
             crate::events::cause::EventCause::combat_damage(source),
         );
         assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_all_noncombat_damage_to_other_creatures_you_control() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = CardBuilder::new(CardId::new(), "Crystal Barricade")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+
+        let other = CardBuilder::new(CardId::new(), "Ally")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let other_id = game.create_object_from_card(&other, alice, Zone::Battlefield);
+
+        let opponent = CardBuilder::new(CardId::new(), "Opponent Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let opponent_id = game.create_object_from_card(&opponent, bob, Zone::Battlefield);
+
+        let ability = PreventAllNoncombatDamageToOtherCreaturesYouControl;
+        let replacement = ability
+            .generate_replacement_effect(source_id, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, source_id, &game);
+
+        let noncombat_to_other = DamageEvent::with_cause(
+            opponent_id,
+            DamageTarget::Object(other_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(matcher.matches_event(&noncombat_to_other, &ctx));
+
+        let combat_to_other = DamageEvent::with_cause(
+            opponent_id,
+            DamageTarget::Object(other_id),
+            2,
+            true,
+            crate::events::cause::EventCause::combat_damage(opponent_id),
+        );
+        assert!(!matcher.matches_event(&combat_to_other, &ctx));
+
+        let noncombat_to_source = DamageEvent::with_cause(
+            opponent_id,
+            DamageTarget::Object(source_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&noncombat_to_source, &ctx));
     }
 
     #[test]

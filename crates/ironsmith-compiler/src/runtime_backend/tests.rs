@@ -7866,6 +7866,12 @@ fn rewrite_grammar_prevention_static_line_probes_match_keyword_static_shapes() {
             crate::static_abilities::StaticAbilityId::PreventAllCombatDamageToSelf,
         ),
         (
+            "Prevent all noncombat damage that would be dealt to other creatures you control.",
+            super::grammar::abilities::is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed as Probe,
+            super::keyword_static::parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line as Parser,
+            crate::static_abilities::StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl,
+        ),
+        (
             "Prevent all damage that would be dealt to this permanent by creatures.",
             super::grammar::abilities::is_prevent_all_damage_to_source_by_creatures_line_lexed as Probe,
             super::keyword_static::parse_prevent_all_damage_to_source_by_creatures_line as Parser,
