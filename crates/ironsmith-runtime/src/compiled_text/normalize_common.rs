@@ -3668,6 +3668,19 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Target player sacrifices a creature of their choice".to_string();
     }
+    if let Some(rest) = normalized.strip_prefix("This creature source is no longer creature as long as ")
+    {
+        return format!("This card isn't a creature as long as {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("This source is no longer creature as long as ") {
+        return format!("This card isn't a creature as long as {rest}");
+    }
+    if normalized.contains(" to that player unless target player sacrifices a creature") {
+        return normalized.replace(
+            " to that player unless target player sacrifices a creature",
+            " to that player unless that player sacrifices a creature of their choice",
+        );
+    }
     if lower_normalized
         == "target player sacrifices target player's creature. target player loses 1 life"
     {
@@ -11178,6 +11191,26 @@ mod tests {
                 "Strax fights another target that player's creature."
             ),
             "Strax fights another target creature that player controls."
+        );
+    }
+
+    #[test]
+    fn normalize_as_long_as_no_longer_creature_source_clause() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "This creature source is no longer creature as long as your devotion to black plus your devotion to red is less than seven."
+            ),
+            "This card isn't a creature as long as your devotion to black plus your devotion to red is less than seven."
+        );
+    }
+
+    #[test]
+    fn normalize_unless_target_player_sacrifice_clause() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "At the beginning of each opponent's upkeep, this creature deals 2 damage to that player unless target player sacrifices a creature."
+            ),
+            "At the beginning of each opponent's upkeep, this creature deals 2 damage to that player unless that player sacrifices a creature of their choice."
         );
     }
 
