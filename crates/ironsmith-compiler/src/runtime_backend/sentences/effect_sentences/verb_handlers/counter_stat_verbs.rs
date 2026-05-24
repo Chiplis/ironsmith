@@ -780,10 +780,78 @@ pub(crate) fn parse_life_equal_to_value(
     }
     if matches!(amount_words.get(..2), Some(["equal", "to"])) {
         let value_tokens = &amount_tokens[2..];
+        let mut value_words = crate::runtime_backend::token_word_refs(value_tokens);
+
+        let parse_stat_of_target =
+            |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
+                if value_words.starts_with(stat_words) {
+                    let target_tokens = &value_tokens[stat_words.len()..];
+                    if let Ok(target) = parse_target_phrase(target_tokens) {
+                        let spec = crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
+                        return Some(constructor(Box::new(spec)));
+                    }
+                }
+                None
+            };
+        if let Some(value) = parse_stat_of_target(&["power", "of"], Value::PowerOf) {
+            return Ok(Some(value));
+        }
+        if let Some(value) = parse_stat_of_target(&["the", "power", "of"], Value::PowerOf) {
+            return Ok(Some(value));
+        }
+        if let Some(value) = parse_stat_of_target(&["toughness", "of"], Value::ToughnessOf) {
+            return Ok(Some(value));
+        }
+        if let Some(value) = parse_stat_of_target(&["the", "toughness", "of"], Value::ToughnessOf)
+        {
+            return Ok(Some(value));
+        }
+        if let Some(value) =
+            parse_stat_of_target(&["mana", "value", "of"], Value::ManaValueOf)
+        {
+            return Ok(Some(value));
+        }
+        if let Some(value) =
+            parse_stat_of_target(&["the", "mana", "value", "of"], Value::ManaValueOf)
+        {
+            return Ok(Some(value));
+        }
+
         if let Some((value, used)) = parse_value(value_tokens)
             && used == value_tokens.len()
         {
             return Ok(Some(value));
+        }
+        if value_tokens
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| word == "the")
+        {
+            let stripped_tokens = &value_tokens[1..];
+            if let Some((value, used)) = parse_value(stripped_tokens)
+                && used == stripped_tokens.len()
+            {
+                return Ok(Some(value));
+            }
+            value_words = crate::runtime_backend::token_word_refs(stripped_tokens);
+        }
+        for (prefix, stat_words) in [
+            (&["power", "of"][..], &["power"][..]),
+            (&["toughness", "of"][..], &["toughness"][..]),
+            (&["mana", "value", "of"][..], &["mana", "value"][..]),
+        ] {
+            if value_words.starts_with(prefix) {
+                let mut reordered = value_words[prefix.len()..].to_vec();
+                reordered.extend_from_slice(stat_words);
+                if let Some((value, used)) =
+                    crate::runtime_backend::front_end::shared::util::parse_value_expr_words(
+                        &reordered,
+                    )
+                    && used == reordered.len()
+                {
+                    return Ok(Some(value));
+                }
+            }
         }
     }
 

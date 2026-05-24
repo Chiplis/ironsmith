@@ -5835,6 +5835,24 @@ fn life_lost_this_way_lowers_to_prior_effect_metric() {
 }
 
 #[test]
+fn gain_life_equal_to_the_power_of_target_creature_you_control_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wall of Reverence Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nAt the beginning of your end step, you may gain life equal to the power of target creature you control.",
+        )
+        .expect("target creature power life gain should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("GainLifeEffect")
+            && debug.contains("PowerOf")
+            && debug.contains("Target("),
+        "expected life gain amount to use target creature power, got {debug}"
+    );
+}
+
+#[test]
 fn dynamic_return_count_lowers_to_prior_effect_metric_choice() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dynamic Return Variant")
         .card_types(vec![CardType::Sorcery])
