@@ -670,7 +670,23 @@ impl ReplacementMatcher for DamageToSelfCombatMatcher {
 
 /// Matches damage events dealt to another creature you control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct DamageToOtherCreatureYouControlMatcher;
+pub struct DamageToOtherCreatureYouControlMatcher {
+    noncombat_only: bool,
+}
+
+impl DamageToOtherCreatureYouControlMatcher {
+    pub fn new() -> Self {
+        Self {
+            noncombat_only: false,
+        }
+    }
+
+    pub fn noncombat_only() -> Self {
+        Self {
+            noncombat_only: true,
+        }
+    }
+}
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
@@ -682,7 +698,7 @@ impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
             return false;
         };
 
-        if damage.is_unpreventable {
+        if damage.is_unpreventable || (self.noncombat_only && damage.is_combat) {
             return false;
         }
 

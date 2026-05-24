@@ -2498,6 +2498,29 @@ pub(crate) fn is_prevent_all_combat_damage_to_source_line_lexed(tokens: &[OwnedL
     )
 }
 
+pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_exact_phrase_line_lexed(
+        tokens,
+        &[
+            "prevent",
+            "all",
+            "noncombat",
+            "damage",
+            "that",
+            "would",
+            "be",
+            "dealt",
+            "to",
+            "other",
+            "creatures",
+            "you",
+            "control",
+        ],
+    )
+}
+
 pub(crate) fn is_prevent_all_damage_to_source_by_creatures_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

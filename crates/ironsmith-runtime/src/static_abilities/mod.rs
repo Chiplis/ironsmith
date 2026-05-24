@@ -2356,6 +2356,10 @@ impl StaticAbility {
         ))
     }
 
+    pub fn prevent_all_noncombat_damage_to_other_creatures_you_control() -> Self {
+        Self::new(PreventAllNoncombatDamageToOtherCreaturesYouControl)
+    }
+
     pub fn increase_activated_ability_costs(
         filter: crate::target::ObjectFilter,
         increase: crate::cost::TotalCost,

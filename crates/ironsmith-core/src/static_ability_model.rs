@@ -2988,6 +2988,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn prevent_all_noncombat_damage_to_other_creatures_you_control() -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl),
+            label: "prevent all noncombat damage to other creatures you control".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn prevent_all_damage_to_self_by_creatures() -> Self {
         Self {
             id: Some(StaticAbilityId::PreventAllDamageToSelfByCreatures),

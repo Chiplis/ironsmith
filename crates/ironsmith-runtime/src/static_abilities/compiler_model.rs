@@ -121,6 +121,9 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
             }
+            Some(StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl) => {
+                Self::prevent_all_noncombat_damage_to_other_creatures_you_control()
+            }
             Some(StaticAbilityId::RedirectDamageToSource) => {
                 Self::redirect_damage_from_you_and_other_permanents_to_source()
             }
