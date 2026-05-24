@@ -2633,6 +2633,23 @@ fn rewrite_zone_counter_helpers_parse_difference_counter_amount() {
 }
 
 #[test]
+fn rewrite_zone_counter_helpers_parse_equal_to_named_source_power_counter_amount() {
+    let tokens = lex_line(
+        "Put a number of +1/+1 counters equal to Jenova's power on up to one other target creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify source-power counter clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("source-power counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("PowerOf(Source)"), "{debug}");
+    assert!(debug.contains("count: UpTo(1)"), "{debug}");
+}
+
+#[test]
 fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Warstorm Surge Probe")
         .card_types(vec![CardType::Enchantment])
