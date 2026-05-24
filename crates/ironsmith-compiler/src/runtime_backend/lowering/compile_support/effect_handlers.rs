@@ -166,6 +166,22 @@ fn rewrite_effects_tag_relation(
         .collect()
 }
 
+fn predicate_references_it_tag(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ItIsLandCard | PredicateAst::ItIsSoulbondPaired | PredicateAst::ItMatches(_) => true,
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedWasCast(tag) => {
+            tag.as_str() == IT_TAG
+        }
+        PredicateAst::TargetMatches(filter) => filter_references_tag(filter, IT_TAG),
+        PredicateAst::PlayerTaggedObjectMatches { tag, .. } => tag.as_str() == IT_TAG,
+        PredicateAst::Not(inner) => predicate_references_it_tag(inner),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_references_it_tag(left) || predicate_references_it_tag(right)
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn try_compile_timing_and_control_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -531,6 +547,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
             if_true,
             if_false,
         } => {
+            let predicate_references_it = predicate_references_it_tag(predicate);
             let mut effective_if_true = if_true.clone();
             if let Some(antecedent) = predicate_object_filter_antecedent(predicate) {
                 bind_condition_antecedent_in_effects(
@@ -540,6 +557,9 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 );
             }
             let saved_last_tag = ctx.last_object_tag.clone();
+            if ctx.last_object_tag.is_none() && predicate_references_it {
+                ctx.last_object_tag = Some("triggering".to_string());
+            }
             let saved_source_object_antecedent = ctx.source_object_antecedent;
             ctx.source_object_antecedent |= predicate.establishes_source_object_antecedent();
             let (true_effects, true_choices) = compile_effects(&effective_if_true, ctx)?;
@@ -549,22 +569,6 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 saved_source_object_antecedent || predicate.establishes_source_object_antecedent();
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
             ctx.source_object_antecedent = saved_source_object_antecedent;
-            let predicate_references_it = matches!(
-                predicate,
-                PredicateAst::ItIsLandCard
-                    | PredicateAst::ItIsSoulbondPaired
-                    | PredicateAst::ItMatches(_)
-            ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
-                || matches!(predicate, PredicateAst::TaggedWasCast(tag) if tag.as_str() == IT_TAG)
-                || matches!(
-                    predicate,
-                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)
-                )
-                || matches!(
-                    predicate,
-                    PredicateAst::PlayerTaggedObjectMatches { tag, .. } if tag.as_str() == IT_TAG
-                );
-
             let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
                 let mut antecedent_choice = None;
                 for choice in true_choices.iter().chain(false_choices.iter()) {

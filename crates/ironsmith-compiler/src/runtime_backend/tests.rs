@@ -3128,6 +3128,28 @@ fn rewrite_if_clause_binds_it_was_cast_to_tagged_object() {
 }
 
 #[test]
+fn rewrite_if_clause_supports_would_enter_and_wasnt_cast() {
+    let tokens = lex_line(
+        "If a nontoken creature would enter and it wasn't cast, exile it instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify would-enter cast-history predicate");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("would-enter cast-history conditional should parse");
+    let [crate::cards::builders::EffectAst::Conditional { predicate, .. }] = parsed.as_slice()
+    else {
+        panic!("expected conditional exile clause, got {parsed:?}");
+    };
+
+    let debug = format!("{predicate:#?}");
+    let debug_lower = debug.to_ascii_lowercase();
+    assert!(debug.contains("And("), "{debug}");
+    assert!(debug_lower.contains("nontoken"), "{debug}");
+    assert!(debug.contains("TaggedWasCast"), "{debug}");
+}
+
+#[test]
 fn rewrite_verb_handlers_keep_trailing_instead_if_damage_clause_after_structure_cutover() {
     let tokens = lex_line(
         "This creature deals 5 damage to target creature instead if it's white.",

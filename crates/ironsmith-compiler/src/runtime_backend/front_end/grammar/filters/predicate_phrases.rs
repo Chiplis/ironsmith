@@ -2135,6 +2135,37 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)));
     }
 
+    if let Some(and_idx) = find_index(&filtered, |word| *word == "and")
+        && and_idx >= 3
+        && filtered[and_idx - 2] == "would"
+        && filtered[and_idx - 1] == "enter"
+        && matches!(
+            &filtered[and_idx + 1..],
+            ["it", "wasnt", "cast"]
+                | ["it", "was", "not", "cast"]
+                | ["that", "creature", "wasnt", "cast"]
+                | ["that", "creature", "was", "not", "cast"]
+                | ["that", "permanent", "wasnt", "cast"]
+                | ["that", "permanent", "was", "not", "cast"]
+                | ["that", "object", "wasnt", "cast"]
+                | ["that", "object", "was", "not", "cast"]
+        )
+    {
+        let filter_tokens = filtered[..and_idx - 2]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        if !filter_tokens.is_empty() {
+            let filter = parse_object_filter(&filter_tokens, false)?;
+            return Ok(PredicateAst::And(
+                Box::new(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter)),
+                Box::new(PredicateAst::Not(Box::new(PredicateAst::TaggedWasCast(
+                    TagKey::from(IT_TAG),
+                )))),
+            ));
+        }
+    }
+
     if filtered.len() >= 6
         && filtered[0] == "this"
         && filtered[1] == "spell"
@@ -3135,6 +3166,25 @@ mod tests {
             parsed,
             PredicateAst::ThisSpellPaidLabel("Surge".to_string())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_would_enter_and_wasnt_cast() -> Result<(), CardTextError> {
+        let tokens = lex_line("If a nontoken creature would enter and it wasn't cast", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let debug = format!("{parsed:#?}");
+        let debug_lower = debug.to_ascii_lowercase();
+
+        assert!(debug.contains("And("), "{debug}");
+        assert!(debug_lower.contains("nontoken"), "{debug}");
+        assert!(debug.contains("TaggedWasCast"), "{debug}");
         Ok(())
     }
 }

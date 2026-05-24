@@ -9402,13 +9402,13 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_rejects_would_enter_replacement_clause() {
+    fn parse_supports_would_enter_replacement_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Mistcaller Variant").parse_text(
             "Sacrifice this creature: Until end of turn, if a nontoken creature would enter and it wasn't cast, exile it instead.",
         );
         assert!(
-            result.is_err(),
-            "unsupported would-enter replacement clause should fail parse instead of collapsing to an immediate exile effect"
+            result.is_ok(),
+            "would-enter replacement clause should parse into a replacement effect"
         );
     }
 
