@@ -2685,7 +2685,8 @@ fn rewrite_zone_counter_helpers_parse_equal_to_named_source_power_counter_amount
 
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(debug.contains("PowerOf(Source)"), "{debug}");
-    assert!(debug.contains("count: UpTo(1)"), "{debug}");
+    assert!(debug.contains("target_count: Some"), "{debug}");
+    assert!(debug.contains("max: Some(1)"), "{debug}");
 }
 
 #[test]

@@ -303,6 +303,9 @@ fn parse_put_counter_count_value(
             {
                 return Ok((value, 3));
             }
+            if let Some(value) = parse_named_source_power_value(&value_tokens) {
+                return Ok((value, 3));
+            }
         }
         return Err(CardTextError::ParseError(format!(
             "missing counter amount (clause: '{}')",
@@ -313,6 +316,14 @@ fn parse_put_counter_count_value(
     parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause))
     })
+}
+
+fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    if words.len() == 2 && words[1] == "power" && words[0].ends_with('s') {
+        return Some(Value::PowerOf(Box::new(ChooseSpec::Source)));
+    }
+    None
 }
 
 fn target_from_counter_source_spec(spec: &ChooseSpec, span: Option<TextSpan>) -> Option<TargetAst> {
