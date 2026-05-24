@@ -401,14 +401,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         )]));
     }
 
-    let target = {
-        let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-        if matches!(target_words.as_slice(), ["its"] | ["their"]) {
-            TargetAst::Tagged(TagKey::from(IT_TAG), None)
-        } else {
-            parse_target_phrase_lexed(&target_tokens)?
-        }
-    };
+    let target = parse_target_phrase_lexed(&target_tokens)?;
     Ok(Some(vec![scale_pt_from_value_spec(
         &target,
         include_power,
