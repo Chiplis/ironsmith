@@ -113,6 +113,25 @@ fn parse_clash_repeat_process_spell_effect() {
     );
 }
 
+#[test]
+fn tajuru_paragon_render_avoids_tagged_object_markers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(4), "Tajuru Paragon Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "This creature is also a Cleric, Rogue, Warrior, and Wizard.\nKicker {3}\nWhen this creature enters, if it was kicked, reveal the top six cards of your library. You may put a card that shares a creature type with it from among them into your hand. Put the rest on the bottom of your library in a random order.",
+        )
+        .expect("Tajuru Paragon-style rules text should parse");
+
+    let compiled = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let lower = compiled.to_ascii_lowercase();
+    assert!(
+        !lower.contains("tagged object '") && !lower.contains("tagged '"),
+        "compiled text leaked tagged-object marker: {compiled}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {

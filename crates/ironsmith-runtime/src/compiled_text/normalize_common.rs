@@ -5114,6 +5114,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("controlss", "controls")
         .replace("the tagged object 'enchanted'", "enchanted creature")
         .replace("the tagged object '__it__'", "that creature")
+        .replace("the tagged object 'it'", "that creature")
+        .replace("tagged object '__it__'", "that creature")
+        .replace("tagged object 'it'", "that creature")
         .replace(
             "the tagged object 'exiled_0' matches creature",
             "that card is a creature card",

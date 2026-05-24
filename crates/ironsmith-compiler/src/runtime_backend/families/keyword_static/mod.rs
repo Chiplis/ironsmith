@@ -657,6 +657,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),
+        single_static_ability_ast_rule!(parse_subject_is_also_subtype_list_line),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
         multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
@@ -5765,6 +5766,64 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     let filter = parse_object_filter(subject_tokens, false)?;
 
     Ok(Some(StaticAbility::add_card_types(filter, card_types)))
+}
+
+pub(crate) fn parse_subject_is_also_subtype_list_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.len() < 5 {
+        return Ok(None);
+    }
+
+    let Some(be_idx) = find_index(&words, |word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if be_idx == 0 || be_idx + 3 >= words.len() {
+        return Ok(None);
+    }
+    if words.get(be_idx + 1) != Some(&"also") {
+        return Ok(None);
+    }
+
+    let descriptors = &words[be_idx + 2..];
+    let mut subtypes = Vec::new();
+    for descriptor in descriptors {
+        if is_article(descriptor) || matches!(*descriptor, "and" | "or" | "and/or") {
+            continue;
+        }
+
+        let Some(subtype) = parse_subtype_word(descriptor)
+            .or_else(|| str_strip_suffix(descriptor, "s").and_then(parse_subtype_word))
+        else {
+            return Ok(None);
+        };
+
+        if !slice_contains(&subtypes, &subtype) {
+            subtypes.push(subtype);
+        }
+    }
+
+    if subtypes.is_empty() {
+        return Ok(None);
+    }
+
+    let subject_tokens = &tokens[..be_idx];
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(subject_tokens, false).or_else(|_| {
+        let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+        if is_source_reference_words(&subject_words) || !subject_words.is_empty() {
+            Ok(ObjectFilter::source())
+        } else {
+            Err(CardTextError::ParseError(
+                "unsupported subtype-addition subject".to_string(),
+            ))
+        }
+    })?;
+
+    Ok(Some(StaticAbility::add_subtypes(filter, subtypes)))
 }
 
 pub(crate) fn parse_all_cards_spells_permanents_colorless_line(

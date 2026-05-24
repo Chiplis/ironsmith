@@ -12951,3 +12951,29 @@ fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
         "that player in this non-loop trigger must not lower to an unbound iterated player, got {debug}"
     );
 }
+
+#[test]
+fn static_line_parses_is_also_subtype_list() {
+    let tokens = lex_line(
+        "Tajuru Paragon is also a Cleric, Rogue, Warrior, and Wizard.",
+        0,
+    )
+    .expect("rewrite lexer should classify subtype-addition line");
+
+    let direct = super::keyword_static::parse_subject_is_also_subtype_list_line(&tokens)
+        .expect("subtype-addition rule should not error")
+        .expect("subtype-addition rule should match");
+    let direct_debug = format!("{direct:?}");
+    assert!(direct_debug.contains("AddSubtypes"), "{direct_debug}");
+
+    let parsed = super::clause_support::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("subtype-addition static line should parse")
+        .expect("subtype-addition static line should produce ability");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("AddSubtypes"), "{debug}");
+    assert!(debug.contains("Cleric"), "{debug}");
+    assert!(debug.contains("Rogue"), "{debug}");
+    assert!(debug.contains("Warrior"), "{debug}");
+    assert!(debug.contains("Wizard"), "{debug}");
+}
