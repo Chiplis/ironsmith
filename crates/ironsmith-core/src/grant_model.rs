@@ -19,6 +19,8 @@ pub enum DerivedAlternativeCast<C> {
     BlitzFromCardManaCost,
     /// Emerge using the card's mana cost and sacrificing a creature.
     EmergeFromCardManaCost,
+    /// Miracle using the card's mana cost reduced by a fixed generic amount.
+    MiracleFromCardManaCostReducedBy { reduction: u32 },
     /// Escape using the card's mana cost and exiling N other graveyard cards.
     EscapeFromCardManaCost { exile_count: u32 },
     /// Cast from hand by paying generic mana equal to the card's mana value.
@@ -37,6 +39,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::RetraceFromCardManaCost => "Retrace",
             Self::BlitzFromCardManaCost => "Blitz",
             Self::EmergeFromCardManaCost => "Emerge",
+            Self::MiracleFromCardManaCostReducedBy { .. } => "Miracle",
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
@@ -77,6 +80,10 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
     pub fn escape_from_cards_mana_cost(exile_count: u32) -> Self {
         Self::EscapeFromCardManaCost { exile_count }
+    }
+
+    pub fn miracle_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
+        Self::MiracleFromCardManaCostReducedBy { reduction }
     }
 
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
@@ -151,6 +158,13 @@ where
     pub fn escape(exile_count: u32) -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::escape_from_cards_mana_cost(
             exile_count,
+        ))
+    }
+
+    /// Create a grantable for miracle whose cost is the granted card's mana cost reduced by a fixed amount.
+    pub fn miracle_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::miracle_from_cards_mana_cost_reduced_by(
+            reduction,
         ))
     }
 
@@ -572,6 +586,30 @@ where
                 .unwrap_or(cast_desc);
             return format!(
                 "Each {filter_desc} has emerge. The emerge cost is equal to its mana cost"
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction },
+        ) = &self.grantable
+            && self.zone == Zone::Hand
+        {
+            let mut base_filter = self.filter.clone();
+            base_filter.zone = None;
+            if matches!(base_filter.owner, Some(PlayerFilter::You)) {
+                base_filter.owner = None;
+            }
+            let base = castable_filter_description(&base_filter)
+                .strip_suffix(" spells")
+                .unwrap_or("cards")
+                .to_string();
+            let owner_phrase = if matches!(self.filter.owner, Some(PlayerFilter::You)) {
+                "your"
+            } else {
+                "that"
+            };
+            return format!(
+                "Each {base} card in {owner_phrase} hand has miracle. Its miracle cost is equal to its mana cost reduced by {}",
+                format!("{{{reduction}}}")
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =

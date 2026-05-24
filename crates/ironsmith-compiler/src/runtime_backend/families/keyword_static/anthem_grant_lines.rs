@@ -518,6 +518,75 @@ pub(crate) fn parse_granted_keyword_static_line(
         Ok(Some(count as u32))
     }
 
+    fn parse_granted_miracle_cost_reduction_tail(
+        trailing_tokens: &[OwnedLexToken],
+    ) -> Result<Option<u32>, CardTextError> {
+        let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
+        let trailing_word_refs = trailing_words.word_refs();
+        let Some(prefix_len) = (match trailing_word_refs.as_slice() {
+            [
+                "the",
+                "miracle",
+                "cost",
+                "is",
+                "equal",
+                "to",
+                "its",
+                "mana",
+                "cost",
+                "reduced",
+                "by",
+                ..,
+            ] => Some(11usize),
+            [
+                "its",
+                "miracle",
+                "cost",
+                "is",
+                "equal",
+                "to",
+                "its",
+                "mana",
+                "cost",
+                "reduced",
+                "by",
+                ..,
+            ] => Some(11usize),
+            _ => None,
+        }) else {
+            return Ok(None);
+        };
+
+        let Some(cost_idx) = trailing_words.token_index_for_word_index(prefix_len) else {
+            return Ok(None);
+        };
+        let cost_tokens = trailing_tokens.get(cost_idx..).unwrap_or_default();
+        let Some((cost, used)) =
+            crate::runtime_backend::front_end::shared::util::leading_mana_cost_from_tokens(
+                cost_tokens,
+            )
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported miracle cost reduction clause (clause: '{}')",
+                trailing_word_refs.join(" ")
+            )));
+        };
+        if used != cost_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported miracle cost reduction clause (clause: '{}')",
+                trailing_word_refs.join(" ")
+            )));
+        }
+        let generic = cost.generic_mana_total();
+        if generic == 0 || cost.mana_value() != generic {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported miracle cost reduction clause (clause: '{}')",
+                trailing_word_refs.join(" ")
+            )));
+        }
+        Ok(Some(generic))
+    }
+
     fn parse_granted_alternative_cast_static(
         subject_tokens: &[OwnedLexToken],
         keyword_tokens: &[OwnedLexToken],
@@ -560,6 +629,16 @@ pub(crate) fn parse_granted_keyword_static_line(
                     return Ok(None);
                 }
                 return granted_emerge_abilities_from_subject(subject_tokens, condition);
+            }
+            ["miracle"] => {
+                let Some(reduction) = parse_granted_miracle_cost_reduction_tail(trailing_tokens)?
+                else {
+                    return Ok(None);
+                };
+                extract_grant_spec_from_subject(
+                    subject_tokens,
+                    crate::grant::Grantable::miracle_from_cards_mana_cost_reduced_by(reduction),
+                )?
             }
             ["escape"] => {
                 let Some(exile_count) = parse_granted_escape_cost_tail(trailing_tokens)? else {

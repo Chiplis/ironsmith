@@ -124,6 +124,15 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     )],
                 ))
             }
+            Self::MiracleFromCardManaCostReducedBy { reduction } => {
+                let mana_cost = card.mana_cost.clone()?;
+                if card.zone != Zone::Hand {
+                    return None;
+                }
+                Some(AlternativeCastingMethod::Miracle {
+                    cost: mana_cost.reduce_generic(*reduction),
+                })
+            }
             Self::EscapeFromCardManaCost { exile_count } => {
                 let mana_cost = card.mana_cost.clone()?;
                 if card.zone != Zone::Graveyard {

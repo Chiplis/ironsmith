@@ -624,6 +624,9 @@ where
                 DerivedAlternativeCast::EmergeFromCardManaCost => {
                     DerivedAlternativeCast::EmergeFromCardManaCost
                 }
+                DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction } => {
+                    DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction }
+                }
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
                 }
