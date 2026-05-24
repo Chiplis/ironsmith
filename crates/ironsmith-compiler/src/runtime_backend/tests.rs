@@ -10955,6 +10955,22 @@ fn rewrite_lexed_effect_sentence_preserves_non_vampire_sacrifice_filter() {
 }
 
 #[test]
+fn parse_target_opponent_puts_from_their_graveyard_compiles() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_501), "Target Opponent Put")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent puts a creature card of their choice from their graveyard onto the battlefield under your control.",
+        )
+        .expect("target-opponent put-from-graveyard sentence should compile");
+
+    let debug = format!("{built:?}");
+    assert!(
+        debug.contains("Target(Opponent)") || debug.contains("target_opponent"),
+        "expected target-opponent ownership context in compiled card, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_entrypoint_supports_create_for_each_creatures_died() {
     let text = "Create a Treasure token for each creature that died this turn.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify create-for-each effect");

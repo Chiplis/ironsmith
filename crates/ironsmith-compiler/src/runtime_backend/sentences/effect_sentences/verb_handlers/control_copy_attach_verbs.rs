@@ -1098,6 +1098,10 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let mut target = parse_target_phrase(&target_tokens)?;
+        if let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+        {
+            crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);
+        }
         if super::super::grammar::primitives::contains_phrase(
             dest_slice,
             &["from", "the", "command", "zone"],
