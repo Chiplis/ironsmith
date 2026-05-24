@@ -12074,6 +12074,22 @@ fn parse_destroy_target_three_or_more_colors_still_fails_loudly() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_time_counter_on_it_or_suspended_card_compiles() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Shivan Sand-Mage Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, choose one —\n• Remove two time counters from target permanent or suspended card.\n• Put two time counters on target permanent with a time counter on it or suspended card.",
+        )
+        .expect("time-counter or suspended-card clause should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("put two time counters on target permanent with a time counter on it or suspended card"),
+        "expected rendered text to preserve the counter-state suspended-card disjunction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ugin_colored_permanent_target_lines() {
     CardDefinitionBuilder::new(CardId::new(), "Ugin Variant")
         .card_types(vec![CardType::Planeswalker])
