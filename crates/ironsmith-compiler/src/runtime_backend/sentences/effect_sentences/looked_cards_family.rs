@@ -323,20 +323,21 @@ pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_i
     let after_first_clause = trim_commas(&action_tokens[after_first_from..]);
     let after_words = TokenWordView::new(&after_first_clause);
     let after_refs = after_words.word_refs();
-    let (tapped, second_start_words) =
-        if slice_starts_with(
-            &after_refs,
-            &["onto", "the", "battlefield", "tapped", "and"],
-        ) || slice_starts_with(&after_refs, &["onto", "battlefield", "tapped", "and"])
-        {
-            (true, 5usize)
-        } else if slice_starts_with(&after_refs, &["onto", "the", "battlefield", "and"])
-            || slice_starts_with(&after_refs, &["onto", "battlefield", "and"])
-        {
-            (false, 4usize)
-        } else {
-            return Ok(None);
-        };
+    let (tapped, second_start_words) = if slice_starts_with(
+        &after_refs,
+        &["onto", "the", "battlefield", "tapped", "and", "put"],
+    ) || slice_starts_with(
+        &after_refs,
+        &["onto", "battlefield", "tapped", "and", "put"],
+    ) {
+        (true, 5usize)
+    } else if slice_starts_with(&after_refs, &["onto", "the", "battlefield", "and", "put"])
+        || slice_starts_with(&after_refs, &["onto", "battlefield", "and", "put"])
+    {
+        (false, 4usize)
+    } else {
+        return Ok(None);
+    };
     let second_start = after_words
         .token_index_after_words(second_start_words)
         .unwrap_or(after_first_clause.len());
