@@ -38701,6 +38701,34 @@ fn card_fixer_parse_sacrifice_unless_it_escaped_keeps_escape_condition() {
 }
 
 #[test]
+fn card_fixer_parse_escapes_with_counter_line_lowers_to_escape_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Escape Counter Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Haste\nEscape-{R}, Exile three other cards from your graveyard.\nThis creature escapes with a +1/+1 counter on it.",
+        )
+        .expect("escape enters-with-counter line should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("EnterWithCountersIfCondition"),
+        "expected conditional enters-with-counters static ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisSpellEscaped"),
+        "expected escape condition to lower through ThisSpellEscaped, got {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("enters with a +1/+1 counter on it if this spell escaped"),
+        "expected escaped conditional enters-with-counter surface, got {rendered}"
+    );
+}
+
+#[test]
 fn card_fixer_parse_characteristic_defining_domain_counts_basic_land_types() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Domain Kavu Variant")
         .mana_cost(ManaCost::from_pips(vec![
