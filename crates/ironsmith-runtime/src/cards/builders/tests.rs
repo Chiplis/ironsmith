@@ -35797,6 +35797,23 @@ fn parse_craft_keyword_line_as_activated_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_craft_with_creature_keyword_line_as_activated_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Craft Creature Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text_allow_unsupported(
+            "Craft with creature {5}{G}{G} ({5}{G}{G}, Exile this artifact, Exile a creature you control or a creature card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
+        )
+        .expect("craft with creature should parse as a supported activated keyword ability");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Craft with creature {5}{G}{G}"),
+        "craft with creature should render structurally, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sphinxs_decree_next_turn_silence() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
         .card_types(vec![CardType::Sorcery])

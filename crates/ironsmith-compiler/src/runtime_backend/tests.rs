@@ -7290,6 +7290,25 @@ fn rewrite_keyword_craft_line_uses_supported_activated_keyword_lowering() {
 }
 
 #[test]
+fn rewrite_keyword_craft_line_supports_creature_material_clause() {
+    let tokens =
+        lex_line("Craft with creature {5}{G}{G}", 0).expect("rewrite lexer should classify craft line");
+
+    let parsed = super::activation_and_restrictions::parse_craft_line_lexed(&tokens)
+        .expect("craft line should parse")
+        .expect("craft line should produce an activated ability");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("Activated")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("Craft")
+            && debug.contains("Craft with creature {5}{G}{G}"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tables() {
     let color_tokens = lex_line("as this aura enters, choose a color.", 0)
         .expect("rewrite lexer should classify choose-color static line");
