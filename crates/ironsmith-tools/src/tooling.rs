@@ -535,6 +535,15 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
             ["as you activate this ability"].as_slice(),
             "as-you-activate-this-ability",
         ),
+        (
+            "target creature you control deals damage equal to its power",
+            [
+                "target creature you control",
+                "deals damage equal to its power",
+            ]
+            .as_slice(),
+            "target-creature-power-damage-source",
+        ),
     ];
     for (oracle_marker, compiled_markers, label) in dropped_required_all {
         if oracle.contains(oracle_marker)
@@ -641,11 +650,6 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
             ["second spell you cast each turn"].as_slice(),
             ["second spell"].as_slice(),
             "second-spell-each-turn",
-        ),
-        (
-            ["target creature you control deals damage equal to its power"].as_slice(),
-            ["target creature you control deals damage equal to its power"].as_slice(),
-            "target-creature-power-damage-source",
         ),
         (
             ["put into exile from the battlefield"].as_slice(),
@@ -3276,6 +3280,13 @@ CardDefinition {
         snapshot.normalized_oracle_text =
             "Destroy all permanents with the same name as that permanent.".to_string();
         snapshot.compiled_text = Some("Destroy all permanents with that name.".to_string());
+        assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
+
+        snapshot.normalized_oracle_text =
+            "Target creature you control deals damage equal to its power to target creature an opponent controls.".to_string();
+        snapshot.compiled_text = Some(
+            "Choose target creature you control. That creature deals damage equal to its power to target creature an opponent controls.".to_string(),
+        );
         assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
     }
 
