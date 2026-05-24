@@ -1293,11 +1293,16 @@ pub(crate) fn parse_activated_ability_subject(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let (owner_word_len, scope) = if slice_ends_with(&subject_words, &["activated", "abilities"]) {
-        (
-            subject_words.len().saturating_sub(2),
-            ActivatedAbilityScope::All,
-        )
+    let word_view = ActivationRestrictionCompatWords::new(tokens);
+    let owner_tokens = if slice_ends_with(&subject_words, &["activated", "abilities"]) {
+        let owner_word_len = subject_words.len().saturating_sub(2);
+        if owner_word_len == 0 {
+            return Ok(None);
+        }
+        let owner_end = word_view
+            .token_index_after_words(owner_word_len)
+            .unwrap_or(tokens.len());
+        trim_commas(&tokens[..owner_end])
     } else if slice_ends_with(
         &subject_words,
         &[
@@ -1310,21 +1315,69 @@ pub(crate) fn parse_activated_ability_subject(
             "costs",
         ],
     ) {
-        (
-            subject_words.len().saturating_sub(7),
-            ActivatedAbilityScope::TapCostOnly,
-        )
+        let owner_word_len = subject_words.len().saturating_sub(7);
+        if owner_word_len == 0 {
+            return Ok(None);
+        }
+        let owner_end = word_view
+            .token_index_after_words(owner_word_len)
+            .unwrap_or(tokens.len());
+        trim_commas(&tokens[..owner_end])
+    } else if slice_starts_with(&subject_words, &["activated", "abilities", "of"]) {
+        let Some(owner_start) = word_view.token_index_for_word_index(3) else {
+            return Ok(None);
+        };
+        trim_commas(&tokens[owner_start..])
+    } else if slice_starts_with(
+        &subject_words,
+        &[
+            "activated",
+            "abilities",
+            "with",
+            "t",
+            "in",
+            "their",
+            "costs",
+            "of",
+        ],
+    ) {
+        let Some(owner_start) = word_view.token_index_for_word_index(8) else {
+            return Ok(None);
+        };
+        trim_commas(&tokens[owner_start..])
     } else {
         return Ok(None);
     };
 
-    if owner_word_len == 0 {
-        return Ok(None);
-    }
-    let owner_end = ActivationRestrictionCompatWords::new(tokens)
-        .token_index_after_words(owner_word_len)
-        .unwrap_or(tokens.len());
-    let owner_tokens = trim_commas(&tokens[..owner_end]);
+    let scope = if slice_ends_with(
+        &subject_words,
+        &[
+            "activated",
+            "abilities",
+            "with",
+            "t",
+            "in",
+            "their",
+            "costs",
+        ],
+    ) || slice_starts_with(
+        &subject_words,
+        &[
+            "activated",
+            "abilities",
+            "with",
+            "t",
+            "in",
+            "their",
+            "costs",
+            "of",
+        ],
+    ) {
+        ActivatedAbilityScope::TapCostOnly
+    } else {
+        ActivatedAbilityScope::All
+    };
+
     if owner_tokens.is_empty() {
         return Ok(None);
     }
