@@ -1751,6 +1751,33 @@ impl StaticAbilityKind for PreventAllCombatDamageToSelf {
     }
 }
 
+/// "Prevent all damage that would be dealt to this creature."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllDamageToSelf;
+
+impl StaticAbilityKind for PreventAllDamageToSelf {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageToSelf
+    }
+
+    fn display(&self) -> String {
+        "Prevent all damage that would be dealt to this creature.".to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::DamageToSelfMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
 /// "Prevent all damage that would be dealt to this creature by creatures."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PreventAllDamageToSelfByCreatures;
@@ -5590,6 +5617,54 @@ mod tests {
             crate::events::cause::EventCause::combat_damage(source),
         );
         assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_all_damage_to_self_generates_replacement() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let protected = ObjectId::from_raw(42);
+        let source = ObjectId::from_raw(7);
+
+        let ability = PreventAllDamageToSelf;
+        let replacement = ability
+            .generate_replacement_effect(protected, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, protected, &game);
+
+        let combat_damage = DamageEvent::with_cause(
+            source,
+            DamageTarget::Object(protected),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(source),
+        );
+        assert!(matcher.matches_event(&combat_damage, &ctx));
+
+        let noncombat_damage = DamageEvent::with_cause(
+            source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(matcher.matches_event(&noncombat_damage, &ctx));
+
+        let wrong_target = DamageEvent::with_cause(
+            source,
+            DamageTarget::Player(alice),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&wrong_target, &ctx));
+
     }
 
     #[test]

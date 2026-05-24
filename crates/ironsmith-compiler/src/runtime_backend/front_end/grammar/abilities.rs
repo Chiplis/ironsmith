@@ -2498,6 +2498,50 @@ pub(crate) fn is_prevent_all_combat_damage_to_source_line_lexed(tokens: &[OwnedL
     )
 }
 
+pub(crate) fn is_during_your_turn_prevent_all_damage_to_source_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["during", "your", "turn"]),
+            opt(primitives::comma()),
+            primitives::phrase(&[
+                "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
+            ]),
+            primitives::phrase(&["this", "creature"]),
+            primitives::sentence_end(),
+        ),
+    )
+    .is_some()
+        || primitives::parse_prefix(
+            tokens,
+            (
+                primitives::phrase(&["during", "your", "turn"]),
+                opt(primitives::comma()),
+                primitives::phrase(&[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
+                ]),
+                primitives::phrase(&["this", "permanent"]),
+                primitives::sentence_end(),
+            ),
+        )
+        .is_some()
+        || primitives::parse_prefix(
+            tokens,
+            (
+                primitives::phrase(&["during", "your", "turn"]),
+                opt(primitives::comma()),
+                primitives::phrase(&[
+                    "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
+                ]),
+                primitives::phrase(&["it"]),
+                primitives::sentence_end(),
+            ),
+        )
+        .is_some()
+}
+
 pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
