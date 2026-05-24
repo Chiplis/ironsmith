@@ -658,6 +658,55 @@ pub(super) fn run_combined_static_line_family(
     }))
 }
 
+pub(super) fn run_non_turn_conditional_untap_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+    const SUFFIX: &str = "if it's not your turn, untap those creatures.";
+    if !lower.ends_with(SUFFIX) {
+        return Ok(None);
+    }
+
+    let marker = format!(". {SUFFIX}");
+    let Some(split_idx) = lower.rfind(marker.as_str()) else {
+        return Ok(None);
+    };
+    let Some(prefix) = raw.get(..split_idx) else {
+        return Ok(None);
+    };
+
+    let first_sentence = prefix.trim();
+    if first_sentence.is_empty() {
+        return Ok(None);
+    }
+
+    if !first_sentence
+        .to_ascii_lowercase()
+        .starts_with("creatures you control get ")
+    {
+        return Ok(None);
+    }
+
+    let first_line = rewrite_line_normalized(ctx.line, first_sentence.trim_end_matches('.'))?;
+    let Some(first_statement) = parse_statement_line_cst(&first_line)? else {
+        return Ok(None);
+    };
+
+    let second_line = rewrite_line_normalized(ctx.line, "If it's not your turn, untap them")?;
+    let Some(second_statement) = parse_statement_line_cst(&second_line)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(LineDispatchResult {
+        lines: vec![
+            RewriteLineCst::Statement(first_statement),
+            RewriteLineCst::Statement(second_statement),
+        ],
+        next_idx: ctx.idx + 1,
+    }))
+}
+
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
