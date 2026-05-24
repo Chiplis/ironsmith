@@ -30893,8 +30893,11 @@ fn describe_structural_equip_keyword(
     }
 
     let cost = describe_cost_list(activated.mana_cost.costs());
+    let qualifier = equip_target_qualifier_text(&attach.target);
     let mut rendered = if cost.trim().is_empty() || cost.eq_ignore_ascii_case("Free") {
         "Equip {0}".to_string()
+    } else if let Some(qualifier) = qualifier {
+        format!("Equip {qualifier} {cost}")
     } else {
         format!("Equip {cost}")
     };
@@ -32365,6 +32368,26 @@ fn is_target_creature_you_control(spec: &ChooseSpec) -> bool {
                 && filter.card_types.contains(&CardType::Creature)
         }
         _ => false,
+    }
+}
+
+fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
+    match spec {
+        ChooseSpec::Target(inner) => equip_target_qualifier_text(inner),
+        ChooseSpec::WithCount(inner, count) if count.is_single() => equip_target_qualifier_text(inner),
+        ChooseSpec::Object(filter) => {
+            if filter.zone != Some(Zone::Battlefield)
+                || filter.controller != Some(PlayerFilter::You)
+                || !filter.card_types.contains(&CardType::Creature)
+            {
+                return None;
+            }
+            if filter.subtypes.len() == 1 {
+                return Some(filter.subtypes[0].to_string());
+            }
+            None
+        }
+        _ => None,
     }
 }
 

@@ -547,6 +547,12 @@ pub(crate) fn parse_equip_line(
         return Ok(None);
     }
 
+    let first_mana_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, token)| mana_pips_from_token(token).map(|_| idx));
+
     let (mana_pips, saw_zero, saw_non_symbol) = tokens.iter().skip(1).fold(
         (Vec::new(), false, false),
         |(mut pips, mut saw_zero, mut saw_non_symbol), token| {
@@ -564,6 +570,52 @@ pub(crate) fn parse_equip_line(
     );
 
     if saw_non_symbol {
+        if let Some(cost_start_idx) = first_mana_idx {
+            let qualifier_tokens = trim_commas(&tokens[1..cost_start_idx]);
+            let cost_tokens = trim_commas(&tokens[cost_start_idx..]);
+            if !qualifier_tokens.is_empty() && !cost_tokens.is_empty() {
+                let Some(target_filter) = parse_equip_target_filter_qualifier(&qualifier_tokens)
+                else {
+                    return Ok(None);
+                };
+                let total_cost = parse_activation_cost(&cost_tokens)?;
+                let cost_text = total_cost
+                    .mana_cost()
+                    .map(|mana| mana.to_oracle())
+                    .unwrap_or_else(|| crate::runtime_backend::token_word_refs(&cost_tokens).join(" "));
+                let qualifier_text = keyword_title(
+                    &crate::runtime_backend::token_word_refs(&qualifier_tokens).join(" "),
+                );
+                let equip_text = format!("Equip {qualifier_text} {cost_text}");
+                let target = ChooseSpec::target(ChooseSpec::Object(target_filter));
+
+                return Ok(Some(ParsedAbility {
+                    ability: Ability {
+                        kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                            mana_cost: total_cost,
+                            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                                Effect::attach_to(target.clone()),
+                            ]),
+                            choices: vec![target.clone()],
+                            timing: ActivationTiming::SorcerySpeed,
+                            additional_restrictions: vec![],
+                            activation_restrictions: vec![],
+                            mana_output: None,
+                            activation_condition: None,
+                            mana_usage_restrictions: vec![],
+                            is_loyalty_ability: false,
+                        }),
+                        functional_zones: vec![Zone::Battlefield],
+                    }
+                    .into(),
+                    text: Some(equip_text),
+                    effects_ast: None,
+                    reference_imports: ReferenceImports::default(),
+                    trigger_spec: None,
+                }));
+            }
+        }
+
         let looks_like_cost_prefix = clause_words.get(1).is_some_and(|word| {
             parse_mana_symbol(word).is_ok()
                 || matches!(
@@ -673,6 +725,34 @@ pub(crate) fn parse_equip_line(
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
     }))
+}
+
+fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.is_empty() {
+        return None;
+    }
+    if words.last().copied() == Some("creature") {
+        let subtype_words = &words[..words.len().saturating_sub(1)];
+        if subtype_words.is_empty() {
+            return None;
+        }
+        if subtype_words.len() != 1 {
+            return None;
+        }
+        let subtype = parse_subtype_flexible(subtype_words[0])?;
+        let mut filter = ObjectFilter::creature().you_control();
+        push_unique(&mut filter.subtypes, subtype);
+        return Some(filter);
+    }
+
+    if words.len() != 1 {
+        return None;
+    }
+    let subtype = parse_subtype_flexible(words[0])?;
+    let mut filter = ObjectFilter::creature().you_control();
+    push_unique(&mut filter.subtypes, subtype);
+    Some(filter)
 }
 
 pub(crate) fn parse_equip_line_lexed(
