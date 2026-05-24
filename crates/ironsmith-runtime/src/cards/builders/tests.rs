@@ -36322,6 +36322,34 @@ fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_cloakwood_hermit_keeps_creature_card_graveyard_gate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cloakwood Hermit")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"At the beginning of your end step, if a creature card was put into your graveyard from anywhere this turn, create two tapped 1/1 green Squirrel creature tokens.\"",
+        )
+        .expect("Cloakwood Hermit should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CreatureCardPutIntoYourGraveyardThisTurn"),
+        "expected Cloakwood Hermit to keep the creature-card graveyard gate, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("at the beginning of your end step")
+            && rendered.contains("a creature card was put into your graveyard from anywhere this turn")
+            && rendered.contains("create two tapped 1/1 green squirrel creature tokens"),
+        "expected Cloakwood Hermit trigger and gate wording to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_choose_background_renders_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Background Partner Probe")
         .card_types(vec![CardType::Creature])

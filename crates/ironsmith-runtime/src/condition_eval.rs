@@ -525,6 +525,21 @@ fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
         })
 }
 
+fn creature_card_was_put_into_your_graveyard_this_turn(game: &GameState, player: PlayerId) -> bool {
+    let Some(player_state) = game.player(player) else {
+        return false;
+    };
+    player_state.graveyard.iter().any(|card_id| {
+        game.object(*card_id).is_some_and(|object| {
+            game.object_has_card_type(object.id, crate::types::CardType::Creature)
+                && game
+                    .turn_store
+                    .turn_history
+                    .object_was_put_into_graveyard_this_turn(object.stable_id)
+        })
+    })
+}
+
 fn object_matching_entered_battlefield_this_turn(
     game: &GameState,
     ctx: SharedConditionContext<'_>,
@@ -666,6 +681,9 @@ fn evaluate_condition_shared_core(
                 .turn_history
                 .total_creatures_died_this_turn()
                 >= *count,
+        ),
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => Some(
+            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
         ),
         Condition::CastSpellThisTurn => {
             Some(game.turn_store.turn_history.any_spell_was_cast_this_turn())
@@ -851,6 +869,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
         Condition::CreatureDiedThisTurn => {}
         Condition::CreatureDiedThisTurnOrMore(..) => {}
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {}
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
         Condition::OpponentLostLifeThisTurn => {}
@@ -1115,6 +1134,9 @@ pub fn evaluate_condition_external(
                 .turn_history
                 .total_creatures_died_this_turn()
                 >= *count
+        }
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
+            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller)
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2320,6 +2342,9 @@ fn evaluate_condition_simple(
                 .total_creatures_died_this_turn()
                 >= *count
         }
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
+            creature_card_was_put_into_your_graveyard_this_turn(game, controller)
+        }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -2957,6 +2982,9 @@ fn evaluate_condition(
             .turn_history
             .total_creatures_died_this_turn()
             >= *count),
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => Ok(
+            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
+        ),
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(player_had_land_enter_battlefield_this_turn(game, player_id))

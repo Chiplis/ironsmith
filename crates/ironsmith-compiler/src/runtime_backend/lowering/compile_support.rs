@@ -496,6 +496,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::YourTurn => Condition::YourTurn,
         PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
+        PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn => {
+            Condition::CreatureCardPutIntoYourGraveyardThisTurn
+        }
         PredicateAst::PermanentLeftBattlefieldThisTurn => {
             Condition::PermanentLeftBattlefieldThisTurn
         }

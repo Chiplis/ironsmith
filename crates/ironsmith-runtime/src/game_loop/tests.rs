@@ -935,6 +935,107 @@ fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn cloakwood_hermit_triggers_at_end_step_after_creature_card_hits_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let cloakwood = CardDefinitionBuilder::new(CardId::from_raw(81_100), "Cloakwood Hermit")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"At the beginning of your end step, if a creature card was put into your graveyard from anywhere this turn, create two tapped 1/1 green Squirrel creature tokens.\"",
+        )
+        .expect("Cloakwood Hermit should parse");
+    game.create_object_from_definition(&cloakwood, alice, Zone::Battlefield);
+
+    let commander = CardBuilder::new(CardId::from_raw(81_101), "Cloakwood Commander")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.refresh_continuous_state();
+
+    let creature_card = CardBuilder::new(CardId::from_raw(81_102), "Fallen Scout")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_card_id = game.create_object_from_card(&creature_card, alice, Zone::Hand);
+    game
+        .move_object_by_effect(creature_card_id, Zone::Graveyard)
+        .expect("creature card should move to graveyard this turn");
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Cloakwood Hermit should grant one end-step trigger when condition is met"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Cloakwood Hermit trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Cloakwood Hermit trigger should resolve");
+
+    let squirrel_ids = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| game.object(*id).is_some_and(|obj| obj.name == "Squirrel"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        squirrel_ids.len(),
+        2,
+        "Cloakwood Hermit should create two Squirrel tokens"
+    );
+    assert!(
+        squirrel_ids.iter().all(|id| game.is_tapped(*id)),
+        "Cloakwood Hermit tokens should enter tapped"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloakwood_hermit_does_not_trigger_without_creature_card_in_graveyard_this_turn() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let cloakwood = CardDefinitionBuilder::new(CardId::from_raw(81_103), "Cloakwood Hermit")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"At the beginning of your end step, if a creature card was put into your graveyard from anywhere this turn, create two tapped 1/1 green Squirrel creature tokens.\"",
+        )
+        .expect("Cloakwood Hermit should parse");
+    game.create_object_from_definition(&cloakwood, alice, Zone::Battlefield);
+
+    let commander = CardBuilder::new(CardId::from_raw(81_104), "Cloakwood Commander")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.refresh_continuous_state();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Cloakwood Hermit should not trigger without a creature card put into your graveyard this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_them() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

@@ -10241,6 +10241,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::CreatureDiedThisTurnOrMore(count) => {
             format!("{count} or more creatures died this turn")
         }
+        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
+            "a creature card was put into your graveyard from anywhere this turn".to_string()
+        }
         Condition::CastSpellThisTurn => "a spell was cast this turn".to_string(),
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_player_filter(player);
