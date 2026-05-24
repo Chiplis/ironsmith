@@ -1604,6 +1604,18 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::PlayerHasMoreLifeThanYou { player });
     }
 
+    if filtered[0] == "you"
+        && matches!(filtered.get(1).copied(), Some("have" | "has"))
+        && filtered.get(2).copied() == Some("more")
+        && filtered.get(3).copied() == Some("life")
+        && filtered.get(4).copied() == Some("than")
+        && matches!(filtered.get(5).copied(), Some("opponent" | "opponents"))
+    {
+        return Ok(PredicateAst::PlayerHasLessLifeThanYou {
+            player: PlayerAst::Opponent,
+        });
+    }
+
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
         && filtered.len() == subject_len + 5
@@ -3193,6 +3205,26 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::PlayerWouldBeginExtraTurn {
+                player: PlayerAst::Opponent,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_have_more_life_than_opponent() -> Result<(), CardTextError> {
+        let tokens = lex_line("if you have more life than an opponent", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerHasLessLifeThanYou {
                 player: PlayerAst::Opponent,
             }
         );
