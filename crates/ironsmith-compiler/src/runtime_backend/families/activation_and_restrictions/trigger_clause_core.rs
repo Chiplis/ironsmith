@@ -2412,6 +2412,11 @@ pub(crate) fn parse_trigger_clause_lexed(
             {
                 return Ok(TriggerSpec::DealsNoncombatDamageToPlayer { source, player });
             }
+            if let Some(player) = parse_trigger_subject_player_filter(&target_words)
+                && let Some(source) = parse_trigger_subject_filter_lexed(subject_tokens)?
+            {
+                return Ok(TriggerSpec::DealsDamageToPlayer { source, player });
+            }
         }
         return Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
             Some(filter) => TriggerSpec::DealsDamage(filter),

@@ -154,6 +154,10 @@ pub(crate) enum TriggerSpec {
     ThisDealsCombatDamage,
     ThisDealsCombatDamageTo(ObjectFilter),
     DealsDamage(ObjectFilter),
+    DealsDamageToPlayer {
+        source: ObjectFilter,
+        player: PlayerFilter,
+    },
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
