@@ -76,22 +76,30 @@ impl TriggerMatcher for DealsDamageTrigger {
     }
 
     fn display(&self) -> String {
+        let source_description = if self.filter == ObjectFilter::default() {
+            "a source".to_string()
+        } else {
+            self.filter.description()
+        };
         if self.combat_only {
-            format!("Whenever {} deals combat damage", self.filter.description())
+            format!("Whenever {} deals combat damage", source_description)
         } else if self.noncombat_only {
             if self.damaged_player.is_some() {
                 format!(
                     "Whenever {} deals noncombat damage to a player",
-                    self.filter.description()
+                    source_description
                 )
             } else {
-                format!(
-                    "Whenever {} deals noncombat damage",
-                    self.filter.description()
-                )
+                format!("Whenever {} deals noncombat damage", source_description)
             }
+        } else if let Some(player) = &self.damaged_player {
+            format!(
+                "Whenever {} deals damage to {}",
+                source_description,
+                player.description()
+            )
         } else {
-            format!("Whenever {} deals damage", self.filter.description())
+            format!("Whenever {} deals damage", source_description)
         }
     }
 }

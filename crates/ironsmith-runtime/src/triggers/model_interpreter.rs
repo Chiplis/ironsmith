@@ -176,6 +176,11 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_deals_combat_damage_to_player()
         }
         TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
+        TriggerKind::DealsDamageToPlayer { source, player } => {
+            let mut trigger = crate::triggers::combat::DealsDamageTrigger::new(source);
+            trigger.damaged_player = Some(player);
+            crate::triggers::Trigger::new(trigger)
+        }
         TriggerKind::DealsNoncombatDamageToPlayer { source, player } => {
             crate::triggers::Trigger::deals_noncombat_damage_to_player(source, player)
         }

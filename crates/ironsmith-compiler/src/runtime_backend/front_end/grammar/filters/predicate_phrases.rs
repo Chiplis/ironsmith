@@ -1200,6 +1200,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(prefix_len) = source_has_counter_prefix_len
         && raw_words.len() >= prefix_len + 4
+        && !(raw_words.get(prefix_len + 1) == Some(&"or")
+            && raw_words.get(prefix_len + 2) == Some(&"more"))
         && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
             *word == "counter" || *word == "counters"
         })

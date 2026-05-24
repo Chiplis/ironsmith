@@ -4393,6 +4393,45 @@ fn test_parse_nest_of_scarabs_style_trigger_and_token_amount() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_damage_trigger_with_source_subject() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Source Subject Damage Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a source deals damage to you, put a filibuster counter on this creature.",
+        )
+        .expect("source-subject damage trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("DealsDamageTrigger")
+            && debug.contains("filter: ObjectFilter")
+            && debug.contains("damaged_player: Some(")
+            && debug.contains("You")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("filibuster"),
+        "expected a generic source-damage trigger with filibuster counter effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_source_has_five_or_more_counters_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Source Counter Threshold Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, put a filibuster counter on this creature. Then if this creature has five or more filibuster counters on it, you win the game.",
+        )
+        .expect("source counter threshold condition should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("SourceHasCounterAtLeast") && debug.contains("count: 5"),
+        "expected five-or-more source counter threshold, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
         .card_types(vec![CardType::Enchantment])

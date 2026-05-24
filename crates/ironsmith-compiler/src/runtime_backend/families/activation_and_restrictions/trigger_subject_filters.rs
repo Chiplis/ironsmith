@@ -371,6 +371,9 @@ pub(crate) fn parse_trigger_subject_filter(
         filter.controller = Some(PlayerFilter::You);
         return Ok(Some(filter));
     }
+    if matches!(subject_words.as_slice(), ["a", "source"] | ["source"] | ["any", "source"]) {
+        return Ok(Some(ObjectFilter::default()));
+    }
     if matches!(
         subject_words.as_slice(),
         ["a", "source", "an", "opponent", "controls"] | ["source", "an", "opponent", "controls"]
@@ -528,6 +531,9 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         let mut filter = ObjectFilter::default();
         filter.controller = Some(PlayerFilter::You);
         return Ok(Some(filter));
+    }
+    if matches!(subject_words.as_slice(), ["a", "source"] | ["source"] | ["any", "source"]) {
+        return Ok(Some(ObjectFilter::default()));
     }
     if matches!(
         subject_words.as_slice(),

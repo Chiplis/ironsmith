@@ -88,6 +88,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::this_deals_combat_damage_to(filter)
         }
         TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
+        TriggerSpec::DealsDamageToPlayer { source, player } => {
+            Trigger::deals_damage_to_player(source, player)
+        }
         TriggerSpec::DealsNoncombatDamageToPlayer { source, player } => {
             Trigger::deals_noncombat_damage_to_player(source, player)
         }
