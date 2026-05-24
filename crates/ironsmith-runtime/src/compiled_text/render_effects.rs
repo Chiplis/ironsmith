@@ -11100,6 +11100,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(reveal) =
                 filtered[idx + 2].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(conditional) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(shuffle) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(compact) =
+                describe_look_at_top_reveal_matching_bargain_battlefield_else_hand(
+                    look_at_top,
+                    choose,
+                    reveal,
+                    conditional,
+                    shuffle,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::RevealTaggedEffect>()
             && let Some((_, move_chosen)) = for_each_tagged_for_compaction(filtered[idx + 3])
             && let Some(rest) = filtered[idx + 4]
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
@@ -19745,6 +19769,79 @@ fn describe_look_at_top_then_cast_matching_rest_bottom(
 
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} cast {chosen} from among them without paying its mana cost. Put the rest on the bottom of {owner} library{order_text}"
+    ))
+}
+
+fn move_tag_to_zone(effect: &Effect, tag: &crate::TagKey, zone: Zone) -> bool {
+    fn unwrap(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap(tagged.effect.as_ref());
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap(with_id.effect.as_ref());
+        }
+        effect
+    }
+
+    unwrap(effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_to_zone| {
+            move_to_zone.zone == zone
+                && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if *found == *tag)
+        })
+}
+
+fn describe_look_at_top_reveal_matching_bargain_battlefield_else_hand(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: &crate::effects::RevealTaggedEffect,
+    conditional: &crate::effects::ConditionalEffect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+) -> Option<String> {
+    if reveal.tag != choose.tag
+        || shuffle.player != look_at_top.player
+        || !matches!(
+            &conditional.condition,
+            Condition::ThisSpellPaidLabel(label) if label.eq_ignore_ascii_case("bargain")
+        )
+        || conditional.if_true.len() != 1
+        || conditional.if_false.len() != 1
+        || !move_tag_to_zone(&conditional.if_true[0], &choose.tag, Zone::Battlefield)
+        || !move_tag_to_zone(&conditional.if_false[0], &choose.tag, Zone::Hand)
+    {
+        return None;
+    }
+    let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == look_at_top.tag
+    });
+    if !references_looked || choose.count.min != 0 {
+        return None;
+    }
+
+    let mut base_filter = choose.filter.clone();
+    base_filter.zone = None;
+    base_filter.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == look_at_top.tag)
+    });
+    let mut filter_text = base_filter.description();
+    if !filter_text.contains("card") {
+        filter_text.push_str(" cards");
+    }
+    let choice_text = if let Some(max) = choose.count.max {
+        let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
+        format!("up to {max_text} {filter_text}")
+    } else {
+        format!("any number of {filter_text}")
+    };
+
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&choose.chooser);
+    let (count_text, noun, count_where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. You may reveal {choice_text} from among them. If this spell was bargained, put the revealed cards onto the battlefield. Otherwise, put the revealed cards into {hand} hand. Shuffle {owner} library"
     ))
 }
 

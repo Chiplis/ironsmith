@@ -9175,9 +9175,10 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
             let subject = if subject.eq_ignore_ascii_case("permanent")
-                && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                })
+                && filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
             {
                 "that permanent"
             } else {
@@ -9191,9 +9192,10 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
             let subject = if subject.eq_ignore_ascii_case("permanent")
-                && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                })
+                && filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
             {
                 "that permanent"
             } else {
@@ -9210,9 +9212,10 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 .strip_prefix("target ")
                 .unwrap_or(description.as_str());
             let subject = if subject.eq_ignore_ascii_case("permanent")
-                && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                })
+                && filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
             {
                 "that permanent"
             } else {
@@ -11152,7 +11155,8 @@ mod tests {
 
     #[test]
     fn describe_countered_permanent_condition_uses_countered_this_way_surface() {
-        let condition = Condition::TaggedObjectMatches(TagKey::from("countered_0"), ObjectFilter::permanent());
+        let condition =
+            Condition::TaggedObjectMatches(TagKey::from("countered_0"), ObjectFilter::permanent());
 
         assert_eq!(
             describe_condition(&condition),

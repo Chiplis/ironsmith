@@ -5598,6 +5598,28 @@ fn scoped_revealed_this_way_choice_does_not_default_to_battlefield() {
 }
 
 #[test]
+fn look_at_top_reveal_up_to_cards_bargain_branch_tracks_revealed_subset() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thunderous Debut Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Bargain\nLook at the top twenty cards of your library. You may reveal up to two creature cards from among them. If this spell was bargained, put the revealed cards onto the battlefield. Otherwise, put the revealed cards into your hand. Then shuffle.",
+        )
+        .expect("bargain reveal subset branch should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("max: Some(2)")
+            && debug
+                .contains("card_types: [\n                                            Creature")
+            && debug.contains("ThisSpellPaidLabel(\n                                \"Bargain\"")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("zone: Hand"),
+        "expected revealed creature subset to drive bargain battlefield/hand branch, got {debug}"
+    );
+}
+
+#[test]
 fn bare_exiled_cards_in_sequence_bind_to_recent_exiled_result() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Recent Exiled Cards Variant")
         .card_types(vec![CardType::Sorcery])
@@ -7348,8 +7370,8 @@ fn rewrite_keyword_craft_line_uses_supported_activated_keyword_lowering() {
 
 #[test]
 fn rewrite_keyword_craft_line_supports_creature_material_clause() {
-    let tokens =
-        lex_line("Craft with creature {5}{G}{G}", 0).expect("rewrite lexer should classify craft line");
+    let tokens = lex_line("Craft with creature {5}{G}{G}", 0)
+        .expect("rewrite lexer should classify craft line");
 
     let parsed = super::activation_and_restrictions::parse_craft_line_lexed(&tokens)
         .expect("craft line should parse")

@@ -33211,7 +33211,9 @@ fn parse_skyclave_apparition_where_x_uses_exiled_card_mana_value() {
 fn parse_where_x_amount_of_energy_you_have() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Razorfield Ripper Variant")
         .card_types(vec![CardType::Instant])
-        .parse_text("Target creature gets +X/+X until end of turn, where X is the amount of {E} you have.")
+        .parse_text(
+            "Target creature gets +X/+X until end of turn, where X is the amount of {E} you have.",
+        )
         .expect("where-x energy amount clause should parse");
 
     let debug = format!("{:?}", def.spell_effect);

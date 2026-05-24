@@ -200,6 +200,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
             generic_subject_verb_sequences::quads::parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom,
     },
     SequenceRuleDef {
+        name: "look-at-top-may-reveal-match-bargain-battlefield-else-hand-then-shuffle",
+        feature_tag: Some("looked-cards-bargain-branch"),
+        priority: 428,
+        consumed_sentences: 5,
+        predicate: first_word_look,
+        parser:
+            generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
         name: "choose-land-or-nonland-consult-hand-bottom",
         feature_tag: Some("consult-choice-kind"),
         priority: 341,

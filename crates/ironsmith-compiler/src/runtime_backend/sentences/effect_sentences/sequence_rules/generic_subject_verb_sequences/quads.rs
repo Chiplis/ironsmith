@@ -7,8 +7,13 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
+use crate::effect::ChoiceCount;
+use crate::filter::TaggedObjectConstraint;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::grammar::primitives::TokenWordView;
+use crate::runtime_backend::util::{helper_tag_for_tokens, parse_number, trim_commas};
+use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
 fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
@@ -135,6 +140,41 @@ fn then_shuffle(tokens: &[crate::runtime_backend::front_end::lexer::OwnedLexToke
     words == ["then", "shuffle"] || words == ["shuffle"]
 }
 
+fn parse_may_reveal_up_to_from_looked_cards(
+    tokens: &[crate::runtime_backend::front_end::lexer::OwnedLexToken],
+) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    if !words.starts_with(&["you", "may", "reveal", "up", "to"]) {
+        return Ok(None);
+    }
+
+    let word_view = TokenWordView::new(&tokens);
+    let Some(count_start) = word_view.token_index_for_word_index(5) else {
+        return Ok(None);
+    };
+    let (count, count_used) = parse_number(&tokens[count_start..]).ok_or_else(|| {
+        CardTextError::ParseError("unable to parse reveal count from looked cards".to_string())
+    })?;
+    let filter_start = count_start + count_used;
+    let Some(from_among_word_idx) = word_view.find_phrase_start(&["from", "among", "them"]) else {
+        return Ok(None);
+    };
+    let filter_end = word_view
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(tokens.len());
+    let mut filter =
+        effect_sentences::parse_looked_card_choice_filter(&tokens[filter_start..filter_end])
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to parse reveal filter from looked cards".to_string(),
+                )
+            })?;
+    filter.zone = Some(Zone::Library);
+
+    Ok(Some((filter, ChoiceCount::up_to(count as usize))))
+}
+
 pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -222,6 +262,100 @@ pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
             chooser,
             battlefield_filter,
             tapped,
+        ),
+    ]))
+}
+
+pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        effect_sentences::parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+    let Some((mut filter, reveal_count)) =
+        parse_may_reveal_up_to_from_looked_cards(sentences[sentence_idx + 1].lowered())?
+    else {
+        return Ok(None);
+    };
+
+    let third_words =
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 2].lowered());
+    let fourth_words =
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 3].lowered());
+    if !third_words.starts_with(&["if", "this", "spell", "was", "bargained"])
+        || !contains_word_sequence(
+            &third_words,
+            &[
+                "put",
+                "the",
+                "revealed",
+                "cards",
+                "onto",
+                "the",
+                "battlefield",
+            ],
+        )
+        || !fourth_words.starts_with(&[
+            "otherwise",
+            "put",
+            "the",
+            "revealed",
+            "cards",
+            "into",
+            "your",
+            "hand",
+        ])
+        || !then_shuffle(sentences[sentence_idx + 4].lowered())
+    {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "revealed");
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag),
+        EffectAst::ChooseObjects {
+            filter,
+            count: reveal_count,
+            count_value: None,
+            player,
+            tag: revealed_tag.clone(),
+        },
+        EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()),
+        EffectAst::Conditional {
+            predicate: PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+            if_true: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(revealed_tag.clone(), None),
+                Zone::Battlefield,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(revealed_tag, None),
+                Zone::Hand,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
         ),
     ]))
 }

@@ -648,7 +648,10 @@ mod tests {
 
     #[test]
     fn parse_negated_object_restriction_clause_supports_activated_abilities_of_that_permanent() {
-        let tokens = tokenize_line("Activated abilities of that permanent can't be activated.", 0);
+        let tokens = tokenize_line(
+            "Activated abilities of that permanent can't be activated.",
+            0,
+        );
 
         let parsed = parse_negated_object_restriction_clause(&tokens)
             .expect("parse activated-abilities restriction")
