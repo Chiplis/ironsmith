@@ -12607,6 +12607,21 @@ fn rewrite_grammar_no_permanents_left_battlefield_this_turn_predicate_parses() {
 }
 
 #[test]
+fn rewrite_grammar_that_equipment_was_attached_to_creature_predicate_parses() {
+    let tokens = lex_line("that Equipment was attached to a creature", 0)
+        .expect("rewrite lexer should classify attachment-history predicate");
+
+    let parsed = super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("TaggedMatches"), "{debug}");
+    assert!(debug.contains("\"it\""), "{debug}");
+    assert!(debug.contains("Equipment"), "{debug}");
+    assert!(debug.contains("AttachedTo"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[test]
 fn rewrite_parse_subject_player_with_most_cards_in_hand() {
     let tokens = lex_line("the player who has the most cards in hand", 0)
         .expect("rewrite lexer should classify most-cards subject");

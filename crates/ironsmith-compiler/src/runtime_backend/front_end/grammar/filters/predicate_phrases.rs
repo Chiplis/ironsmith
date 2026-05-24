@@ -2327,6 +2327,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol });
     }
 
+    if filtered.len() >= 6
+        && filtered[0] == "that"
+        && filtered[1] == "equipment"
+        && filtered[2] == "was"
+        && filtered[3] == "attached"
+        && filtered[4] == "to"
+    {
+        let attachment_tokens = std::iter::once(OwnedLexToken::word(
+            "equipment".to_string(),
+            TextSpan::synthetic(),
+        ))
+        .chain(filtered[3..].iter().map(|word| {
+            OwnedLexToken::word((*word).to_string(), TextSpan::synthetic())
+        }))
+        .collect::<Vec<_>>();
+        let filter = parse_object_filter(&attachment_tokens, false)?;
+        return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));
+    }
+
     if filtered.len() >= 5
         && matches!(
             filtered.as_slice(),
