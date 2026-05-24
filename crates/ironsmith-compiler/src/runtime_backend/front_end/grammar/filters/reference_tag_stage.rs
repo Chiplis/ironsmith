@@ -440,13 +440,21 @@ pub(super) fn parse_object_filter_inner(
             all_words.join(" ")
         )));
     }
-    if contains_any_filter_phrase(
+    let has_counter_state_or_clause = contains_any_filter_phrase(
         &all_words,
         &[
             &["counter", "on", "it", "or"],
             &["counter", "on", "them", "or"],
         ],
-    ) {
+    );
+    let has_supported_suspended_disjunction = contains_any_filter_phrase(
+        &all_words,
+        &[
+            &["or", "suspended", "card"],
+            &["or", "suspended", "cards"],
+        ],
+    );
+    if has_counter_state_or_clause && !has_supported_suspended_disjunction {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-state object filter (clause: '{}')",
             all_words.join(" ")
