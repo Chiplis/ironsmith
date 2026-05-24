@@ -3025,6 +3025,50 @@ pub(crate) fn parse_trigger_clause_lexed(
                 words.join(" ")
             )))
         }
+        "turn"
+            if words.len() >= 4 && slice_ends_with(&words, &["dies", "during", "your", "turn"]) =>
+        {
+            let dies_word_idx = words.len().saturating_sub(4);
+            let dies_token_idx = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(dies_word_idx)
+                .unwrap_or(tokens.len());
+            let mut subject_tokens = &tokens[..dies_token_idx];
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            let mut other = false;
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+            {
+                other = true;
+                subject_tokens = &subject_tokens[1..];
+            }
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+            {
+                other = true;
+                subject_tokens = &subject_tokens[1..];
+            }
+            if subject_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing subject in dies-during-turn trigger clause (clause: '{}')",
+                    words.join(" ")
+                )));
+            }
+            let filter = parse_object_filter_lexed(subject_tokens, other).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported dies-during-turn trigger subject filter (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            Ok(TriggerSpec::DiesDuringTurn {
+                filter,
+                one_or_more,
+                during_turn: PlayerFilter::You,
+            })
+        }
         _ if slice_contains(&words, &"beginning")
             && slice_contains(&words, &"end")
             && slice_contains(&words, &"step") =>

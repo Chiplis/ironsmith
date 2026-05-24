@@ -223,6 +223,11 @@ pub(crate) enum TriggerSpec {
     LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DiesOneOrMore(ObjectFilter),
+    DiesDuringTurn {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_turn: PlayerFilter,
+    },
     HauntedCreatureDies,
     PutIntoGraveyard(ObjectFilter),
     PutIntoGraveyardOneOrMore(ObjectFilter),

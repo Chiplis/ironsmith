@@ -582,7 +582,9 @@ pub(crate) fn parse_equip_line(
                 let cost_text = total_cost
                     .mana_cost()
                     .map(|mana| mana.to_oracle())
-                    .unwrap_or_else(|| crate::runtime_backend::token_word_refs(&cost_tokens).join(" "));
+                    .unwrap_or_else(|| {
+                        crate::runtime_backend::token_word_refs(&cost_tokens).join(" ")
+                    });
                 let qualifier_text = keyword_title(
                     &crate::runtime_backend::token_word_refs(&qualifier_tokens).join(" "),
                 );

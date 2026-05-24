@@ -2348,7 +2348,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             " until end of turn. If it's not your turn, untap those creatures.",
         );
     }
-    let preserve_plural_creatures_you_control = normalized.contains("from the command zone this game")
+    let preserve_plural_creatures_you_control = normalized
+        .contains("from the command zone this game")
         || normalized
             .to_ascii_lowercase()
             .contains("if it is not your turn, untap them");

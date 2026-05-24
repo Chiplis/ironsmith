@@ -2349,9 +2349,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "equipment".to_string(),
             TextSpan::synthetic(),
         ))
-        .chain(filtered[3..].iter().map(|word| {
-            OwnedLexToken::word((*word).to_string(), TextSpan::synthetic())
-        }))
+        .chain(
+            filtered[3..]
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic())),
+        )
         .collect::<Vec<_>>();
         let filter = parse_object_filter(&attachment_tokens, false)?;
         return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));

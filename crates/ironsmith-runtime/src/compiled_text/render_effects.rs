@@ -10759,8 +10759,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(grant_play) =
                 filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
-            && let Some(grant_free_cast) = filtered[idx + 2]
-                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            && let Some(grant_free_cast) =
+                filtered[idx + 2]
+                    .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
             && let Some(compact) = describe_exile_top_then_play_without_paying_mana(
                 exile_top,
                 grant_play,
@@ -18672,7 +18673,11 @@ fn describe_exile_top_then_play_without_paying_mana(
     }
 
     let (count_text, noun, singular_count) = describe_look_count_and_noun(&exile_top.count);
-    let cards_text = if singular_count { "that card" } else { "those cards" };
+    let cards_text = if singular_count {
+        "that card"
+    } else {
+        "those cards"
+    };
     let mana_cost_text = if singular_count {
         "its mana cost"
     } else {
@@ -29364,28 +29369,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text = if crate::cards::is_sentence_helper_tag(
-            grant_play_tagged.tag.as_str(),
-            "exiled",
-        ) {
-            "those cards".to_string()
-        } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
-            || grant_play_tagged.tag.as_str().starts_with("__source_")
-            || grant_play_tagged.tag.as_str() == "__it__"
-            || matches!(
-                grant_play_tagged.tag.as_str(),
-                "exiled" | "revealed" | "looked" | "chosen" | "searched"
-            )
-            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
-            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
-            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
-            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
-            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
-        {
-            "that card".to_string()
-        } else {
-            format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
-        };
+        let object_text =
+            if crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled") {
+                "those cards".to_string()
+            } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
+                || grant_play_tagged.tag.as_str().starts_with("__source_")
+                || grant_play_tagged.tag.as_str() == "__it__"
+                || matches!(
+                    grant_play_tagged.tag.as_str(),
+                    "exiled" | "revealed" | "looked" | "chosen" | "searched"
+                )
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
+            {
+                "that card".to_string()
+            } else {
+                format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
+            };
         if grant_play_tagged.allow_any_color_for_cast {
             if helper_tag
                 && !grant_play_tagged.allow_land
@@ -32374,7 +32377,9 @@ fn is_target_creature_you_control(spec: &ChooseSpec) -> bool {
 fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
     match spec {
         ChooseSpec::Target(inner) => equip_target_qualifier_text(inner),
-        ChooseSpec::WithCount(inner, count) if count.is_single() => equip_target_qualifier_text(inner),
+        ChooseSpec::WithCount(inner, count) if count.is_single() => {
+            equip_target_qualifier_text(inner)
+        }
         ChooseSpec::Object(filter) => {
             if filter.zone != Some(Zone::Battlefield)
                 || filter.controller != Some(PlayerFilter::You)

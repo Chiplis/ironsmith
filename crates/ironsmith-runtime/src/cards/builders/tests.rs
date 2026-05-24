@@ -35510,8 +35510,7 @@ fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_zealous_display_non_turn_conditional_untap_clause() {
-    let oracle =
-        "Creatures you control get +2/+0 until end of turn. If it's not your turn, untap those creatures.";
+    let oracle = "Creatures you control get +2/+0 until end of turn. If it's not your turn, untap those creatures.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Zealous Display")
         .card_types(vec![CardType::Instant])
         .parse_text(oracle)

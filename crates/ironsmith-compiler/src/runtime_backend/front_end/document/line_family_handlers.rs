@@ -230,8 +230,10 @@ pub(super) fn run_split_top_look_and_top_land_play_line_family(
         return Ok(None);
     }
 
-    let top_card_line =
-        rewrite_line_normalized(ctx.line, "You may look at the top card of your library any time.")?;
+    let top_card_line = rewrite_line_normalized(
+        ctx.line,
+        "You may look at the top card of your library any time.",
+    )?;
     let play_lands_line =
         rewrite_line_normalized(ctx.line, "You may play lands from the top of your library.")?;
 

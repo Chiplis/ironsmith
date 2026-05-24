@@ -2679,8 +2679,8 @@ fn rewrite_zone_counter_helpers_parse_equal_to_named_source_power_counter_amount
     )
     .expect("rewrite lexer should classify source-power counter clause");
 
-    let parsed = parse_effect_sentence_lexed(&tokens)
-        .expect("source-power counter clause should parse");
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("source-power counter clause should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PutCounters"), "{debug}");
@@ -8514,6 +8514,8 @@ fn rewrite_lexed_vote_sentence_sequences_keep_elrond_vote_branches() {
 fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     let dies_tokens = lex_line("another creature dies", 0)
         .expect("rewrite lexer should classify dies trigger probe");
+    let dies_during_turn_tokens = lex_line("a Mutant you control dies during your turn", 0)
+        .expect("rewrite lexer should classify dies-during-turn trigger probe");
     let upkeep_tokens = lex_line("the beginning of your upkeep", 0)
         .expect("rewrite lexer should classify upkeep trigger probe");
     let etb_tokens = lex_line(
@@ -8551,6 +8553,15 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             &dies_tokens,
         ),
         Ok(crate::cards::builders::TriggerSpec::Dies(_))
+    ));
+    assert!(matches!(
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &dies_during_turn_tokens,
+        ),
+        Ok(crate::cards::builders::TriggerSpec::DiesDuringTurn {
+            during_turn: crate::target::PlayerFilter::You,
+            ..
+        })
     ));
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(

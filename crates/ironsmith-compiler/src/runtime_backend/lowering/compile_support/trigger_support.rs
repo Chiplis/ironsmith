@@ -175,6 +175,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 .filter(filter)
                 .count(crate::triggers::CountMode::OneOrMore),
         ),
+        TriggerSpec::DiesDuringTurn {
+            filter,
+            one_or_more,
+            during_turn,
+        } => {
+            let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .during_turn(during_turn);
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
         TriggerSpec::PutIntoGraveyardOneOrMore(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()
