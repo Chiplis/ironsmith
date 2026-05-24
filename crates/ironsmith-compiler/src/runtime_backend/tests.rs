@@ -5000,6 +5000,11 @@ fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
 fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
     let flashback_tokens = lex_line("Flashback {2}{R}", 0)
         .expect("rewrite lexer should classify flashback keyword line");
+    let affinity_tokens = lex_line(
+        "Affinity for Equipment (This spell costs {1} less to cast for each Equipment you control.)",
+        0,
+    )
+    .expect("rewrite lexer should classify affinity keyword line");
     let cost_probe_tokens = lex_line("If it is night, this spell costs {2} less to cast.", 0)
         .expect("rewrite lexer should classify this-spell cost probe");
 
@@ -5009,6 +5014,14 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
             actions.as_slice(),
             [crate::cards::builders::KeywordAction::MarkerText(text)]
                 if text == "Flashback {2}{R}"
+        )
+    ));
+    assert!(matches!(
+        super::clause_support::parse_ability_line_lexed(&affinity_tokens),
+        Some(actions) if matches!(
+            actions.as_slice(),
+            [crate::cards::builders::KeywordAction::MarkerText(text)]
+                if text.to_ascii_lowercase().starts_with("affinity for equipment")
         )
     ));
     let split = super::grammar::abilities::split_if_this_spell_costs_line_lexed(&cost_probe_tokens)
@@ -6338,6 +6351,21 @@ fn academy_researchers_puts_aura_from_hand_onto_battlefield_attached() {
     assert!(debug.contains("Aura"), "{debug}");
     assert!(debug.contains("AttachObjectsEffect"), "{debug}");
     assert!(debug.contains("this creature"), "{debug}");
+}
+
+#[test]
+fn goldwardens_gambit_attaches_controlled_equipment_to_each_token() {
+    let text = "Affinity for Equipment (This spell costs {1} less to cast for each Equipment you control.)\nCreate five 2/2 red Rebel creature tokens. They gain haste until end of turn. For each of those tokens, you may attach an Equipment you control to it.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Goldwardens' Gambit")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("Goldwardens' Gambit should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("AttachObjectsEffect"), "{debug}");
+    assert!(debug.contains("subtypes: [\n                                        Equipment"), "{debug}");
+    assert!(debug.contains("controller: Some(\n                                        You"), "{debug}");
+    assert!(!debug.contains("objects: Source"), "{debug}");
 }
 
 #[test]

@@ -932,6 +932,7 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     text == "compleated"
         || text.starts_with("prototype ")
         || text.starts_with("splice onto ")
+        || text.starts_with("affinity for ")
         || is_ticket_power_toughness_sticker_marker_line(&text)
         || text.starts_with("dredge ")
 }

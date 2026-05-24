@@ -1341,6 +1341,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     let action = match words.as_slice() {
         ["affinity", "for", "artifacts"] => KeywordAction::AffinityForArtifacts,
+        ["affinity", "for", ..] => {
+            let text = marker_text_from_words(&words)?;
+            KeywordAction::MarkerText(text)
+        }
         ["first", "strike"] => KeywordAction::FirstStrike,
         ["double", "strike"] => KeywordAction::DoubleStrike,
         ["for", "mirrodin"] => KeywordAction::ForMirrodin,
