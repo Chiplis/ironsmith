@@ -50,6 +50,7 @@ pub(super) enum KeywordDispatchHint {
     Epic,
     Offspring,
     Madness,
+    Mutate,
     Escape,
     MorphFamily,
     Squad,
@@ -259,6 +260,12 @@ mod spell_keywords {
             lower: registry::lower_madness,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Mutate,
+            hints: &[KeywordDispatchHint::Mutate],
+            matches: registry::matches_mutate,
+            lower: registry::lower_mutate,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Escape,
             hints: &[KeywordDispatchHint::Escape],
             matches: registry::matches_escape,
@@ -338,18 +345,21 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
             winnow::combinator::alt((
                 grammar::kw("retrace").value(KeywordDispatchHint::Retrace),
                 grammar::kw("madness").value(KeywordDispatchHint::Madness),
+                grammar::kw("mutate").value(KeywordDispatchHint::Mutate),
                 grammar::kw("escape").value(KeywordDispatchHint::Escape),
                 winnow::combinator::alt((
-                    grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
-                    grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
-                    grammar::kw("disguise").value(KeywordDispatchHint::MorphFamily),
+                    winnow::combinator::alt((
+                        grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
+                        grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
+                        grammar::kw("disguise").value(KeywordDispatchHint::MorphFamily),
+                    )),
+                    grammar::kw("squad").value(KeywordDispatchHint::Squad),
+                    grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
+                    grammar::kw("reconfigure").value(KeywordDispatchHint::Reconfigure),
+                    grammar::kw("eternalize").value(KeywordDispatchHint::Eternalize),
+                    grammar::phrase(&["cast", "this", "spell", "only"])
+                        .value(KeywordDispatchHint::CastThisSpellOnly),
                 )),
-                grammar::kw("squad").value(KeywordDispatchHint::Squad),
-                grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
-                grammar::kw("reconfigure").value(KeywordDispatchHint::Reconfigure),
-                grammar::kw("eternalize").value(KeywordDispatchHint::Eternalize),
-                grammar::phrase(&["cast", "this", "spell", "only"])
-                    .value(KeywordDispatchHint::CastThisSpellOnly),
             )),
             winnow::combinator::alt((
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),

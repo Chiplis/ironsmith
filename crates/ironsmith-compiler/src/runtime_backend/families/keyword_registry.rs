@@ -36,7 +36,8 @@ use super::util::{
     parse_flash_with_additional_cost_line_lexed, parse_flashback_line_lexed,
     parse_harmonize_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
     parse_jump_start_line_lexed, parse_kicker_line_lexed, parse_madness_line_lexed,
-    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_offspring_line_lexed,
+    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_mutate_line_lexed,
+    parse_offspring_line_lexed,
     parse_reinforce_line_lexed, parse_replicate_line_lexed, parse_retrace_line_lexed,
     parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
     parse_transmute_line_lexed, parse_warp_line_lexed,
@@ -384,6 +385,15 @@ pub(super) fn lower_madness(
 ) -> Result<LineAst, CardTextError> {
     Ok(LineAst::AlternativeCastingMethod(
         require_keyword_parse(line, "madness", parse_madness_line_lexed(tokens)?)?.into(),
+    ))
+}
+
+pub(super) fn lower_mutate(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::StaticAbility(
+        require_keyword_parse(line, "mutate", parse_mutate_line_lexed(tokens)?)?.into(),
     ))
 }
 
@@ -773,6 +783,13 @@ pub(super) fn matches_madness(
     Ok(parse_madness_line_lexed(tokens)?.is_some())
 }
 
+pub(super) fn matches_mutate(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_mutate_line_lexed(tokens)?.is_some())
+}
+
 pub(super) fn matches_escape(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
@@ -878,6 +895,7 @@ fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTex
                 .is_some()
             || parse_flash_with_additional_cost_line_lexed(tokens).is_some()
             || parse_jump_start_line_lexed(tokens)?.is_some()
+            || parse_mutate_line_lexed(tokens)?.is_some()
             || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?
                 .is_some()
             || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some(),

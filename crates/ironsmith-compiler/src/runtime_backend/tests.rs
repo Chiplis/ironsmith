@@ -5008,6 +5008,26 @@ fn jump_start_keyword_line_is_classified_as_alternative_cast() {
 }
 
 #[test]
+fn mutate_keyword_line_is_classified_and_lowered_to_marker_static_ability() {
+    let tokens = lex_line(
+        "Mutate {1}{R/W}{R/W} (If you cast this spell for its mutate cost, put it over or under target non-Human creature you own.)",
+        0,
+    )
+    .expect("rewrite lexer should classify mutate keyword line");
+
+    assert!(matches!(
+        super::families::keyword_families::parse_keyword_dispatch_hint(&tokens),
+        Some(super::families::keyword_families::KeywordDispatchHint::Mutate)
+    ));
+
+    let parsed = super::front_end::shared::util::parse_mutate_line_lexed(&tokens)
+        .expect("mutate parse should not error")
+        .expect("mutate keyword line should parse");
+    let debug = format!("{parsed:?}");
+    assert!(debug.contains("Mutate {1}{R/W}{R/W}"), "{debug}");
+}
+
+#[test]
 fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
     let tokens = lex_line("equal to the number of cards you've discarded this turn", 0)
         .expect("rewrite lexer should classify value clause");
