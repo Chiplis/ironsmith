@@ -8998,6 +8998,28 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_equip_keyword_with_subtype_qualifier() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Veteran Powerblade Equip Variant")
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text("Equip Soldier {W}\nEquip {2}")
+            .expect("parse subtype-qualified equip lines");
+
+        let abilities_debug = format!("{:#?}", def.abilities);
+        assert!(
+            abilities_debug.contains("subtypes:") && abilities_debug.contains("Soldier"),
+            "expected subtype-qualified equip target filter, got {abilities_debug}"
+        );
+
+        let lines = unprocessed_compiled_lines(&def);
+        assert!(
+            lines.iter().any(|line| line == "Equip Soldier {W}"),
+            "expected subtype-qualified equip keyword line, got {:?}",
+            lines
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_skip_turn_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Meditate")
             .parse_text("You skip your next turn.")

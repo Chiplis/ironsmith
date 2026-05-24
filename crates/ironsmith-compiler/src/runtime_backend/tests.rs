@@ -1700,6 +1700,27 @@ fn rewrite_document_parser_supports_activate_only_once_each_turn_without_period(
 }
 
 #[test]
+fn rewrite_document_parser_supports_equip_with_subtype_qualifier() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Subtype Equip Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment]);
+
+    let def = builder
+        .parse_text("Equip Soldier {W}")
+        .expect("expected parser to support subtype-qualified equip");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("subtypes:") && abilities_debug.contains("Soldier"),
+        "expected equip target filter to include Soldier subtype, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("AttachToEffect"),
+        "expected equip ability to remain an attach activation, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn rewrite_document_parser_splits_activation_cost_on_colon_outside_quotes() {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Quoted Colon Variant")
         .card_types(vec![CardType::Artifact]);
