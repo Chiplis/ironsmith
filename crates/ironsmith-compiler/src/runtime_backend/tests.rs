@@ -12399,6 +12399,34 @@ fn rewrite_semantic_parse_keeps_intervening_if_trigger_split() -> Result<(), Car
 }
 
 #[test]
+fn rewrite_semantic_parse_accepts_becomes_targeted_by_spell_filter_trigger()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Wild Defiance Variant")
+        .card_types(vec![CardType::Enchantment]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "Whenever a creature you control becomes the target of an instant or sorcery spell, that creature gets +3/+3 until end of turn.".to_string(),
+        false,
+    )?;
+
+    match doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => {
+            assert_eq!(
+                triggered.trigger_text,
+                "a creature you control becomes the target of an instant or sorcery spell"
+            );
+            assert_eq!(
+                triggered.effect_text,
+                "that creature gets +3/+3 until end of turn."
+            );
+        }
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant]);

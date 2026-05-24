@@ -2262,6 +2262,27 @@ pub(crate) fn parse_trigger_clause_lexed(
                     stack_object: ability_filter,
                 });
             }
+            if tail_words
+                .last()
+                .is_some_and(|word| *word == "spell" || *word == "spells")
+                && let Some(filter) = subject_filter
+            {
+                let tail_token_start = ActivationRestrictionCompatWords::new(tokens)
+                    .token_index_for_word_index(tail_word_start)
+                    .unwrap_or(tokens.len());
+                let spell_filter_tokens = trim_commas(&tokens[tail_token_start..]);
+                let spell_filter =
+                    parse_object_filter_lexed(&spell_filter_tokens, false).map_err(|_| {
+                        CardTextError::ParseError(format!(
+                            "unsupported spell filter in becomes-targeted trigger clause (clause: '{}')",
+                            words.join(" ")
+                        ))
+                    })?;
+                return Ok(TriggerSpec::BecomesTargetedByStackObject {
+                    target: filter,
+                    stack_object: spell_filter,
+                });
+            }
         }
     }
 
