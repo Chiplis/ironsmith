@@ -10755,6 +10755,23 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 2 < filtered.len()
+            && let Some(exile_top) =
+                filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+            && let Some(grant_play) =
+                filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(grant_free_cast) = filtered[idx + 2]
+                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            && let Some(compact) = describe_exile_top_then_play_without_paying_mana(
+                exile_top,
+                grant_play,
+                grant_free_cast,
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(exile) = filtered[idx + 1].downcast_ref::<crate::effects::ExileEffect>()
@@ -18602,6 +18619,37 @@ fn tagged_move_to_zone(
     move_to_zone.zone == zone
         && move_to_zone.to_top == to_top
         && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(move_tag) if move_tag == tag)
+}
+
+fn describe_exile_top_then_play_without_paying_mana(
+    exile_top: &crate::effects::ExileTopOfLibraryEffect,
+    grant_play: &crate::effects::GrantPlayTaggedEffect,
+    grant_free_cast: &crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+) -> Option<String> {
+    let Some(first_tag) = exile_top.moved_tags.first() else {
+        return None;
+    };
+    if grant_play.player != grant_free_cast.player
+        || grant_play.tag != grant_free_cast.tag
+        || grant_play.tag != *first_tag
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || !grant_play.allow_land
+        || !matches!(exile_top.player, PlayerFilter::DamagedPlayer)
+        || !matches!(grant_play.player, PlayerFilter::You)
+    {
+        return None;
+    }
+
+    let (count_text, noun, singular_count) = describe_look_count_and_noun(&exile_top.count);
+    let cards_text = if singular_count { "that card" } else { "those cards" };
+    let mana_cost_text = if singular_count {
+        "its mana cost"
+    } else {
+        "their mana costs"
+    };
+    Some(format!(
+        "That player exiles the top {count_text} {noun} of their library. Until end of turn, you may play {cards_text} without paying {mana_cost_text}"
+    ))
 }
 
 pub(super) fn describe_look_at_top_split_hand_bottom_exile_then_play_exiled(
@@ -29251,7 +29299,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+        let object_text = if crate::cards::is_sentence_helper_tag(
+            grant_play_tagged.tag.as_str(),
+            "exiled",
+        ) {
+            "those cards".to_string()
+        } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || matches!(
@@ -29308,18 +29361,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         effect.downcast_ref::<crate::effects::GrantTaggedSpellLifeCostByManaValueEffect>()
     {
         return format!(
-            "{} may cast tagged '{}' spells from exile this turn by paying life equal to their mana value",
+            "{} may cast {} from exile this turn by paying life equal to their mana value",
             describe_player_filter(&grant_tagged_spell_life.player),
-            grant_tagged_spell_life.tag.as_str()
+            "those spells"
         );
     }
     if let Some(grant_tagged_spell_free_cast) =
         effect.downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
     {
         return format!(
-            "{} may cast tagged '{}' spells from exile this turn without paying their mana costs",
+            "{} may cast {} from exile this turn without paying their mana costs",
             describe_player_filter(&grant_tagged_spell_free_cast.player),
-            grant_tagged_spell_free_cast.tag.as_str()
+            "those spells"
         );
     }
     if let Some(may_cast_matching) =
