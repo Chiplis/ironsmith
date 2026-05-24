@@ -10948,6 +10948,28 @@ fn rewrite_lexed_effect_sentence_supports_gain_then_get_for_each_cards_drawn() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_target_get_then_gain_with_spell_x() {
+    let text =
+        "Target creature you control gets +X/+0 and gains first strike and trample until end of turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify get-then-gain spell-X sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split get-then-gain target pump");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantAbilitiesToTarget") && debug.contains("Pump"),
+        "expected target ability grant plus pump effect, got {debug}"
+    );
+    assert!(
+        debug.contains("first strike") || debug.contains("FirstStrike"),
+        "expected first strike grant, got {debug}"
+    );
+    assert!(debug.contains("Trample"), "expected trample grant, got {debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_compound_damage_to_you_and_your_objects() {
     let text = "This deals 2 damage to you and each creature you control.";
     let lexed = lex_line(text, 0)

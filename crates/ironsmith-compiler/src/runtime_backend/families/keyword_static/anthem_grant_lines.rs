@@ -3471,6 +3471,9 @@ pub(crate) fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if anthem_contains_word(&clause_words, "target") || contains_until_end_of_turn(&clause_words) {
+        return Ok(None);
+    }
 
     let get_idx = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
@@ -3496,6 +3499,12 @@ pub(crate) fn parse_anthem_and_keyword_line(
     // "until end of turn" in the pump clause indicates a one-shot effect.
     // Ignore timing text that appears only inside a quoted granted ability.
     if contains_until_end_of_turn(&pre_grant_words) {
+        return Ok(None);
+    }
+    if let Some(modifier_word) = tokens.get(get_idx + 1).and_then(OwnedLexToken::as_word)
+        && modifier_word.to_ascii_lowercase().contains('x')
+        && !anthem_has_word_sequence(&clause_words, &["where", "x", "is"])
+    {
         return Ok(None);
     }
 
