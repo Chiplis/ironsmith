@@ -378,6 +378,11 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     if str_strip_suffix(first, "cycling").is_some() {
         return Some(KeywordDispatchHint::Cycling);
     }
+    if matches!(first, "jumpstart" | "jump-start")
+        || (first == "jump" && word_view.get(1) == Some("start"))
+    {
+        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
+    }
 
     None
 }

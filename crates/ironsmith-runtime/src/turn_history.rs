@@ -4,7 +4,8 @@ use crate::color::ColorSet;
 use crate::events::EnterBattlefieldEvent;
 use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
 use crate::events::other::{
-    CardsDrawnEvent, ControlChangedEvent, KeywordActionEvent, KeywordActionKind, SearchLibraryEvent,
+    CardDiscardedEvent, CardsDrawnEvent, ControlChangedEvent, KeywordActionEvent,
+    KeywordActionKind, SearchLibraryEvent,
 };
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::SpellCastEvent;
@@ -163,6 +164,20 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
             .filter(|event| event.player == player)
             .map(CardsDrawnEvent::amount)
+            .sum()
+    }
+
+    pub fn cards_discarded_by_player(&self, player: PlayerId) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<CardDiscardedEvent>())
+            .filter(|event| event.player == player)
+            .count() as u32
+    }
+
+    pub fn total_cards_discarded_for_players(&self, players: &[PlayerId]) -> u32 {
+        players
+            .iter()
+            .map(|player| self.cards_discarded_by_player(*player))
             .sum()
     }
 

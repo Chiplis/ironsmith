@@ -261,6 +261,43 @@ fn parse_creatures_died_this_turn_count_value(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
+fn parse_cards_discarded_this_turn_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = ValueHelperCompatWords::new(tokens);
+    if !lower_words_have(&words, "cards")
+        || !lower_words_have(&words, "discarded")
+        || !lower_words_have(&words, "this")
+        || !lower_words_have(&words, "turn")
+    {
+        return None;
+    }
+
+    if words
+        .to_word_refs()
+        .iter()
+        .any(|word| matches!(*word, "you" | "your" | "youve"))
+    {
+        return Some(Value::CardsDiscardedThisTurn(PlayerFilter::You));
+    }
+    if words
+        .to_word_refs()
+        .iter()
+        .any(|word| matches!(*word, "opponent" | "opponents"))
+    {
+        return Some(Value::CardsDiscardedThisTurn(PlayerFilter::Opponent));
+    }
+    if word_refs_find_sequence(&words.to_word_refs(), &["that", "player"]).is_some()
+        || word_refs_find_sequence(&words.to_word_refs(), &["that", "players"]).is_some()
+        || words
+            .to_word_refs()
+            .iter()
+            .any(|word| matches!(*word, "they" | "their" | "theyve" | "each"))
+    {
+        return Some(Value::CardsDiscardedThisTurn(PlayerFilter::IteratedPlayer));
+    }
+
+    Some(Value::CardsDiscardedThisTurn(PlayerFilter::Any))
+}
+
 pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     let word_view = ValueHelperCompatWords::new(tokens);
     let words = word_view.to_word_refs();
@@ -350,6 +387,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_word_view = ValueHelperCompatWords::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
     if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
+        return Some(value);
+    }
+    if let Some(value) = parse_cards_discarded_this_turn_count_value(&filter_tokens) {
         return Some(value);
     }
     if lower_words_have(&filter_word_view, "cards")
@@ -710,6 +750,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     let filter_tokens = trim_lexed_edge_punctuation(&tokens[filter_start_token_idx..]);
     let filter_words = ValueHelperCompatWords::new(filter_tokens).to_word_refs();
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens) {
+        return Some(value);
+    }
+    if let Some(value) = parse_cards_discarded_this_turn_count_value(filter_tokens) {
         return Some(value);
     }
     if word_refs_have_prefix(&filter_words, &["basic", "land", "type", "among"])

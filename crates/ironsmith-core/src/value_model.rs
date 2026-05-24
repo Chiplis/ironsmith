@@ -92,6 +92,7 @@ pub enum Value {
     DevotionToChosenColor(PlayerFilter),
     LifeGainedThisTurn(PlayerFilter),
     LifeLostThisTurn(PlayerFilter),
+    CardsDiscardedThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtBySourcesControlledThisTurn {
         player: PlayerFilter,

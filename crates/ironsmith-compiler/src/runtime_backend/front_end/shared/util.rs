@@ -4562,6 +4562,29 @@ pub(crate) fn parse_retrace_line_lexed(
     parse_retrace_line(tokens)
 }
 
+pub(crate) fn parse_jump_start_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let rendered = crate::runtime_backend::front_end::lexer::render_token_slice(tokens)
+        .trim()
+        .to_ascii_lowercase();
+    if rendered.starts_with("jump-start")
+        || rendered.starts_with("jump start")
+        || matches!(words.first().copied(), Some("jumpstart" | "jump-start"))
+        || words.get(..2) == Some(["jump", "start"].as_slice())
+    {
+        return Ok(Some(AlternativeCastingMethod::JumpStart));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_jump_start_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_jump_start_line(tokens)
+}
+
 pub(crate) fn parse_harmonize_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

@@ -7515,6 +7515,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::CardsDiscardedThisTurn(filter) => match filter {
+            PlayerFilter::You => "the number of cards you've discarded this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the number of cards your opponents have discarded this turn".to_string()
+            }
+            PlayerFilter::Any => "the number of cards discarded this turn".to_string(),
+            _ => format!(
+                "the number of cards {} discarded this turn",
+                describe_player_filter(filter)
+            ),
+        },
         Value::NoncombatDamageDealtToPlayersThisTurn(filter) => match filter {
             PlayerFilter::You => {
                 "the total amount of noncombat damage dealt to you this turn".to_string()

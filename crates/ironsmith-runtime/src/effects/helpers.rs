@@ -1164,6 +1164,16 @@ pub fn resolve_value(
             Ok(total as i32)
         }
 
+        Value::CardsDiscardedThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total = game
+                .turn_store
+                .turn_history
+                .total_cards_discarded_for_players(&player_ids);
+            Ok(total as i32)
+        }
+
         Value::NoncombatDamageDealtToPlayersThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
