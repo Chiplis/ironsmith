@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "20260524T013700Z",
+  "repo_root": "/opt/ironsmith",
+  "policy": {
+    "mode": "parser-additions-only",
+    "forbidden": [
+      "bespoke card definitions",
+      "card-name hardcoding",
+      "new runtime effect executors for this request"
+    ]
+  },
+  "card": {
+    "name": "Sacred Boon",
+    "layout": "normal",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Prevent the next 3 damage that would be dealt to target creature this turn. At the beginning of the next end step, put a +0/+1 counter on that creature for each 1 damage prevented this way.",
+    "source_block": "Name: Sacred Boon\nMana cost: {1}{W}\nType: Instant\nPrevent the next 3 damage that would be dealt to target creature this turn. At the beginning of the next end step, put a +0/+1 counter on that creature for each 1 damage prevented this way.",
+    "parse_input": "Mana cost: {1}{W}\nType: Instant\nPrevent the next 3 damage that would be dealt to target creature this turn. At the beginning of the next end step, put a +0/+1 counter on that creature for each 1 damage prevented this way."
+  },
+  "failure": {
+    "reason": "Card requires a delayed trigger at the next end step that uses the total damage prevented by a specific prevention shield this turn; existing prevention follow-up effects only execute immediately per prevention event.",
+    "gaps": [
+      "Reusable runtime support for prevention-scoped amount accumulation that can be referenced by a delayed trigger (e.g., next end step) to apply counters based on total damage prevented this way."
+    ]
+  },
+  "compile_probe": {
+    "strict": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Sacred Boon: ParseError(\\\"parser does not yet support line family: 'Prevent the next 3 damage that would be dealt to target creature this turn. At the beginning of the next end step, put a +0/+1 counter on that creature for each 1 damage prevented this way.'\\\")\""
+    },
+    "allow_unsupported": {
+      "ok": false,
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "Error: \"parse failed for Sacred Boon: ParseError(\\\"parser does not yet support line family: 'Prevent the next 3 damage that would be dealt to target creature this turn. At the beginning of the next end step, put a +0/+1 counter on that creature for each 1 damage prevented this way.'\\\")\""
+    }
+  }
+}
