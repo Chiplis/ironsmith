@@ -558,7 +558,9 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::IsDealtCombatDamage(_)
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
+            | TriggerSpec::ThisDealsDamageToPlayer { .. }
             | TriggerSpec::DealsDamage(_)
+            | TriggerSpec::DealsDamageToPlayer { .. }
             | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
             | TriggerSpec::ThisDealsCombatDamage
             | TriggerSpec::ThisDealsCombatDamageTo(_)
