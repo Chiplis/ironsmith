@@ -830,6 +830,11 @@ impl ActivatedAbilityCostReduction {
         self
     }
 
+    pub fn with_display(mut self, display: impl Into<String>) -> Self {
+        self.display = Some(display.into());
+        self
+    }
+
     pub fn with_static_condition(mut self, condition: crate::ConditionExpr) -> Self {
         self.static_condition = Some(match self.static_condition {
             Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),

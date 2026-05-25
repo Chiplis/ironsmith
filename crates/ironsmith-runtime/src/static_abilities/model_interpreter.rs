@@ -547,7 +547,12 @@ impl StaticAbilityModelInterpreter {
                         }),
                     )
                 } else {
-                    super::ActivatedAbilityCostReduction::new(filter.clone(), *reduction)
+                    let mut reduction_model =
+                        super::ActivatedAbilityCostReduction::new(filter.clone(), *reduction);
+                    if let Some(display) = display {
+                        reduction_model = reduction_model.with_display(display.clone());
+                    }
+                    reduction_model
                 };
                 if let Some(minimum) = minimum_total_mana {
                     converted = converted.with_minimum_total_mana(*minimum);

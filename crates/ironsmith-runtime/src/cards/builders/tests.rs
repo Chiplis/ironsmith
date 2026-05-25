@@ -11798,14 +11798,27 @@ fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partia
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_equip_cost_reduction_line_does_not_silently_compile_as_equip_keyword() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Cost Reduction Variant")
-        .parse_text("Equip costs you pay cost {1} less.")
-        .expect_err("equip-cost-reduction line should not compile as keyword equip");
-    let message = format!("{err:?}");
+fn parse_auriok_steelshaper_strict_and_preserves_equip_cost_modifier_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Auriok Steelshaper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Equip costs you pay cost {1} less.\nAs long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1.",
+        )
+        .expect("Auriok Steelshaper should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        !message.to_ascii_lowercase().contains("equip"),
-        "expected non-equip parse error for unsupported equip-cost-reduction form, got {message}"
+        rendered.contains("equip costs you pay cost {1} less"),
+        "expected equip cost-modifier line in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("as long as this creature is equipped")
+            && rendered.contains("soldier")
+            && rendered.contains("knight")
+            && rendered.contains("gets +1/+1"),
+        "expected equipped Soldier/Knight anthem line in compiled output, got {rendered}"
     );
 }
 

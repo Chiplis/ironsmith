@@ -240,10 +240,6 @@ const UNSUPPORTED_EQUALS_RULES: &[UnsupportedWordRule] = &[
         message: "unsupported target-only restriction clause",
     },
     UnsupportedWordRule {
-        phrase: &["equip", "costs", "you", "pay", "cost", "1", "less"],
-        message: "unsupported activation cost modifier clause",
-    },
-    UnsupportedWordRule {
         phrase: &["unleash", "while"],
         message: "unsupported line",
     },
