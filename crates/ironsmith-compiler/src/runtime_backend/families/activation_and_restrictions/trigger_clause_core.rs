@@ -2947,6 +2947,15 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if words == ["this", "creature", "blocks", "or", "becomes", "blocked"]
+        || words == ["this", "blocks", "or", "becomes", "blocked"]
+    {
+        return Ok(TriggerSpec::Either(
+            Box::new(TriggerSpec::ThisBlocks),
+            Box::new(TriggerSpec::ThisBecomesBlocked),
+        ));
+    }
+
     if (slice_starts_with(
         &words,
         &[
