@@ -179,6 +179,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }
+            Some(StaticAbilityId::DrawReplacementExileTopAndPlay) => {
+                Self::draw_replacement_exile_top_and_play(2)
+            }
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
             Some(StaticAbilityId::ExileWouldDieInstead) => {
                 Self::exile_would_die_instead(crate::target::ObjectFilter::creature())

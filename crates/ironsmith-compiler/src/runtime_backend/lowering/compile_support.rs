@@ -488,6 +488,14 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
         }
+        PredicateAst::PlayerWouldDrawCard { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::Custom(match player {
+                PlayerFilter::You => "you_would_draw_card",
+                PlayerFilter::Opponent => "opponent_would_draw_card",
+                _ => "player_would_draw_card",
+            })
+        }
         PredicateAst::PlayerWouldBeginExtraTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {

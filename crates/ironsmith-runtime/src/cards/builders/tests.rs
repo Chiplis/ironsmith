@@ -39715,3 +39715,60 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
         "expected would-die replacement text, got {rendered}"
     );
 }
+
+#[test]
+fn eruth_tormented_prophet_parses_strictly_as_draw_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Eruth, Tormented Prophet")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
+        )
+        .expect("Eruth, Tormented Prophet oracle text should parse");
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        static_ids.contains(&StaticAbilityId::DrawReplacementExileTopAndPlay),
+        "expected Eruth replacement static ability, got {static_ids:?}"
+    );
+}
+
+#[test]
+fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Eruth, Tormented Prophet")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
+        )
+        .expect("Eruth, Tormented Prophet oracle text should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you would draw a card, exile the top 2 cards of your library instead"),
+        "expected replacement clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may play those cards this turn"),
+        "expected play-permission clause in compiled text, got {rendered}"
+    );
+}

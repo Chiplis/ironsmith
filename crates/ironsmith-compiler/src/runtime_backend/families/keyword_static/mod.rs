@@ -599,6 +599,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_reduced_maximum_hand_size_line),
         single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
+        single_static_ability_ast_rule!(parse_draw_replacement_exile_top_and_play_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
@@ -7855,6 +7856,42 @@ pub(crate) fn parse_draw_replace_exile_top_face_down_line(
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_draw_replacement_exile_top_and_play_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.len() < 20 {
+        return Ok(None);
+    }
+
+    if !slice_starts_with(&words, &["if", "you", "would", "draw", "a", "card", "exile", "the", "top"])
+    {
+        return Ok(None);
+    }
+
+    let Some(count_word) = words.get(9).copied() else {
+        return Ok(None);
+    };
+    let Some(count) = parse_named_number(count_word) else {
+        return Ok(None);
+    };
+
+    if !matches!(words.get(10).copied(), Some("card" | "cards")) {
+        return Ok(None);
+    }
+
+    let tail = [
+        "of", "your", "library", "instead", "you", "may", "play", "those", "cards", "this", "turn",
+    ];
+    if words.get(11..22) != Some(&tail[..]) || words.len() != 22 {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::draw_replacement_exile_top_and_play(
+        count,
+    )))
 }
 
 pub(crate) fn parse_draw_replacement_double_line(

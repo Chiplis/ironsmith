@@ -488,6 +488,9 @@ pub(crate) enum PredicateAst {
     },
     OpponentLostLifeThisTurn,
     YouHaveNoCardsInHand,
+    PlayerWouldDrawCard {
+        player: PlayerAst,
+    },
     PlayerWouldBeginExtraTurn {
         player: PlayerAst,
     },
