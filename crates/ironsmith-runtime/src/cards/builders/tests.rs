@@ -32861,6 +32861,138 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oran_rief_the_vastwood_strict_regression() {
+    assert_oracle_card_parses_strict("Oran-Rief, the Vastwood");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
+    let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("each green creature that entered this turn")
+            || rendered.contains("each green creature that entered the battlefield this turn"),
+        "expected Oran-Rief compiled text to preserve entered-this-turn green creature filter, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oran_rief_the_vastwood_activation_runtime_only_counters_green_creatures_that_entered_this_turn() {
+    let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if !activated.effects.segments.is_empty() => {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Oran-Rief should have a countering activated ability");
+    let [segment] = activated.effects.segments.as_slice() else {
+        panic!("expected one Oran-Rief resolution segment");
+    };
+    let [effect] = segment.default_effects.as_slice() else {
+        panic!("expected one Oran-Rief default effect");
+    };
+    let for_each = effect
+        .downcast_ref::<crate::effects::ForEachObject>()
+        .expect("Oran-Rief should iterate matching creatures");
+    let put_counters = for_each.effects[0]
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .expect("Oran-Rief should resolve a put-counters effect");
+    assert_eq!(
+        put_counters.counter_type,
+        crate::object::CounterType::PlusOnePlusOne,
+        "expected Oran-Rief to place +1/+1 counters"
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let oran_rief_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let green_def = CardDefinitionBuilder::new(CardId::new(), "Green Test Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let white_def = CardDefinitionBuilder::new(CardId::new(), "White Test Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let old_green = game.create_object_from_definition(&green_def, alice, Zone::Battlefield);
+    game.turn_store.turn_history.clear_for_new_turn();
+    let green_entered = game.create_object_from_definition(&green_def, alice, Zone::Battlefield);
+    let opponent_green_entered =
+        game.create_object_from_definition(&green_def, bob, Zone::Battlefield);
+    let white_entered = game.create_object_from_definition(&white_def, alice, Zone::Battlefield);
+
+    for obj_id in [green_entered, opponent_green_entered, white_entered] {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(obj_id)
+                .expect("entered test creature should exist on the battlefield"),
+            &game,
+        );
+        let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                obj_id,
+                Zone::Hand,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&entry_event);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(oran_rief_id, alice);
+    effect
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Oran-Rief counter effect should resolve");
+
+    assert_eq!(
+        game.counter_count(green_entered, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Oran-Rief should counter your green creature that entered this turn"
+    );
+    assert_eq!(
+        game.counter_count(opponent_green_entered, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Oran-Rief should counter each green creature, including opponents'"
+    );
+    assert_eq!(
+        game.counter_count(white_entered, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Oran-Rief should not counter nongreen creatures"
+    );
+    assert_eq!(
+        game.counter_count(old_green, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Oran-Rief should not counter green creatures that did not enter this turn"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    effect
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Oran-Rief counter effect should resolve on later turns");
+    assert_eq!(
+        game.counter_count(green_entered, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Oran-Rief should stop counting prior-turn entries after the turn changes"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_cabaretti_ascendancy_strict_regression() {
     assert_oracle_card_parses_strict("Cabaretti Ascendancy");
 }
@@ -33534,6 +33666,151 @@ fn dungeon_regression_cards_render_key_mechanics() {
         adventurer_lines.contains("take the initiative")
             && adventurer_lines.contains("completed dungeon"),
         "expected White Plume Adventurer to keep initiative and completion text, got {adventurer_lines}"
+    );
+}
+
+#[test]
+fn parse_oracle_the_most_dangerous_gamer_regression() {
+    let def = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        lower.contains("whenever you open an attraction"),
+        "expected open-attraction trigger to parse and render, got {rendered}"
+    );
+    assert!(
+        lower.contains("put a +1/+1 counter on") && lower.contains("most dangerous gamer"),
+        "expected +1/+1 counter trigger clause to compile, got {rendered}"
+    );
+    assert!(
+        lower.contains("whenever you claim the prize of an attraction")
+            && lower.contains("destroy target permanent"),
+        "expected claim-prize trigger clause to compile, got {rendered}"
+    );
+    assert!(
+        !lower.contains("unsupported"),
+        "expected The Most Dangerous Gamer to avoid unsupported placeholders, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::OpenAttraction,
+            alice,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggered.into_iter().filter(|entry| entry.source == gamer_id) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "expected The Most Dangerous Gamer to trigger when you open an Attraction"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should be placed on stack");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("trigger should resolve");
+
+    let counters = game
+        .object(gamer_id)
+        .and_then(|obj| obj.counters.get(&crate::object::CounterType::PlusOnePlusOne).copied())
+        .unwrap_or(0);
+    assert_eq!(
+        counters, 1,
+        "expected The Most Dangerous Gamer to receive a +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_does_not_trigger_for_opponents_opened_attraction() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::OpenAttraction,
+            bob,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().all(|entry| entry.source != gamer_id),
+        "expected The Most Dangerous Gamer to ignore opponents opening Attractions"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_triggers_on_you_claiming_an_attraction_prize() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::ClaimAttractionPrize,
+            alice,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().any(|entry| entry.source == gamer_id),
+        "expected The Most Dangerous Gamer to trigger when you claim an Attraction prize"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_ignores_opponent_claiming_an_attraction_prize() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::ClaimAttractionPrize,
+            bob,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().all(|entry| entry.source != gamer_id),
+        "expected The Most Dangerous Gamer to ignore opponents claiming Attraction prizes"
     );
 }
 

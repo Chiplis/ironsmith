@@ -558,10 +558,17 @@ impl EffectExecutor for OpenAttractionEffect {
 
     fn execute(
         &self,
-        _game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        Ok(EffectOutcome::resolved())
+        let Some(source) = game.object(ctx.source) else {
+            return Ok(EffectOutcome::resolved());
+        };
+        let controller = game.controller_of(source);
+        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::OpenAttraction, controller, ctx.source, 1),
+            ctx.provenance,
+        )))
     }
 }
 

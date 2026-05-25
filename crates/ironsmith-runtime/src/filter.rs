@@ -3737,14 +3737,14 @@ impl ObjectFilterExt for ObjectFilter {
                         "that entered the battlefield under an opponent's control this turn"
                             .to_string()
                     }
-                    PlayerFilter::Any => "that entered the battlefield this turn".to_string(),
+                    PlayerFilter::Any => "that entered this turn".to_string(),
                     other => format!(
                         "that entered the battlefield under {} control this turn",
                         describe_possessive_player_filter(other)
                     ),
                 }
             } else {
-                "that entered the battlefield this turn".to_string()
+                "that entered this turn".to_string()
             };
             parts.push(clause);
         }
