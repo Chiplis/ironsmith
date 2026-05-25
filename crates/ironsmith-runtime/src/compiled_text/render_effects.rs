@@ -22195,9 +22195,7 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
     } else {
         match reflexive.predicate {
             EffectPredicate::Happened => "When you do".to_string(),
-            EffectPredicate::HappenedNotReplaced => {
-                "When you do and it isn't replaced".to_string()
-            }
+            EffectPredicate::HappenedNotReplaced => "When you do and it isn't replaced".to_string(),
             _ => format!("When {}", describe_effect_predicate(&reflexive.predicate)),
         }
     };
@@ -23817,7 +23815,8 @@ pub(super) fn describe_conditional_choose_both_instead(
     }
 
     let condition = describe_condition(&conditional.condition);
-    let mut out = format!("Choose one. If {condition} as you cast this spell, you may choose both instead.");
+    let mut out =
+        format!("Choose one. If {condition} as you cast this spell, you may choose both instead.");
     for mode in &choose_true.modes {
         let description = ensure_trailing_period(mode.description.trim());
         if description.trim().is_empty() {
@@ -33616,8 +33615,8 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
         && may.effects.len() == 1
-        && let Some(put_counters) = may.effects[0]
-            .downcast_ref::<crate::effects::PutCountersEffect>()
+        && let Some(put_counters) =
+            may.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
         && put_counters.counter_type == crate::object::CounterType::MinusOneMinusOne
         && put_counters.target
             == ChooseSpec::Object(crate::filter::ObjectFilter::creature().you_control())
@@ -33633,7 +33632,8 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
             .and_then(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
         && may.effects.len() == 2
         && let Some(choose) = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        && let Some(put_counters) = may.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()
+        && let Some(put_counters) =
+            may.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()
         && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
     {
         return format!("you may blight {amount}");

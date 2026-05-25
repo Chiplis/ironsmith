@@ -442,8 +442,11 @@ pub(super) fn lower_mutate(
     })?;
 
     Ok(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::keyword_marker(format!("Mutate {}", cost.to_oracle()))
-            .into(),
+        crate::static_abilities::StaticAbility::keyword_marker(format!(
+            "Mutate {}",
+            cost.to_oracle()
+        ))
+        .into(),
     ))
 }
 

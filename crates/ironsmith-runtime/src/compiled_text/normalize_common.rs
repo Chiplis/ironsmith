@@ -10455,7 +10455,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 .unwrap_or_else(|| amount.to_string());
             format!("{} or more colors of mana were spent to cast this spell", amount_text)
         }
-        Condition::YouControlCommander => "you control your commander".to_string(),
+        Condition::YouControlCommander => "you control a commander".to_string(),
         Condition::TargetMatches(filter) => {
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
@@ -11127,7 +11127,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
     }
 }
 
-fn describe_you_control_two_card_types_condition(left: &Condition, right: &Condition) -> Option<String> {
+fn describe_you_control_two_card_types_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
     fn controlled_single_card_type(condition: &Condition) -> Option<crate::types::CardType> {
         let Condition::PlayerControls { player, filter } = condition else {
             return None;
@@ -11398,10 +11401,7 @@ mod tests {
     fn describe_tagged_object_matches_simple_subtype_uses_is_clause() {
         let mut filter = ObjectFilter::default();
         filter.subtypes = vec![Subtype::Spider];
-        let condition = Condition::TaggedObjectMatches(
-            TagKey::from("triggering"),
-            filter,
-        );
+        let condition = Condition::TaggedObjectMatches(TagKey::from("triggering"), filter);
 
         assert_eq!(describe_condition(&condition), "that object is a Spider");
     }

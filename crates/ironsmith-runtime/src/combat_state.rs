@@ -501,7 +501,8 @@ pub fn declare_attackers(
     }
 
     for (defending_player, provided) in attackers_per_defender {
-        if let Some(maximum) = max_creatures_can_attack_defending_player_each_combat(game, defending_player)
+        if let Some(maximum) =
+            max_creatures_can_attack_defending_player_each_combat(game, defending_player)
             && provided > maximum
         {
             return Err(CombatError::TooManyAttackers { maximum, provided });

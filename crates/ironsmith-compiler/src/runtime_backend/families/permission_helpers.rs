@@ -471,14 +471,7 @@ fn parse_permission_tail_tokens(
     if strip_prefix_phrase(
         tokens,
         &[
-            "for",
-            "as",
-            "long",
-            "as",
-            "you",
-            "control",
-            "this",
-            "creature",
+            "for", "as", "long", "as", "you", "control", "this", "creature",
         ],
     )
     .is_some_and(|rest| rest.is_empty())

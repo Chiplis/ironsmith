@@ -4,7 +4,8 @@ use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Modifi
 use crate::effect::{ChoiceCount, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
-    resolve_objects_for_effect, resolve_player_filter, resolve_value, validate_target,
+    resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter, resolve_value,
+    validate_target,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::ObjectFilterExt as _;
@@ -61,7 +62,11 @@ fn resolve_target(
         return Ok((effect.target.clone(), None, false));
     };
 
-    let mut objects = resolve_objects_for_effect(game, ctx, spec)?;
+    let mut objects = if spec.is_target() {
+        resolve_objects_for_effect(game, ctx, spec)?
+    } else {
+        resolve_objects_from_spec(game, spec, ctx)?
+    };
     if spec.is_target() {
         objects.retain(|id| validate_target(game, &ResolvedTarget::Object(*id), spec, ctx));
     }
@@ -343,11 +348,11 @@ impl EffectExecutor for ApplyContinuousEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        self.target_spec.as_ref()
+        self.target_spec.as_ref().filter(|spec| spec.is_target())
     }
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
-        self.target_spec.as_ref().map(ChooseSpec::count)
+        self.get_target_spec().map(ChooseSpec::count)
     }
 
     fn target_description(&self) -> &'static str {

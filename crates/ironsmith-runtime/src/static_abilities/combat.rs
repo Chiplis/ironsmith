@@ -1865,7 +1865,10 @@ mod tests {
     #[test]
     fn test_max_creatures_can_attack_you_each_combat() {
         let cap = MaxCreaturesCanAttackYouEachCombat::new(2);
-        assert_eq!(cap.id(), StaticAbilityId::MaxCreaturesCanAttackYouEachCombat);
+        assert_eq!(
+            cap.id(),
+            StaticAbilityId::MaxCreaturesCanAttackYouEachCombat
+        );
         assert_eq!(cap.max_creatures_can_attack_you_each_combat(), Some(2));
     }
 

@@ -409,15 +409,18 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         .trim()
         .trim_end_matches('.')
         .to_string();
-    let enters_with_single_counter = normalized == "this creature enters with a +1/+1 counter on it"
+    let enters_with_single_counter = normalized
+        == "this creature enters with a +1/+1 counter on it"
         || normalized == "this permanent enters with a +1/+1 counter on it"
         || normalized == "it enters with a +1/+1 counter on it";
     if enters_with_single_counter {
         return Some(LineAst::StaticAbilities(vec![
-            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::enters_with_counters_value(
-                crate::object::CounterType::PlusOnePlusOne,
-                crate::effect::Value::Fixed(1),
-            )),
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::Fixed(1),
+                ),
+            ),
         ]));
     }
 
@@ -431,9 +434,7 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
             let predicate_body = predicate_text
                 .strip_prefix("if ")
                 .or_else(|| predicate_text.rsplit_once(" if ").map(|(_, tail)| tail))?;
-            let predicate_words = predicate_body
-                .split_whitespace()
-                .collect::<Vec<_>>();
+            let predicate_words = predicate_body.split_whitespace().collect::<Vec<_>>();
             if predicate_words.len() == 11
                 && predicate_words[0] == "at"
                 && predicate_words[1] == "least"
@@ -479,8 +480,10 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         return None;
     }
 
-    let count = crate::runtime_backend::front_end::shared::util::
-        revealed_cards_total_mana_value_x_value(&normalized)
+    let count =
+        crate::runtime_backend::front_end::shared::util::revealed_cards_total_mana_value_x_value(
+            &normalized,
+        )
         .unwrap_or(crate::effect::Value::X);
 
     Some(LineAst::StaticAbilities(vec![

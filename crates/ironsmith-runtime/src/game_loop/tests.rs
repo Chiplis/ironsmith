@@ -1059,8 +1059,7 @@ fn cloakwood_hermit_triggers_at_end_step_after_creature_card_hits_graveyard() {
         .card_types(vec![CardType::Creature])
         .build();
     let creature_card_id = game.create_object_from_card(&creature_card, alice, Zone::Hand);
-    game
-        .move_object_by_effect(creature_card_id, Zone::Graveyard)
+    game.move_object_by_effect(creature_card_id, Zone::Graveyard)
         .expect("creature card should move to graveyard this turn");
 
     game.turn.active_player = alice;
@@ -7257,6 +7256,275 @@ fn sakashimas_will_mode_prompt_stays_choose_one_without_commander() {
 
     assert_eq!(ctx.spec.min_modes, 1);
     assert_eq!(ctx.spec.max_modes, 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_will_second_mode_chooses_copy_source_once_and_does_not_target_each_other_creature() {
+    struct ChooseNamedCreatureDecisionMaker {
+        name: &'static str,
+        object_choice_calls: usize,
+        object_choice_descriptions: Vec<String>,
+    }
+
+    impl DecisionMaker for ChooseNamedCreatureDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.object_choice_calls += 1;
+            self.object_choice_descriptions
+                .push(ctx.description.clone());
+            ctx.candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.legal
+                        && game
+                            .object(candidate.id)
+                            .is_some_and(|object| object.name == self.name)
+                })
+                .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sakashimas_will = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Will")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n\
+• Target opponent chooses a creature they control. You gain control of it.\n\
+• Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("Sakashima's Will should parse");
+
+    let commander = CardBuilder::new(CardId::new(), "Commander Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let copy_source = CardBuilder::new(CardId::new(), "Copy Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    let other_one = CardBuilder::new(CardId::new(), "Other One")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let other_two = CardBuilder::new(CardId::new(), "Other Two")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.create_object_from_card(&copy_source, alice, Zone::Battlefield);
+    let other_one_id = game.create_object_from_card(&other_one, alice, Zone::Battlefield);
+    let other_two_id = game.create_object_from_card(&other_two, alice, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&sakashimas_will, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Sakashima's Will should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Sakashima's Will, got {other:?}"),
+    }
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![1]),
+    )
+    .expect("choosing Sakashima's Will copy mode should finish casting");
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_))
+                | GameProgress::Continue
+        ),
+        "copy mode should not ask for targets after mode selection, got {progress:?}"
+    );
+    assert!(
+        game.stack
+            .last()
+            .is_some_and(|entry| entry.targets.is_empty()),
+        "copy mode should not target each other creature"
+    );
+
+    let mut dm = ChooseNamedCreatureDecisionMaker {
+        name: "Copy Source",
+        object_choice_calls: 0,
+        object_choice_descriptions: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Sakashima's Will should resolve");
+
+    assert_eq!(
+        dm.object_choice_calls, 1,
+        "the copy source should be chosen exactly once; prompts: {:?}",
+        dm.object_choice_descriptions
+    );
+    assert_eq!(game.calculated_power(other_one_id), Some(5));
+    assert_eq!(game.calculated_toughness(other_one_id), Some(5));
+    assert_eq!(game.calculated_power(other_two_id), Some(5));
+    assert_eq!(game.calculated_toughness(other_two_id), Some(5));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_will_first_mode_targets_opponent_then_gains_their_chosen_creature() {
+    struct ChooseNamedCreatureDecisionMaker {
+        chooser: PlayerId,
+        name: &'static str,
+        object_choice_calls: usize,
+    }
+
+    impl DecisionMaker for ChooseNamedCreatureDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.object_choice_calls += 1;
+            assert_eq!(
+                ctx.player, self.chooser,
+                "the targeted opponent should choose the creature"
+            );
+            ctx.candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.legal
+                        && game
+                            .object(candidate.id)
+                            .is_some_and(|object| object.name == self.name)
+                })
+                .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sakashimas_will = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Will")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n\
+• Target opponent chooses a creature they control. You gain control of it.\n\
+• Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("Sakashima's Will should parse");
+
+    let commander = CardBuilder::new(CardId::new(), "Commander Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let enemy_creature = CardBuilder::new(CardId::new(), "Enemy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let enemy_decoy = CardBuilder::new(CardId::new(), "Enemy Decoy")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    let enemy_creature_id = game.create_object_from_card(&enemy_creature, bob, Zone::Battlefield);
+    game.create_object_from_card(&enemy_decoy, bob, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&sakashimas_will, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Sakashima's Will should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Sakashima's Will, got {other:?}"),
+    }
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing Sakashima's Will control mode should ask for a target opponent");
+
+    let targets_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
+        other => panic!("expected target selection after choosing mode 1, got {other:?}"),
+    };
+    assert_eq!(targets_ctx.requirements.len(), 1);
+    assert_eq!(targets_ctx.requirements[0].min_targets, 1);
+    assert!(
+        targets_ctx.requirements[0]
+            .legal_targets
+            .contains(&Target::Player(bob)),
+        "targeted opponent should be a legal target: {:?}",
+        targets_ctx.requirements[0].legal_targets
+    );
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+    )
+    .expect("targeting Bob should finish casting");
+
+    let mut dm = ChooseNamedCreatureDecisionMaker {
+        chooser: bob,
+        name: "Enemy Creature",
+        object_choice_calls: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Sakashima's Will should resolve");
+
+    assert_eq!(
+        dm.object_choice_calls, 1,
+        "the targeted opponent should choose exactly one creature"
+    );
+    assert_eq!(game.controller_of_id(enemy_creature_id), Some(alice));
 }
 
 #[test]
@@ -17302,7 +17570,8 @@ fn test_auriok_steelshaper_reduces_only_your_equip_costs() {
         .subtypes(vec![Subtype::Equipment])
         .parse_text("Equip {1}")
         .expect("equip probe should parse");
-    let alice_equipment = game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
+    let alice_equipment =
+        game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
 
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
@@ -17347,7 +17616,8 @@ fn test_auriok_steelshaper_anthem_requires_being_equipped_and_only_buffs_soldier
             "Equip costs you pay cost {1} less.\nAs long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1.",
         )
         .expect("Auriok Steelshaper should parse");
-    let steelshaper_id = game.create_object_from_definition(&steelshaper_def, alice, Zone::Battlefield);
+    let steelshaper_id =
+        game.create_object_from_definition(&steelshaper_def, alice, Zone::Battlefield);
 
     let soldier_id = CardDefinitionBuilder::new(CardId::new(), "Soldier Probe")
         .card_types(vec![CardType::Creature])
@@ -17374,9 +17644,18 @@ fn test_auriok_steelshaper_anthem_requires_being_equipped_and_only_buffs_soldier
     let before_bear = game
         .calculated_characteristics(bear_id)
         .expect("bear should have calculated characteristics");
-    assert_eq!((before_soldier.power, before_soldier.toughness), (Some(2), Some(2)));
-    assert_eq!((before_knight.power, before_knight.toughness), (Some(2), Some(2)));
-    assert_eq!((before_bear.power, before_bear.toughness), (Some(2), Some(2)));
+    assert_eq!(
+        (before_soldier.power, before_soldier.toughness),
+        (Some(2), Some(2))
+    );
+    assert_eq!(
+        (before_knight.power, before_knight.toughness),
+        (Some(2), Some(2))
+    );
+    assert_eq!(
+        (before_bear.power, before_bear.toughness),
+        (Some(2), Some(2))
+    );
 
     let equipment_def = CardDefinitionBuilder::new(CardId::new(), "Steelshaper Gear")
         .card_types(vec![CardType::Artifact])
@@ -26224,8 +26503,16 @@ fn test_elsewhere_flask_activation_changes_land_type_until_cleanup() {
         .expect("Elsewhere Flask should parse");
     let flask_id = game.create_object_from_definition(&elsewhere_flask, alice, Zone::Battlefield);
 
-    let forest_id = game.create_object_from_definition(&crate::cards::definitions::basic_forest(), alice, Zone::Battlefield);
-    let island_id = game.create_object_from_definition(&crate::cards::definitions::basic_island(), alice, Zone::Battlefield);
+    let forest_id = game.create_object_from_definition(
+        &crate::cards::definitions::basic_forest(),
+        alice,
+        Zone::Battlefield,
+    );
+    let island_id = game.create_object_from_definition(
+        &crate::cards::definitions::basic_island(),
+        alice,
+        Zone::Battlefield,
+    );
 
     let ability_index = game
         .object(flask_id)
@@ -26456,7 +26743,10 @@ fn absolute_virtue_blocks_opponent_controlled_sources_from_targeting_you() {
     let bob = PlayerId::from_index(1);
 
     let absolute_virtue = CardDefinitionBuilder::new(CardId::new(), "Absolute Virtue")
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White], vec![ManaSymbol::White]]))
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
         .card_types(vec![CardType::Enchantment])
         .parse_text("You have protection from each of your opponents.")
         .expect("Absolute Virtue should parse");

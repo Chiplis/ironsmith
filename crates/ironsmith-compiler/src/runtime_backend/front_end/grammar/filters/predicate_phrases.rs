@@ -1657,7 +1657,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
         && filtered.len() == subject_len + 5
         && filtered.get(subject_len + 2).copied() == Some("or")
-        && matches!(filtered.get(subject_len + 3).copied(), Some("less" | "fewer"))
+        && matches!(
+            filtered.get(subject_len + 3).copied(),
+            Some("less" | "fewer")
+        )
         && filtered.get(subject_len + 4).copied() == Some("life")
         && let Some(amount) = filtered[subject_len + 1]
             .parse::<i32>()
@@ -3079,7 +3082,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         filtered.as_slice(),
         ["you", "dont", "put", "the", "card", "into", "your", "hand"]
             | ["you", "didnt", "put", "the", "card", "into", "your", "hand"]
-            | ["you", "did", "not", "put", "the", "card", "into", "your", "hand"]
+            | [
+                "you", "did", "not", "put", "the", "card", "into", "your", "hand"
+            ]
             | ["you", "dont", "put", "card", "into", "your", "hand"]
             | ["you", "didnt", "put", "card", "into", "your", "hand"]
             | ["you", "did", "not", "put", "card", "into", "your", "hand"]
@@ -3348,7 +3353,12 @@ mod tests {
             .collect::<Vec<_>>();
 
         let parsed = parse_predicate(&predicate_tokens)?;
-        assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerWouldDrawCard {
+                player: PlayerAst::You
+            }
+        );
         Ok(())
     }
 
@@ -3374,8 +3384,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_creature_card_put_into_your_graveyard_this_turn(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_creature_card_put_into_your_graveyard_this_turn()
+    -> Result<(), CardTextError> {
         let tokens = lex_line(
             "If a creature card was put into your graveyard from anywhere this turn",
             0,
@@ -3388,13 +3398,16 @@ mod tests {
 
         let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(parsed, PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn);
+        assert_eq!(
+            parsed,
+            PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        );
         Ok(())
     }
 
     #[test]
-    fn parse_predicate_supports_behold_or_controlled_subtype_as_cast(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_behold_or_controlled_subtype_as_cast() -> Result<(), CardTextError>
+    {
         let tokens = lex_line(
             "If you revealed a Dragon card or controlled a Dragon as you cast this spell",
             0,

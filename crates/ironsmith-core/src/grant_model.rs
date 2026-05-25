@@ -163,9 +163,9 @@ where
 
     /// Create a grantable for miracle whose cost is the granted card's mana cost reduced by a fixed amount.
     pub fn miracle_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
-        Self::DerivedAlternativeCast(DerivedAlternativeCast::miracle_from_cards_mana_cost_reduced_by(
-            reduction,
-        ))
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::miracle_from_cards_mana_cost_reduced_by(reduction),
+        )
     }
 
     /// Create a grantable for casting from hand by paying generic mana equal

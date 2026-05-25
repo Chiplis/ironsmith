@@ -371,11 +371,16 @@ mod tests {
         )
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(5, 4))
-        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .parse_text(
+            "If a nontoken creature would die, exile that card with a blood counter on it instead.",
+        )
         .expect("rayami replacement clause should parse");
         let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
         let victim = create_creature(&mut game, bob, "Rayami Victim", 50_211);
-        let victim_stable_id = game.object(victim).expect("victim before destroy").stable_id;
+        let victim_stable_id = game
+            .object(victim)
+            .expect("victim before destroy")
+            .stable_id;
 
         game.update_replacement_effects();
         let mut dm = SelectFirstDecisionMaker;
@@ -388,7 +393,10 @@ mod tests {
         let exiled_victim = game
             .find_object_by_stable_id(victim_stable_id)
             .expect("exiled victim should still be findable");
-        assert_eq!(game.object(exiled_victim).expect("exiled victim").zone, Zone::Exile);
+        assert_eq!(
+            game.object(exiled_victim).expect("exiled victim").zone,
+            Zone::Exile
+        );
         assert_eq!(
             game.counter_count(exiled_victim, CounterType::Blood),
             1,
@@ -408,7 +416,9 @@ mod tests {
         )
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(5, 4))
-        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .parse_text(
+            "If a nontoken creature would die, exile that card with a blood counter on it instead.",
+        )
         .expect("rayami replacement clause should parse");
         let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
         let noncreature = CardBuilder::new(CardId::from_raw(50_221), "Rayami Noncreature")

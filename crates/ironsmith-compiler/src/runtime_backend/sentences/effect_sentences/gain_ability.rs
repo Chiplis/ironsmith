@@ -214,7 +214,10 @@ fn parse_leading_subject_base_pt_before_gain(
         ))
     })?;
     let tail = &rest[5..];
-    if !tail.is_empty() && !is_until_end_of_turn(tail) && tail != ["until", "end", "of", "turn", "and"] {
+    if !tail.is_empty()
+        && !is_until_end_of_turn(tail)
+        && tail != ["until", "end", "of", "turn", "and"]
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
             before_gain.join(" ")
@@ -1054,8 +1057,10 @@ pub(crate) fn parse_gain_ability_sentence(
     if looks_like_can_attack_no_defender {
         return Ok(None);
     }
-    let gain_idx = find_word_index_by(&word_list, |word| matches!(word, "gain" | "gains" | "lose" | "loses"))
-        .or_else(|| find_word_index_by(&word_list, |word| matches!(word, "has" | "have")));
+    let gain_idx = find_word_index_by(&word_list, |word| {
+        matches!(word, "gain" | "gains" | "lose" | "loses")
+    })
+    .or_else(|| find_word_index_by(&word_list, |word| matches!(word, "has" | "have")));
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
@@ -1421,7 +1426,9 @@ pub(crate) fn parse_gain_ability_sentence(
     let real_subject_end_word_idx = pump_effect
         .as_ref()
         .map(|(_, _, gi, _, _, _)| *gi)
-        .or(leading_base_pt_effect.as_ref().map(|(_, _, has_idx, _)| *has_idx))
+        .or(leading_base_pt_effect
+            .as_ref()
+            .map(|(_, _, has_idx, _)| *has_idx))
         .unwrap_or(gain_idx);
     let real_subject_start_word_idx = if let Some(gi) = get_idx {
         before_gain[..gi]

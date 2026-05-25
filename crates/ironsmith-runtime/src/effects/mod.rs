@@ -122,8 +122,7 @@ pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModi
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
 pub use counters::{
     ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
-    MoveOneCounterEffect,
-    ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,
+    MoveOneCounterEffect, ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,
     RemoveAnyCountersFromSourceEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect,
 };

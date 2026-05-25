@@ -51,6 +51,62 @@ fn binary_pile_choice_labels(
     })
 }
 
+fn try_compile_for_each_object_become_copy_of_prior_choice(
+    filter: &ObjectFilter,
+    effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::BecomeCopy {
+                    target,
+                    source: TargetAst::Tagged(source_tag, _),
+                    duration,
+                    preserve_source_abilities,
+                },
+            ..
+        }),
+    ] = effects
+    else {
+        return Ok(None);
+    };
+    if source_tag.as_str() != IT_TAG {
+        return Ok(None);
+    }
+    if !matches!(
+        target,
+        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
+    ) && !matches!(target, TargetAst::Object(_, _, _))
+    {
+        return Ok(None);
+    }
+
+    let refs = current_reference_env(ctx);
+    let Some(prior_choice_tag) = refs.known_last_object_tag().cloned() else {
+        return Ok(None);
+    };
+
+    let mut target_filter = resolve_it_tag(filter, &refs)?;
+    if target_filter.other {
+        target_filter.other = false;
+        target_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: prior_choice_tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+    }
+
+    let rewritten = EffectAst::subject_verb_become_copy(
+        TargetAst::Object(target_filter, None, None),
+        TargetAst::Tagged(prior_choice_tag, None),
+        duration.clone(),
+        *preserve_source_abilities,
+    );
+    Ok(Some(compile_effect(&rewritten, ctx)?))
+}
+
 pub(super) fn try_compile_flow_and_iteration_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -292,6 +348,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![choose_targets, effect], choices)
         }
         EffectAst::ForEachObject { filter, effects } => {
+            if let Some(compiled) =
+                try_compile_for_each_object_become_copy_of_prior_choice(filter, effects, ctx)?
+            {
+                return Ok(Some(compiled));
+            }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_object_context(effects, ctx)?;

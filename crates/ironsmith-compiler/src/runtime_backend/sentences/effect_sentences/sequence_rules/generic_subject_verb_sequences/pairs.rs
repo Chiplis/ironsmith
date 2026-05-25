@@ -1910,27 +1910,38 @@ pub(crate) fn parse_consult_match_into_battlefield_or_hand(
     }
 
     let second_tokens = trim_commas(second);
-    let moves_to_battlefield_or_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
-        &second_tokens,
-        &[
-            "put",
-            "that",
-            "card",
-            "onto",
-            "the",
-            "battlefield",
-            "or",
-            "into",
-            "your",
-            "hand",
-        ],
-    )
-    .is_some()
-        || crate::runtime_backend::grammar::primitives::words_match_prefix(
+    let moves_to_battlefield_or_hand =
+        crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
-            &["put", "it", "onto", "the", "battlefield", "or", "into", "your", "hand"],
+            &[
+                "put",
+                "that",
+                "card",
+                "onto",
+                "the",
+                "battlefield",
+                "or",
+                "into",
+                "your",
+                "hand",
+            ],
         )
-        .is_some();
+        .is_some()
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
+                &second_tokens,
+                &[
+                    "put",
+                    "it",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "or",
+                    "into",
+                    "your",
+                    "hand",
+                ],
+            )
+            .is_some();
     if !moves_to_battlefield_or_hand {
         return Ok(None);
     }

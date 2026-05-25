@@ -65,9 +65,13 @@ impl EffectExecutor for MoveOneCounterEffect {
                 continue;
             }
             let mut outcome = EffectOutcome::count(1).with_event(remove_event);
-            if let Some(add_event) =
-                game.add_counters_with_source(to_id, counter_type, 1, Some(ctx.source), Some(ctx.controller))
-            {
+            if let Some(add_event) = game.add_counters_with_source(
+                to_id,
+                counter_type,
+                1,
+                Some(ctx.source),
+                Some(ctx.controller),
+            ) {
                 outcome = outcome.with_event(add_event);
             }
             return Ok(outcome);
@@ -81,8 +85,8 @@ impl EffectExecutor for MoveOneCounterEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::effects::ResolvedTarget;
     use crate::effect::OutcomeValue;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{CounterType, Object};
@@ -121,7 +125,9 @@ mod tests {
             ResolvedTarget::Object(to_id),
         ]);
         let effect = MoveOneCounterEffect::new(ChooseSpec::permanent(), ChooseSpec::permanent());
-        let result = effect.execute(&mut game, &mut ctx).expect("execute move one");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("execute move one");
 
         assert_eq!(result.value, OutcomeValue::Count(1));
         assert_eq!(game.counter_count(from_id, CounterType::PlusOnePlusOne), 1);
@@ -155,7 +161,9 @@ mod tests {
             ResolvedTarget::Object(to_id),
         ]);
         let effect = MoveOneCounterEffect::new(ChooseSpec::permanent(), ChooseSpec::permanent());
-        let result = effect.execute(&mut game, &mut ctx).expect("execute move one");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("execute move one");
 
         assert_eq!(result.value, OutcomeValue::Count(0));
     }

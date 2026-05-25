@@ -7995,7 +7995,9 @@ fn test_parse_prevent_all_damage_from_non_human_sources_clause() {
 fn test_parse_prevent_all_damage_from_opponents_creatures_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Probe")
         .card_types(vec![CardType::Instant])
-        .parse_text("Prevent all damage that would be dealt this turn by creatures your opponents control.")
+        .parse_text(
+            "Prevent all damage that would be dealt this turn by creatures your opponents control.",
+        )
         .expect("prevent-all damage from opponent-controlled creatures clause should parse");
 
     let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
@@ -11808,7 +11810,9 @@ fn parse_auriok_steelshaper_strict_and_preserves_equip_cost_modifier_text() {
         )
         .expect("Auriok Steelshaper should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("equip costs you pay cost {1} less"),
         "expected equip cost-modifier line in compiled output, got {rendered}"
@@ -12328,14 +12332,17 @@ fn parse_war_elemental_strictly_parses_etb_sacrifice_unless_opponent_damage_clau
         "expected compiled text to preserve ETB unless-opponent-damage semantics, got {joined}"
     );
     assert!(
-        joined.contains("whenever an opponent is dealt damage, put that many +1/+1 counters on this creature"),
+        joined.contains(
+            "whenever an opponent is dealt damage, put that many +1/+1 counters on this creature"
+        ),
         "expected damage-counter trigger to remain intact, got {joined}"
     );
 }
 
 #[test]
 fn war_elemental_runtime_condition_matches_when_opponent_lost_life_this_turn() {
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = crate::ObjectId::from_raw(77);
     let bob = crate::PlayerId::from_index(1);
     let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
@@ -14272,7 +14279,9 @@ Target player sacrifices a creature of their choice. If you revealed a Dragon ca
         )
         .expect("Foul-Tongue Invocation should parse strictly");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("target player sacrifices a creature")
             && rendered.contains("if this spell's behold cost was paid or you control a dragon")
@@ -14296,7 +14305,8 @@ fn foul_tongue_invocation_condition_fails_without_behold_or_dragon_control() {
         })
         .expect("Foul-Tongue Invocation should lower a conditional life-gain clause");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(
         &def,
         crate::PlayerId::from_index(0),
@@ -14330,7 +14340,8 @@ fn foul_tongue_invocation_condition_matches_when_behold_label_was_paid() {
         })
         .expect("Foul-Tongue Invocation should lower a conditional life-gain clause");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(
         &def,
         crate::PlayerId::from_index(0),
@@ -14774,7 +14785,9 @@ fn profane_memento_compiled_text_and_trigger_model_regression() {
     let rendered = canonical_compiled_lines(&def).join(" ");
     let rendered_lc = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lc.contains("whenever a nontoken creature an opponent owns is put into a graveyard from anywhere"),
+        rendered_lc.contains(
+            "whenever a nontoken creature an opponent owns is put into a graveyard from anywhere"
+        ),
         "expected opponent-owned nontoken creature graveyard trigger text, got {rendered}"
     );
     assert!(
@@ -14788,12 +14801,16 @@ fn profane_memento_compiled_text_and_trigger_model_regression() {
         .find_map(|ability| match &ability.kind {
             AbilityKind::Triggered(triggered) => triggered
                 .trigger
-                .downcast_ref::<crate::triggers::ZoneChangeTrigger>(),
+                .downcast_ref::<crate::triggers::ZoneChangeTrigger>(
+            ),
             _ => None,
         })
         .expect("Profane Memento should compile to a zone-change trigger");
 
-    assert_eq!(trigger.player, crate::triggers::zone_changes::PlayerRelation::Any);
+    assert_eq!(
+        trigger.player,
+        crate::triggers::zone_changes::PlayerRelation::Any
+    );
     assert_eq!(
         trigger.object_filter.owner,
         Some(PlayerFilter::Opponent),
@@ -14825,7 +14842,8 @@ fn profane_memento_triggers_for_opponents_creature_cards_only() {
 
     let bob_hand_creature = game.create_object_from_definition(&vanilla_creature, bob, Zone::Hand);
     let bob_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(bob_hand_creature).expect("opponent creature should exist"),
+        game.object(bob_hand_creature)
+            .expect("opponent creature should exist"),
         &game,
     );
     let bob_event = crate::triggers::TriggerEvent::new_with_provenance(
@@ -14841,7 +14859,10 @@ fn profane_memento_triggers_for_opponents_creature_cards_only() {
 
     let triggered = crate::triggers::check_triggers(&game, &bob_event);
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
-    for entry in triggered.into_iter().filter(|entry| entry.source == memento_id) {
+    for entry in triggered
+        .into_iter()
+        .filter(|entry| entry.source == memento_id)
+    {
         trigger_queue.add(entry);
     }
     assert_eq!(
@@ -22088,10 +22109,11 @@ fn soul_transfer_parses_and_keeps_choose_both_instead_clause() {
         )
         .expect("Soul Transfer should parse");
 
-    let joined = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        joined.contains("choose one")
-            && joined.contains("you may choose both instead"),
+        joined.contains("choose one") && joined.contains("you may choose both instead"),
         "expected Soul Transfer choose-both conditional wording, got {joined}"
     );
 }
@@ -22486,7 +22508,8 @@ fn parse_ancient_bronze_dragon_where_x_result_clause_parses_strictly() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("roll a d20")
-            && rendered.contains("put that many +1/+1 counters on each of up to two target creatures")
+            && rendered
+                .contains("put that many +1/+1 counters on each of up to two target creatures")
             && rendered.contains("when you do"),
         "expected Ancient Bronze Dragon where-X result clause in compiled text, got {rendered}"
     );
@@ -27100,8 +27123,12 @@ fn drownyard_behemoth_parses_hexproof_condition_for_entered_this_turn() {
     let ctx = crate::effects::ExecutionContext::new_default(behemoth_id, alice);
 
     assert!(
-        crate::condition_eval::evaluate_condition_resolution(&game, &entered_this_turn_condition, &ctx)
-            .expect("entered-this-turn condition should evaluate"),
+        crate::condition_eval::evaluate_condition_resolution(
+            &game,
+            &entered_this_turn_condition,
+            &ctx
+        )
+        .expect("entered-this-turn condition should evaluate"),
         "Drownyard Behemoth should have hexproof on the turn it entered"
     );
 
@@ -32842,7 +32869,9 @@ fn parse_cabaretti_ascendancy_strict_regression() {
 #[test]
 fn cabaretti_ascendancy_compiled_text_keeps_hand_or_bottom_branch() {
     let def = parse_oracle_card_definition("Cabaretti Ascendancy");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("if you don't put the card into your hand")
@@ -32900,7 +32929,9 @@ fn woodlurker_mimic_strict_regression_parses() {
 #[test]
 fn woodlurker_mimic_compiled_text_keeps_base_pt_and_wither_clause() {
     let def = parse_oracle_card_definition("Woodlurker Mimic");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("base power and toughness 4/5"),
@@ -33114,10 +33145,11 @@ fn nesting_grounds_move_counter_effect_moves_exactly_one_counter() {
     game.add_object(from_obj);
     game.add_object(to_obj);
 
-    let mut ctx = crate::effects::EffectContext::new_default(source, controller).with_targets(vec![
-        crate::effects::ResolvedTarget::Object(from_id),
-        crate::effects::ResolvedTarget::Object(to_id),
-    ]);
+    let mut ctx =
+        crate::effects::EffectContext::new_default(source, controller).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(from_id),
+            crate::effects::ResolvedTarget::Object(to_id),
+        ]);
     let result = move_effect
         .execute(&mut game, &mut ctx)
         .expect("Nesting Grounds move-counter effect should execute");
@@ -37125,7 +37157,8 @@ fn parse_cloakwood_hermit_keeps_creature_card_graveyard_gate() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("at the beginning of your end step")
-            && rendered.contains("a creature card was put into your graveyard from anywhere this turn")
+            && rendered
+                .contains("a creature card was put into your graveyard from anywhere this turn")
             && rendered.contains("create two tapped 1/1 green squirrel creature tokens"),
         "expected Cloakwood Hermit trigger and gate wording to render, got {rendered}"
     );
@@ -40054,7 +40087,9 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
         .join("\n")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("if nontoken creature would die, exile it with a blood counter on it instead"),
+        rendered.contains(
+            "if nontoken creature would die, exile it with a blood counter on it instead"
+        ),
         "expected would-die replacement text, got {rendered}"
     );
 }
@@ -40062,7 +40097,10 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
 #[test]
 fn absolute_virtue_renders_protection_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Absolute Virtue")
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White], vec![ManaSymbol::White]]))
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
         .card_types(vec![CardType::Enchantment])
         .parse_text("You have protection from each of your opponents.")
         .expect("Absolute Virtue oracle text should parse");
@@ -40121,7 +40159,8 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
             {
                 has_set_life_to_ten = true;
             }
-            if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
+            if let Some(control_player) =
+                effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
                 && format!("{:?}", control_player.start)
                     .to_ascii_lowercase()
                     .contains("nextturn")
@@ -40186,10 +40225,13 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
             "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
         )
         .expect("Eruth, Tormented Prophet oracle text should parse");
-    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("if you would draw a card, exile the top 2 cards of your library instead"),
+        rendered
+            .contains("if you would draw a card, exile the top 2 cards of your library instead"),
         "expected replacement clause in compiled text, got {rendered}"
     );
     assert!(

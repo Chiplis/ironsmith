@@ -1899,7 +1899,16 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if crate::runtime_backend::token_word_refs(tokens)
-        == ["you", "have", "protection", "from", "each", "of", "your", "opponents"]
+        == [
+            "you",
+            "have",
+            "protection",
+            "from",
+            "each",
+            "of",
+            "your",
+            "opponents",
+        ]
     {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::be_targeted_player_from(
@@ -5273,8 +5282,9 @@ pub(crate) fn parse_equip_cost_modifier_line(
     if clause_words.get(1).copied() != Some("costs") {
         return Ok(None);
     }
-    let Some(cost_idx) = rfind_index(tokens, |token| token.is_word("cost") || token.is_word("costs"))
-    else {
+    let Some(cost_idx) = rfind_index(tokens, |token| {
+        token.is_word("cost") || token.is_word("costs")
+    }) else {
         return Ok(None);
     };
 
@@ -5311,12 +5321,14 @@ pub(crate) fn parse_equip_cost_modifier_line(
         } else {
             format!("Equip costs you pay cost {amount_text} less")
         };
-        return Ok(Some(StaticAbility::reduce_activated_ability_costs_with_display(
-            filter,
-            amount as u32,
-            None,
-            display,
-        )));
+        return Ok(Some(
+            StaticAbility::reduce_activated_ability_costs_with_display(
+                filter,
+                amount as u32,
+                None,
+                display,
+            ),
+        ));
     }
 
     let increase = TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(
@@ -6644,7 +6656,8 @@ pub(crate) fn parse_during_your_turn_prevent_all_damage_to_source_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_during_your_turn_prevent_all_damage_to_source_line_lexed(tokens) {
         return Ok(Some(
-            StaticAbility::prevent_all_damage_to_self().with_condition(crate::ConditionExpr::YourTurn),
+            StaticAbility::prevent_all_damage_to_self()
+                .with_condition(crate::ConditionExpr::YourTurn),
         ));
     }
 
@@ -7886,8 +7899,12 @@ pub(crate) fn parse_draw_replacement_exile_top_and_play_line(
         return Ok(None);
     }
 
-    if !slice_starts_with(&words, &["if", "you", "would", "draw", "a", "card", "exile", "the", "top"])
-    {
+    if !slice_starts_with(
+        &words,
+        &[
+            "if", "you", "would", "draw", "a", "card", "exile", "the", "top",
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -8099,7 +8116,10 @@ pub(crate) fn parse_exile_would_die_instead_line(
             nontoken_opponent_prefix_no_article.len(),
         ))
     } else if slice_starts_with(&words, &nontoken_any_prefix) {
-        Some((ObjectFilter::creature().nontoken(), nontoken_any_prefix.len()))
+        Some((
+            ObjectFilter::creature().nontoken(),
+            nontoken_any_prefix.len(),
+        ))
     } else if slice_starts_with(&words, &nontoken_any_prefix_no_article) {
         Some((
             ObjectFilter::creature().nontoken(),
@@ -8157,10 +8177,52 @@ pub(crate) fn parse_exile_would_die_instead_line(
             ["exile", "that", "card", "instead"] | ["exile", "it", "instead"] => {
                 (Vec::new(), Vec::new())
             }
-            ["instead", "exile", "that", "card", "with", "a", counter_word, "counter", "on", "it"]
-            | ["instead", "exile", "it", "with", "a", counter_word, "counter", "on", "it"]
-            | ["exile", "that", "card", "with", "a", counter_word, "counter", "on", "it", "instead"]
-            | ["exile", "it", "with", "a", counter_word, "counter", "on", "it", "instead"] => {
+            [
+                "instead",
+                "exile",
+                "that",
+                "card",
+                "with",
+                "a",
+                counter_word,
+                "counter",
+                "on",
+                "it",
+            ]
+            | [
+                "instead",
+                "exile",
+                "it",
+                "with",
+                "a",
+                counter_word,
+                "counter",
+                "on",
+                "it",
+            ]
+            | [
+                "exile",
+                "that",
+                "card",
+                "with",
+                "a",
+                counter_word,
+                "counter",
+                "on",
+                "it",
+                "instead",
+            ]
+            | [
+                "exile",
+                "it",
+                "with",
+                "a",
+                counter_word,
+                "counter",
+                "on",
+                "it",
+                "instead",
+            ] => {
                 let Some(counter_type) = parse_counter_type_word(counter_word) else {
                     return Ok(None);
                 };

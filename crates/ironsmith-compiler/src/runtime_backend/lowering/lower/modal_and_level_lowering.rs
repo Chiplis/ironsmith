@@ -188,7 +188,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 },
             }
         });
-        let first = conditions.next().expect("non-empty card-type choose-both list");
+        let first = conditions
+            .next()
+            .expect("non-empty card-type choose-both list");
         Some(conditions.fold(first, |left, right| {
             crate::effect::Condition::And(Box::new(left), Box::new(right))
         }))
@@ -215,7 +217,11 @@ pub(crate) fn rewrite_lower_parsed_modal(
         };
         let choose_one =
             with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()));
-        crate::effect::Effect::conditional(choose_both_condition, vec![choose_both], vec![choose_one])
+        crate::effect::Effect::conditional(
+            choose_both_condition,
+            vec![choose_both],
+            vec![choose_one],
+        )
     } else if same_mode_more_than_once && min == max {
         with_unchosen_requirement(crate::effect::Effect::choose_exactly_allow_repeated_modes(
             max.clone(),

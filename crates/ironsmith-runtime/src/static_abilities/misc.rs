@@ -4892,7 +4892,10 @@ mod tests {
     #[test]
     fn test_draw_replacement_exile_top_and_play_sequence() {
         let ability = DrawReplacementExileTopAndPlay::new(2);
-        assert_eq!(ability.id(), StaticAbilityId::DrawReplacementExileTopAndPlay);
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::DrawReplacementExileTopAndPlay
+        );
 
         let replacement = ability
             .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
@@ -5367,7 +5370,10 @@ mod tests {
             .object(result.new_id)
             .expect("Ardenvale Paladin should exist on battlefield");
         assert_eq!(
-            permanent.counters.get(&CounterType::PlusOnePlusOne).copied(),
+            permanent
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied(),
             Some(1)
         );
     }
@@ -5409,7 +5415,10 @@ mod tests {
             .object(result.new_id)
             .expect("Ardenvale Paladin should exist on battlefield");
         assert_eq!(
-            permanent.counters.get(&CounterType::PlusOnePlusOne).copied(),
+            permanent
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied(),
             None
         );
     }
@@ -5851,7 +5860,6 @@ mod tests {
             crate::events::cause::EventCause::effect(),
         );
         assert!(!matcher.matches_event(&wrong_target, &ctx));
-
     }
 
     #[test]

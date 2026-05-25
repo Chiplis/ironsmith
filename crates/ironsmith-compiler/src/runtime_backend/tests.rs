@@ -2645,8 +2645,8 @@ fn rewrite_parse_lose_life_unless_you_attacked_this_turn_clause() {
     let tokens = lex_line("You lose 4 life unless you attacked this turn.", 0)
         .expect("rewrite lexer should classify life-loss unless clause");
 
-    let parsed = parse_effect_sentence_lexed(&tokens)
-        .expect("life-loss unless clause should parse");
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("life-loss unless clause should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("Conditional"), "{debug}");
@@ -8117,7 +8117,9 @@ fn rewrite_grammar_prevention_static_line_probes_match_keyword_static_shapes() {
 fn parse_prevent_all_damage_by_opponents_creatures_effect_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Effect Probe")
         .card_types(vec![CardType::Instant])
-        .parse_text("Prevent all damage that would be dealt this turn by creatures your opponents control.")
+        .parse_text(
+            "Prevent all damage that would be dealt this turn by creatures your opponents control.",
+        )
         .expect("prevent-all damage clause with opponent creature source filter should parse");
 
     let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
@@ -9924,7 +9926,9 @@ fn rewrite_nontoken_opponent_creature_would_die_with_counter_static_replacement(
 fn rewrite_rayami_nontoken_creature_would_die_with_blood_counter_static_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Rayami, First of the Fallen")
         .card_types(vec![CardType::Creature])
-        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .parse_text(
+            "If a nontoken creature would die, exile that card with a blood counter on it instead.",
+        )
         .expect("rayami replacement clause should parse");
     let debug = format!("{:#?}", def.abilities);
 

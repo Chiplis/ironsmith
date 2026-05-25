@@ -303,7 +303,8 @@ fn normalize_adamant_enters_with_counter_clause(line: &str) -> String {
     let Some((enter_clause, condition_clause)) = line.split_once(" if ") else {
         return line.to_string();
     };
-    if !enter_clause.starts_with("This creature enters with ") || !enter_clause.ends_with(" on it") {
+    if !enter_clause.starts_with("This creature enters with ") || !enter_clause.ends_with(" on it")
+    {
         return line.to_string();
     }
     let condition = condition_clause.trim().trim_end_matches('.');

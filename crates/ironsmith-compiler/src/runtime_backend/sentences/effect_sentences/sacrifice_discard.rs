@@ -97,8 +97,11 @@ pub(crate) fn parse_sacrifice(
                     if_false: vec![base],
                 });
             }
-            let unless_words = crate::runtime_backend::token_word_refs(&tokens[unless_token_idx + 1..]);
-            if unless_words.as_slice() == ["an", "opponent", "was", "dealt", "damage", "this", "turn"] {
+            let unless_words =
+                crate::runtime_backend::token_word_refs(&tokens[unless_token_idx + 1..]);
+            if unless_words.as_slice()
+                == ["an", "opponent", "was", "dealt", "damage", "this", "turn"]
+            {
                 return Ok(EffectAst::Conditional {
                     predicate: PredicateAst::OpponentLostLifeThisTurn,
                     if_true: Vec::new(),

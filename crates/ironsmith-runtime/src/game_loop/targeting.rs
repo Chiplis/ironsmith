@@ -1385,29 +1385,91 @@ fn cast_time_selected_effects_from_program(
             .collect::<Vec<_>>();
 
         match applicable.as_slice() {
-            [] => selected.extend(segment.default_effects.iter().cloned()),
+            [] => selected.extend(segment.default_effects.iter().flat_map(|effect| {
+                cast_time_selected_effects_from_effect(game, effect, caster, Some(source_id))
+            })),
             [branch] => {
                 if effects_have_new_cast_time_target_selection(&branch.replacement_effects)
                     || !effects_have_cast_time_target_selection(&segment.default_effects)
                 {
-                    selected.extend(branch.replacement_effects.iter().cloned());
+                    selected.extend(branch.replacement_effects.iter().flat_map(|effect| {
+                        cast_time_selected_effects_from_effect(
+                            game,
+                            effect,
+                            caster,
+                            Some(source_id),
+                        )
+                    }));
                 } else {
-                    selected.extend(segment.default_effects.iter().cloned());
+                    selected.extend(segment.default_effects.iter().flat_map(|effect| {
+                        cast_time_selected_effects_from_effect(
+                            game,
+                            effect,
+                            caster,
+                            Some(source_id),
+                        )
+                    }));
                 }
             }
             [branch, ..] => {
                 if effects_have_new_cast_time_target_selection(&branch.replacement_effects)
                     || !effects_have_cast_time_target_selection(&segment.default_effects)
                 {
-                    selected.extend(branch.replacement_effects.iter().cloned());
+                    selected.extend(branch.replacement_effects.iter().flat_map(|effect| {
+                        cast_time_selected_effects_from_effect(
+                            game,
+                            effect,
+                            caster,
+                            Some(source_id),
+                        )
+                    }));
                 } else {
-                    selected.extend(segment.default_effects.iter().cloned());
+                    selected.extend(segment.default_effects.iter().flat_map(|effect| {
+                        cast_time_selected_effects_from_effect(
+                            game,
+                            effect,
+                            caster,
+                            Some(source_id),
+                        )
+                    }));
                 }
             }
         }
     }
 
     selected
+}
+
+fn cast_time_selected_effects_from_effect(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+) -> Vec<Effect> {
+    let Some(source_id) = source_id else {
+        return vec![effect.clone()];
+    };
+    let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() else {
+        return vec![effect.clone()];
+    };
+
+    let branch = if crate::condition_eval::evaluate_condition_cast_time(
+        game,
+        &conditional.condition,
+        caster,
+        source_id,
+    ) {
+        &conditional.if_true
+    } else {
+        &conditional.if_false
+    };
+
+    branch
+        .iter()
+        .flat_map(|inner| {
+            cast_time_selected_effects_from_effect(game, inner, caster, Some(source_id))
+        })
+        .collect()
 }
 
 fn effects_have_cast_time_target_selection(effects: &[Effect]) -> bool {

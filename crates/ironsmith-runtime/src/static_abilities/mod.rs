@@ -2325,7 +2325,8 @@ impl StaticAbility {
         minimum_total_mana: Option<u32>,
         display: impl Into<String>,
     ) -> Self {
-        let mut ability = ActivatedAbilityCostReduction::new(filter, reduction).with_display(display);
+        let mut ability =
+            ActivatedAbilityCostReduction::new(filter, reduction).with_display(display);
         if let Some(minimum) = minimum_total_mana {
             ability = ability.with_minimum_total_mana(minimum);
         }

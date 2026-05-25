@@ -371,7 +371,10 @@ pub(crate) fn parse_trigger_subject_filter(
         filter.controller = Some(PlayerFilter::You);
         return Ok(Some(filter));
     }
-    if matches!(subject_words.as_slice(), ["a", "source"] | ["source"] | ["any", "source"]) {
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source"] | ["source"] | ["any", "source"]
+    ) {
         return Ok(Some(ObjectFilter::default()));
     }
     if matches!(
@@ -532,7 +535,10 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         filter.controller = Some(PlayerFilter::You);
         return Ok(Some(filter));
     }
-    if matches!(subject_words.as_slice(), ["a", "source"] | ["source"] | ["any", "source"]) {
+    if matches!(
+        subject_words.as_slice(),
+        ["a", "source"] | ["source"] | ["any", "source"]
+    ) {
         return Ok(Some(ObjectFilter::default()));
     }
     if matches!(
