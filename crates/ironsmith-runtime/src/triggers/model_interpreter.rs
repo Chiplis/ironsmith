@@ -134,6 +134,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisDies => crate::triggers::Trigger::this_dies(),
         TriggerKind::ThisDiesOrIsExiled => crate::triggers::Trigger::this_dies_or_is_exiled(),
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),
+        TriggerKind::ThisMutates => crate::triggers::Trigger::this_mutates(),
         TriggerKind::LeavesBattlefield { filter } => {
             crate::triggers::Trigger::leaves_battlefield(filter)
         }

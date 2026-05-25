@@ -2241,6 +2241,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::ThisBecomesMonstrous);
     }
 
+    if words.as_slice() == ["this", "creature", "mutates"]
+        || words.as_slice() == ["this", "permanent", "mutates"]
+        || words.as_slice() == ["this", "mutates"]
+        || words.as_slice() == ["mutates"]
+    {
+        return Ok(TriggerSpec::ThisMutates);
+    }
+    if slice_ends_with(&words, &["mutates"])
+        && words.len() > 1
+        && source_reference_surface_for_words(&words[..words.len() - 1]).is_some()
+    {
+        return Ok(TriggerSpec::ThisMutates);
+    }
+
     if words.as_slice() == ["this", "creature", "is", "turned", "face", "up"]
         || words.as_slice() == ["this", "permanent", "is", "turned", "face", "up"]
         || words.as_slice() == ["this", "is", "turned", "face", "up"]

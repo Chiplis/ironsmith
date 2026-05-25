@@ -91,6 +91,8 @@ pub enum EventKind {
     BeginningOfPostcombatMainPhase,
     /// A creature became monstrous
     BecameMonstrous,
+    /// A permanent mutated
+    Mutated,
     /// A player drew one or more cards
     CardsDrawn,
     /// A player discarded a card

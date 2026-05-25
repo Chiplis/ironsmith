@@ -68,6 +68,7 @@ pub enum TriggerKind {
     ThisDies,
     ThisDiesOrIsExiled,
     ThisLeavesBattlefield,
+    ThisMutates,
     LeavesBattlefield {
         filter: ObjectFilter,
     },
@@ -438,6 +439,9 @@ impl Trigger {
             "this_leaves_battlefield",
             TriggerKind::ThisLeavesBattlefield,
         )
+    }
+    pub fn this_mutates() -> Self {
+        Self::typed("this_mutates", TriggerKind::ThisMutates)
     }
     pub fn leaves_battlefield(filter: ObjectFilter) -> Self {
         Self::typed(
