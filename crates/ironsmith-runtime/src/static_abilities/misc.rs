@@ -3766,6 +3766,70 @@ impl StaticAbilityKind for DrawReplacementDouble {
     }
 }
 
+/// "If you would draw a card, exile the top N cards of your library instead. You may play those
+/// cards this turn."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrawReplacementExileTopAndPlay {
+    pub count: u32,
+}
+
+impl DrawReplacementExileTopAndPlay {
+    pub fn new(count: u32) -> Self {
+        Self { count }
+    }
+}
+
+impl StaticAbilityKind for DrawReplacementExileTopAndPlay {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementExileTopAndPlay
+    }
+
+    fn display(&self) -> String {
+        let cards = if self.count == 1 { "card" } else { "cards" };
+        format!(
+            "If you would draw a card, exile the top {} {} of your library instead. You may play those cards this turn.",
+            self.count, cards
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        const TOP_CARDS_TAG: &str = "draw_replacement_top_cards";
+
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawCardMatcher::you(),
+            ReplacementAction::Instead(vec![
+                Effect::new(
+                    crate::effects::ChooseObjectsEffect::new(
+                        ObjectFilter::default()
+                            .in_zone(Zone::Library)
+                            .owned_by(PlayerFilter::You),
+                        self.count as usize,
+                        PlayerFilter::You,
+                        TOP_CARDS_TAG,
+                    )
+                    .top_only(),
+                ),
+                Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::tagged(
+                    TOP_CARDS_TAG,
+                ))),
+                Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                    TOP_CARDS_TAG,
+                    PlayerFilter::You,
+                    crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+                    true,
+                    false,
+                )),
+            ]),
+        ))
+    }
+}
+
 /// "If [object] would [keyword action], instead [effects]."
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeywordActionReplacement {
@@ -4822,6 +4886,33 @@ mod tests {
             format!("{:?}", effects[0]).contains("DrawCardsEffect"),
             "expected nested draw effect, got {:?}",
             effects[0]
+        );
+    }
+
+    #[test]
+    fn test_draw_replacement_exile_top_and_play_sequence() {
+        let ability = DrawReplacementExileTopAndPlay::new(2);
+        assert_eq!(ability.id(), StaticAbilityId::DrawReplacementExileTopAndPlay);
+
+        let replacement = ability
+            .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
+            .expect("draw replacement should create replacement effect");
+        let ReplacementAction::Instead(effects) = replacement.replacement else {
+            panic!("expected draw replacement to use an Instead action");
+        };
+
+        assert_eq!(effects.len(), 3, "expected choose+exile+grant sequence");
+        assert!(
+            ability.display().contains("top 2 cards"),
+            "expected display text to keep top-two count"
+        );
+        assert!(
+            format!("{:?}", effects[0]).contains("draw_replacement_top_cards"),
+            "expected choose effect to tag exiled cards for follow-up play permission"
+        );
+        assert!(
+            format!("{:?}", effects[2]).contains("GrantPlayTaggedEffect"),
+            "expected final effect to grant play permission"
         );
     }
 

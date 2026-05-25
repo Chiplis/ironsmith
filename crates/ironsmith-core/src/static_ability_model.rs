@@ -3196,6 +3196,14 @@ impl<
         }
     }
 
+    pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementExileTopAndPlay),
+            label: format!("draw replacement exile top {count} and play"),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+
     pub fn keyword_action_replacement(
         action: KeywordActionKind,
         source_filter: ObjectFilter,

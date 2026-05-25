@@ -209,6 +209,7 @@ pub enum StaticAbilityId {
     CastThisCardFromLibraryWhileSearching,
     EffectDiscardToLibraryReplacement,
     DrawReplacementExileTopFaceDown,
+    DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
     KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -447,6 +448,7 @@ impl StaticAbilityId {
             | CastThisCardFromLibraryWhileSearching
             | EffectDiscardToLibraryReplacement
             | DrawReplacementExileTopFaceDown
+            | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble
             | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard

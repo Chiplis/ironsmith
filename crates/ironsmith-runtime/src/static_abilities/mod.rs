@@ -2676,6 +2676,10 @@ impl StaticAbility {
         Self::new(DrawReplacementDouble)
     }
 
+    pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
+        Self::new(DrawReplacementExileTopAndPlay::new(count))
+    }
+
     pub fn keyword_action_replacement(
         action: crate::events::KeywordActionKind,
         source_filter: crate::target::ObjectFilter,

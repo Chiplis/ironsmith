@@ -14,6 +14,15 @@ impl std::fmt::Display for StaticAbilityModelConversionError {
 impl std::error::Error for StaticAbilityModelConversionError {}
 
 impl StaticAbility {
+    fn parse_draw_replacement_exile_top_and_play_count(label: &str) -> Option<u32> {
+        let prefix = "draw replacement exile top ";
+        let suffix = " and play";
+        label
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(suffix))
+            .and_then(|count| count.parse::<u32>().ok())
+    }
+
     pub fn from_compiler_model_parts(
         id: Option<StaticAbilityId>,
         label: String,
@@ -178,6 +187,11 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
+            }
+            Some(StaticAbilityId::DrawReplacementExileTopAndPlay) => {
+                Self::draw_replacement_exile_top_and_play(
+                    Self::parse_draw_replacement_exile_top_and_play_count(&label).unwrap_or(2),
+                )
             }
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
             Some(StaticAbilityId::ExileWouldDieInstead) => {
