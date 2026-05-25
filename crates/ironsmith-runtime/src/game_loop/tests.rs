@@ -20,7 +20,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectRef, PlayerFilter};
 use crate::triggers::Trigger;
 use crate::triggers::TriggerEvent;
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 
 fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
@@ -7389,6 +7389,133 @@ fn sakashimas_will_second_mode_chooses_copy_source_once_and_does_not_target_each
     assert_eq!(game.calculated_toughness(other_one_id), Some(5));
     assert_eq!(game.calculated_power(other_two_id), Some(5));
     assert_eq!(game.calculated_toughness(other_two_id), Some(5));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_will_second_mode_copying_legendary_creature_triggers_legend_rule() {
+    struct ChooseCopySourceThenLegendDecisionMaker {
+        copy_source: ObjectId,
+        object_choice_calls: usize,
+        legend_choice_calls: usize,
+    }
+
+    impl DecisionMaker for ChooseCopySourceThenLegendDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.description.contains("legend rule") {
+                self.legend_choice_calls += 1;
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == self.copy_source),
+                    "the original legendary copy source should be one keep option"
+                );
+                return vec![self.copy_source];
+            }
+
+            self.object_choice_calls += 1;
+            vec![self.copy_source]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sakashimas_will = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Will")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n\
+• Target opponent chooses a creature they control. You gain control of it.\n\
+• Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("Sakashima's Will should parse");
+
+    let commander = CardBuilder::new(CardId::new(), "Commander Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let legendary_source = CardBuilder::new(CardId::new(), "Legendary Source")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    let other_one = CardBuilder::new(CardId::new(), "Other One")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let other_two = CardBuilder::new(CardId::new(), "Other Two")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    let copy_source_id = game.create_object_from_card(&legendary_source, alice, Zone::Battlefield);
+    let other_one_id = game.create_object_from_card(&other_one, alice, Zone::Battlefield);
+    let other_two_id = game.create_object_from_card(&other_two, alice, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&sakashimas_will, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Sakashima's Will should reach mode selection");
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![1]),
+    )
+    .expect("choosing the copy mode should finish casting");
+
+    let mut dm = ChooseCopySourceThenLegendDecisionMaker {
+        copy_source: copy_source_id,
+        object_choice_calls: 0,
+        legend_choice_calls: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Sakashima's Will should resolve");
+
+    for copied in [commander_id, other_one_id, other_two_id] {
+        let chars = game
+            .calculated_characteristics(copied)
+            .expect("copied creature should have calculated characteristics");
+        assert_eq!(chars.name, "Legendary Source");
+        assert!(chars.supertypes.contains(&Supertype::Legendary));
+    }
+
+    crate::game_loop::check_and_apply_sbas_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("legend rule should be handled after Sakashima's Will resolves");
+
+    assert_eq!(
+        dm.object_choice_calls, 1,
+        "Sakashima's Will should choose the copy source exactly once"
+    );
+    assert_eq!(
+        dm.legend_choice_calls, 1,
+        "copying a legendary creature should produce one legend-rule decision"
+    );
+    assert!(game.battlefield.contains(&copy_source_id));
+    assert!(!game.battlefield.contains(&commander_id));
+    assert!(!game.battlefield.contains(&other_one_id));
+    assert!(!game.battlefield.contains(&other_two_id));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -28912,7 +29039,8 @@ fn trove_tracker_dies_trigger_draws_a_card() {
     game.create_object_from_card(&library_card, alice, Zone::Library);
 
     let snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(tracker_id).expect("Trove Tracker permanent should exist"),
+        game.object(tracker_id)
+            .expect("Trove Tracker permanent should exist"),
         &game,
     );
     let dies_event = crate::events::RawEvent::new(
@@ -28958,7 +29086,8 @@ fn trove_tracker_only_triggers_on_battlefield_to_graveyard_moves() {
     let tracker_id = game.create_object_from_definition(&tracker, alice, Zone::Hand);
 
     let snapshot = ObjectSnapshot::from_object(
-        game.object(tracker_id).expect("Trove Tracker card should exist"),
+        game.object(tracker_id)
+            .expect("Trove Tracker card should exist"),
         &game,
     );
     let non_dies_event = crate::events::RawEvent::new(

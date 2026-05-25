@@ -951,18 +951,13 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
-    Ok(
-        tokens.first().is_some_and(|token| token.is_word("encore"))
-            ||
-        parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
-            || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?
-                .is_some()
-            || parse_flash_with_additional_cost_line_lexed(tokens).is_some()
-            || parse_jump_start_line_lexed(tokens)?.is_some()
-            || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?
-                .is_some()
-            || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some(),
-    )
+    Ok(tokens.first().is_some_and(|token| token.is_word("encore"))
+        || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
+        || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
+        || parse_flash_with_additional_cost_line_lexed(tokens).is_some()
+        || parse_jump_start_line_lexed(tokens)?.is_some()
+        || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?.is_some()
+        || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some())
 }
 
 fn token_words_have_prefix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {

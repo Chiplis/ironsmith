@@ -49,7 +49,9 @@ impl<'a> RulesContext<'a> {
         Some(Self {
             game,
             source,
-            controller: game.controller_of(obj),
+            controller: game
+                .current_controller(source)
+                .unwrap_or_else(|| game.controller_of(obj)),
         })
     }
 }

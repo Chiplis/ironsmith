@@ -117,7 +117,10 @@ pub(crate) fn apply_processed_damage_assignment(
         crate::events::DamageTarget::Player(player_id) => {
             let source_controller = game
                 .object(source)
-                .map(|obj| game.controller_of(obj))
+                .map(|obj| {
+                    game.current_controller(source)
+                        .unwrap_or_else(|| game.controller_of(obj))
+                })
                 .or(cause.source_controller);
             if keywords.has_infect {
                 if let Some(event) = game.add_player_counters_with_source(
@@ -150,8 +153,11 @@ pub(crate) fn apply_processed_damage_assignment(
                 return AppliedDamageAssignment::default();
             };
 
-            let is_creature = obj.has_card_type(CardType::Creature);
-            let is_planeswalker = obj.has_card_type(CardType::Planeswalker);
+            let current_card_types = game
+                .current_card_types(object_id)
+                .unwrap_or_else(|| obj.card_types.clone());
+            let is_creature = current_card_types.contains(&CardType::Creature);
+            let is_planeswalker = current_card_types.contains(&CardType::Planeswalker);
             if !is_creature && !is_planeswalker {
                 return AppliedDamageAssignment::default();
             }
@@ -166,7 +172,10 @@ pub(crate) fn apply_processed_damage_assignment(
                 );
                 let source_controller = game
                     .object(source)
-                    .map(|obj| game.controller_of(obj))
+                    .map(|obj| {
+                        game.current_controller(source)
+                            .unwrap_or_else(|| game.controller_of(obj))
+                    })
                     .or(cause.source_controller);
                 if let Some(event) = game.add_counters_with_source(
                     object_id,
@@ -637,6 +646,81 @@ mod tests {
                 .iter()
                 .any(|event| event.kind() == EventKind::MarkersChanged),
             "infect damage to a player should queue MarkersChangedEvent"
+        );
+    }
+
+    #[test]
+    fn test_damage_applies_to_land_made_creature_by_continuous_effect() {
+        let mut game = test_game_state();
+        let source = make_creature("Pinger", 1, 1);
+        let source_id = source.id;
+        game.add_object(source);
+
+        let mut land = make_creature("Animated Land", 0, 3);
+        land.card_types = vec![CardType::Land];
+        let land_id = land.id;
+        game.add_object(land);
+        game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::new(
+                land_id,
+                PlayerId::from_index(0),
+                crate::continuous::EffectTarget::Specific(land_id),
+                crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            )
+            .until(crate::effect::Until::EndOfTurn),
+        );
+
+        let result = apply_processed_damage_assignment(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(land_id),
+            2,
+            SourceDamageKeywords::default(),
+            crate::events::cause::EventCause::from_effect(source_id, PlayerId::from_index(0)),
+        );
+
+        assert!(result.applied);
+        assert_eq!(game.damage_on(land_id), 2);
+    }
+
+    #[test]
+    fn test_infect_damage_to_land_made_creature_uses_minus_one_minus_one_counters() {
+        let mut game = test_game_state();
+        let source = make_creature("Infector", 1, 1);
+        let source_id = source.id;
+        game.add_object(source);
+
+        let mut land = make_creature("Animated Land", 0, 3);
+        land.card_types = vec![CardType::Land];
+        let land_id = land.id;
+        game.add_object(land);
+        game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::new(
+                land_id,
+                PlayerId::from_index(0),
+                crate::continuous::EffectTarget::Specific(land_id),
+                crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            )
+            .until(crate::effect::Until::EndOfTurn),
+        );
+
+        let result = apply_processed_damage_assignment(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(land_id),
+            2,
+            SourceDamageKeywords {
+                has_infect: true,
+                ..SourceDamageKeywords::default()
+            },
+            crate::events::cause::EventCause::from_effect(source_id, PlayerId::from_index(0)),
+        );
+
+        assert!(result.applied);
+        assert_eq!(game.damage_on(land_id), 0);
+        assert_eq!(
+            game.counter_count(land_id, crate::object::CounterType::MinusOneMinusOne),
+            2
         );
     }
 

@@ -128,7 +128,7 @@ pub(super) fn is_crime_target(game: &GameState, committer: PlayerId, target: &Ta
             if obj.zone == Zone::Graveyard {
                 obj.owner != committer
             } else {
-                game.controller_of(obj) != committer
+                game.current_controller(*object_id) != Some(committer)
             }
         }
     }

@@ -246,10 +246,7 @@ fn check_start_engines_sbas_with_view(
         }
 
         let controls_start_your_engines = game.battlefield.iter().copied().any(|obj_id| {
-            let Some(obj) = game.object(obj_id) else {
-                return false;
-            };
-            game.controller_of(obj) == player.id
+            game.current_controller(obj_id) == Some(player.id)
                 && view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
         });
 
@@ -428,7 +425,11 @@ fn check_role_sbas_with_view(
             continue;
         }
         roles_by_target_and_controller
-            .entry((attached_id, game.controller_of(obj)))
+            .entry((
+                attached_id,
+                game.current_controller(obj_id)
+                    .unwrap_or_else(|| game.controller_of(obj)),
+            ))
             .or_default()
             .push(obj_id);
     }
@@ -544,16 +545,17 @@ fn check_legend_rule_with_view(
         return;
     }
 
-    // Group legendary permanents by controller and name
+    // Group legendary permanents by current controller and current name. Copy effects and
+    // other continuous effects can make an object legendary or change its name.
     let mut legends: HashMap<(PlayerId, String), Vec<ObjectId>> = HashMap::new();
 
     for &obj_id in &game.battlefield {
-        let Some(obj) = game.object(obj_id) else {
+        let Some(chars) = view.calculated_characteristics(obj_id) else {
             continue;
         };
 
-        if obj.has_supertype(Supertype::Legendary) {
-            let key = (game.controller_of(obj), obj.name.clone());
+        if chars.supertypes.contains(&Supertype::Legendary) {
+            let key = (chars.controller, chars.name);
             legends.entry(key).or_default().push(obj_id);
         }
     }
@@ -707,14 +709,16 @@ pub(crate) fn legend_rule_specs_from_actions(
 /// All other legends with the same name controlled by the same player
 /// are put into the graveyard.
 pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
-    // Find the name and controller of the kept permanent
-    let (name, controller) = if let Some(obj) = game.object(keep) {
-        (obj.name.clone(), game.controller_of(obj))
+    let view = crate::derived_view::DerivedGameView::new(game);
+
+    // Find the current name and controller of the kept permanent.
+    let (name, controller) = if let Some(chars) = view.calculated_characteristics(keep) {
+        (chars.name, chars.controller)
     } else {
         return;
     };
 
-    // Find all other legends with the same name controlled by the same player
+    // Find all other current legends with the same name controlled by the same player.
     let to_remove: Vec<ObjectId> = game
         .battlefield
         .iter()
@@ -722,10 +726,10 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
             if id == keep {
                 return None;
             }
-            let obj = game.object(id)?;
-            if game.controller_of(obj) == controller
-                && obj.name == name
-                && obj.has_supertype(Supertype::Legendary)
+            let chars = view.calculated_characteristics(id)?;
+            if chars.controller == controller
+                && chars.name == name
+                && chars.supertypes.contains(&Supertype::Legendary)
             {
                 Some(id)
             } else {
@@ -733,6 +737,7 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
             }
         })
         .collect();
+    drop(view);
 
     // Move all others to graveyard
     for id in to_remove {

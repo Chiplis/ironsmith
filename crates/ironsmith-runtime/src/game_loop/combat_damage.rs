@@ -291,7 +291,11 @@ pub(super) fn apply_combat_lifelink(
 fn combat_damage_cause(game: &GameState, source_id: ObjectId) -> crate::events::cause::EventCause {
     game.object(source_id)
         .map(|obj| {
-            crate::events::cause::EventCause::from_combat_damage(source_id, game.controller_of(obj))
+            crate::events::cause::EventCause::from_combat_damage(
+                source_id,
+                game.current_controller(source_id)
+                    .unwrap_or_else(|| game.controller_of(obj)),
+            )
         })
         .unwrap_or_else(|| crate::events::cause::EventCause::combat_damage(source_id))
 }

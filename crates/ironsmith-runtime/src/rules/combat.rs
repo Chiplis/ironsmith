@@ -267,16 +267,22 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.landwalk_kind())
     {
+        let blocker_controller = game.current_controller(blocker.id);
         let defending_has_required_land = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                if game.controller_of(obj) != game.controller_of(blocker)
+                if game.current_controller(obj.id) != blocker_controller
                     || !view.object_has_card_type(obj.id, CardType::Land)
                 {
                     return false;
                 }
+                let supertypes = || {
+                    view.calculated_characteristics(obj.id)
+                        .map(|chars| chars.supertypes)
+                        .unwrap_or_else(|| obj.supertypes.clone())
+                };
 
                 match landwalk_kind {
                     LandwalkKind::Subtype {
@@ -287,11 +293,11 @@ pub(crate) fn can_block_with_view(
                         subtype,
                         snow: true,
                     } => {
-                        obj.has_supertype(Supertype::Snow)
+                        supertypes().contains(&Supertype::Snow)
                             && view.calculated_subtypes(obj.id).contains(&subtype)
                     }
                     LandwalkKind::AnyLand => true,
-                    LandwalkKind::NonbasicLand => !obj.has_supertype(Supertype::Basic),
+                    LandwalkKind::NonbasicLand => !supertypes().contains(&Supertype::Basic),
                     LandwalkKind::ArtifactLand => {
                         view.object_has_card_type(obj.id, CardType::Artifact)
                     }
@@ -306,12 +312,13 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.required_defending_player_card_type_for_unblockable())
     {
+        let blocker_controller = game.current_controller(blocker.id);
         let defending_controls_required_type = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                game.controller_of(obj) == game.controller_of(blocker)
+                game.current_controller(obj.id) == blocker_controller
                     && view.object_has_card_type(obj.id, required_card_type)
             });
         if defending_controls_required_type {
@@ -323,12 +330,13 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.required_defending_player_card_types_for_unblockable())
     {
+        let blocker_controller = game.current_controller(blocker.id);
         let defending_controls_required_types = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                game.controller_of(obj) == game.controller_of(blocker)
+                game.current_controller(obj.id) == blocker_controller
                     && required_card_types
                         .iter()
                         .all(|required_type| view.object_has_card_type(obj.id, *required_type))
@@ -1339,6 +1347,46 @@ mod tests {
     }
 
     #[test]
+    fn test_nonbasic_landwalk_uses_current_basic_supertype() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Boots Walker", 2, 2);
+        attacker.owner = alice;
+        add_ability(&mut attacker, StaticAbility::nonbasic_landwalk());
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.owner = bob;
+
+        let mut land = make_creature("Maze", 0, 1);
+        land.owner = bob;
+        land.card_types = vec![CardType::Land];
+        land.subtypes = vec![crate::types::Subtype::Desert];
+        let land_id = land.id;
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(land);
+        assert!(!can_block(&attacker, &blocker, &game));
+
+        game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::new(
+                land_id,
+                bob,
+                crate::continuous::EffectTarget::Specific(land_id),
+                crate::continuous::Modification::AddSupertypes(vec![Supertype::Basic]),
+            )
+            .until(crate::effect::Until::EndOfTurn),
+        );
+
+        assert!(
+            can_block(&attacker, &blocker, &game),
+            "a land made Basic by continuous effects should not enable nonbasic landwalk"
+        );
+    }
+
+    #[test]
     fn test_snow_landwalk_requires_snow_land_of_matching_type() {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -1371,6 +1419,49 @@ mod tests {
 
         game.add_object(snow_forest);
         assert!(!can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_snow_landwalk_uses_current_snow_supertype() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Snow Scout", 2, 2);
+        attacker.owner = alice;
+        add_ability(
+            &mut attacker,
+            StaticAbility::snow_landwalk(crate::types::Subtype::Forest),
+        );
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.owner = bob;
+
+        let mut forest = make_creature("Forest", 0, 1);
+        forest.owner = bob;
+        forest.card_types = vec![CardType::Land];
+        forest.subtypes = vec![crate::types::Subtype::Forest];
+        let forest_id = forest.id;
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(forest);
+        assert!(can_block(&attacker, &blocker, &game));
+
+        game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::new(
+                forest_id,
+                bob,
+                crate::continuous::EffectTarget::Specific(forest_id),
+                crate::continuous::Modification::AddSupertypes(vec![Supertype::Snow]),
+            )
+            .until(crate::effect::Until::EndOfTurn),
+        );
+
+        assert!(
+            !can_block(&attacker, &blocker, &game),
+            "a Forest made Snow by continuous effects should enable snow landwalk"
+        );
     }
 
     #[test]
