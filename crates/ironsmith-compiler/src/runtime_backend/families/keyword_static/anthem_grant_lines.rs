@@ -2208,6 +2208,18 @@ pub(crate) fn parse_static_condition_clause(
     {
         return Ok(crate::ConditionExpr::SourceAttackedThisTurn);
     }
+    if clause_words == ["it", "entered", "this", "turn"]
+        || clause_words == ["this", "creature", "entered", "this", "turn"]
+        || clause_words == ["this", "permanent", "entered", "this", "turn"]
+    {
+        let mut filter = ObjectFilter::source();
+        filter.entered_battlefield_this_turn = true;
+        return Ok(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: Some(clause_words.join(" ")),
+        });
+    }
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(crate::ConditionExpr::YourTurn);
     }
