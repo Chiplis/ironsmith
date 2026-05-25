@@ -1887,6 +1887,80 @@ pub(crate) fn parse_consult_match_into_hand_exile_others(
     Ok(Some(effects))
 }
 
+pub(crate) fn parse_consult_match_into_battlefield_or_hand(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+                mode: crate::cards::builders::LibraryConsultModeAst::Exile,
+                ..
+            },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let moves_to_battlefield_or_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
+        &second_tokens,
+        &[
+            "put",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+            "or",
+            "into",
+            "your",
+            "hand",
+        ],
+    )
+    .is_some()
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &["put", "it", "onto", "the", "battlefield", "or", "into", "your", "hand"],
+        )
+        .is_some();
+    if !moves_to_battlefield_or_hand {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::May {
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(parts.match_tag.clone(), None),
+            Zone::Battlefield,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
+    effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::WasDeclined,
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(parts.match_tag, None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
+
+    Ok(Some(effects))
+}
+
 /// Parses the two-sentence pattern:
 ///   S1: "Reveal cards from the top of your library until you reveal a <filter> card."
 ///   S2: "Put that card into your hand and all other cards revealed this way into your graveyard."

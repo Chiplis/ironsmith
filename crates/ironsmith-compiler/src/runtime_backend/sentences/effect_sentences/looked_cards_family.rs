@@ -18,6 +18,7 @@ use crate::cards::builders::{
 use crate::effect::Value;
 use crate::runtime_backend::grammar::primitives::TokenWordView;
 use crate::target::TaggedOpbjectRelation;
+use crate::types::CardType;
 use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
 
@@ -543,6 +544,20 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
         let mut filter = ObjectFilter::permanent_card();
+        if same_name_suffix_len.is_some() {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
+    }
+    if matches!(
+        non_article_words.as_slice(),
+        ["nonland", "permanent", "card"] | ["nonland", "permanent", "cards"]
+    ) {
+        let mut filter = ObjectFilter::permanent_card();
+        filter.excluded_card_types.push(CardType::Land);
         if same_name_suffix_len.is_some() {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),
