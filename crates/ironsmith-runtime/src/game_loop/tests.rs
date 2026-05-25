@@ -26005,6 +26005,115 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_elsewhere_flask_activation_changes_land_type_until_cleanup() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let elsewhere_flask = CardDefinitionBuilder::new(CardId::new(), "Elsewhere Flask")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .parse_text(
+            "When this artifact enters, draw a card.\nSacrifice this artifact: Choose a basic land type. Each land you control becomes that type until end of turn.",
+        )
+        .expect("Elsewhere Flask should parse");
+    let flask_id = game.create_object_from_definition(&elsewhere_flask, alice, Zone::Battlefield);
+
+    let forest_id = game.create_object_from_definition(&crate::cards::definitions::basic_forest(), alice, Zone::Battlefield);
+    let island_id = game.create_object_from_definition(&crate::cards::definitions::basic_island(), alice, Zone::Battlefield);
+
+    let ability_index = game
+        .object(flask_id)
+        .expect("Elsewhere Flask should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Elsewhere Flask should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == flask_id && *idx == ability_index
+            )
+        })
+        .expect("Elsewhere Flask activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("activating Elsewhere Flask should succeed");
+
+    let progress = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+        ) => apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::NextCostChoice(cost_ctx.options[0].index),
+            &mut dm,
+        )
+        .expect("choosing Elsewhere Flask cost option should continue activation"),
+        other => other,
+    };
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Priority(_)
+                )
+        ),
+        "Elsewhere Flask activation should proceed after any cost choices, got {progress:?}"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Elsewhere Flask ability should resolve");
+
+    assert!(
+        !game.battlefield.contains(&flask_id),
+        "Elsewhere Flask should be sacrificed to pay the activation cost"
+    );
+
+    let forest_subtypes = game.calculated_subtypes(forest_id);
+    assert!(
+        !forest_subtypes.contains(&Subtype::Forest),
+        "Elsewhere Flask should change at least one controlled land's basic subtype until end of turn; got {forest_subtypes:?}"
+    );
+
+    execute_cleanup_step(&mut game);
+
+    let forest_after_cleanup = game.calculated_subtypes(forest_id);
+    let island_after_cleanup = game.calculated_subtypes(island_id);
+    assert!(
+        forest_after_cleanup.contains(&Subtype::Forest),
+        "Forest should regain its original subtype after until-end-of-turn expires"
+    );
+    assert!(
+        island_after_cleanup.contains(&Subtype::Island),
+        "Island should regain its original subtype after until-end-of-turn expires"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
     use crate::PriorityResponse;
     use crate::cards::builders::CardDefinitionBuilder;

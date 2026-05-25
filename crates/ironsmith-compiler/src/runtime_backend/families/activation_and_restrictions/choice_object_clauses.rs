@@ -1125,17 +1125,35 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(first);
     let first_words = crate::runtime_backend::token_word_refs(&first_tokens);
-    let Some((consumed, excluded_subtypes)) =
+    enum ChoiceKind {
+        CreatureType { excluded_subtypes: Vec<Subtype> },
+        BasicLandType,
+    }
+
+    let choice_kind = if let Some((consumed, excluded_subtypes)) =
         parse_choose_creature_type_phrase_words(&first_words)?
-    else {
+    {
+        if consumed != first_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported creature-type choice clause (clause: '{}')",
+                first_words.join(" ")
+            )));
+        }
+        Some(ChoiceKind::CreatureType { excluded_subtypes })
+    } else if let Some(consumed) = parse_choose_basic_land_type_phrase_words(&first_words) {
+        if consumed != first_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported basic-land-type choice clause (clause: '{}')",
+                first_words.join(" ")
+            )));
+        }
+        Some(ChoiceKind::BasicLandType)
+    } else {
+        None
+    };
+    let Some(choice_kind) = choice_kind else {
         return Ok(None);
     };
-    if consumed != first_words.len() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported creature-type choice clause (clause: '{}')",
-            first_words.join(" ")
-        )));
-    }
 
     let second_words = crate::runtime_backend::token_word_refs(second);
     let Some(become_idx) = find_index(second, |token| {
@@ -1189,9 +1207,16 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
         parse_target_phrase(&subject_tokens)?
     };
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_become_creature_type_choice(target, duration, excluded_subtypes),
-    ]))
+    let effect = match choice_kind {
+        ChoiceKind::CreatureType { excluded_subtypes } => {
+            EffectAst::subject_verb_become_creature_type_choice(target, duration, excluded_subtypes)
+        }
+        ChoiceKind::BasicLandType => {
+            EffectAst::subject_verb_become_basic_land_type_choice(target, duration)
+        }
+    };
+
+    Ok(Some(vec![effect]))
 }
 
 pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(

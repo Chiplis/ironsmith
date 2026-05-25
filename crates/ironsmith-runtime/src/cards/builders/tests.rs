@@ -29219,6 +29219,34 @@ fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_elsewhere_flask_strictly_compiles_choose_basic_land_type_then_that_type_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(610_618), "Elsewhere Flask")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .parse_text(
+            "When this artifact enters, draw a card.\nSacrifice this artifact: Choose a basic land type. Each land you control becomes that type until end of turn.",
+        )
+        .expect("Elsewhere Flask should parse strictly");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("becomebasiclandtypechoiceeffect"),
+        "expected Elsewhere Flask to lower to become-basic-land-type-choice effect, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("sacrifice this artifact")
+            && rendered.contains("choose a basic land type")
+            && rendered.contains("each land you control becomes that type until end of turn"),
+        "expected compiled text to cover Elsewhere Flask's land-type-changing clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_standalone_choose_creature_type_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Creature Type Choice Variant")
         .card_types(vec![CardType::Sorcery])
