@@ -569,6 +569,38 @@ pub(crate) fn parse_draw_equal_to_value(
     if let Some(value) = parse_devotion_value_from_add_clause(tokens)? {
         return Ok(Some(value));
     }
+
+    if matches!(crate::runtime_backend::token_word_refs(tokens).get(..2), Some(["equal", "to"])) {
+        let value_tokens = &tokens[2..];
+        let value_words = crate::runtime_backend::token_word_refs(value_tokens);
+        let parse_stat_of_target = |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
+            if value_words.starts_with(stat_words) {
+                let target_start = token_index_for_word_index(value_tokens, stat_words.len())
+                    .unwrap_or(value_tokens.len());
+                let target_tokens = &value_tokens[target_start..];
+                if let Ok(target) = parse_target_phrase(target_tokens) {
+                    let spec = crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
+                    return Some(constructor(Box::new(spec)));
+                }
+            }
+            None
+        };
+
+        if let Some(value) = parse_stat_of_target(&["power", "of"], Value::PowerOf)
+            .or_else(|| parse_stat_of_target(&["the", "power", "of"], Value::PowerOf))
+            .or_else(|| parse_stat_of_target(&["toughness", "of"], Value::ToughnessOf))
+            .or_else(|| {
+                parse_stat_of_target(&["the", "toughness", "of"], Value::ToughnessOf)
+            })
+            .or_else(|| parse_stat_of_target(&["mana", "value", "of"], Value::ManaValueOf))
+            .or_else(|| {
+                parse_stat_of_target(&["the", "mana", "value", "of"], Value::ManaValueOf)
+            })
+        {
+            return Ok(Some(value));
+        }
+    }
+
     if let Some(value) = parse_add_mana_equal_amount_value(tokens)
         .or_else(|| parse_equal_to_number_of_opponents_you_have_value(tokens))
         .or_else(|| parse_equal_to_number_of_counters_on_reference_value(tokens))
