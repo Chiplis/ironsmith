@@ -33053,28 +33053,6 @@ fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runtime_shape() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn guardian_of_the_ages_strict_regression_parses() {
-    assert_oracle_card_parses_strict("Guardian of the Ages");
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-fn guardian_of_the_ages_compiled_text_keeps_defender_condition_and_keyword_swap() {
-    let def = parse_oracle_card_definition("Guardian of the Ages");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
-
-    assert!(
-        rendered.contains("if this creature has defender"),
-        "expected defender conditional clause in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("loses defender") && rendered.contains("gains trample"),
-        "expected defender-to-trample keyword swap in compiled text, got {rendered}"
-    );
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
 fn woodlurker_mimic_strict_regression_parses() {
     assert_oracle_card_parses_strict("Woodlurker Mimic");
 }

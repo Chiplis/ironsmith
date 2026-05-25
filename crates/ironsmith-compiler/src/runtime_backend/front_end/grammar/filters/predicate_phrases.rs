@@ -1078,24 +1078,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceIsSaddled);
     }
 
-    if let Some(has_idx) = find_index(&filtered, |word| *word == "has" || *word == "have")
-        && has_idx > 0
-        && has_idx + 1 < filtered.len()
-    {
-        let subject_words = &filtered[..has_idx];
-        let is_source_subject =
-            is_source_reference_words(subject_words) || matches!(subject_words, ["it"] | ["its"]);
-        if is_source_subject
-            && let Some((constraint, consumed)) =
-                parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
-            && has_idx + 1 + consumed == filtered.len()
-        {
-            let mut filter = ObjectFilter::source();
-            apply_filter_keyword_constraint(&mut filter, constraint, false);
-            return Ok(PredicateAst::SourceMatches(filter));
-        }
-    }
-
     if let Some(is_idx) = find_index(&filtered, |word| matches!(*word, "is" | "are")) {
         let subject_words = &filtered[..is_idx];
         let is_source_subject =
@@ -3377,25 +3359,6 @@ mod tests {
                 player: PlayerAst::You
             }
         );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_predicate_supports_this_creature_has_defender() -> Result<(), CardTextError> {
-        let tokens = lex_line("if this creature has defender", 0)?;
-        let predicate_tokens = tokens
-            .iter()
-            .filter(|token| !token.is_word("if"))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-        let mut expected_filter = ObjectFilter::source();
-        expected_filter
-            .static_abilities
-            .push(crate::static_abilities::StaticAbilityId::Defender);
-
-        assert_eq!(parsed, PredicateAst::SourceMatches(expected_filter));
         Ok(())
     }
 
