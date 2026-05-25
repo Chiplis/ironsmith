@@ -13010,6 +13010,61 @@ fn test_stormbreath_dragon_trigger_condition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_zagoth_mamba_mutates_trigger_condition() {
+    use crate::ability::AbilityKind;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::events::other::{BecameMonstrousEvent, MutatedEvent};
+    use crate::triggers::check_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let mamba_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zagoth Mamba")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Deathtouch\nWhenever this creature mutates, target creature an opponent controls gets -2/-2 until end of turn.",
+        )
+        .expect("Zagoth Mamba should parse");
+    let mamba_id = game.create_object_from_definition(&mamba_def, alice, Zone::Battlefield);
+
+    let mamba = game.object(mamba_id).expect("mamba permanent exists");
+    let has_mutates_trigger = mamba.abilities.iter().any(|ability| {
+        if let AbilityKind::Triggered(triggered) = &ability.kind {
+            triggered.trigger.display().contains("mutates")
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_mutates_trigger,
+        "Zagoth Mamba should have a mutates triggered ability"
+    );
+
+    let mutate_event = TriggerEvent::new_with_provenance(
+        MutatedEvent::new(mamba_id, alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mutate_triggers = check_triggers(&game, &mutate_event);
+    assert_eq!(
+        mutate_triggers.len(),
+        1,
+        "MutatedEvent should trigger Zagoth Mamba's ability"
+    );
+
+    let monstrous_event = TriggerEvent::new_with_provenance(
+        BecameMonstrousEvent::new(mamba_id, alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let monstrous_triggers = check_triggers(&game, &monstrous_event);
+    assert_eq!(
+        monstrous_triggers.len(),
+        0,
+        "BecameMonstrousEvent should not trigger Zagoth Mamba's mutates ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;

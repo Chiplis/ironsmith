@@ -127,6 +127,7 @@ pub(crate) enum TriggerSpec {
         marker: String,
     },
     ThisLeavesBattlefield,
+    ThisMutates,
     ThisBecomesMonstrous,
     ThisBecomesTapped,
     PermanentBecomesTapped(ObjectFilter),

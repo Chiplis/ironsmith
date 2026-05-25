@@ -912,6 +912,14 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when this creature mutates" trigger.
+    pub fn this_mutates() -> Self {
+        Self::new(ThisEventObjectTrigger::new(
+            EventKind::Mutated,
+            "When this creature mutates",
+        ))
+    }
+
     /// Create a "when this permanent is turned face up" trigger.
     pub fn this_is_turned_face_up() -> Self {
         Self::new(ThisEventObjectTrigger::new(

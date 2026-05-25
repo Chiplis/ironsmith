@@ -56,6 +56,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             )
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
+        TriggerSpec::ThisMutates => Trigger::this_mutates(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),

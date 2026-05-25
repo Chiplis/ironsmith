@@ -109,7 +109,7 @@ pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
+    MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent, TransformedEvent,
     TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
