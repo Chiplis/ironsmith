@@ -24530,6 +24530,60 @@ fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn fabrication_module_parses_and_renders_one_or_more_energy_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fabrication Module")
+        .parse_text(
+            "Whenever you get one or more {E} (energy counters), put a +1/+1 counter on target creature you control.\n{4}, {T}: You get {E}.",
+        )
+        .expect("Fabrication Module should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever you gets one or more {e}")
+            && rendered.contains("put a +1/+1 counter on target creature you control"),
+        "expected one-or-more energy trigger with target creature clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fabrication_module_uses_player_gets_counters_trigger_model() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fabrication Module")
+        .parse_text(
+            "Whenever you get one or more {E}, put a +1/+1 counter on target creature you control.",
+        )
+        .expect("Fabrication Module trigger line should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+
+    let debug = format!("{:?}", triggered.trigger);
+    assert!(
+        debug.contains("PlayerGetsCountersTrigger")
+            && debug.contains("OneOrMore")
+            && debug.contains("Energy"),
+        "expected one-or-more energy player-counters trigger, got {debug}"
+    );
+
+    let effects_debug = format!("{:?}", triggered.effects);
+    assert!(
+        effects_debug.contains("PutCountersEffect")
+            && effects_debug.contains("card_types: [Creature]")
+            && effects_debug.contains("controller: Some(You)"),
+        "expected targeted +1/+1 counter effect, got {effects_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Terastodon Variant")
         .mana_cost(ManaCost::from_pips(vec![

@@ -862,6 +862,11 @@ impl Trigger {
         Self::new(CounterPutOnTrigger::new(filter))
     }
 
+    /// Create a "when [player] gets counters" trigger.
+    pub fn player_gets_counters(player: PlayerFilter) -> Self {
+        Self::new(PlayerGetsCountersTrigger::new(player))
+    }
+
     /// Create a "when a counter is removed from [filter]" trigger.
     pub fn counter_removed_from(filter: ObjectFilter) -> Self {
         Self::new(CounterRemovedFromTrigger::new(filter))

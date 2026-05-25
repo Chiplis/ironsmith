@@ -1880,7 +1880,15 @@ pub(crate) fn parse_trigger_clause_lexed(
         let one_or_more = ActivationRestrictionCompatWords::new(descriptor_span)
             .slice_eq(0, &["one", "or", "more"]);
         let counter_descriptor_tokens = &tokens[descriptor_token_start..(descriptor_token_end + 1)];
-        let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
+        let mut counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
+        if counter_type.is_none()
+            && ActivationRestrictionCompatWords::new(counter_descriptor_tokens)
+                .to_word_refs()
+                .iter()
+                .any(|word| *word == "e" || *word == "energy")
+        {
+            counter_type = Some(CounterType::Energy);
+        }
 
         let object_word_start = counter_word_idx + 2;
         let object_token_start = word_view
@@ -1916,6 +1924,51 @@ pub(crate) fn parse_trigger_clause_lexed(
             filter,
             counter_type,
             source_controller: Some(source_controller),
+            one_or_more,
+        });
+    }
+
+    if let Some(get_word_idx) = find_index(&words, |word| matches!(*word, "get" | "gets"))
+        && let Some(player) = parse_trigger_subject_player_filter(&words[..get_word_idx])
+        && words
+            .get(get_word_idx + 1..)
+            .is_some_and(|tail| tail.starts_with(&["one", "or", "more", "e"]))
+    {
+        return Ok(TriggerSpec::PlayerGetsCounters {
+            player,
+            counter_type: Some(CounterType::Energy),
+            one_or_more: true,
+        });
+    }
+
+    if let Some(get_word_idx) = find_index(&words, |word| matches!(*word, "get" | "gets"))
+        && let Some(player) = parse_trigger_subject_player_filter(&words[..get_word_idx])
+        && let Some(counter_word_idx) =
+            find_index(&words, |word| *word == "counter" || *word == "counters")
+        && counter_word_idx > get_word_idx
+    {
+        let word_view = ActivationRestrictionCompatWords::new(tokens);
+        let descriptor_word_start = get_word_idx + 1;
+        let descriptor_token_start = word_view
+            .token_index_for_word_index(descriptor_word_start)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing counter descriptor in trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+        let descriptor_token_end = word_view
+            .token_index_for_word_index(counter_word_idx)
+            .unwrap_or(tokens.len());
+        let descriptor_span = &tokens[descriptor_token_start..descriptor_token_end];
+        let one_or_more =
+            ActivationRestrictionCompatWords::new(descriptor_span).slice_eq(0, &["one", "or", "more"]);
+        let counter_descriptor_tokens = &tokens[descriptor_token_start..(descriptor_token_end + 1)];
+        let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
+
+        return Ok(TriggerSpec::PlayerGetsCounters {
+            player,
+            counter_type,
             one_or_more,
         });
     }
