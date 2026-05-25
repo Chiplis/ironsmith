@@ -28015,8 +28015,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ChooseSpec::Object(filter) => describe_choose_spec(&ChooseSpec::All(filter.clone())),
             other => describe_choose_spec(other),
         };
+        let plural_subject = target.starts_with("all ") || target.starts_with("those ");
         if let Some(subtype) = become_basic.fixed_subtype {
-            let plural_subject = target.starts_with("all ") || target.starts_with("those ");
             let subtype_text = if plural_subject {
                 pluralize_noun_phrase(&subtype.to_string())
             } else {
@@ -28035,15 +28035,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_until(&become_basic.duration),
             );
         }
+        let subject_text = describe_each_object_subject(&become_basic.target)
+            .unwrap_or_else(|| describe_choose_spec(&become_basic.target));
+        let subject_text = subject_text.replacen("Each a ", "Each ", 1);
+        let verb = if subject_text.starts_with("Each ") {
+            "becomes"
+        } else if plural_subject {
+            "become"
+        } else {
+            "becomes"
+        };
         if become_basic.duration == Until::EndOfTurn {
             return format!(
-                "{} becomes the basic land type of your choice until end of turn",
-                target
+                "Choose a basic land type. {subject_text} {verb} that type until end of turn"
             );
         }
         return format!(
-            "{} becomes the basic land type of your choice {}",
-            target,
+            "Choose a basic land type. {subject_text} {verb} that type {}",
             describe_until(&become_basic.duration)
         );
     }
