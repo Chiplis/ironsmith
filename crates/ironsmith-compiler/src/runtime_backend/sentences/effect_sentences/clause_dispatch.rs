@@ -50,6 +50,7 @@ use super::subject_verb_primitives::{find_unquoted_token_word, try_build_unless}
 use super::verb_dispatch::parse_effect_with_verb;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
 use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
+use super::verb_handlers::parse_control_duration;
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
@@ -212,6 +213,61 @@ fn common_player_action_pattern_for(
         return Some(CommonPlayerActionPattern::StateChange);
     }
     None
+}
+
+fn parse_control_player_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    let Some(control_word_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "control" | "controls"))
+    else {
+        return Ok(None);
+    };
+    if control_word_idx == 0 {
+        return Ok(None);
+    }
+
+    let Some(control_token_idx) = token_index_for_word_index(tokens, control_word_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..control_token_idx]);
+    let subject_words = ClauseDispatchCompatWords::new(&subject_tokens).to_word_refs();
+    let player = match subject_words.as_slice() {
+        ["you"] => PlayerAst::You,
+        ["that", "player"] => PlayerAst::That,
+        ["target", "player"] => PlayerAst::Target,
+        ["each", "opponent"] => PlayerAst::Opponent,
+        _ => return Ok(None),
+    };
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(during_word_idx) = words.iter().position(|word| *word == "during") else {
+        return Ok(None);
+    };
+    if during_word_idx <= control_word_idx + 1 {
+        return Ok(None);
+    }
+
+    let Some(during_token_idx) = token_index_for_word_index(tokens, during_word_idx) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[control_token_idx + 1..during_token_idx]);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+    let TargetAst::Player(target_filter, _) = parse_target_phrase(&target_tokens)? else {
+        return Ok(None);
+    };
+
+    let duration_tokens = trim_commas(&tokens[during_token_idx..]);
+    let duration = parse_control_duration(&duration_tokens)?;
+    Ok(Some(EffectAst::subject_verb_control_player(
+        player,
+        PlayerFilter::Target(Box::new(target_filter)),
+        duration,
+    )))
 }
 
 fn is_pronoun_top_or_bottom_library_choice_put_tail(tokens: &[OwnedLexToken]) -> bool {
@@ -788,6 +844,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if let Some(effect) = parse_passive_goad_clause(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_control_player_clause(tokens)? {
         return Ok(effect);
     }
 
@@ -1464,5 +1524,21 @@ mod tests {
             parse_effect_clause(&tokens)
                 .unwrap_or_else(|err| panic!("common player clause should parse: {text}: {err:?}"));
         }
+    }
+
+    #[test]
+    fn parses_control_target_player_during_next_turn_clause() {
+        let tokens = lex_line(
+            "You control target player during that player's next turn.",
+            0,
+        )
+        .expect("lex clause");
+        let effect = parse_effect_clause(&tokens)
+            .expect("control target player during next turn should parse");
+        let debug = format!("{effect:?}").to_ascii_lowercase();
+        assert!(
+            debug.contains("controlplayer") && debug.contains("nextturn"),
+            "expected control-player-next-turn effect, got {debug}"
+        );
     }
 }
