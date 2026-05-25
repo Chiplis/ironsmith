@@ -33118,6 +33118,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Dungeon Crawler",
     "Echoing Deeps",
     "Encroaching Mycosynth",
+    "Escaped Null",
     "Fatal Push",
     "Golgari Thug",
     "Gloom Stalker",
@@ -33183,6 +33184,7 @@ strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
+strict_parse_card_test!(strict_parse_escaped_null, "Escaped Null");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_feudkillers_verdict, "Feudkiller's Verdict");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
@@ -33216,6 +33218,40 @@ strict_parse_card_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
 strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Madara");
 strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
+
+#[test]
+fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {
+    let def = parse_oracle_card_definition("Escaped Null");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever this creature blocks or this creature becomes blocked")
+            && rendered.contains("gets +5/+0 until end of turn"),
+        "expected Escaped Null to keep its combat trigger and pump clause, got {rendered}"
+    );
+}
+
+#[test]
+fn escaped_null_trigger_models_both_combat_branches_and_temporary_pump() {
+    let def = parse_oracle_card_definition("Escaped Null");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("OrTrigger")
+            && debug.contains("ThisBlocksTrigger")
+            && debug.contains("ThisBecomesBlockedTrigger"),
+        "expected Escaped Null to compile a trigger that covers blocking and becoming blocked, got {debug}"
+    );
+    assert!(
+        debug.contains("ModifyPowerToughness")
+            && debug.contains("power: Fixed(5)")
+            && debug.contains("toughness: Fixed(0)")
+            && debug.contains("until: EndOfTurn"),
+        "expected Escaped Null trigger effect to be +5/+0 until end of turn, got {debug}"
+    );
+    assert!(
+        !debug.contains("ThisBlocksObject") && !debug.contains("ThisBecomesBlockedByObject"),
+        "expected Escaped Null trigger to not require a blocker filter, got {debug}"
+    );
+}
 
 #[test]
 fn nesting_grounds_compiled_text_matches_counter_move_clause() {
