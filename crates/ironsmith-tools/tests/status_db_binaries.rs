@@ -1110,46 +1110,6 @@ fn compile_oracle_text_strictly_compiles_mindleecher_from_workspace_cards() {
 }
 
 #[test]
-fn compile_oracle_text_strictly_compiles_invasion_of_alara_with_cast_one_of_two_clause() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("ironsmith-tools crate should be inside workspace")
-        .parent()
-        .expect("workspace root should be two levels up");
-    let cards_path = workspace_root.join("cards.json");
-    assert!(
-        cards_path.exists(),
-        "expected workspace cards.json at {cards_path:?}"
-    );
-
-    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
-        .arg("--name")
-        .arg("Invasion of Alara // Awaken the Maelstrom")
-        .arg("--cards")
-        .arg(&cards_path)
-        .arg("--compare-text")
-        .output()
-        .expect("run compile_oracle_text --name Invasion of Alara // Awaken the Maelstrom --compare-text");
-
-    assert!(
-        output.status.success(),
-        "Invasion of Alara // Awaken the Maelstrom should compile strictly, stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout =
-        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
-    assert!(
-        stdout.contains("Name: Invasion of Alara"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("without paying its mana cost"),
-        "expected free-cast clause in compiled comparison output, got {stdout}"
-    );
-}
-
-#[test]
 fn compile_oracle_text_strictly_compiles_sakashimas_will_with_choose_both_instead_clause() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

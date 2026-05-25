@@ -111,14 +111,10 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
             }),
-            alt((
-                grammar::phrase(&["one", "of", "those", "cards"]),
-                grammar::phrase(&["one", "of", "those", "two", "cards"]),
-            ))
-            .value(TaggedPermissionTarget {
-                    tag: TagKey::from(IT_TAG),
-                    as_copy: false,
-                }),
+            grammar::phrase(&["one", "of", "those", "cards"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
             grammar::phrase(&["one", "of", "those", "card"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
