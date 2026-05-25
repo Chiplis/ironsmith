@@ -25,6 +25,7 @@ pub(crate) struct ModalHeaderChooseSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModalHeaderFlags {
     pub(crate) commander_allows_both: bool,
+    pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
@@ -1084,9 +1085,12 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
             ],
         );
 
+    let choose_both_control_card_types = scan_choose_both_control_card_types(tokens);
+
     ModalHeaderFlags {
         commander_allows_both: primitives::contains_word(tokens, "commander")
             && primitives::contains_word(tokens, "both"),
+        choose_both_control_card_types,
         same_mode_more_than_once: primitives::contains_phrase(
             tokens,
             &["same", "mode", "more", "than", "once"],
@@ -1094,6 +1098,47 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
     }
+}
+
+fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::types::CardType> {
+    if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
+        return Vec::new();
+    }
+    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+        return Vec::new();
+    };
+    let Some(control_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(if_idx + 1)
+        .find_map(|(idx, token)| token.is_word("control").then_some(idx))
+    else {
+        return Vec::new();
+    };
+    let Some(as_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(control_idx + 1)
+        .find_map(|(idx, token)| token.is_word("as").then_some(idx))
+    else {
+        return Vec::new();
+    };
+    if as_idx <= control_idx + 1 {
+        return Vec::new();
+    }
+
+    let mut card_types = Vec::new();
+    for token in &tokens[control_idx + 1..as_idx] {
+        if token.kind != TokenKind::Word {
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(token.parser_text())
+            && !card_types.contains(&card_type)
+        {
+            card_types.push(card_type);
+        }
+    }
+    card_types
 }
 
 pub(crate) fn split_leading_result_prefix_lexed<'a>(

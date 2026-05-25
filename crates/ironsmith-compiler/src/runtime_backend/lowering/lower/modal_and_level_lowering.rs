@@ -89,6 +89,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
         commander_allows_both,
+        choose_both_control_card_types,
         trigger,
         activated,
         x_replacement: _,
@@ -173,14 +174,35 @@ pub(crate) fn rewrite_lower_parsed_modal(
         effect
     };
 
-    let modal_effect = if commander_allows_both {
+    let choose_both_condition = if commander_allows_both {
+        Some(crate::effect::Condition::YouControlCommander)
+    } else if choose_both_control_card_types.is_empty() {
+        None
+    } else {
+        let mut conditions = choose_both_control_card_types.iter().map(|card_type| {
+            crate::effect::Condition::PlayerControls {
+                player: crate::target::PlayerFilter::You,
+                filter: crate::filter::ObjectFilter {
+                    card_types: vec![*card_type],
+                    ..Default::default()
+                },
+            }
+        });
+        let first = conditions.next().expect("non-empty card-type choose-both list");
+        Some(conditions.fold(first, |left, right| {
+            crate::effect::Condition::And(Box::new(left), Box::new(right))
+        }))
+    };
+
+    let modal_effect = if let Some(choose_both_condition) = choose_both_condition {
         let max_both = (mode_count.min(2)).max(1);
         let choose_both = if max_both == 1 {
             with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()))
         } else {
             #[cfg(not(feature = "serialization"))]
-            let choose_up_to = crate::effect::Effect::choose_up_to(
+            let choose_up_to = crate::effect::Effect::choose_up_to_with_min(
                 crate::effect::Value::Fixed(max_both),
+                crate::effect::Value::Fixed(1),
                 compiled_modes.clone(),
             );
             #[cfg(feature = "serialization")]
@@ -193,11 +215,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         };
         let choose_one =
             with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()));
-        crate::effect::Effect::conditional(
-            crate::effect::Condition::YouControlCommander,
-            vec![choose_both],
-            vec![choose_one],
-        )
+        crate::effect::Effect::conditional(choose_both_condition, vec![choose_both], vec![choose_one])
     } else if same_mode_more_than_once && min == max {
         with_unchosen_requirement(crate::effect::Effect::choose_exactly_allow_repeated_modes(
             max.clone(),

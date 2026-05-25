@@ -7007,6 +7007,132 @@ fn test_casting_repeated_mode_spell_exposes_repeatable_modes_and_accepts_duplica
     assert_eq!(stack_entry.chosen_modes.as_deref(), Some(&[0, 0][..]));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soul_transfer_mode_prompt_allows_two_modes_only_with_artifact_and_enchantment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let soul_transfer = CardDefinitionBuilder::new(CardId::new(), "Soul Transfer")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control an artifact and an enchantment as you cast this spell, you may choose both instead.\n\
+• Exile target creature or planeswalker.\n\
+• Return target creature or planeswalker card from your graveyard to your hand.",
+        )
+        .expect("Soul Transfer should parse");
+
+    let artifact = CardBuilder::new(CardId::new(), "Artifact Probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let enchantment = CardBuilder::new(CardId::new(), "Enchantment Probe")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let enemy_creature = CardBuilder::new(CardId::new(), "Enemy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let graveyard_creature = CardBuilder::new(CardId::new(), "Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .build();
+
+    game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    game.create_object_from_card(&enchantment, alice, Zone::Battlefield);
+    game.create_object_from_card(&enemy_creature, bob, Zone::Battlefield);
+    game.create_object_from_card(&graveyard_creature, alice, Zone::Graveyard);
+
+    let spell_id = game.create_object_from_definition(&soul_transfer, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Soul Transfer should reach mode selection");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal mode selection for Soul Transfer, got {other:?}"),
+    };
+
+    assert_eq!(ctx.spec.min_modes, 1);
+    assert_eq!(ctx.spec.max_modes, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soul_transfer_mode_prompt_stays_choose_one_without_full_control_condition() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let soul_transfer = CardDefinitionBuilder::new(CardId::new(), "Soul Transfer")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control an artifact and an enchantment as you cast this spell, you may choose both instead.\n\
+• Exile target creature or planeswalker.\n\
+• Return target creature or planeswalker card from your graveyard to your hand.",
+        )
+        .expect("Soul Transfer should parse");
+
+    let artifact = CardBuilder::new(CardId::new(), "Artifact Probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let enemy_creature = CardBuilder::new(CardId::new(), "Enemy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    game.create_object_from_card(&enemy_creature, bob, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&soul_transfer, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Soul Transfer should reach mode selection");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal mode selection for Soul Transfer, got {other:?}"),
+    };
+
+    assert_eq!(ctx.spec.min_modes, 1);
+    assert_eq!(ctx.spec.max_modes, 1);
+}
+
 #[test]
 fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_ability() {
     let mut game = setup_game();

@@ -231,6 +231,7 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
     pub(crate) commander_allows_both: bool,
+    pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
     pub(crate) trigger: Option<TriggerSpec>,
     pub(crate) activated: Option<ParsedModalActivatedHeader>,
     pub(crate) x_replacement: Option<Value>,
