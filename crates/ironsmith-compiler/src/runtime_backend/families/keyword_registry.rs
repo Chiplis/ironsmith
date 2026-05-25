@@ -429,6 +429,24 @@ pub(super) fn lower_morph(
     )?))
 }
 
+pub(super) fn lower_mutate(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    let cost_tokens = tokens.get(1..).unwrap_or_default();
+    let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse mutate line '{}'",
+            line.info.raw_line
+        ))
+    })?;
+
+    Ok(LineAst::StaticAbility(
+        crate::static_abilities::StaticAbility::keyword_marker(format!("Mutate {}", cost.to_oracle()))
+            .into(),
+    ))
+}
+
 pub(super) fn lower_multikicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -816,6 +834,16 @@ pub(super) fn matches_morph(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_morph_keyword_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_mutate(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("mutate")) {
+        return Ok(false);
+    }
+    Ok(leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()).is_some())
 }
 
 pub(super) fn matches_squad(

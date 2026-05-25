@@ -54,6 +54,7 @@ pub(crate) enum KeywordLineKindCst {
     Kicker,
     Madness,
     Morph,
+    Mutate,
     Multikicker,
     Replicate,
     Offspring,
