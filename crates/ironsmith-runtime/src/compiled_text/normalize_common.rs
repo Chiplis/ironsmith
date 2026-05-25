@@ -1620,6 +1620,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    normalized = normalized.replace("If this creature is this creature with ", "If this creature has ");
+    normalized = normalized.replace("if this creature is this creature with ", "if this creature has ");
+    normalized = normalized.replace("Whenever creature attacks ", "Whenever a creature attacks ");
+    normalized = normalized.replace("whenever creature attacks ", "whenever a creature attacks ");
     if let Some(rest) = normalized.strip_prefix("Whenever a Splinter enters, choose one or both") {
         normalized = format!("When this creature enters, choose one or both{rest}");
     }
@@ -10404,6 +10408,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
             let desc = filter.description();
+            if let Some(rest) = desc.strip_prefix("this creature with ") {
+                return format!("this creature has {rest}");
+            }
+            if let Some(rest) = desc.strip_prefix("this permanent with ") {
+                return format!("this permanent has {rest}");
+            }
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
             if stripped == "permanent" {
                 "this source is a permanent".to_string()
