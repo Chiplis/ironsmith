@@ -10611,6 +10611,23 @@ fn rewrite_lexed_effect_sequence_keeps_consult_cast_bottom_family_parseable() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_invasion_of_alara_cast_one_of_those_two_cards_clause() {
+    let text = "Exile cards from the top of your library until you exile two nonland cards with mana value 4 or less. You may cast one of those two cards without paying its mana cost. Put one of them into your hand. Then put the other cards exiled this way on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Invasion of Alara ETB text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Invasion of Alara ETB sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("action: Exile"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+    assert!(debug.contains("action: PutIntoHand"), "{debug}");
+    assert!(debug.contains("relation: IsTaggedObject"), "{debug}");
+    assert!(debug.contains("zone: Library"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseable() {
     let text = "Reveal cards from the top of your library until you reveal a nonland card. You may cast that card without paying its mana cost. Then put all revealed cards not cast this way on the bottom of your library in a random order.";
     let lexed =
