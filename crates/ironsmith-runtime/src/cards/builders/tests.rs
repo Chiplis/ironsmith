@@ -14676,6 +14676,125 @@ fn dingus_egg_deals_damage_to_the_land_controller_on_graveyard_entry() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn profane_memento_compiled_text_and_trigger_model_regression() {
+    let def = parse_oracle_card_definition("Profane Memento");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lc = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lc.contains("whenever a nontoken creature an opponent owns is put into a graveyard from anywhere"),
+        "expected opponent-owned nontoken creature graveyard trigger text, got {rendered}"
+    );
+    assert!(
+        rendered_lc.contains("you gain 1 life"),
+        "expected life gain effect text, got {rendered}"
+    );
+
+    let trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .downcast_ref::<crate::triggers::ZoneChangeTrigger>(),
+            _ => None,
+        })
+        .expect("Profane Memento should compile to a zone-change trigger");
+
+    assert_eq!(trigger.player, crate::triggers::zone_changes::PlayerRelation::Any);
+    assert_eq!(
+        trigger.object_filter.owner,
+        Some(PlayerFilter::Opponent),
+        "triggered card should be owned by an opponent"
+    );
+    assert_eq!(trigger.object_filter.card_types, vec![CardType::Creature]);
+    assert!(
+        trigger.object_filter.nontoken,
+        "creature card trigger must exclude tokens"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn profane_memento_triggers_for_opponents_creature_cards_only() {
+    let profane_memento = parse_oracle_card_definition("Profane Memento");
+    let vanilla_creature = CardDefinitionBuilder::new(CardId::new(), "Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let memento_id =
+        game.create_object_from_definition(&profane_memento, alice, crate::zone::Zone::Battlefield);
+
+    let bob_hand_creature = game.create_object_from_definition(&vanilla_creature, bob, Zone::Hand);
+    let bob_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(bob_hand_creature).expect("opponent creature should exist"),
+        &game,
+    );
+    let bob_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            bob_hand_creature,
+            Zone::Hand,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(bob_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &bob_event);
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggered.into_iter().filter(|entry| entry.source == memento_id) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Profane Memento should trigger when an opponent's creature card goes to their graveyard"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Profane Memento trigger should go on stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Profane Memento trigger should resolve");
+    assert_eq!(game.life_total(alice), 21, "controller should gain 1 life");
+
+    let alice_library_creature =
+        game.create_object_from_definition(&vanilla_creature, alice, Zone::Library);
+    let alice_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(alice_library_creature)
+            .expect("controller creature should exist"),
+        &game,
+    );
+    let alice_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            alice_library_creature,
+            Zone::Library,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(alice_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &alice_event);
+    assert!(
+        triggered.iter().all(|entry| entry.source != memento_id),
+        "Profane Memento must not trigger for your own creature cards"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        21,
+        "life total should be unchanged when trigger condition is not met"
+    );
+}
+
 #[test]
 fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text() {
     let def = parse_oracle_card_definition("Burn the Accursed");
@@ -32505,6 +32624,7 @@ strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar")
 strict_parse_card_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
 strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
 strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
+strict_parse_card_test!(strict_parse_profane_memento, "Profane Memento");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
 strict_parse_card_test!(
