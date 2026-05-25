@@ -36638,6 +36638,141 @@ fn parse_power_based_draw_renders_cards_equal_to_power() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn souls_majesty_parses_with_target_power_draw_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul's Majesty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw cards equal to the power of target creature you control.")
+        .expect("Soul's Majesty should parse");
+
+    let spell = def.spell_effect.as_ref().expect("should have spell effect");
+    let effects = &spell.segments[0].default_effects;
+    let debug = format!("{:?}", effects);
+    assert!(
+        debug.contains("DrawCardsEffect")
+            && debug.contains("PowerOf")
+            && debug.contains("controller: Some(You)")
+            && debug.contains("card_types: [Creature]"),
+        "expected Soul's Majesty to compile to target-creature-you-control power draw, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn souls_majesty_compiled_text_mentions_target_creature_you_control_power() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul's Majesty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw cards equal to the power of target creature you control.")
+        .expect("Soul's Majesty should parse");
+
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("draw cards equal to")
+            && rendered.contains("target creature you control")
+            && rendered.contains("power"),
+        "expected Soul's Majesty compiled text to preserve target/power clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn souls_majesty_draws_equal_to_target_power_including_zero_power_branch() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul's Majesty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw cards equal to the power of target creature you control.")
+        .expect("Soul's Majesty should parse");
+    let spell_effect = def.spell_effect.as_ref().expect("should have spell effect");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let soul_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let big_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(2), "Big Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let small_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(3), "Small Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    for i in 0..8 {
+        game.create_object_from_card(
+            &crate::card::CardBuilder::new(CardId::from_raw(10 + i), &format!("Library {i}"))
+                .card_types(vec![CardType::Creature])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let hand_before = game.player(alice).expect("alice should exist").hand.len();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(soul_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(big_creature)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        soul_id,
+        spell_effect,
+        None,
+        &[],
+    )
+    .expect("Soul's Majesty should resolve targeting a 4-power creature");
+
+    let hand_after_big = game.player(alice).expect("alice should exist").hand.len();
+    assert_eq!(
+        hand_after_big,
+        hand_before + 4,
+        "Soul's Majesty should draw cards equal to the target creature's power"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(soul_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(small_creature)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        soul_id,
+        spell_effect,
+        None,
+        &[],
+    )
+    .expect("Soul's Majesty should resolve targeting a 0-power creature");
+
+    let hand_after_zero = game.player(alice).expect("alice should exist").hand.len();
+    assert_eq!(
+        hand_after_zero, hand_after_big,
+        "Soul's Majesty should draw zero cards when the target creature's power is zero"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spellcast_mana_value_boost_renders_that_spell_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Livaan Probe")
         .card_types(vec![CardType::Creature])
