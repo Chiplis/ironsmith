@@ -61,6 +61,7 @@ use crate::cards::builders::{
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
+use crate::object::CounterType;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -865,6 +866,41 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             zones: vec![Zone::Exile],
             search_mode: None,
         });
+    }
+
+    if matches!(
+        clause_words.as_slice(),
+        [
+            "this",
+            "creature",
+            "enters",
+            "with",
+            "a",
+            "+1/+1",
+            "counter",
+            "on",
+            "it"
+        ]
+            | [
+                "this",
+                "permanent",
+                "enters",
+                "with",
+                "a",
+                "+1/+1",
+                "counter",
+                "on",
+                "it"
+            ]
+            | ["it", "enters", "with", "a", "+1/+1", "counter", "on", "it"]
+    ) {
+        return Ok(EffectAst::subject_verb_put_counters(
+            CounterType::PlusOnePlusOne,
+            Value::Fixed(1),
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+            None,
+            false,
+        ));
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {

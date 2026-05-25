@@ -10804,6 +10804,45 @@ fn rewrite_lowered_supports_adamant_spent_to_cast_statement_line() -> Result<(),
 }
 
 #[test]
+fn rewrite_lowered_supports_ardenvale_paladin_adamant_enters_with_counter()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Ardenvale Paladin")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Adamant - If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("EnterWithCountersIfCondition"), "{debug}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("White"), "{debug}");
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_ardenvale_paladin_adamant_counter_condition_keeps_threshold_and_color()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Ardenvale Paladin")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("amount: 3"), "{debug}");
+    assert!(debug.contains("symbol: Some("), "{debug}");
+    assert!(debug.contains("White"), "{debug}");
+    Ok(())
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permanent() {
     let text = "Tap target artifact or creature an opponent controls. If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step.";
     let lexed = lex_line(text, 0)

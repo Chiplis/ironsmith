@@ -5331,6 +5331,90 @@ mod tests {
     }
 
     #[test]
+    fn ardenvale_paladin_enters_with_counter_when_three_white_was_spent() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(70151), "Ardenvale Paladin")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(5)))
+            .build();
+
+        let source = game.create_object_from_card(&card, alice, Zone::Stack);
+        {
+            let source_obj = game.object_mut(source).expect("source should exist");
+            source_obj.abilities.push(Ability::static_ability(StaticAbility::new(
+                EntersWithCountersIfCondition::new(
+                    CounterType::PlusOnePlusOne,
+                    Value::Fixed(1),
+                    Condition::ManaSpentToCastThisSpellAtLeast {
+                        amount: 3,
+                        symbol: Some(crate::mana::ManaSymbol::White),
+                    },
+                    "If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it".to_string(),
+                ),
+            )));
+            let mut spent = crate::player::ManaPool::new();
+            spent.add(crate::mana::ManaSymbol::White, 3);
+            spent.add(crate::mana::ManaSymbol::Colorless, 1);
+            source_obj.mana_spent_to_cast = spent;
+        }
+
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let result = game
+            .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+            .expect("Ardenvale Paladin should enter the battlefield");
+        let permanent = game
+            .object(result.new_id)
+            .expect("Ardenvale Paladin should exist on battlefield");
+        assert_eq!(
+            permanent.counters.get(&CounterType::PlusOnePlusOne).copied(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn ardenvale_paladin_does_not_get_counter_without_three_white_spent() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(70151), "Ardenvale Paladin")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(5)))
+            .build();
+
+        let source = game.create_object_from_card(&card, alice, Zone::Stack);
+        {
+            let source_obj = game.object_mut(source).expect("source should exist");
+            source_obj.abilities.push(Ability::static_ability(StaticAbility::new(
+                EntersWithCountersIfCondition::new(
+                    CounterType::PlusOnePlusOne,
+                    Value::Fixed(1),
+                    Condition::ManaSpentToCastThisSpellAtLeast {
+                        amount: 3,
+                        symbol: Some(crate::mana::ManaSymbol::White),
+                    },
+                    "If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it".to_string(),
+                ),
+            )));
+            let mut spent = crate::player::ManaPool::new();
+            spent.add(crate::mana::ManaSymbol::White, 2);
+            spent.add(crate::mana::ManaSymbol::Colorless, 2);
+            source_obj.mana_spent_to_cast = spent;
+        }
+
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let result = game
+            .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+            .expect("Ardenvale Paladin should enter the battlefield");
+        let permanent = game
+            .object(result.new_id)
+            .expect("Ardenvale Paladin should exist on battlefield");
+        assert_eq!(
+            permanent.counters.get(&CounterType::PlusOnePlusOne).copied(),
+            None
+        );
+    }
+
+    #[test]
     fn enters_with_counters_if_kicked_uses_discarded_cost_card_mana_value() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);

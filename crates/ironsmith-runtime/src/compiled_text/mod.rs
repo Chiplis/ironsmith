@@ -254,6 +254,7 @@ fn finalize_ast_surface_line(line: String) -> String {
         return format!("This creature enters with a +1/+1 counter on it for each {each}");
     }
     line = normalize_conditional_additional_x_counters(&line);
+    line = normalize_adamant_enters_with_counter_clause(&line);
     if line
         .to_ascii_lowercase()
         .contains("a land is put into a graveyard from the battlefield")
@@ -296,6 +297,25 @@ fn normalize_conditional_additional_x_counters(line: &str) -> String {
     format!(
         "This creature enters with X +1/+1 counters on it. If {condition}, it enters with an additional X +1/+1 counters on it"
     )
+}
+
+fn normalize_adamant_enters_with_counter_clause(line: &str) -> String {
+    let Some((enter_clause, condition_clause)) = line.split_once(" if ") else {
+        return line.to_string();
+    };
+    if !enter_clause.starts_with("This creature enters with ") || !enter_clause.ends_with(" on it") {
+        return line.to_string();
+    }
+    let condition = condition_clause.trim().trim_end_matches('.');
+    if !condition.contains(" mana was spent to cast this spell") {
+        return line.to_string();
+    }
+    let mut enter_text = enter_clause.to_string();
+    if let Some(first) = enter_text.chars().next() {
+        let lower = first.to_ascii_lowercase();
+        enter_text.replace_range(0..first.len_utf8(), &lower.to_string());
+    }
+    format!("Adamant — If {condition}, {enter_text}")
 }
 
 fn normalize_conditional_followup_case(line: &str) -> String {
@@ -681,6 +701,17 @@ mod tests {
                 "This creature enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it."
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn conditional_enters_with_counter_uses_adamant_prefix_surface() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "This creature enters with a +1/+1 counter on it if at least three white mana was spent to cast this spell."
+                    .to_string()
+            ),
+            "Adamant — If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it."
         );
     }
 

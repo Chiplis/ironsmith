@@ -184,12 +184,12 @@ fn lower_rewrite_statement_to_chunks_impl(
         for group_tokens in parse_groups {
             if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
                 chunks.push(chunk);
-            } else if statement_group_should_parse_as_effects_first(group_tokens) {
-                let effects = parse_effect_sentences_lexed(group_tokens)?;
-                chunks.push(LineAst::Statement { effects });
             } else if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens)
             {
                 chunks.push(chunk);
+            } else if statement_group_should_parse_as_effects_first(group_tokens) {
+                let effects = parse_effect_sentences_lexed(group_tokens)?;
+                chunks.push(LineAst::Statement { effects });
             } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
                 chunks.push(chunk);
             } else if let Some(abilities) = parse_static_ability_ast_line_lexed(group_tokens)? {
@@ -241,13 +241,13 @@ fn lower_rewrite_statement_to_chunks_impl(
             for group_tokens in grouped_tokens {
                 if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
                     chunks.push(chunk);
-                } else if statement_group_should_parse_as_effects_first(&group_tokens) {
-                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
-                    chunks.push(LineAst::Statement { effects });
                 } else if let Some(chunk) =
                     parse_self_enters_with_x_counters_static_chunk(&group_tokens)
                 {
                     chunks.push(chunk);
+                } else if statement_group_should_parse_as_effects_first(&group_tokens) {
+                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
+                    chunks.push(LineAst::Statement { effects });
                 } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&group_tokens)?
@@ -409,6 +409,68 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         .trim()
         .trim_end_matches('.')
         .to_string();
+    let enters_with_single_counter = normalized == "this creature enters with a +1/+1 counter on it"
+        || normalized == "this permanent enters with a +1/+1 counter on it"
+        || normalized == "it enters with a +1/+1 counter on it";
+    if enters_with_single_counter {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                crate::effect::Value::Fixed(1),
+            )),
+        ]));
+    }
+
+    if let Some((predicate, effect)) = normalized.split_once(',') {
+        let effect = effect.trim();
+        let is_single_counter_effect = effect == "this creature enters with a +1/+1 counter on it"
+            || effect == "this permanent enters with a +1/+1 counter on it"
+            || effect == "it enters with a +1/+1 counter on it";
+        if is_single_counter_effect {
+            let predicate_text = predicate.trim();
+            let predicate_body = predicate_text
+                .strip_prefix("if ")
+                .or_else(|| predicate_text.rsplit_once(" if ").map(|(_, tail)| tail))?;
+            let predicate_words = predicate_body
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            if predicate_words.len() == 11
+                && predicate_words[0] == "at"
+                && predicate_words[1] == "least"
+                && predicate_words[4] == "mana"
+                && matches!(predicate_words[5], "was" | "were")
+                && predicate_words[6] == "spent"
+                && predicate_words[7] == "to"
+                && predicate_words[8] == "cast"
+                && predicate_words[9] == "this"
+                && predicate_words[10] == "spell"
+            {
+                let amount_tokens = [OwnedLexToken::word(
+                    predicate_words[2].to_string(),
+                    TextSpan::synthetic(),
+                )];
+                let (amount, _) =
+                    crate::runtime_backend::front_end::shared::util::parse_number(&amount_tokens)?;
+                let symbol = crate::runtime_backend::front_end::shared::util::parse_mana_symbol_word_flexible(
+                    predicate_words[3],
+                )?;
+                return Some(LineAst::StaticAbilities(vec![
+                    crate::cards::builders::StaticAbilityAst::Static(
+                        StaticAbility::enters_with_counters_if_condition(
+                            crate::object::CounterType::PlusOnePlusOne,
+                            crate::effect::Value::Fixed(1),
+                            crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+                                amount,
+                                symbol: Some(symbol),
+                            },
+                            predicate_body.to_string(),
+                        ),
+                    ),
+                ]));
+            }
+        }
+    }
+
     let is_self_x_counter_etb = normalized
         .starts_with("this creature enters with x +1/+1 counters on it")
         || normalized.starts_with("this permanent enters with x +1/+1 counters on it")
@@ -417,10 +479,8 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         return None;
     }
 
-    let count =
-        crate::runtime_backend::front_end::shared::util::revealed_cards_total_mana_value_x_value(
-            &normalized,
-        )
+    let count = crate::runtime_backend::front_end::shared::util::
+        revealed_cards_total_mana_value_x_value(&normalized)
         .unwrap_or(crate::effect::Value::X);
 
     Some(LineAst::StaticAbilities(vec![
