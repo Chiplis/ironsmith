@@ -556,6 +556,15 @@ pub(super) fn parse_entered_battlefield_this_turn_words(
                 primitives::word_slice_eq("turn"),
             )
                 .void(),
+            (
+                primitives::word_slice_eq("entered"),
+                primitives::word_slice_eq("under"),
+                primitives::word_slice_eq("your"),
+                primitives::word_slice_eq("control"),
+                primitives::word_slice_eq("this"),
+                primitives::word_slice_eq("turn"),
+            )
+                .void(),
         )),
     ) {
         return Some((Some(PlayerFilter::You), consumed));
@@ -590,6 +599,18 @@ pub(super) fn parse_entered_battlefield_this_turn_words(
                 primitives::word_slice_eq("turn"),
             )
                 .void(),
+            (
+                primitives::word_slice_eq("entered"),
+                primitives::word_slice_eq("under"),
+                alt((
+                    primitives::word_slice_eq("opponent"),
+                    primitives::word_slice_eq("opponents"),
+                )),
+                primitives::word_slice_eq("control"),
+                primitives::word_slice_eq("this"),
+                primitives::word_slice_eq("turn"),
+            )
+                .void(),
         )),
     ) {
         return Some((Some(PlayerFilter::Opponent), consumed));
@@ -608,6 +629,12 @@ pub(super) fn parse_entered_battlefield_this_turn_words(
             (
                 primitives::word_slice_eq("entered"),
                 primitives::word_slice_eq("battlefield"),
+                primitives::word_slice_eq("this"),
+                primitives::word_slice_eq("turn"),
+            )
+                .void(),
+            (
+                primitives::word_slice_eq("entered"),
                 primitives::word_slice_eq("this"),
                 primitives::word_slice_eq("turn"),
             )
@@ -814,6 +841,17 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
             SegmentPhraseVariant {
                 words: &[
                     "entered",
+                    "under",
+                    "your",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
                     "the",
                     "battlefield",
                     "under",
@@ -853,6 +891,28 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
                 words: &[
                     "entered",
                     "battlefield",
+                    "under",
+                    "opponents",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "under",
+                    "opponent",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
                     "under",
                     "opponents",
                     "control",
@@ -867,6 +927,10 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
             },
             SegmentPhraseVariant {
                 words: &["entered", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["entered", "this", "turn"],
                 drain_start_offset: 0,
             },
         ],
