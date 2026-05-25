@@ -1897,6 +1897,18 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         ));
     }
 
+    if crate::runtime_backend::token_word_refs(tokens)
+        == ["you", "have", "protection", "from", "each", "of", "your", "opponents"]
+    {
+        return Some(StaticAbility::restriction(
+            crate::effect::Restriction::be_targeted_player_from(
+                PlayerFilter::You,
+                ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+            ),
+            "You have protection from each of your opponents".to_string(),
+        ));
+    }
+
     let words = parser_token_word_refs(tokens);
     if words
         == [
