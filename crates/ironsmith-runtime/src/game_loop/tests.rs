@@ -7133,6 +7133,132 @@ fn soul_transfer_mode_prompt_stays_choose_one_without_full_control_condition() {
     assert_eq!(ctx.spec.max_modes, 1);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_will_mode_prompt_allows_two_modes_when_you_control_commander() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sakashimas_will = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Will")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n\
+• Target opponent chooses a creature they control. You gain control of it.\n\
+• Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("Sakashima's Will should parse");
+
+    let commander = CardBuilder::new(CardId::new(), "Commander Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let enemy_creature = CardBuilder::new(CardId::new(), "Enemy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let my_creature = CardBuilder::new(CardId::new(), "My Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.create_object_from_card(&enemy_creature, bob, Zone::Battlefield);
+    game.create_object_from_card(&my_creature, alice, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&sakashimas_will, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Sakashima's Will should reach mode selection");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal mode selection for Sakashima's Will, got {other:?}"),
+    };
+
+    assert_eq!(ctx.spec.min_modes, 1);
+    assert_eq!(ctx.spec.max_modes, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_will_mode_prompt_stays_choose_one_without_commander() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sakashimas_will = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Will")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n\
+• Target opponent chooses a creature they control. You gain control of it.\n\
+• Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("Sakashima's Will should parse");
+
+    let enemy_creature = CardBuilder::new(CardId::new(), "Enemy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let my_creature = CardBuilder::new(CardId::new(), "My Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    game.create_object_from_card(&enemy_creature, bob, Zone::Battlefield);
+    game.create_object_from_card(&my_creature, alice, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&sakashimas_will, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Sakashima's Will should reach mode selection");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal mode selection for Sakashima's Will, got {other:?}"),
+    };
+
+    assert_eq!(ctx.spec.min_modes, 1);
+    assert_eq!(ctx.spec.max_modes, 1);
+}
+
 #[test]
 fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_ability() {
     let mut game = setup_game();
