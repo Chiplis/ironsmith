@@ -1947,12 +1947,12 @@ pub(crate) fn parse_consult_match_into_battlefield_or_hand(
         )],
     });
     effects.push(EffectAst::IfResult {
-        predicate: IfResultPredicate::WasDeclined,
+        predicate: IfResultPredicate::DidNot,
         effects: vec![EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(parts.match_tag, None),
             Zone::Hand,
             false,
-            ReturnControllerAst::Preserve,
+            ReturnControllerAst::You,
             false,
             None,
         )],

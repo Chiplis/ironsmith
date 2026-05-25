@@ -30208,7 +30208,8 @@ fn parse_oracle_illuna_apex_of_wishes_compiles_battlefield_or_hand_clause() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains("you may put it onto the battlefield")
-            && rendered_lower.contains("return it to its owner's hand")
+            && (rendered_lower.contains("if you don't, return it to its owner's hand")
+                || rendered_lower.contains("if you dont, return it to its owner's hand"))
             && !rendered_lower.contains("exile the top card of your library"),
         "expected consult branch over nonland permanent and no top-card fallback text, got {rendered}"
     );
@@ -30218,7 +30219,7 @@ fn parse_oracle_illuna_apex_of_wishes_compiles_battlefield_or_hand_clause() {
         abilities_debug.contains("ConsultTopOfLibrary")
             && abilities_debug.contains("mode: Exile")
             && abilities_debug.contains("MayEffect")
-            && abilities_debug.contains("WasDeclined")
+            && abilities_debug.contains("DidNot")
             && abilities_debug.contains("zone: Battlefield")
             && abilities_debug.contains("zone: Hand"),
         "expected consult + battlefield-or-hand fallback lowering, got {abilities_debug}"
