@@ -2105,12 +2105,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let additional_costs = def.additional_non_mana_costs();
     if !additional_costs.is_empty() {
         let additional_cost_text = describe_additional_costs(&additional_costs);
-        let additional_cost_text =
-            if additional_cost_text.contains("put a -1/-1 counter on a creature you control") {
-                "you may blight 1".to_string()
-            } else {
-                additional_cost_text
-            };
+        let additional_cost_text = if additional_cost_text == "you may blight 1"
+            || additional_cost_text.contains("put a -1/-1 counter on a creature you control")
+        {
+            "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
+        } else {
+            additional_cost_text
+        };
         out.push(format!(
             "As an additional cost to cast this spell, {}",
             lowercase_first(&additional_cost_text)

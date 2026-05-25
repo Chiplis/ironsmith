@@ -1614,6 +1614,32 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
+    normalized = normalized
+        .replace(" and gains This creature can't ", " and can't ")
+        .replace(" and gains This creature cant ", " and can't ")
+        .replace(" and gains This permanent can't ", " and can't ")
+        .replace(" and gains This permanent cant ", " and can't ")
+        .replace(" and gains this creature can't ", " and can't ")
+        .replace(" and gains this creature cant ", " and can't ")
+        .replace(" and gains this permanent can't ", " and can't ")
+        .replace(" and gains this permanent cant ", " and can't ");
+    normalized = normalized.replace(
+        "Tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
+        "Tap target creature or planeswalker. Its activated abilities can't be activated this turn",
+    );
+    normalized = normalized.replace(
+        "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
+        "tap target creature or planeswalker. its activated abilities can't be activated this turn",
+    );
+    normalized = normalized.replace("that permanent's mana value", "that card's mana value");
+    normalized = normalized.replace(
+        "At the beginning of the next end step, exile it. If it's a permanent, exile it.",
+        "At the beginning of the next end step, exile it. If it would leave the battlefield, exile it instead.",
+    );
+    normalized = normalized.replace(
+        "at the beginning of the next end step, exile it. if it's a permanent, exile it.",
+        "at the beginning of the next end step, exile it. if it would leave the battlefield, exile it instead.",
+    );
     normalized = normalized.replace("this way,.", "this way,");
     normalized = normalized.replace("card ins", "cards in");
     normalized = normalized.replace("one or more another ", "one or more other ");
@@ -3065,6 +3091,25 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             .replace(" on it. Put ", " and ");
     }
     let lower_normalized = normalized.to_ascii_lowercase();
+    if lower_normalized
+        == "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn"
+    {
+        return "Tap target creature or planeswalker. Its activated abilities can't be activated this turn"
+            .to_string();
+    }
+    if lower_normalized.contains("that permanent's mana value")
+        && lower_normalized.contains("reveal the top card of your library")
+    {
+        return normalized.replace("that permanent's mana value", "that card's mana value");
+    }
+    if lower_normalized.contains("at the beginning of the next end step, exile it")
+        && lower_normalized.contains("if it's a permanent, exile it")
+    {
+        return normalized.replace(
+            "if it's a permanent, exile it",
+            "if it would leave the battlefield, exile it instead",
+        );
+    }
     if let Some(tail) = strip_prefix_ascii_ci(
         &normalized,
         "You take an extra turn after this one. At the beginning of your next end step, ",

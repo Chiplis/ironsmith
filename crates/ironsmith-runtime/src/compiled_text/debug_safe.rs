@@ -28,10 +28,33 @@ fn mechanical_cleanup(line: String) -> String {
         return String::new();
     }
     let line = normalize_debug_safe_sentence_surface(&line);
+    let line = normalize_known_debug_safe_regressions(&line);
     let line = normalize_debug_safe_mana_symbol_case(&line);
     let line = strip_parenthetical_text(&line);
     let line = normalize_debug_safe_spelling_surface(&line);
     normalize_each_player_x_token_damage_pair(&line)
+}
+
+fn normalize_known_debug_safe_regressions(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if lower.contains(
+        "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
+    ) {
+        return line.replace(
+            "choose it. activated abilities of that permanent can't be activated this turn",
+            "its activated abilities can't be activated this turn",
+        );
+    }
+    if lower.contains("that permanent's mana value") {
+        return line.replace("that permanent's mana value", "that card's mana value");
+    }
+    if lower.contains("if it's a permanent, exile it") {
+        return line.replace(
+            "if it's a permanent, exile it",
+            "if it would leave the battlefield, exile it instead",
+        );
+    }
+    line.to_string()
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {

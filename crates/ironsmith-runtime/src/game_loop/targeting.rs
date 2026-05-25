@@ -1453,18 +1453,19 @@ fn cast_time_selected_effects_from_effect(
         return vec![effect.clone()];
     };
 
-    let branch = if crate::condition_eval::evaluate_condition_cast_time(
+    let condition_result = crate::condition_eval::evaluate_condition_cast_time(
         game,
         &conditional.condition,
         caster,
         source_id,
-    ) {
+    );
+    let selected_branch = if condition_result || conditional.if_false.is_empty() {
         &conditional.if_true
     } else {
         &conditional.if_false
     };
 
-    branch
+    selected_branch
         .iter()
         .flat_map(|inner| {
             cast_time_selected_effects_from_effect(game, inner, caster, Some(source_id))

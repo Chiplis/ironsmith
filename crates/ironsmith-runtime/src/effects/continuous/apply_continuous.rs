@@ -65,7 +65,7 @@ fn resolve_target(
     let mut objects = if spec.is_target() {
         resolve_objects_for_effect(game, ctx, spec)?
     } else {
-        resolve_objects_from_spec(game, spec, ctx)?
+        resolve_non_target_continuous_objects(game, ctx, spec)?
     };
     if spec.is_target() {
         objects.retain(|id| validate_target(game, &ResolvedTarget::Object(*id), spec, ctx));
@@ -85,6 +85,51 @@ fn resolve_target(
     }
 
     Ok((EffectTarget::AllPermanents, Some(objects), false))
+}
+
+fn resolve_non_target_continuous_objects(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    spec: &ChooseSpec,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    if let ChooseSpec::Object(filter) = spec.base()
+        && !filter.tagged_constraints.is_empty()
+    {
+        return resolve_continuous_filter_objects(game, ctx, filter);
+    }
+
+    if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)
+        && !objects.is_empty()
+    {
+        return Ok(objects);
+    }
+
+    if let ChooseSpec::Object(filter) = spec.base() {
+        return resolve_continuous_filter_objects(game, ctx, filter);
+    }
+
+    Err(ExecutionError::InvalidTarget)
+}
+
+fn resolve_continuous_filter_objects(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    filter: &crate::target::ObjectFilter,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let filter_ctx = ctx.filter_context(game);
+    let objects: Vec<ObjectId> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| obj.zone == Zone::Battlefield)
+        .filter(|obj| filter.matches(obj, &filter_ctx, game))
+        .map(|obj| obj.id)
+        .collect();
+    if objects.is_empty() {
+        Err(ExecutionError::InvalidTarget)
+    } else {
+        Ok(objects)
+    }
 }
 
 fn lock_targets_for_filter(

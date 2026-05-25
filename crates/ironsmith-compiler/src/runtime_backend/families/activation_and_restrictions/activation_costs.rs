@@ -244,6 +244,19 @@ pub(crate) fn parse_cant_clause(
             return Ok(conditioned);
         }
     }
+    if let Some((_, remainder)) = parse_restriction_duration(tokens)?
+        && !remainder.is_empty()
+        && remainder.len() < tokens.len()
+    {
+        let remainder_words_storage = normalize_cant_words(&remainder);
+        let remainder_words = remainder_words_storage
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if remainder_words.iter().any(|word| *word == "untap") {
+            return Ok(None);
+        }
+    }
     let normalized_storage = normalize_cant_words(tokens);
     let normalized = normalized_storage
         .iter()
@@ -1507,14 +1520,12 @@ pub(crate) fn parse_cant_clause(
         ["permanents", "you", "control", "cant", "be", "sacrificed"] => {
             StaticAbility::permanents_you_control_cant_be_sacrificed()
         }
+        ["this", "creature", "cant", "be", "blocked", "this", "turn"]
+        | ["this", "cant", "be", "blocked", "this", "turn"]
+        | ["cant", "be", "blocked", "this", "turn"] => return Ok(None),
         ["this", "creature", "cant", "be", "blocked"] => StaticAbility::unblockable(),
-        ["this", "creature", "cant", "be", "blocked", "this", "turn"] => {
-            StaticAbility::unblockable()
-        }
         ["this", "cant", "be", "blocked"] => StaticAbility::unblockable(),
-        ["this", "cant", "be", "blocked", "this", "turn"] => StaticAbility::unblockable(),
         ["cant", "be", "blocked"] => StaticAbility::unblockable(),
-        ["cant", "be", "blocked", "this", "turn"] => StaticAbility::unblockable(),
         _ => {
             if let Some(parsed) = parse_negated_object_restriction_clause(tokens)?
                 && parsed.target.is_none()

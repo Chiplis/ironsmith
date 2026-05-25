@@ -12413,6 +12413,23 @@ pub(super) fn describe_inline_ability_with_self_subject(
     }
 }
 
+fn describe_granted_ability_phrase(ability: &Ability, self_subject: &str) -> String {
+    let text = describe_inline_ability_with_self_subject(ability, self_subject);
+    strip_redundant_granted_subject(text, self_subject)
+}
+
+fn strip_redundant_granted_subject(text: String, self_subject: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let subject_lower = self_subject.to_ascii_lowercase();
+    let subject_prefix = format!("{subject_lower} ");
+    if let Some(rest) = lower.strip_prefix(&subject_prefix)
+        && (rest.starts_with("can't ") || rest.starts_with("cant "))
+    {
+        return text[subject_prefix.len()..].to_string();
+    }
+    text
+}
+
 fn describe_add_mana_destination_suffix(player: &PlayerFilter) -> String {
     if matches!(player, PlayerFilter::You) {
         String::new()
@@ -26687,10 +26704,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .map(|ability| {
                     ability
                         .granted_inline_ability()
-                        .map(|inline| {
-                            describe_inline_ability_with_self_subject(inline, self_subject)
+                        .map(|inline| describe_granted_ability_phrase(inline, self_subject))
+                        .unwrap_or_else(|| {
+                            strip_redundant_granted_subject(
+                                lowercase_first(&ability.display()),
+                                self_subject,
+                            )
                         })
-                        .unwrap_or_else(|| lowercase_first(&ability.display()))
                 })
                 .collect::<Vec<_>>()
                 .join(", "),
@@ -26716,10 +26736,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .map(|ability| {
                     ability
                         .granted_inline_ability()
-                        .map(|inline| {
-                            describe_inline_ability_with_self_subject(inline, self_subject)
+                        .map(|inline| describe_granted_ability_phrase(inline, self_subject))
+                        .unwrap_or_else(|| {
+                            strip_redundant_granted_subject(
+                                lowercase_first(&ability.display()),
+                                self_subject,
+                            )
                         })
-                        .unwrap_or_else(|| lowercase_first(&ability.display()))
                 })
                 .collect::<Vec<_>>()
                 .join(", "),
@@ -28865,7 +28888,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     .and_then(|rest| rest.strip_suffix(" sources"))
                 {
                     return format!(
-                        "Prevent all damage that would be dealt this turn by {source_phrase}"
+                        "Prevent all damage that would be dealt this turn by {source_phrase} sources"
                     );
                 }
                 return format!("Prevent {damage_type} that would be dealt this turn");
@@ -33590,6 +33613,16 @@ pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilt
 }
 
 pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String {
+    fn describe_blight_cost(amount: &str) -> String {
+        if amount == "1" || amount == "one" {
+            "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
+        } else {
+            format!(
+                "you may blight {amount} by putting {amount} -1/-1 counters on a creature you control"
+            )
+        }
+    }
+
     fn blight_amount_from_choose_and_put(
         choose: &crate::effects::ChooseObjectsEffect,
         put_counters: &crate::effects::PutCountersEffect,
@@ -33623,7 +33656,7 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         && put_counters.target_count.is_none()
         && !put_counters.distributed
     {
-        return format!("you may blight {}", describe_value(&put_counters.amount));
+        return describe_blight_cost(&describe_value(&put_counters.amount));
     }
 
     if costs.len() == 1
@@ -33636,7 +33669,7 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
             may.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()
         && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
     {
-        return format!("you may blight {amount}");
+        return describe_blight_cost(&amount);
     }
 
     if costs.len() == 2
@@ -33648,7 +33681,7 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
             .and_then(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
         && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
     {
-        return format!("you may blight {amount}");
+        return describe_blight_cost(&amount);
     }
 
     if costs.len() == 1
@@ -33685,13 +33718,13 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
 
     let described = describe_cost_list(costs);
     if described == "may put a -1/-1 counter on a creature you control" {
-        return "you may blight 1".to_string();
+        return describe_blight_cost("1");
     }
     if let Some(amount_text) = described
         .strip_prefix("may put ")
         .and_then(|rest| rest.strip_suffix(" -1/-1 counters on a creature you control"))
     {
-        return format!("you may blight {amount_text}");
+        return describe_blight_cost(amount_text);
     }
     described
 }

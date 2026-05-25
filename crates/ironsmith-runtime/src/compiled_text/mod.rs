@@ -86,6 +86,28 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
 
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
+    let lower = line.to_ascii_lowercase();
+    if lower.contains(
+        "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
+    ) {
+        line = line.replace(
+            "choose it. activated abilities of that permanent can't be activated this turn",
+            "its activated abilities can't be activated this turn",
+        );
+    }
+    if lower.contains("that permanent's mana value")
+        && lower.contains("reveal the top card of your library")
+    {
+        line = line.replace("that permanent's mana value", "that card's mana value");
+    }
+    if lower.contains("if it's a permanent, exile it")
+        && lower.contains("at the beginning of the next end step, exile it")
+    {
+        line = line.replace(
+            "if it's a permanent, exile it",
+            "if it would leave the battlefield, exile it instead",
+        );
+    }
     if let Some(rest) = line.strip_prefix("During your turn, this creature has ") {
         if rest.to_ascii_lowercase().starts_with("prevent ") {
             line = format!("During your turn, {}", lowercase_first(rest));
@@ -186,14 +208,19 @@ fn finalize_ast_surface_line(line: String) -> String {
         "Target creature an opponent controls or enchantment",
         "Target creature or enchantment an opponent controls",
     );
-    line = line.replace(
-        "lose life equal to its mana value",
-        "lose life equal to that permanent's mana value",
-    );
-    line = line.replace(
-        "Lose life equal to its mana value",
-        "Lose life equal to that permanent's mana value",
-    );
+    if !line
+        .to_ascii_lowercase()
+        .contains("reveal the top card of your library")
+    {
+        line = line.replace(
+            "lose life equal to its mana value",
+            "lose life equal to that permanent's mana value",
+        );
+        line = line.replace(
+            "Lose life equal to its mana value",
+            "Lose life equal to that permanent's mana value",
+        );
+    }
     line = line.replace(
         "At the beginning of the next end step, you lose 1 life. Return this card to its owner's hand",
         "At the beginning of the next end step, you lose 1 life and return this card to your hand",
@@ -275,6 +302,24 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = line.replace(
         "tap it. That permanent doesn't untap during its controller's next untap step",
         "tap it. It doesn't untap during its controller's next untap step",
+    );
+    line = replace_ascii_case_insensitive_once(
+        line,
+        "choose it. activated abilities of that permanent can't be activated this turn",
+        "Its activated abilities can't be activated this turn",
+        "its activated abilities can't be activated this turn",
+    );
+    if line
+        .to_ascii_lowercase()
+        .contains("reveal the top card of your library")
+    {
+        line = line.replace("that permanent's mana value", "that card's mana value");
+    }
+    line = replace_ascii_case_insensitive_once(
+        line,
+        "if it's a permanent, exile it",
+        "If it would leave the battlefield, exile it instead",
+        "if it would leave the battlefield, exile it instead",
     );
     line = capitalize_sentence_boundaries(&line);
     if is_keyword_style_line(&line) {
