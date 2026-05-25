@@ -2787,4 +2787,5 @@ pub(crate) enum Verb {
     Detain,
     Goad,
     Suspect,
+    End,
 }

@@ -32993,6 +32993,78 @@ fn oran_rief_the_vastwood_activation_runtime_only_counters_green_creatures_that_
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sundial_of_the_infinite_strict_regression() {
+    assert_oracle_card_parses_strict("Sundial of the Infinite");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sundial_of_the_infinite_compiled_text_keeps_end_the_turn_clause() {
+    let def = parse_oracle_card_definition("Sundial of the Infinite");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("end the turn") && rendered.contains("activate only during your turn"),
+        "expected Sundial rendered text to preserve end-turn and timing clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sundial_of_the_infinite_end_turn_effect_runtime_branches_by_active_player() {
+    let def = parse_oracle_card_definition("Sundial of the Infinite");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if !activated.effects.segments.is_empty() => {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Sundial should have an activated ability");
+    let effect = activated.effects.flattened_default_effects()[0]
+        .downcast_ref::<crate::effects::EndTurnEffect>()
+        .expect("Sundial activation should lower to EndTurnEffect")
+        .clone();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = game
+        .players
+        .iter()
+        .find(|p| p.name == "Alice")
+        .expect("Alice should exist")
+        .id;
+    let bob = game
+        .players
+        .iter()
+        .find(|p| p.name == "Bob")
+        .expect("Bob should exist")
+        .id;
+    let sundial_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    let mut ctx = crate::effects::ExecutionContext::new_default(sundial_id, alice);
+    effect
+        .execute(&mut game, &mut ctx)
+        .expect("Sundial effect should resolve on your turn");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Ending);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::Cleanup));
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    let mut ctx = crate::effects::ExecutionContext::new_default(sundial_id, alice);
+    effect
+        .execute(&mut game, &mut ctx)
+        .expect("Sundial effect should no-op for non-active player");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_cabaretti_ascendancy_strict_regression() {
     assert_oracle_card_parses_strict("Cabaretti Ascendancy");
 }

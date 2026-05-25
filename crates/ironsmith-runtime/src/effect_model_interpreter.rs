@@ -1295,6 +1295,11 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::EndTurnEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::EndTurnEffect::new(
+            payload.player.clone(),
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipTurnEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SkipTurnEffect::new(
             payload.player.clone(),

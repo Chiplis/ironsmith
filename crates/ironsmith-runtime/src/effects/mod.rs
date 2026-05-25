@@ -160,7 +160,7 @@ pub use player::{
     CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseNamedOptionEffect, ChoosePlayerEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
-    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
+    EndTurnEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
     ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect,
     GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,

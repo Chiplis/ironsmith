@@ -4930,6 +4930,11 @@ fn compile_subject_verb_effect(
             |value| Effect::set_life_total_player(value, PlayerFilter::You),
             |value, filter| Effect::set_life_total_player(value, filter),
         ),
+        SubjectVerbActionAst::EndTurn => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::end_turn_player(subject.into_player_filter())
+            })
+        }
         SubjectVerbActionAst::SkipTurn => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_turn_player(subject.into_player_filter())

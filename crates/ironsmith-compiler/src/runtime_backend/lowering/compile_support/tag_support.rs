@@ -599,6 +599,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::AddManaImprintedColors
         | SubjectVerbActionAst::DoubleManaPool
         | SubjectVerbActionAst::EmptyManaPool
+        | SubjectVerbActionAst::EndTurn
         | SubjectVerbActionAst::SkipTurn
         | SubjectVerbActionAst::SkipCombatPhases
         | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

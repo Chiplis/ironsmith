@@ -3485,6 +3485,18 @@ impl Effect {
         Self::new(SkipTurnEffect::you())
     }
 
+    /// Create an "end turn" effect for the controller.
+    pub fn end_turn() -> Self {
+        use crate::effects::EndTurnEffect;
+        Self::new(EndTurnEffect::new(PlayerFilter::You))
+    }
+
+    /// Create an "end turn" effect for a specific player.
+    pub fn end_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::EndTurnEffect;
+        Self::new(EndTurnEffect::new(player))
+    }
+
     /// Create a "skip turn" effect for a specific player.
     pub fn skip_turn_player(player: PlayerFilter) -> Self {
         use crate::effects::SkipTurnEffect;

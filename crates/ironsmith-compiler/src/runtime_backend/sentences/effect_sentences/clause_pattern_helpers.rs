@@ -287,6 +287,7 @@ pub(crate) fn parse_verb_first_clause(
         "goad" => Verb::Goad,
         "suspect" => Verb::Suspect,
         "look" => Verb::Look,
+        "end" => Verb::End,
         _ => return Ok(None),
     };
 

@@ -167,6 +167,26 @@ pub(crate) fn parse_skip(
     )))
 }
 
+pub(crate) fn parse_end(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let player = match subject.unwrap_or(SubjectAst::This) {
+        SubjectAst::Player(player) => player,
+        SubjectAst::This => PlayerAst::Implicit,
+    };
+
+    if clause_words.as_slice() == ["the", "turn"] || clause_words.as_slice() == ["turn"] {
+        return Ok(EffectAst::subject_verb_end_turn(player));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported end clause (clause: '{}')",
+        clause_words.join(" ")
+    )))
+}
+
 pub(crate) fn parse_flip(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,

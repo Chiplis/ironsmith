@@ -210,7 +210,7 @@ fn common_player_action_pattern_for(
     ) {
         return Some(CommonPlayerActionPattern::Amount);
     }
-    if matches!(verb, Verb::Skip | Verb::Take | Verb::Become) {
+    if matches!(verb, Verb::Skip | Verb::Take | Verb::Become | Verb::End) {
         return Some(CommonPlayerActionPattern::StateChange);
     }
     None
@@ -935,6 +935,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             "detain",
             "goad",
             "suspect",
+            "end",
         ];
         CardTextError::ParseError(format!(
             "could not find verb in effect clause (clause: '{clause}'; known verbs: {})",
