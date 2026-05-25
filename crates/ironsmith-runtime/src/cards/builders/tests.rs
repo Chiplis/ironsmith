@@ -14264,6 +14264,97 @@ fn parse_instead_if_control_keeps_prior_damage_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn foul_tongue_invocation_strict_parse_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Foul-Tongue Invocation")
+        .parse_text(
+            "As an additional cost to cast this spell, you may reveal a Dragon card from your hand.\n\
+Target player sacrifices a creature of their choice. If you revealed a Dragon card or controlled a Dragon as you cast this spell, you gain 4 life.",
+        )
+        .expect("Foul-Tongue Invocation should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player sacrifices a creature")
+            && rendered.contains("if this spell's behold cost was paid or you control a dragon")
+            && rendered.contains("you gain 4 life"),
+        "expected Foul-Tongue Invocation to render behold-or-control condition, got {rendered}"
+    );
+}
+
+#[test]
+fn foul_tongue_invocation_condition_fails_without_behold_or_dragon_control() {
+    let def = parse_oracle_card_definition("Foul-Tongue Invocation");
+    let condition = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects.iter().find_map(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                    .map(|conditional| conditional.condition.clone())
+            })
+        })
+        .expect("Foul-Tongue Invocation should lower a conditional life-gain clause");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(
+        &def,
+        crate::PlayerId::from_index(0),
+        crate::zone::Zone::Stack,
+    );
+    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
+        &game,
+        &condition,
+        crate::PlayerId::from_index(0),
+        source,
+    );
+
+    assert!(
+        !condition_matches,
+        "Foul-Tongue Invocation life-gain condition should fail without a behold payment or controlled Dragon"
+    );
+}
+
+#[test]
+fn foul_tongue_invocation_condition_matches_when_behold_label_was_paid() {
+    let def = parse_oracle_card_definition("Foul-Tongue Invocation");
+    let condition = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects.iter().find_map(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                    .map(|conditional| conditional.condition.clone())
+            })
+        })
+        .expect("Foul-Tongue Invocation should lower a conditional life-gain clause");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(
+        &def,
+        crate::PlayerId::from_index(0),
+        crate::zone::Zone::Stack,
+    );
+    game.object_mut(source)
+        .expect("source spell object should exist")
+        .optional_costs_paid
+        .mark_label_paid("Behold");
+    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
+        &game,
+        &condition,
+        crate::PlayerId::from_index(0),
+        source,
+    );
+
+    assert!(
+        condition_matches,
+        "Foul-Tongue Invocation life-gain condition should pass when its Behold label is marked paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Invasive Maneuvers Variant")
         .parse_text(
