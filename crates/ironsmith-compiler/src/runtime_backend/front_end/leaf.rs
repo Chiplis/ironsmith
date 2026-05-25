@@ -98,6 +98,9 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         filter_text: String,
     },
+    Blight {
+        count: u32,
+    },
     RemoveCounters {
         counter_type: CounterType,
         count: u32,
@@ -1336,6 +1339,7 @@ fn parse_activation_cost_segment_tokens(
             Some(parse_tap_chosen_segment_tokens(tokens))
         }
         "behold" => Some(parse_behold_segment_tokens(tokens)),
+        "blight" => Some(parse_blight_segment_tokens(tokens)),
         "exile" => Some(parse_exile_segment_tokens(tokens)),
         "reveal" => Some(parse_reveal_segment_tokens(tokens)),
         "return" => Some(parse_return_segment_tokens(tokens)),
@@ -1574,6 +1578,37 @@ fn parse_behold_segment_tokens(
     }
 
     Ok(ActivationCostSegmentCst::Behold { subtype, count })
+}
+
+fn parse_blight_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LeafCompatWords::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.first().copied() != Some("blight") {
+        return Err(CardTextError::ParseError(
+            "rewrite blight parser expected leading 'blight'".to_string(),
+        ));
+    }
+
+    let tail = lowered.get(1..).unwrap_or_default();
+    let (count, consumed_words) =
+        if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
+            (count, consumed_words)
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite blight parser expected amount in '{raw}'"
+            )));
+        };
+
+    if consumed_words != tail.len() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite blight parser does not yet support trailing clause in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::Blight { count })
 }
 
 fn parse_reveal_segment_tokens(
@@ -1902,6 +1937,22 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::Behold { subtype, count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::behold(*subtype, *count)));
+            }
+            ActivationCostSegmentCst::Blight { count } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = format!("blight_cost_{tap_tag_id}");
+                tap_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    ObjectFilter::creature().you_control(),
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::put_counters(
+                    CounterType::MinusOneMinusOne,
+                    *count as i32,
+                    crate::target::ChooseSpec::tagged(tag),
+                )));
             }
             ActivationCostSegmentCst::SacrificeSelf => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

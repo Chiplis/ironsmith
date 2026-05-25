@@ -33584,6 +33584,39 @@ pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilt
 
 pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String {
     if costs.len() == 1
+        && let Some(may) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        && may.effects.len() == 1
+        && let Some(put_counters) = may.effects[0]
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+        && put_counters.counter_type == crate::object::CounterType::MinusOneMinusOne
+        && put_counters.target
+            == ChooseSpec::Object(crate::filter::ObjectFilter::creature().you_control())
+        && put_counters.target_count.is_none()
+        && !put_counters.distributed
+    {
+        return format!("you may blight {}", describe_value(&put_counters.amount));
+    }
+
+    if costs.len() == 2
+        && let Some(choose) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        && let Some(put_counters) = costs[1]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        && choose.filter == crate::filter::ObjectFilter::creature().you_control()
+        && choose.count.min == 1
+        && choose.count.max == Some(1)
+        && put_counters.counter_type == crate::object::CounterType::MinusOneMinusOne
+        && let ChooseSpec::Tagged(tag) = &put_counters.target
+        && *tag == choose.tag
+    {
+        return format!("you may blight {}", describe_value(&put_counters.amount));
+    }
+
+    if costs.len() == 1
         && let Some(choose_mode) = costs[0]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>())

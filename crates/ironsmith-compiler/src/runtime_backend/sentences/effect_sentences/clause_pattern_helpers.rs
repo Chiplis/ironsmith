@@ -1825,6 +1825,28 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::subject_verb_behold(subtype, count)));
     }
 
+    if clause_words.first() == Some(&"blight") {
+        let (amount, used) = parse_number(&clause_tokens[1..]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing numeric amount for blight clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if 1 + used != clause_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing blight clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        return Ok(Some(EffectAst::subject_verb_put_counters(
+            crate::object::CounterType::MinusOneMinusOne,
+            Value::Fixed(amount as i32),
+            TargetAst::Object(ObjectFilter::creature().you_control(), None, None),
+            None,
+            false,
+        )));
+    }
+
     if clause_words == ["manifest", "dread"] {
         return Ok(Some(EffectAst::subject_verb_manifest_dread(
             PlayerAst::Implicit,

@@ -2046,7 +2046,9 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
     };
     let stripped = trim_lexed_commas(effect_tokens);
     let words = token_word_refs(stripped);
-    if !slice_starts_with(&words, &["you", "may", "behold"]) {
+    if !slice_starts_with(&words, &["you", "may", "behold"])
+        && !slice_starts_with(&words, &["you", "may", "blight"])
+    {
         return Ok(None);
     }
 

@@ -31115,6 +31115,26 @@ fn parse_oracle_caustic_exhale_behold_or_pay_regression() {
 }
 
 #[test]
+fn parse_oracle_cinder_strike_blight_additional_cost_regression() {
+    let def = parse_oracle_card_definition("Cinder Strike");
+    let raw = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        raw.contains("ThisSpellPaidLabel")
+            && raw.contains("Additional")
+            && raw.contains("MinusOneMinusOne"),
+        "expected Cinder Strike to preserve additional-cost-paid gating and blight counters, got {raw}"
+    );
+    assert!(
+        rendered.contains("As an additional cost to cast this spell")
+            && rendered.contains("-1/-1 counter on a creature you control")
+            && rendered.contains("additional cost was paid"),
+        "expected Cinder Strike compiled text to keep blight cost and payoff wiring, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_perch_protection_gift_extra_turn_regression() {
     let def = parse_oracle_card_definition("Perch Protection");
 
