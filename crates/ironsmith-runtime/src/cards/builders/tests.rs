@@ -30190,6 +30190,41 @@ fn parse_oracle_solstice_revelations_uses_dynamic_consult_gate_with_hand_fallbac
     );
 }
 
+#[test]
+fn parse_oracle_illuna_apex_of_wishes_strictly_parses_mutate_trigger() {
+    let def = parse_oracle_card_definition("Illuna, Apex of Wishes");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Mutate {3}{R/G}{U}{U}")
+            && rendered.contains("When this creature mutates"),
+        "expected Illuna mutate keyword and mutate trigger in compiled text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_illuna_apex_of_wishes_compiles_battlefield_or_hand_clause() {
+    let def = parse_oracle_card_definition("Illuna, Apex of Wishes");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("you may put it onto the battlefield")
+            && rendered_lower.contains("return it to its owner's hand")
+            && !rendered_lower.contains("exile the top card of your library"),
+        "expected consult branch over nonland permanent and no top-card fallback text, got {rendered}"
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibrary")
+            && abilities_debug.contains("mode: Exile")
+            && abilities_debug.contains("MayEffect")
+            && abilities_debug.contains("WasDeclined")
+            && abilities_debug.contains("zone: Battlefield")
+            && abilities_debug.contains("zone: Hand"),
+        "expected consult + battlefield-or-hand fallback lowering, got {abilities_debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_synthesis_pod_accepts_that_exiled_card_cast_clause() {
