@@ -32599,11 +32599,70 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_cabaretti_ascendancy_strict_regression() {
+    assert_oracle_card_parses_strict("Cabaretti Ascendancy");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_compiled_text_keeps_hand_or_bottom_branch() {
+    let def = parse_oracle_card_definition("Cabaretti Ascendancy");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you don't put the card into your hand")
+            || rendered.contains("if you dont put the card into your hand")
+            || rendered.contains("if not"),
+        "expected hand-branch predicate in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may put it on the bottom of your library")
+            || rendered.contains("you may put it on the bottom of its owner's library"),
+        "expected optional bottom-of-library branch in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runtime_shape() {
+    let def = parse_oracle_card_definition("Cabaretti Ascendancy");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cabaretti Ascendancy should compile to a triggered upkeep ability");
+
+    let debug = format!("{triggered:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("beginningofupkeep"),
+        "expected upkeep trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("condition: not(")
+            && debug.contains("playertaggedobjectmatches")
+            && debug.contains("zone: some(")
+            && debug.contains("hand"),
+        "expected negative hand-placement condition for fallback branch, got {debug}"
+    );
+    assert!(
+        debug.contains("zone: library")
+            && debug.contains("to_top: false")
+            && debug.contains("mayeffect"),
+        "expected optional move-to-bottom effect gated by the condition, got {debug}"
+    );
+}
+
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Banefire",
     "Barrowin of Clan Undurr",
     "Biophagus",
     "Blast Zone",
+    "Cabaretti Ascendancy",
     "Boseiju, Who Endures",
     "Cabal Ritual",
     "Caves of Chaos Adventurer",

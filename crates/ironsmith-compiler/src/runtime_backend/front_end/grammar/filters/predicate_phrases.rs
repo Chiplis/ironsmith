@@ -3021,6 +3021,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    let didnt_put_into_hand = matches!(
+        filtered.as_slice(),
+        ["you", "dont", "put", "the", "card", "into", "your", "hand"]
+            | ["you", "didnt", "put", "the", "card", "into", "your", "hand"]
+            | ["you", "did", "not", "put", "the", "card", "into", "your", "hand"]
+            | ["you", "dont", "put", "card", "into", "your", "hand"]
+            | ["you", "didnt", "put", "card", "into", "your", "hand"]
+            | ["you", "did", "not", "put", "card", "into", "your", "hand"]
+    );
+    if didnt_put_into_hand {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter: ObjectFilter::default().in_zone(Zone::Hand),
+            },
+        )));
+    }
+
     if filtered.as_slice() == ["it", "wasnt", "blocking"]
         || filtered.as_slice() == ["it", "was", "not", "blocking"]
         || filtered.as_slice() == ["that", "creature", "wasnt", "blocking"]
@@ -3239,6 +3258,28 @@ mod tests {
             PredicateAst::PlayerWouldBeginExtraTurn {
                 player: PlayerAst::Opponent,
             }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you don't put the card into your hand", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter: ObjectFilter::default().in_zone(Zone::Hand),
+            }))
         );
         Ok(())
     }
