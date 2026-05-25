@@ -253,6 +253,7 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::CounterType;
     use crate::static_abilities::StaticAbility;
     use crate::target::PlayerFilter;
     use crate::types::CardType;
@@ -356,6 +357,78 @@ mod tests {
             })
             .count();
         assert_eq!(zombie_count, 1);
+    }
+
+    #[test]
+    fn rayami_replacement_exiles_nontoken_creature_with_blood_counter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let rayami = crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(50_210),
+            "Rayami, First of the Fallen",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .expect("rayami replacement clause should parse");
+        let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
+        let victim = create_creature(&mut game, bob, "Rayami Victim", 50_211);
+        let victim_stable_id = game.object(victim).expect("victim before destroy").stable_id;
+
+        game.update_replacement_effects();
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = process_destroy(&mut game, victim, Some(source), &mut dm);
+
+        assert!(
+            matches!(outcome, EventOutcome::Replaced),
+            "expected replacement outcome, got {outcome:?}"
+        );
+        let exiled_victim = game
+            .find_object_by_stable_id(victim_stable_id)
+            .expect("exiled victim should still be findable");
+        assert_eq!(game.object(exiled_victim).expect("exiled victim").zone, Zone::Exile);
+        assert_eq!(
+            game.counter_count(exiled_victim, CounterType::Blood),
+            1,
+            "exiled creature should have one blood counter"
+        );
+    }
+
+    #[test]
+    fn rayami_replacement_does_not_exile_noncreature_permanent() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let rayami = crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(50_220),
+            "Rayami, First of the Fallen",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .expect("rayami replacement clause should parse");
+        let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
+        let noncreature = CardBuilder::new(CardId::from_raw(50_221), "Rayami Noncreature")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let noncreature_victim = game.create_object_from_card(&noncreature, bob, Zone::Battlefield);
+
+        game.update_replacement_effects();
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = process_destroy(&mut game, noncreature_victim, Some(source), &mut dm);
+
+        assert!(
+            !matches!(outcome, EventOutcome::Replaced),
+            "noncreature death should not be replaced by Rayami"
+        );
+        assert!(
+            game.object(noncreature_victim)
+                .is_none_or(|obj| obj.zone != Zone::Exile),
+            "noncreature permanent should not be exiled by Rayami replacement"
+        );
     }
 
     #[test]
