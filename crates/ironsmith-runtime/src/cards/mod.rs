@@ -1785,6 +1785,30 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn generated_definition_support_accepts_covert_technician() {
+        let text = "Mana cost: {2}{U}\nType: Creature\nPower/Toughness: 2/4\nNinjutsu {1}{U} ({1}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Covert Technician deals combat damage to a player, you may put an artifact card with mana value less than or equal to that damage from your hand onto the battlefield.";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Covert Technician")
+            .parse_text(text)
+            .expect("covert technician parse should succeed");
+
+        assert!(
+            generated_definition_is_supported(&definition),
+            "{:?}\n{definition:#?}",
+            generated_definition_support_issues(&definition)
+        );
+
+        let debug = format!("{definition:#?}").to_ascii_lowercase();
+        assert!(!debug.contains("unimplemented"));
+        assert!(
+            debug.contains("lessthanorequalexpr")
+                && debug.contains("eventvalue(")
+                && debug.contains("amount"),
+            "Covert Technician should keep the dynamic 'that damage' mana value gate, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn generated_definition_support_accepts_deepcavern_imp() {
         let text = "Mana cost: {2}{B}\nType: Creature — Imp Rebel\nPower/Toughness: 2/2\nFlying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
         let definition = CardDefinitionBuilder::new(CardId::new(), "Deepcavern Imp")
