@@ -8249,13 +8249,13 @@ fn record_battlefield_entry_this_turn(game: &mut GameState, object_id: ObjectId)
     use crate::snapshot::ObjectSnapshot;
     use crate::triggers::TriggerEvent;
 
-    let snapshot = ObjectSnapshot::from_object(
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
         game.object(object_id)
             .expect("battlefield entry event object should exist"),
         game,
     );
     let event = TriggerEvent::new_with_provenance(
-        ZoneChangeEvent::with_cause(
+        crate::events::ZoneChangeEvent::with_cause(
             object_id,
             Zone::Hand,
             Zone::Battlefield,
@@ -28600,5 +28600,91 @@ fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
         game.player(alice).expect("alice exists").hand.len(),
         1,
         "the queued gift trigger should resolve using the normal stack path"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trove_tracker_dies_trigger_draws_a_card() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let tracker = CardDefinitionBuilder::new(CardId::from_raw(93_001), "Trove Tracker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("When this creature dies, draw a card.\nEncore {5}{U}{U}")
+        .expect("Trove Tracker text should parse");
+    let tracker_id = game.create_object_from_definition(&tracker, alice, Zone::Battlefield);
+    let library_card = CardBuilder::new(CardId::from_raw(93_003), "Draw Probe")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(tracker_id).expect("Trove Tracker permanent should exist"),
+        &game,
+    );
+    let dies_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            tracker_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_sba(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, dies_event, false);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Trove Tracker should trigger when it dies"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("trigger should be put on stack");
+    resolve_stack_entry(&mut game).expect("draw trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        1,
+        "Trove Tracker death trigger should draw exactly one card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trove_tracker_only_triggers_on_battlefield_to_graveyard_moves() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let tracker = CardDefinitionBuilder::new(CardId::from_raw(93_002), "Trove Tracker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("When this creature dies, draw a card.\nEncore {5}{U}{U}")
+        .expect("Trove Tracker text should parse");
+    let tracker_id = game.create_object_from_definition(&tracker, alice, Zone::Hand);
+
+    let snapshot = ObjectSnapshot::from_object(
+        game.object(tracker_id).expect("Trove Tracker card should exist"),
+        &game,
+    );
+    let non_dies_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            tracker_id,
+            Zone::Hand,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, non_dies_event, false);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "moving Trove Tracker from hand to graveyard should not count as dying"
     );
 }
