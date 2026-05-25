@@ -52,6 +52,7 @@ pub(super) enum KeywordDispatchHint {
     Madness,
     Escape,
     MorphFamily,
+    Mutate,
     Squad,
     Transmute,
     CastThisSpellOnly,
@@ -142,6 +143,12 @@ mod activated_keywords {
             hints: &[KeywordDispatchHint::MorphFamily],
             matches: registry::matches_morph,
             lower: registry::lower_morph,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Mutate,
+            hints: &[KeywordDispatchHint::Mutate],
+            matches: registry::matches_mutate,
+            lower: registry::lower_mutate,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Transmute,
@@ -343,6 +350,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                     grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
                     grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
                     grammar::kw("disguise").value(KeywordDispatchHint::MorphFamily),
+                    grammar::kw("mutate").value(KeywordDispatchHint::Mutate),
                 )),
                 grammar::kw("squad").value(KeywordDispatchHint::Squad),
                 grammar::kw("transmute").value(KeywordDispatchHint::Transmute),

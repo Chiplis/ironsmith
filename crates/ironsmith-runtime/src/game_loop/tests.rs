@@ -13191,6 +13191,64 @@ fn test_zagoth_mamba_mutates_trigger_condition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_archipelagore_mutate_keyword_and_trigger_condition() {
+    use crate::ability::AbilityKind;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::events::other::{BecameMonstrousEvent, MutatedEvent};
+    use crate::triggers::check_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let archipelagore_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Archipelagore")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Mutate {5}{U}\nWhenever this creature mutates, tap up to X target creatures your opponents control, where X is the number of times this creature has mutated. Those creatures don't untap during their controller's next untap step.",
+        )
+        .expect("Archipelagore should parse");
+    let archipelagore_id =
+        game.create_object_from_definition(&archipelagore_def, alice, Zone::Battlefield);
+
+    let archipelagore = game
+        .object(archipelagore_id)
+        .expect("Archipelagore permanent exists");
+    let has_mutates_trigger = archipelagore.abilities.iter().any(|ability| {
+        if let AbilityKind::Triggered(triggered) = &ability.kind {
+            triggered.trigger.display().contains("mutates")
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_mutates_trigger,
+        "Archipelagore should have a mutates triggered ability"
+    );
+
+    let mutate_event = TriggerEvent::new_with_provenance(
+        MutatedEvent::new(archipelagore_id, alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mutate_triggers = check_triggers(&game, &mutate_event);
+    assert_eq!(
+        mutate_triggers.len(),
+        1,
+        "MutatedEvent should trigger Archipelagore's ability"
+    );
+
+    let monstrous_event = TriggerEvent::new_with_provenance(
+        BecameMonstrousEvent::new(archipelagore_id, alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let monstrous_triggers = check_triggers(&game, &monstrous_event);
+    assert_eq!(
+        monstrous_triggers.len(),
+        0,
+        "BecameMonstrousEvent should not trigger Archipelagore's mutates ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
