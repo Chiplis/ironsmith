@@ -39711,7 +39711,7 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
         .join("\n")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("if nontoken creature would die, exile it instead"),
+        rendered.contains("if nontoken creature would die, exile it with a blood counter on it instead"),
         "expected would-die replacement text, got {rendered}"
     );
 }

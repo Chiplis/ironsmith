@@ -4096,6 +4096,16 @@ impl StaticAbilityKind for ExileWouldDieInstead {
     }
 
     fn display(&self) -> String {
+        let counter_suffix = if self.exile_with_counters.is_empty() {
+            String::new()
+        } else {
+            let counter_phrases: Vec<String> = self
+                .exile_with_counters
+                .iter()
+                .map(|(counter_type, count)| describe_counter_phrase(counter_type, *count))
+                .collect();
+            format!(" with {} on it", join_english(&counter_phrases))
+        };
         if let Some(damaged_by) = self.damaged_by {
             let source_text = match damaged_by {
                 DamagedBySource::ThisCreature => "this creature",
@@ -4103,14 +4113,16 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                 DamagedBySource::EnchantedCreature => "enchanted creature",
             };
             format!(
-                "If {} dealt damage by {} this turn would die, exile it instead.",
+                "If {} dealt damage by {} this turn would die, exile it{} instead.",
                 self.filter.description(),
-                source_text
+                source_text,
+                counter_suffix
             )
         } else {
             format!(
-                "If {} would die, exile it instead.",
-                self.filter.description()
+                "If {} would die, exile it{} instead.",
+                self.filter.description(),
+                counter_suffix
             )
         }
     }
