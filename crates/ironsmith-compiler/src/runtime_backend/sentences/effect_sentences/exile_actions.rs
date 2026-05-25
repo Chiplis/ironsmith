@@ -414,6 +414,19 @@ pub(crate) fn parse_exile_top_library_clause(
 
     let owner_tokens = trim_commas(&after_cards[1..]);
     let owner_words = crate::runtime_backend::token_word_refs(&owner_tokens);
+    if slice_starts_with(&owner_words, &["each", "opponent", "library"])
+        || slice_starts_with(&owner_words, &["each", "opponents", "library"])
+    {
+        return Some(EffectAst::ForEachOpponent {
+            effects: vec![EffectAst::subject_verb_exile_top_of_library(
+                PlayerAst::That,
+                count,
+                vec![helper_tag_for_tokens(&tokens, "exiled")],
+                Vec::new(),
+            )],
+        });
+    }
+
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let (player, used_words) = parse_library_owner_prefix(&owner_words, default_player)?;
     if used_words < owner_words.len() {
