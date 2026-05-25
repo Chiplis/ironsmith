@@ -189,6 +189,44 @@ fn parse_shared_subject_base_pt_from_has_tail(
     Ok(Some((power, toughness, has_word_idx, duration.clone())))
 }
 
+fn parse_leading_subject_base_pt_before_gain(
+    before_gain: &[&str],
+    subject_start_word_idx: usize,
+    gain_idx: usize,
+) -> Result<Option<SharedSubjectBasePt>, CardTextError> {
+    let Some(local_has_idx) = before_gain
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return Ok(None);
+    };
+    if local_has_idx == 0 {
+        return Ok(None);
+    }
+    let rest = &before_gain[local_has_idx + 1..];
+    if rest.len() < 5 || rest[..4] != ["base", "power", "and", "toughness"] {
+        return Ok(None);
+    }
+    let (power, toughness) = parse_pt_modifier_values(rest[4]).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "invalid base power/toughness value (clause: '{}')",
+            before_gain.join(" ")
+        ))
+    })?;
+    let tail = &rest[5..];
+    if !tail.is_empty() && !is_until_end_of_turn(tail) && tail != ["until", "end", "of", "turn", "and"] {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing base power/toughness clause (clause: '{}')",
+            before_gain.join(" ")
+        )));
+    }
+    let has_word_idx = subject_start_word_idx + local_has_idx;
+    if has_word_idx >= gain_idx {
+        return Ok(None);
+    }
+    Ok(Some((power, toughness, has_word_idx, Until::EndOfTurn)))
+}
+
 fn parse_shared_subject_pump_from_get_tail(
     tokens: &[OwnedLexToken],
     get_word_idx: usize,
@@ -1016,9 +1054,8 @@ pub(crate) fn parse_gain_ability_sentence(
     if looks_like_can_attack_no_defender {
         return Ok(None);
     }
-    let gain_idx = find_word_index_by(&word_list, |word| {
-        matches!(word, "gain" | "gains" | "has" | "have" | "lose" | "loses")
-    });
+    let gain_idx = find_word_index_by(&word_list, |word| matches!(word, "gain" | "gains" | "lose" | "loses"))
+        .or_else(|| find_word_index_by(&word_list, |word| matches!(word, "has" | "have")));
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
@@ -1256,6 +1293,11 @@ pub(crate) fn parse_gain_ability_sentence(
         None
     };
     let get_idx = find_word_index_by(before_gain, |word| matches!(word, "get" | "gets"));
+    let leading_base_pt_effect = if !losing {
+        parse_leading_subject_base_pt_before_gain(before_gain, subject_start_word_idx, gain_idx)?
+    } else {
+        None
+    };
     let pump_effect = if let Some(gi) = get_idx {
         let modifier_start_word_idx = subject_start_word_idx + gi + 1;
         let Some(modifier_start_token_idx) =
@@ -1379,6 +1421,7 @@ pub(crate) fn parse_gain_ability_sentence(
     let real_subject_end_word_idx = pump_effect
         .as_ref()
         .map(|(_, _, gi, _, _, _)| *gi)
+        .or(leading_base_pt_effect.as_ref().map(|(_, _, has_idx, _)| *has_idx))
         .unwrap_or(gain_idx);
     let real_subject_start_word_idx = if let Some(gi) = get_idx {
         before_gain[..gi]
@@ -1439,6 +1482,7 @@ pub(crate) fn parse_gain_ability_sentence(
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
+        append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1469,6 +1513,7 @@ pub(crate) fn parse_gain_ability_sentence(
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
+        append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1503,6 +1548,7 @@ pub(crate) fn parse_gain_ability_sentence(
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
+        append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1535,6 +1581,7 @@ pub(crate) fn parse_gain_ability_sentence(
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
+        append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         let grant_target = if has_preceding_target_effect {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
@@ -1626,6 +1673,14 @@ pub(crate) fn parse_gain_ability_sentence(
 
     if let Some(become_effect) = &leading_become_effect {
         effects.push(become_effect.clone());
+    }
+    if let Some((power, toughness, _has_idx, base_pt_duration)) = &leading_base_pt_effect {
+        effects.push(EffectAst::subject_verb_set_base_power_toughness(
+            power.clone(),
+            toughness.clone(),
+            TargetAst::Object(filter.clone(), None, None),
+            base_pt_duration.clone(),
+        ));
     }
     if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = pump_effect {
         effects.push(EffectAst::subject_verb_pump_all(
@@ -2160,6 +2215,26 @@ mod tests {
         assert!(
             debug.matches("YourNextTurn").count() >= 2,
             "expected shared duration to apply to both effects, got {debug}"
+        );
+    }
+
+    #[test]
+    fn base_pt_then_gains_keyword_in_single_clause_parses() {
+        let tokens = tokenize_line(
+            "This creature has base power and toughness 4/5 until end of turn and gains wither until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("base-pt then gains clause should parse")
+            .expect("base-pt then gains clause should produce effects");
+
+        let debug = format!("{effects:?}").to_ascii_lowercase();
+        assert!(
+            string_contains(&debug, "setbasepowertoughness")
+                && string_contains(&debug, "grantabilitiestotarget")
+                && string_contains(&debug, "wither")
+                && debug.matches("endofturn").count() >= 2,
+            "expected shared self-targeted base P/T plus wither grant until EOT, got {debug}"
         );
     }
 

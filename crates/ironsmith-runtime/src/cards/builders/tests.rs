@@ -32890,6 +32890,57 @@ fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runtime_shape() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn woodlurker_mimic_strict_regression_parses() {
+    assert_oracle_card_parses_strict("Woodlurker Mimic");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn woodlurker_mimic_compiled_text_keeps_base_pt_and_wither_clause() {
+    let def = parse_oracle_card_definition("Woodlurker Mimic");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("base power and toughness 4/5"),
+        "expected base P/T clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("wither") && rendered.contains("until end of turn"),
+        "expected temporary wither grant in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn woodlurker_mimic_trigger_runtime_shape_keeps_color_filter_and_wither_effect() {
+    let def = parse_oracle_card_definition("Woodlurker Mimic");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Woodlurker Mimic should compile to a triggered cast ability");
+
+    let debug = format!("{triggered:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("spellcasttrigger") && debug.contains("colorset") && debug.contains("spell"),
+        "expected a color-constrained spell-cast trigger shape, got {debug}"
+    );
+    assert!(
+        debug.contains("wither")
+            && debug.contains("power_reference: base")
+            && debug.contains("toughness_reference: base")
+            && debug.contains("equal(")
+            && debug.contains("4")
+            && debug.contains("5"),
+        "expected trigger effects to keep the base 4/5 + wither linkage, got {debug}"
+    );
+}
+
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Banefire",
     "Barrowin of Clan Undurr",

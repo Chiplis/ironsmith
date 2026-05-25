@@ -373,6 +373,16 @@ pub(crate) fn parse_has_base_power_toughness_clause(
             return Ok(None);
         }
     }
+    let is_shared_gain_tail = matches!(
+        tail,
+        ["until", "end", "of", "turn", "and", "gain", ..]
+            | ["until", "end", "of", "turn", "and", "gains", ..]
+            | ["until", "end", "of", "turn", "and", "lose", ..]
+            | ["until", "end", "of", "turn", "and", "loses", ..]
+    );
+    if is_shared_gain_tail {
+        return Ok(None);
+    }
     if !tail.is_empty() && !is_until_end_of_turn(tail) {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
