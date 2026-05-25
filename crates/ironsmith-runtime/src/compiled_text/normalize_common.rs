@@ -5161,6 +5161,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "the tagged object 'triggering' matches creature",
             "that object is a creature",
         )
+        .replace("If that object is a ", "If it's a ")
         .replace("the tagged object 'triggering'", "that object")
         .replace(" that player controls of their choice", " of their choice")
         .replace(" that player controls unless that player pays ", " unless that player pays ")
@@ -10686,6 +10687,39 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     };
                     return is_clause(noun);
                 }
+                if filter.subtypes.len() == 1
+                    && filter.zone.is_none()
+                    && filter.controller.is_none()
+                    && filter.owner.is_none()
+                    && !filter.single_graveyard
+                    && filter.card_types.is_empty()
+                    && filter.all_card_types.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.supertypes.is_empty()
+                    && filter.excluded_supertypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.excluded_colors.is_empty()
+                    && !filter.colorless
+                    && !filter.multicolored
+                    && !filter.monocolored
+                    && filter.all_colors.is_none()
+                    && filter.exactly_two_colors.is_none()
+                    && filter.power.is_none()
+                    && filter.toughness.is_none()
+                    && filter.total_power_toughness.is_none()
+                    && filter.mana_value.is_none()
+                    && filter.with_counter.is_none()
+                    && filter.without_counter.is_none()
+                    && filter.name.is_none()
+                    && filter.excluded_name.is_none()
+                    && filter.tagged_constraints.is_empty()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    let subtype = filter.subtypes[0].to_string();
+                    return is_clause(&subtype);
+                }
                 return format!("{subject} matches {desc}");
                 }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
@@ -11358,6 +11392,18 @@ mod tests {
             ),
             "Whenever another creature enters under your control, you gain 1 life"
         );
+    }
+
+    #[test]
+    fn describe_tagged_object_matches_simple_subtype_uses_is_clause() {
+        let mut filter = ObjectFilter::default();
+        filter.subtypes = vec![Subtype::Spider];
+        let condition = Condition::TaggedObjectMatches(
+            TagKey::from("triggering"),
+            filter,
+        );
+
+        assert_eq!(describe_condition(&condition), "that object is a Spider");
     }
 
     #[test]
