@@ -22194,9 +22194,9 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
         }
     } else {
         match reflexive.predicate {
-            EffectPredicate::Happened => "When it happens".to_string(),
+            EffectPredicate::Happened => "When you do".to_string(),
             EffectPredicate::HappenedNotReplaced => {
-                "When it happens and isn't replaced".to_string()
+                "When you do and it isn't replaced".to_string()
             }
             _ => format!("When {}", describe_effect_predicate(&reflexive.predicate)),
         }

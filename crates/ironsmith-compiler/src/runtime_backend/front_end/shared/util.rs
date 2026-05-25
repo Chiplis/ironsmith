@@ -1562,6 +1562,12 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if matches!(words.get(..3), Some(["the", "damage", "dealt"])) {
         return Some((Value::EventValue(EventValueSpec::Amount), 3));
     }
+    if matches!(words.get(..2), Some(["the", "result"])) {
+        return Some((Value::EventValue(EventValueSpec::Amount), 2));
+    }
+    if words.first().copied() == Some("result") {
+        return Some((Value::EventValue(EventValueSpec::Amount), 1));
+    }
 
     if words[0] == "x" {
         return Some((Value::X, 1));

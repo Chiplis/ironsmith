@@ -22471,6 +22471,37 @@ fn parse_where_x_revealed_card_mana_value_uses_public_revealed_cost_tag() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_ancient_bronze_dragon_where_x_result_clause_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ancient Bronze Dragon")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elder, Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Flying\nWhenever Ancient Bronze Dragon deals combat damage to a player, roll a d20. When you do, put X +1/+1 counters on each of up to two target creatures, where X is the result.",
+        )
+        .expect("Ancient Bronze Dragon should parse with where-X result binding");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("roll a d20")
+            && rendered.contains("put that many +1/+1 counters on each of up to two target creatures")
+            && rendered.contains("when you do"),
+        "expected Ancient Bronze Dragon where-X result clause in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("rolldieeffect")
+            && debug.contains("putcounterseffect")
+            && debug.contains("eventvalue(amount)"),
+        "expected Ancient Bronze Dragon trigger to bind X to die result, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_where_x_fixed_plus_counters_on_source() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lightning Storm Variant")
         .card_types(vec![CardType::Instant])
