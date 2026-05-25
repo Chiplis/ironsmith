@@ -39742,3 +39742,20 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
         "expected would-die replacement text, got {rendered}"
     );
 }
+
+#[test]
+fn absolute_virtue_renders_protection_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Absolute Virtue")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White], vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("You have protection from each of your opponents.")
+        .expect("Absolute Virtue oracle text should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you have protection from each of your opponents"),
+        "expected protection clause in compiled text, got {rendered}"
+    );
+}

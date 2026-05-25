@@ -26081,6 +26081,42 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn absolute_virtue_blocks_opponent_controlled_sources_from_targeting_you() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::CardId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let absolute_virtue = CardDefinitionBuilder::new(CardId::new(), "Absolute Virtue")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White], vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("You have protection from each of your opponents.")
+        .expect("Absolute Virtue should parse");
+    game.create_object_from_definition(&absolute_virtue, alice, Zone::Battlefield);
+
+    let bob_source = create_creature(&mut game, "Opposing Source", bob, 2, 2);
+    let alice_source = create_creature(&mut game, "Friendly Source", alice, 2, 2);
+
+    game.refresh_continuous_state();
+
+    assert!(
+        !game.can_target_player_from_source(alice, bob_source),
+        "opponent-controlled source should not be able to target Absolute Virtue's controller"
+    );
+    assert!(
+        game.can_target_player_from_source(alice, alice_source),
+        "controller's own source should still be able to target them"
+    );
+    assert!(
+        game.can_target_player_from_source(bob, bob_source),
+        "Absolute Virtue should not prevent targeting opponents"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn giant_solifuge_keywords_apply_to_targeting_haste_and_trample() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::static_abilities::StaticAbilityId;

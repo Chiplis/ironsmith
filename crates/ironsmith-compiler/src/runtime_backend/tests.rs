@@ -13140,6 +13140,20 @@ fn witchbane_orb_player_hexproof_and_attached_curse_destroy_parse() {
 }
 
 #[test]
+fn absolute_virtue_player_protection_from_opponents_parses_as_targeting_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Absolute Virtue")
+        .parse_text("You have protection from each of your opponents.")
+        .expect("Absolute Virtue static line should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeTargetedPlayerFrom")
+            && debug.contains("You")
+            && debug.contains("controller: Some(Opponent)"),
+        "expected player targeting restriction from opponent-controlled sources, got {debug}"
+    );
+}
+
+#[test]
 fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Maddening Hex Variant")
         .parse_text(
