@@ -12374,6 +12374,150 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn ancient_bronze_dragon_trigger_uses_die_result_for_up_to_two_targets() {
+    struct SelectUpToTwoDecisionMaker;
+    impl DecisionMaker for SelectUpToTwoDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(2)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.force_next_die_roll(17);
+
+    let dragon = CardDefinitionBuilder::new(CardId::new(), "Ancient Bronze Dragon")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elder, Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Flying\nWhenever Ancient Bronze Dragon deals combat damage to a player, roll a d20. When you do, put X +1/+1 counters on each of up to two target creatures, where X is the result.",
+        )
+        .expect("Ancient Bronze Dragon should parse");
+
+    let dragon_id = game.create_object_from_definition(&dragon, alice, Zone::Battlefield);
+    let first_target = create_creature(&mut game, "Target One", alice, 2, 2);
+    let second_target = create_creature(&mut game, "Target Two", alice, 2, 2);
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            dragon_id,
+            crate::events::DamageTarget::Player(bob),
+            7,
+            true,
+            crate::events::cause::EventCause::combat_damage(dragon_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "dragon should trigger once");
+
+    let mut dm = SelectUpToTwoDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("dragon trigger should go on stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("dragon trigger should resolve");
+    if !trigger_queue.entries.is_empty() {
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+            .expect("reflexive trigger should go on stack");
+    }
+    if !game.stack.is_empty() {
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("reflexive trigger should resolve");
+    }
+
+    let _ = (first_target, second_target);
+    assert!(
+        game.stack.is_empty(),
+        "both the primary and reflexive trigger entries should resolve cleanly"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ancient_bronze_dragon_trigger_allows_zero_targets() {
+    struct ChooseNoTargetsDecisionMaker;
+    impl DecisionMaker for ChooseNoTargetsDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            Vec::new()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.force_next_die_roll(12);
+
+    let dragon = CardDefinitionBuilder::new(CardId::new(), "Ancient Bronze Dragon")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elder, Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Flying\nWhenever Ancient Bronze Dragon deals combat damage to a player, roll a d20. When you do, put X +1/+1 counters on each of up to two target creatures, where X is the result.",
+        )
+        .expect("Ancient Bronze Dragon should parse");
+
+    let dragon_id = game.create_object_from_definition(&dragon, alice, Zone::Battlefield);
+    let bystander = create_creature(&mut game, "Bystander", alice, 2, 2);
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            dragon_id,
+            crate::events::DamageTarget::Player(bob),
+            7,
+            true,
+            crate::events::cause::EventCause::combat_damage(dragon_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "dragon should trigger once");
+
+    let mut dm = ChooseNoTargetsDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("dragon trigger should go on stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("dragon trigger should resolve");
+    if !trigger_queue.entries.is_empty() {
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+            .expect("reflexive trigger should go on stack");
+    }
+    if !game.stack.is_empty() {
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("reflexive trigger should resolve with zero targets");
+    }
+
+    assert_eq!(
+        game.counter_count(bystander, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "choosing zero targets should leave creatures without counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
     use crate::decision::compute_legal_actions;
 
