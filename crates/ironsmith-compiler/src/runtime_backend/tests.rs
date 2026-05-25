@@ -11942,6 +11942,34 @@ fn rewrite_activation_cost_shared_parser_supports_behold_costs() {
 }
 
 #[test]
+fn rewrite_activation_cost_shared_parser_supports_blight_costs() {
+    let cst = parse_activation_cost_rewrite("Blight 1")
+        .expect("shared activation-cost parser should support blight costs");
+    assert!(matches!(
+        cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Blight { count: 1 }]
+    ));
+
+    let tokens = lex_line("Blight 1", 0).expect("lexer should classify blight activation cost");
+    let lowered = super::parse_activation_cost(&tokens)
+        .expect("activated ability entrypoint should use shared blight cost parser");
+    assert!(
+        !lowered.is_free(),
+        "blight costs should survive lowering as a non-free activation cost"
+    );
+    assert_eq!(
+        lowered.costs().len(),
+        2,
+        "blight cost should lower to choose-then-put-counter costs"
+    );
+    let lowered_raw = format!("{lowered:#?}");
+    assert!(
+        lowered_raw.contains("ChooseObjects") && lowered_raw.contains("MinusOneMinusOne"),
+        "blight cost should choose your creature and apply -1/-1 counters, got {lowered_raw}"
+    );
+}
+
+#[test]
 fn rewrite_activation_cost_shared_parser_supports_mill_costs() {
     let cst = parse_activation_cost_rewrite("Mill two cards")
         .expect("shared activation-cost parser should support mill costs");
