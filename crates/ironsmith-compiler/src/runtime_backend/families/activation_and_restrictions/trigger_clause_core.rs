@@ -1473,6 +1473,71 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     for tail in [
+        [
+            "is",
+            "put",
+            "into",
+            "an",
+            "opponents",
+            "graveyard",
+            "from",
+            "anywhere",
+        ]
+        .as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "an",
+            "opponents",
+            "graveyard",
+            "from",
+            "anywhere",
+        ]
+        .as_slice(),
+    ] {
+        if slice_ends_with(&words, tail) {
+            let subject_word_len = words.len().saturating_sub(tail.len());
+            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
+            if is_source_reference_words(&subject_words) {
+                let mut filter = ObjectFilter::source();
+                filter.owner = Some(PlayerFilter::Opponent);
+                return Ok(if one_or_more {
+                    TriggerSpec::PutIntoGraveyardOneOrMore(filter)
+                } else {
+                    TriggerSpec::PutIntoGraveyard(filter)
+                });
+            }
+            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in put-into-opponents-graveyard-from-anywhere trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            filter.zone = None;
+            filter.controller = None;
+            filter.owner = Some(PlayerFilter::Opponent);
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(if one_or_more {
+                TriggerSpec::PutIntoGraveyardOneOrMore(filter)
+            } else {
+                TriggerSpec::PutIntoGraveyard(filter)
+            });
+        }
+    }
+
+    for tail in [
         ["is", "put", "into", "graveyard"].as_slice(),
         ["is", "put", "into", "a", "graveyard"].as_slice(),
         ["are", "put", "into", "graveyard"].as_slice(),
