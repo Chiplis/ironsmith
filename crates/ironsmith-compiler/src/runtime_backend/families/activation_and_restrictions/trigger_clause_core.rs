@@ -2761,6 +2761,28 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if words == ["you", "open", "an", "attraction"]
+        || words == ["you", "opens", "an", "attraction"]
+        || words == ["you", "opened", "an", "attraction"]
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::OpenAttraction,
+            player: PlayerFilter::You,
+            source_filter: None,
+        });
+    }
+
+    if words == ["you", "claim", "the", "prize", "of", "an", "attraction"]
+        || words == ["you", "claims", "the", "prize", "of", "an", "attraction"]
+        || words == ["you", "claimed", "the", "prize", "of", "an", "attraction"]
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ClaimAttractionPrize,
+            player: PlayerFilter::You,
+            source_filter: None,
+        });
+    }
+
     if let Some(exploit_word_idx) = find_index(&words, |word| {
         matches!(
             crate::events::KeywordActionKind::from_trigger_word(word),

@@ -33691,6 +33691,151 @@ fn dungeon_regression_cards_render_key_mechanics() {
     );
 }
 
+#[test]
+fn parse_oracle_the_most_dangerous_gamer_regression() {
+    let def = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        lower.contains("whenever you open an attraction"),
+        "expected open-attraction trigger to parse and render, got {rendered}"
+    );
+    assert!(
+        lower.contains("put a +1/+1 counter on") && lower.contains("most dangerous gamer"),
+        "expected +1/+1 counter trigger clause to compile, got {rendered}"
+    );
+    assert!(
+        lower.contains("whenever you claim the prize of an attraction")
+            && lower.contains("destroy target permanent"),
+        "expected claim-prize trigger clause to compile, got {rendered}"
+    );
+    assert!(
+        !lower.contains("unsupported"),
+        "expected The Most Dangerous Gamer to avoid unsupported placeholders, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::OpenAttraction,
+            alice,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggered.into_iter().filter(|entry| entry.source == gamer_id) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "expected The Most Dangerous Gamer to trigger when you open an Attraction"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should be placed on stack");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("trigger should resolve");
+
+    let counters = game
+        .object(gamer_id)
+        .and_then(|obj| obj.counters.get(&crate::object::CounterType::PlusOnePlusOne).copied())
+        .unwrap_or(0);
+    assert_eq!(
+        counters, 1,
+        "expected The Most Dangerous Gamer to receive a +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_does_not_trigger_for_opponents_opened_attraction() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::OpenAttraction,
+            bob,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().all(|entry| entry.source != gamer_id),
+        "expected The Most Dangerous Gamer to ignore opponents opening Attractions"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_triggers_on_you_claiming_an_attraction_prize() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::ClaimAttractionPrize,
+            alice,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().any(|entry| entry.source == gamer_id),
+        "expected The Most Dangerous Gamer to trigger when you claim an Attraction prize"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_most_dangerous_gamer_ignores_opponent_claiming_an_attraction_prize() {
+    let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::ClaimAttractionPrize,
+            bob,
+            gamer_id,
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().all(|entry| entry.source != gamer_id),
+        "expected The Most Dangerous Gamer to ignore opponents claiming Attraction prizes"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_sorcerous_spyglass_hand_inspection_regression() {
