@@ -19973,6 +19973,33 @@ fn parse_no_more_than_creatures_can_attack_or_block_each_combat_lines() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_crawlspace_attack_you_cap_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Crawlspace")
+        .parse_text("No more than two creatures can attack you each combat.")
+        .expect("crawlspace attack-you cap line should parse");
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::MaxCreaturesCanAttackYouEachCombat),
+        "expected attack-you-cap static ability, got {ids:?}"
+    );
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("no more than 2 creatures can attack you each combat"),
+        "expected compiled text to include attack-you cap, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_opponent_loses_life_trigger_with_that_much_gain() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Life Trigger Variant")
         .parse_text("Whenever an opponent loses life, you gain that much life.")

@@ -987,6 +987,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
                 StaticAbility::max_attackers_each_combat(*maximum)
             }
+            ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(maximum) => {
+                StaticAbility::max_attackers_can_attack_you_each_combat(*maximum)
+            }
             ironsmith_core::StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
                 StaticAbility::max_blockers_each_combat(*maximum)
             }

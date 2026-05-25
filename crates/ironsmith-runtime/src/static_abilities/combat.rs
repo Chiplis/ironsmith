@@ -313,6 +313,39 @@ impl StaticAbilityKind for MaxCreaturesCanAttackEachCombat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaxCreaturesCanAttackYouEachCombat {
+    pub maximum: usize,
+}
+
+impl MaxCreaturesCanAttackYouEachCombat {
+    pub const fn new(maximum: usize) -> Self {
+        Self { maximum }
+    }
+}
+
+impl StaticAbilityKind for MaxCreaturesCanAttackYouEachCombat {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MaxCreaturesCanAttackYouEachCombat
+    }
+
+    fn display(&self) -> String {
+        let noun = if self.maximum == 1 {
+            "creature"
+        } else {
+            "creatures"
+        };
+        format!(
+            "No more than {} {} can attack you each combat",
+            self.maximum, noun
+        )
+    }
+
+    fn max_creatures_can_attack_you_each_combat(&self) -> Option<usize> {
+        Some(self.maximum)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaxCreaturesCanBlockEachCombat {
     pub maximum: usize,
 }
@@ -1827,6 +1860,13 @@ mod tests {
         let cap = MaxCreaturesCanAttackEachCombat::new(2);
         assert_eq!(cap.id(), StaticAbilityId::MaxCreaturesCanAttackEachCombat);
         assert_eq!(cap.max_creatures_can_attack_each_combat(), Some(2));
+    }
+
+    #[test]
+    fn test_max_creatures_can_attack_you_each_combat() {
+        let cap = MaxCreaturesCanAttackYouEachCombat::new(2);
+        assert_eq!(cap.id(), StaticAbilityId::MaxCreaturesCanAttackYouEachCombat);
+        assert_eq!(cap.max_creatures_can_attack_you_each_combat(), Some(2));
     }
 
     #[test]
