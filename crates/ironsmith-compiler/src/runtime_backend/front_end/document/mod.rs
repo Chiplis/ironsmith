@@ -1192,6 +1192,8 @@ fn source_alias_occurrence_should_preserve_surface(bytes: &[u8], start: usize, e
                 word,
                 b"attach"
                     | b"destroy"
+                    | b"transform"
+                    | b"convert"
                     | b"regenerate"
                     | b"return"
                     | b"tap"

@@ -32642,12 +32642,15 @@ fn strict_parse_shared_parser_regression_cards() {
 #[test]
 fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {
     let def = parse_oracle_card_definition("Gwen Stacy // Ghost-Spider");
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("play that card for as long as you control this creature"),
+        rendered_lower.contains("play that card for as long as you control this creature"),
         "expected Gwen Stacy // Ghost-Spider permission duration clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Transform Gwen Stacy"),
+        "expected Gwen Stacy transform clause to preserve the explicit source-name surface, got {rendered}"
     );
 }
 

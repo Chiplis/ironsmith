@@ -27,7 +27,8 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
-    parse_value, span_from_tokens, trim_commas,
+    parse_value, record_source_reference_surface, source_reference_surface_for_words,
+    span_from_tokens, this_source_surface_for_words, trim_commas,
 };
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
@@ -1137,7 +1138,18 @@ fn parse_transform_like(
         || target_words == ["this", "land"]
         || target_words == ["this", "permanent"]
     {
-        return Ok(action(TargetAst::Source(span_from_tokens(tokens))));
+        let span = span_from_tokens(tokens);
+        if let Some(surface) = this_source_surface_for_words(&target_words) {
+            record_source_reference_surface(span, surface);
+        }
+        return Ok(action(TargetAst::Source(span)));
+    }
+    if let Some(surface) = source_reference_surface_for_words(&target_words)
+        .or_else(|| this_source_surface_for_words(&target_words))
+    {
+        let span = span_from_tokens(tokens);
+        record_source_reference_surface(span, surface);
+        return Ok(action(TargetAst::Source(span)));
     }
     let target = match parse_target_phrase(tokens) {
         Ok(target) => target,

@@ -436,6 +436,8 @@ fn replace_names_with_map(
                     word,
                     b"attach"
                         | b"destroy"
+                        | b"transform"
+                        | b"convert"
                         | b"regenerate"
                         | b"return"
                         | b"tap"

@@ -83,7 +83,10 @@ pub(crate) fn revealed_cards_total_mana_value_x_value(normalized: &str) -> Optio
     .then(|| Value::TotalManaValue(ObjectFilter::tagged(TagKey::from("__public_revealed"))))
 }
 
-fn record_source_reference_surface(span: Option<TextSpan>, surface: SourceReferenceSurface) {
+pub(crate) fn record_source_reference_surface(
+    span: Option<TextSpan>,
+    surface: SourceReferenceSurface,
+) {
     let Some(span) = span else {
         return;
     };
@@ -304,7 +307,7 @@ pub(crate) fn source_choose_spec_for_surface(surface: SourceReferenceSurface) ->
     ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
 }
 
-fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
+pub(crate) fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     if !is_this_source_reference_words(words) {
         return None;
     }
