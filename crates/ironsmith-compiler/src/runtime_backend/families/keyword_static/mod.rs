@@ -643,6 +643,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
         single_static_ability_ast_passthrough_rule!(parse_can_be_attached_only_to_line),
         single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
+        single_static_ability_ast_rule!(parse_equip_cost_modifier_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
@@ -5238,6 +5239,70 @@ pub(crate) fn parse_flashback_cost_modifier_line(
     }
     Ok(Some(StaticAbility::new(
         crate::static_abilities::CostIncrease::new(filter, amount_value),
+    )))
+}
+
+pub(crate) fn parse_equip_cost_modifier_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.len() < 6 || clause_words.first().copied() != Some("equip") {
+        return Ok(None);
+    }
+    if clause_words.get(1).copied() != Some("costs") {
+        return Ok(None);
+    }
+    let Some(cost_idx) = rfind_index(tokens, |token| token.is_word("cost") || token.is_word("costs"))
+    else {
+        return Ok(None);
+    };
+
+    let amount_tokens = &tokens[cost_idx + 1..];
+    let Some((amount_value, used)) = parse_cost_modifier_amount(amount_tokens) else {
+        return Ok(None);
+    };
+    let Value::Fixed(amount) = amount_value else {
+        return Ok(None);
+    };
+    if amount < 0 {
+        return Ok(None);
+    }
+
+    let remaining_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
+    let Some(direction) = parse_cost_modifier_direction(&remaining_words) else {
+        return Ok(None);
+    };
+
+    let mut filter = ObjectFilter::default().with_ability_marker("equip");
+    if contains_keyword_static_phrase(&clause_words, &["you", "pay"]) {
+        filter.controller = Some(PlayerFilter::You);
+    } else if contains_any_keyword_static_phrase(
+        &clause_words,
+        &[&["your", "opponents", "pay"], &["opponents", "pay"]],
+    ) {
+        filter.controller = Some(PlayerFilter::Opponent);
+    }
+
+    if direction == CostModifierDirection::Less {
+        let amount_text = format!("{{{amount}}}");
+        let display = if filter.controller == Some(PlayerFilter::Opponent) {
+            format!("Equip costs your opponents pay cost {amount_text} less")
+        } else {
+            format!("Equip costs you pay cost {amount_text} less")
+        };
+        return Ok(Some(StaticAbility::reduce_activated_ability_costs_with_display(
+            filter,
+            amount as u32,
+            None,
+            display,
+        )));
+    }
+
+    let increase = TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+        amount.min(u8::MAX as i32) as u8,
+    )]));
+    Ok(Some(StaticAbility::increase_activated_ability_costs(
+        filter, increase,
     )))
 }
 

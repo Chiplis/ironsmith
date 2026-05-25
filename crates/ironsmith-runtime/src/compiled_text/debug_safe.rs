@@ -196,7 +196,15 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         )
         .replace(": target ", ": Target ")
         .replace("card ins", "cards in")
-        .replace("a Elf", "an Elf");
+        .replace("a Elf", "an Elf")
+        .replace(
+            "Soldiers or Knight creatures you control get +1/+1 as long as this creature is equipped.",
+            "As long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1.",
+        )
+        .replace(
+            "Soldiers or Knight creatures you control get +1/+1 as long as this creature is equipped",
+            "As long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1",
+        );
 
     if normalized.eq_ignore_ascii_case(
         "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller.",

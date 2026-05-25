@@ -16728,6 +16728,143 @@ fn test_dash_cost_reduction_applies_only_to_dash_casts() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_auriok_steelshaper_reduces_only_your_equip_costs() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let alice_creature = create_creature(&mut game, "Alice Target", alice, 2, 2);
+
+    let equipment_def = CardDefinitionBuilder::new(CardId::new(), "Equip Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text("Equip {1}")
+        .expect("equip probe should parse");
+    let alice_equipment = game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let steelshaper_def = CardDefinitionBuilder::new(CardId::new(), "Auriok Steelshaper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Equip costs you pay cost {1} less.\nAs long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1.",
+        )
+        .expect("Auriok Steelshaper should parse");
+    game.create_object_from_definition(&steelshaper_def, alice, Zone::Battlefield);
+
+    let activate_with = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == alice_equipment
+            )
+        })
+        .expect("equip action should be legal with Auriok Steelshaper in play");
+    assert!(matches!(activate_with, LegalAction::ActivateAbility { .. }));
+
+    assert!(game.object(alice_creature).is_some());
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_auriok_steelshaper_anthem_requires_being_equipped_and_only_buffs_soldiers_or_knights() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let steelshaper_def = CardDefinitionBuilder::new(CardId::new(), "Auriok Steelshaper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Equip costs you pay cost {1} less.\nAs long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1.",
+        )
+        .expect("Auriok Steelshaper should parse");
+    let steelshaper_id = game.create_object_from_definition(&steelshaper_def, alice, Zone::Battlefield);
+
+    let soldier_id = CardDefinitionBuilder::new(CardId::new(), "Soldier Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let soldier_id = game.create_object_from_definition(&soldier_id, alice, Zone::Battlefield);
+
+    let knight_id = CardDefinitionBuilder::new(CardId::new(), "Knight Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Knight])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let knight_id = game.create_object_from_definition(&knight_id, alice, Zone::Battlefield);
+
+    let bear_id = create_creature(&mut game, "Bear Probe", alice, 2, 2);
+
+    let before_soldier = game
+        .calculated_characteristics(soldier_id)
+        .expect("soldier should have calculated characteristics");
+    let before_knight = game
+        .calculated_characteristics(knight_id)
+        .expect("knight should have calculated characteristics");
+    let before_bear = game
+        .calculated_characteristics(bear_id)
+        .expect("bear should have calculated characteristics");
+    assert_eq!((before_soldier.power, before_soldier.toughness), (Some(2), Some(2)));
+    assert_eq!((before_knight.power, before_knight.toughness), (Some(2), Some(2)));
+    assert_eq!((before_bear.power, before_bear.toughness), (Some(2), Some(2)));
+
+    let equipment_def = CardDefinitionBuilder::new(CardId::new(), "Steelshaper Gear")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text("Equip {0}")
+        .expect("equipment should parse");
+    let equipment_id = game.create_object_from_definition(&equipment_def, alice, Zone::Battlefield);
+
+    if let Some(equipment) = game.object_mut(equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(steelshaper_id));
+    }
+    if let Some(steelshaper) = game.object_mut(steelshaper_id) {
+        steelshaper.attachments.push(equipment_id);
+    }
+
+    let after_steelshaper = game
+        .calculated_characteristics(steelshaper_id)
+        .expect("steelshaper should have calculated characteristics while equipped");
+    let after_soldier = game
+        .calculated_characteristics(soldier_id)
+        .expect("soldier should have calculated characteristics while steelshaper is equipped");
+    let after_knight = game
+        .calculated_characteristics(knight_id)
+        .expect("knight should have calculated characteristics while steelshaper is equipped");
+    let after_bear = game
+        .calculated_characteristics(bear_id)
+        .expect("bear should have calculated characteristics while steelshaper is equipped");
+
+    assert_eq!(
+        (after_steelshaper.power, after_steelshaper.toughness),
+        (Some(2), Some(2)),
+        "equipped Auriok Steelshaper is a Soldier and should buff itself"
+    );
+    assert_eq!(
+        (after_soldier.power, after_soldier.toughness),
+        (Some(3), Some(3)),
+        "Soldiers should get +1/+1 once Auriok Steelshaper is equipped"
+    );
+    assert_eq!(
+        (after_knight.power, after_knight.toughness),
+        (Some(3), Some(3)),
+        "Knights should get +1/+1 once Auriok Steelshaper is equipped"
+    );
+    assert_eq!(
+        (after_bear.power, after_bear.toughness),
+        (Some(2), Some(2)),
+        "non-Soldier and non-Knight creatures should not get the anthem"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     use crate::PriorityResponse;
     use crate::cards::CardDefinitionBuilder;

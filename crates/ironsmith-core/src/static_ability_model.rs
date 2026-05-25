@@ -2192,6 +2192,27 @@ impl<
             },
         }
     }
+    pub fn reduce_activated_ability_costs_with_display(
+        filter: ObjectFilter,
+        reduction: u32,
+        minimum_total_mana: Option<u32>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
+            label: "reduce activated ability costs".into(),
+            payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                filter,
+                reduction,
+                replacement_mana_cost: None,
+                display: Some(display.into()),
+                condition: None,
+                per_matching_objects: None,
+                per_basic_land_types_among: None,
+                minimum_total_mana,
+            },
+        }
+    }
     pub fn reduce_activated_ability_costs_if_targets(
         filter: ObjectFilter,
         reduction: u32,
