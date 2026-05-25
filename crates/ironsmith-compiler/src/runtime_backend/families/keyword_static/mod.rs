@@ -8019,23 +8019,40 @@ pub(crate) fn parse_exile_would_die_instead_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let nontoken_opponent_creature = ObjectFilter::creature()
-        .nontoken()
-        .controlled_by(PlayerFilter::Opponent);
     let nontoken_opponent_prefix = [
         "if", "a", "nontoken", "creature", "an", "opponent", "controls", "would", "die",
     ];
     let nontoken_opponent_prefix_no_article = [
         "if", "nontoken", "creature", "opponent", "controls", "would", "die",
     ];
-    let after_prefix = if slice_starts_with(&words, &nontoken_opponent_prefix) {
-        Some(&words[nontoken_opponent_prefix.len()..])
+    let nontoken_any_prefix = ["if", "a", "nontoken", "creature", "would", "die"];
+    let nontoken_any_prefix_no_article = ["if", "nontoken", "creature", "would", "die"];
+    let matched_nontoken_filter = if slice_starts_with(&words, &nontoken_opponent_prefix) {
+        Some((
+            ObjectFilter::creature()
+                .nontoken()
+                .controlled_by(PlayerFilter::Opponent),
+            nontoken_opponent_prefix.len(),
+        ))
     } else if slice_starts_with(&words, &nontoken_opponent_prefix_no_article) {
-        Some(&words[nontoken_opponent_prefix_no_article.len()..])
+        Some((
+            ObjectFilter::creature()
+                .nontoken()
+                .controlled_by(PlayerFilter::Opponent),
+            nontoken_opponent_prefix_no_article.len(),
+        ))
+    } else if slice_starts_with(&words, &nontoken_any_prefix) {
+        Some((ObjectFilter::creature().nontoken(), nontoken_any_prefix.len()))
+    } else if slice_starts_with(&words, &nontoken_any_prefix_no_article) {
+        Some((
+            ObjectFilter::creature().nontoken(),
+            nontoken_any_prefix_no_article.len(),
+        ))
     } else {
         None
     };
-    if let Some(tail) = after_prefix {
+    if let Some((matched_filter, prefix_len)) = matched_nontoken_filter {
+        let tail = &words[prefix_len..];
         let (exile_with_counters, follow_up) = match tail {
             [
                 "exile",
@@ -8083,11 +8100,20 @@ pub(crate) fn parse_exile_would_die_instead_line(
             ["exile", "that", "card", "instead"] | ["exile", "it", "instead"] => {
                 (Vec::new(), Vec::new())
             }
+            ["instead", "exile", "that", "card", "with", "a", counter_word, "counter", "on", "it"]
+            | ["instead", "exile", "it", "with", "a", counter_word, "counter", "on", "it"]
+            | ["exile", "that", "card", "with", "a", counter_word, "counter", "on", "it", "instead"]
+            | ["exile", "it", "with", "a", counter_word, "counter", "on", "it", "instead"] => {
+                let Some(counter_type) = parse_counter_type_word(counter_word) else {
+                    return Ok(None);
+                };
+                (vec![(counter_type, 1)], Vec::new())
+            }
             _ => return Ok(None),
         };
         return Ok(Some(
             StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
-                nontoken_opponent_creature,
+                matched_filter,
                 None,
                 exile_with_counters,
                 follow_up,

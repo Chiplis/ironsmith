@@ -39359,3 +39359,29 @@ fn parse_passive_goad_designation_clause() {
         "expected passive goad surface, got {rendered}"
     );
 }
+
+#[test]
+fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rayami, First of the Fallen")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Vampire])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .parse_text(
+            "If a nontoken creature would die, exile that card with a blood counter on it instead.\nAs long as an exiled creature card with a blood counter on it has flying, this has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, and vigilance.",
+        )
+        .expect("Rayami, First of the Fallen oracle text should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if nontoken creature would die, exile it instead"),
+        "expected would-die replacement text, got {rendered}"
+    );
+}

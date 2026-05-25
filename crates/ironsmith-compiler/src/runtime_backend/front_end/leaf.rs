@@ -352,6 +352,7 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "ki" => Some(CounterType::Ki),
         "energy" => Some(CounterType::Energy),
         "age" => Some(CounterType::Age),
+        "blood" => Some(CounterType::Blood),
         "ice" => Some(CounterType::Ice),
         "finality" => Some(CounterType::Finality),
         "time" => Some(CounterType::Time),

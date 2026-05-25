@@ -9921,6 +9921,19 @@ fn rewrite_nontoken_opponent_creature_would_die_with_counter_static_replacement(
 }
 
 #[test]
+fn rewrite_rayami_nontoken_creature_would_die_with_blood_counter_static_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rayami, First of the Fallen")
+        .card_types(vec![CardType::Creature])
+        .parse_text("If a nontoken creature would die, exile that card with a blood counter on it instead.")
+        .expect("rayami replacement clause should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("nontoken: true"), "{debug}");
+    assert!(debug.contains("Blood"), "{debug}");
+}
+
+#[test]
 fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
     let line = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells.";
     let tokens = lex_line(line, 0).expect("permission line should lex");
