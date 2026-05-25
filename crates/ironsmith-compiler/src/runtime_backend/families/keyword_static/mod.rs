@@ -3400,19 +3400,27 @@ pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     };
 
     let tail = crate::runtime_backend::token_word_refs(&tokens[3 + used..]);
-    if tail.len() != 5 {
+    if tail.len() != 5 && tail.len() != 6 {
         return Ok(None);
     }
 
+    let attack_you = tail.len() == 6;
     if !matches!(tail[0], "creature" | "creatures")
         || tail[1] != "can"
-        || tail[3] != "each"
-        || tail[4] != "combat"
+        || tail[3 + usize::from(attack_you)] != "each"
+        || tail[4 + usize::from(attack_you)] != "combat"
     {
         return Ok(None);
     }
 
+    if attack_you && tail[3] != "you" {
+        return Ok(None);
+    }
+
     let ability = match tail[2] {
+        "attack" if attack_you => {
+            StaticAbility::max_attackers_can_attack_you_each_combat(maximum as usize)
+        }
         "attack" => StaticAbility::max_attackers_each_combat(maximum as usize),
         "block" => StaticAbility::max_blockers_each_combat(maximum as usize),
         _ => return Ok(None),

@@ -314,6 +314,22 @@ fn max_creatures_can_block_each_combat(game: &GameState) -> Option<usize> {
         .min()
 }
 
+fn max_creatures_can_attack_defending_player_each_combat(
+    game: &GameState,
+    defending_player: PlayerId,
+) -> Option<usize> {
+    let all_effects = game.all_continuous_effects();
+    game.battlefield
+        .iter()
+        .filter_map(|&object_id| {
+            let object = game.object(object_id)?;
+            (game.controller_of(object) == defending_player).then_some(object_id)
+        })
+        .flat_map(|object_id| static_abilities_for_object(game, object_id, &all_effects))
+        .filter_map(|ability| ability.max_creatures_can_attack_you_each_combat())
+        .min()
+}
+
 fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
     use crate::mana::ManaSymbol;
 
@@ -468,6 +484,28 @@ pub fn declare_attackers(
             maximum: max_attackers,
             provided: declarations.len(),
         });
+    }
+
+    let mut attackers_per_defender: HashMap<PlayerId, usize> = HashMap::new();
+    for (_attacker, target) in &declarations {
+        let defending_player = match target {
+            AttackTarget::Player(player_id) => *player_id,
+            AttackTarget::Planeswalker(pw_id) => {
+                let pw = game
+                    .object(*pw_id)
+                    .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?;
+                game.controller_of(pw)
+            }
+        };
+        *attackers_per_defender.entry(defending_player).or_insert(0) += 1;
+    }
+
+    for (defending_player, provided) in attackers_per_defender {
+        if let Some(maximum) = max_creatures_can_attack_defending_player_each_combat(game, defending_player)
+            && provided > maximum
+        {
+            return Err(CombatError::TooManyAttackers { maximum, provided });
+        }
     }
 
     // Pay non-mana attacker costs from "can't attack unless ..." restrictions.
@@ -1418,5 +1456,110 @@ mod tests {
             .mana_pool
             .total();
         assert_eq!(remaining, 0, "expected mana attack cost to be paid");
+    }
+
+    #[test]
+    fn declare_attackers_enforces_crawlspace_style_cap_against_its_controller() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let crawlspace_like = enchantment_card("Crawlspace");
+        let crawlspace_id = game.create_object_from_card(&crawlspace_like, bob, Zone::Battlefield);
+        game.object_mut(crawlspace_id)
+            .expect("crawlspace object should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::max_attackers_can_attack_you_each_combat(2),
+            ));
+
+        let attacker_one = game.create_object_from_card(
+            &creature_card("Attacker One", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let attacker_two = game.create_object_from_card(
+            &creature_card("Attacker Two", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let attacker_three = game.create_object_from_card(
+            &creature_card("Attacker Three", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(attacker_one);
+        game.remove_summoning_sickness(attacker_two);
+        game.remove_summoning_sickness(attacker_three);
+
+        let result = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![
+                (attacker_one, AttackTarget::Player(bob)),
+                (attacker_two, AttackTarget::Player(bob)),
+                (attacker_three, AttackTarget::Player(bob)),
+            ],
+        );
+        assert_eq!(
+            result,
+            Err(CombatError::TooManyAttackers {
+                maximum: 2,
+                provided: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn declare_attackers_crawlspace_style_cap_does_not_limit_other_defenders() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+
+        let crawlspace_like = enchantment_card("Crawlspace");
+        let crawlspace_id = game.create_object_from_card(&crawlspace_like, bob, Zone::Battlefield);
+        game.object_mut(crawlspace_id)
+            .expect("crawlspace object should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::max_attackers_can_attack_you_each_combat(2),
+            ));
+
+        let attacker_one = game.create_object_from_card(
+            &creature_card("Attacker One", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let attacker_two = game.create_object_from_card(
+            &creature_card("Attacker Two", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let attacker_three = game.create_object_from_card(
+            &creature_card("Attacker Three", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(attacker_one);
+        game.remove_summoning_sickness(attacker_two);
+        game.remove_summoning_sickness(attacker_three);
+
+        let result = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![
+                (attacker_one, AttackTarget::Player(cara)),
+                (attacker_two, AttackTarget::Player(cara)),
+                (attacker_three, AttackTarget::Player(cara)),
+            ],
+        );
+        assert!(
+            result.is_ok(),
+            "expected three attackers against another defender to be legal"
+        );
     }
 }

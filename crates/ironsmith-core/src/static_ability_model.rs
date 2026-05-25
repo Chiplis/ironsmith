@@ -226,6 +226,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         supertypes: Vec<Supertype>,
     },
     MaxCreaturesCanAttackEachCombat(usize),
+    MaxCreaturesCanAttackYouEachCombat(usize),
     MaxCreaturesCanBlockEachCombat(usize),
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
@@ -880,6 +881,9 @@ where
             }
             StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum)
+            }
+            StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(maximum) => {
+                StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(maximum)
             }
             StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum)
@@ -2889,6 +2893,13 @@ impl<
             id: Some(StaticAbilityId::MaxCreaturesCanAttackEachCombat),
             label: format!("no more than {n} creatures can attack each combat"),
             payload: StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(n),
+        }
+    }
+    pub fn max_attackers_can_attack_you_each_combat(n: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::MaxCreaturesCanAttackYouEachCombat),
+            label: format!("no more than {n} creatures can attack you each combat"),
+            payload: StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(n),
         }
     }
     pub fn max_blockers_each_combat(n: usize) -> Self {

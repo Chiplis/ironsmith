@@ -65,6 +65,7 @@ pub enum StaticAbilityId {
     CanBlockOnlyFlying,
     CanBlockAdditionalCreatureEachCombat,
     MaxCreaturesCanAttackEachCombat,
+    MaxCreaturesCanAttackYouEachCombat,
     MaxCreaturesCanBlockEachCombat,
     CantBeBlockedByPowerOrLess,
     CantBeBlockedByPowerOrGreater,
@@ -302,6 +303,7 @@ impl StaticAbilityId {
             | CanBlockOnlyFlying
             | CanBlockAdditionalCreatureEachCombat
             | MaxCreaturesCanAttackEachCombat
+            | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater
