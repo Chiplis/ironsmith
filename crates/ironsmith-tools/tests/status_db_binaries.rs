@@ -955,6 +955,40 @@ fn compile_oracle_text_compare_text_outputs_only_text_and_score() {
 }
 
 #[test]
+fn compile_oracle_text_strictly_compiles_aunt_may_from_workspace_cards() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+    assert!(cards_path.exists(), "expected workspace cards.json at {cards_path:?}");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Aunt May")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --name Aunt May --compare-text");
+
+    assert!(
+        output.status.success(),
+        "Aunt May should compile strictly, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(stdout.contains("Name: Aunt May"), "{stdout}");
+    assert!(
+        stdout.contains("If it's a Spider, put a +1/+1 counter on it."),
+        "expected Spider conditional clause in compiled comparison output, got {stdout}"
+    );
+}
+
+#[test]
 fn compile_oracle_text_outputs_original_oracle_text() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
