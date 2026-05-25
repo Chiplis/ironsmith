@@ -4722,6 +4722,23 @@ pub(crate) fn parse_bestow_line_lexed(
     parse_bestow_line(tokens)
 }
 
+pub(crate) fn parse_mutate_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("mutate")) {
+        return Ok(None);
+    }
+
+    let (mana_cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("mutate keyword missing mana cost".to_string()))?;
+
+    Ok(Some(AlternativeCastingMethod::alternative_cost(
+        "Mutate",
+        Some(mana_cost),
+        Vec::new(),
+    )))
+}
+
 pub(crate) fn parse_blitz_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

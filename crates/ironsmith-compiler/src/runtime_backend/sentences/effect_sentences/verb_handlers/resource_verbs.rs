@@ -326,6 +326,29 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
+    if clause_words.as_slice()
+        == [
+            "and",
+            "play",
+            "those",
+            "cards",
+            "for",
+            "as",
+            "long",
+            "as",
+            "they",
+            "remain",
+            "exiled",
+        ]
+    {
+        return Ok(EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            true,
+            false,
+        ));
+    }
+
     let mut hand_tokens = clause_tokens.clone();
     while hand_tokens
         .first()
