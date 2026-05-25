@@ -71,6 +71,17 @@ fn convert_counter_put_on_trigger(
     crate::triggers::Trigger::new(out)
 }
 
+fn convert_player_gets_counters_trigger(
+    trigger: ironsmith_core::trigger_model::PlayerGetsCountersTrigger,
+) -> crate::triggers::Trigger {
+    let mut out = crate::triggers::PlayerGetsCountersTrigger::new(trigger.player);
+    if let Some(counter_type) = trigger.counter_type {
+        out = out.counter_type(counter_type);
+    }
+    out = out.count(convert_count_mode(trigger.count));
+    crate::triggers::Trigger::new(out)
+}
+
 fn convert_counter_removed_from_trigger(
     trigger: ironsmith_core::trigger_model::CounterRemovedFromTrigger,
 ) -> crate::triggers::Trigger {
@@ -412,6 +423,9 @@ pub(crate) fn interpret_trigger_model(
             interpret_trigger_model(*right)?,
         ),
         TriggerKind::ZoneChange(zone_change) => convert_zone_change_trigger(zone_change),
+        TriggerKind::PlayerGetsCounters(player_gets_counters) => {
+            convert_player_gets_counters_trigger(player_gets_counters)
+        }
         TriggerKind::CounterPutOn(counter_put_on) => convert_counter_put_on_trigger(counter_put_on),
         TriggerKind::CounterRemovedFrom(counter_removed_from) => {
             convert_counter_removed_from_trigger(counter_removed_from)

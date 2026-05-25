@@ -302,6 +302,7 @@ pub enum TriggerKind {
         right: Box<Trigger>,
     },
     ZoneChange(ZoneChangeTrigger),
+    PlayerGetsCounters(PlayerGetsCountersTrigger),
     CounterPutOn(CounterPutOnTrigger),
     CounterRemovedFrom(CounterRemovedFromTrigger),
 }
@@ -1093,6 +1094,39 @@ impl CompilerTriggerMatcher for ZoneChangeTrigger {
 
 pub mod zone_changes {
     pub use super::ZoneChangeTrigger;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerGetsCountersTrigger {
+    pub player: PlayerFilter,
+    pub counter_type: Option<CounterType>,
+    pub count: CountMode,
+}
+
+impl PlayerGetsCountersTrigger {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            counter_type: None,
+            count: CountMode::One,
+        }
+    }
+
+    pub fn counter_type(mut self, counter_type: CounterType) -> Self {
+        self.counter_type = Some(counter_type);
+        self
+    }
+
+    pub fn count(mut self, mode: CountMode) -> Self {
+        self.count = mode;
+        self
+    }
+}
+
+impl CompilerTriggerMatcher for PlayerGetsCountersTrigger {
+    fn into_trigger(self) -> Trigger {
+        Trigger::typed("player_gets_counters", TriggerKind::PlayerGetsCounters(self))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

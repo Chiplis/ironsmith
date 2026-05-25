@@ -13245,3 +13245,23 @@ fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
         "that player in this non-loop trigger must not lower to an unbound iterated player, got {debug}"
     );
 }
+
+#[test]
+fn parse_trigger_clause_supports_one_or_more_energy_player_gain() {
+    let tokens = lex_line("you get one or more {E}", 0)
+        .expect("rewrite lexer should tokenize one-or-more energy trigger clause");
+    let parsed = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+        &tokens,
+    );
+    assert!(
+        matches!(
+            parsed,
+            Ok(crate::cards::builders::TriggerSpec::PlayerGetsCounters {
+                player: crate::target::PlayerFilter::You,
+                counter_type: Some(crate::object::CounterType::Energy),
+                one_or_more: true,
+            })
+        ),
+        "expected one-or-more energy player-counters trigger, got {parsed:?}"
+    );
+}

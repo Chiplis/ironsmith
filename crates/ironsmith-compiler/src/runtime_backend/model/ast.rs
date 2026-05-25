@@ -253,6 +253,11 @@ pub(crate) enum TriggerSpec {
         source_controller: Option<PlayerFilter>,
         one_or_more: bool,
     },
+    PlayerGetsCounters {
+        player: PlayerFilter,
+        counter_type: Option<CounterType>,
+        one_or_more: bool,
+    },
     DiesCreatureDealtDamageByThisTurn {
         victim: ObjectFilter,
         damager: DamageBySpec,

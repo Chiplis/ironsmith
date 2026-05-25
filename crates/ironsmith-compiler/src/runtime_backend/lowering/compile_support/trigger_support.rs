@@ -252,6 +252,20 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }
             Trigger::new(trigger)
         }
+        TriggerSpec::PlayerGetsCounters {
+            player,
+            counter_type,
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::PlayerGetsCountersTrigger::new(player);
+            if let Some(counter_type) = counter_type {
+                trigger = trigger.counter_type(counter_type);
+            }
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::DiesCreatureDealtDamageByThisTurn { victim, damager } => match damager {
             DamageBySpec::ThisCreature => {
                 Trigger::creature_dealt_damage_by_this_creature_this_turn_dies(victim)
