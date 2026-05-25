@@ -24541,7 +24541,7 @@ fn fabrication_module_parses_and_renders_one_or_more_energy_trigger() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("whenever you gets one or more {e}")
+        rendered.contains("whenever you get one or more {e}")
             && rendered.contains("put a +1/+1 counter on target creature you control"),
         "expected one-or-more energy trigger with target creature clause, got {rendered}"
     );

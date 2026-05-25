@@ -71,12 +71,18 @@ impl TriggerMatcher for PlayerGetsCountersTrigger {
     }
 
     fn display(&self) -> String {
+        let player = self.player.description();
+        let verb = if player.eq_ignore_ascii_case("you") {
+            "get"
+        } else {
+            "gets"
+        };
         if self.counter_type == Some(CounterType::Energy) {
             let energy = match self.count_mode {
                 CountMode::OneOrMore => "one or more {E}",
                 CountMode::Each => "{E}",
             };
-            return format!("Whenever {} gets {energy}", self.player.description());
+            return format!("Whenever {player} {verb} {energy}");
         }
         let counter_phrase = match self.counter_type {
             Some(counter_type) => match self.count_mode {
@@ -88,7 +94,7 @@ impl TriggerMatcher for PlayerGetsCountersTrigger {
                 CountMode::Each => "a counter".to_string(),
             },
         };
-        format!("Whenever {} gets {counter_phrase}", self.player.description())
+        format!("Whenever {player} {verb} {counter_phrase}")
     }
 }
 
@@ -148,5 +154,13 @@ mod tests {
             ProvNodeId::default(),
         );
         assert_eq!(trigger.trigger_count(&event), 3);
+    }
+
+    #[test]
+    fn display_uses_you_get_not_you_gets() {
+        let trigger = PlayerGetsCountersTrigger::new(PlayerFilter::You)
+            .counter_type(CounterType::Energy)
+            .count(CountMode::OneOrMore);
+        assert_eq!(trigger.display(), "Whenever you get one or more {E}");
     }
 }
