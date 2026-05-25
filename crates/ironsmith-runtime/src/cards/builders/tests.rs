@@ -26776,6 +26776,81 @@ fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn drownyard_behemoth_parses_hexproof_condition_for_entered_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Drownyard Behemoth")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Crab])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .parse_text(
+            "Flash (You may cast this spell any time you could cast an instant.)\nEmerge {7}{U} (You may cast this spell by sacrificing a creature and paying the emerge cost reduced by that creature's mana value.)\nThis creature has hexproof as long as it entered this turn.",
+        )
+        .expect("Drownyard Behemoth should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("hexproof") && rendered.contains("entered this turn"),
+        "expected Drownyard Behemoth entered-this-turn hexproof wording, got {rendered}"
+    );
+
+    let abilities_debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("conditional")
+            && abilities_debug.contains("hexproof")
+            && abilities_debug.contains("entered_battlefield_this_turn: true"),
+        "expected Drownyard Behemoth to compile conditional entered-this-turn hexproof, got {abilities_debug}"
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let behemoth_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let behemoth_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(behemoth_id)
+            .expect("Drownyard Behemoth should exist on the battlefield"),
+        &game,
+    );
+    let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            behemoth_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(behemoth_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&entry_event);
+
+    let mut source_filter = ObjectFilter::source();
+    source_filter.entered_battlefield_this_turn = true;
+    let entered_this_turn_condition = crate::ConditionExpr::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(source_filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some("it entered this turn".to_string()),
+    };
+    let ctx = crate::effects::ExecutionContext::new_default(behemoth_id, alice);
+
+    assert!(
+        crate::condition_eval::evaluate_condition_resolution(&game, &entered_this_turn_condition, &ctx)
+            .expect("entered-this-turn condition should evaluate"),
+        "Drownyard Behemoth should have hexproof on the turn it entered"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    assert!(
+        !crate::condition_eval::evaluate_condition_resolution(
+            &game,
+            &entered_this_turn_condition,
+            &ctx,
+        )
+        .expect("entered-this-turn condition should evaluate after turn change"),
+        "Drownyard Behemoth should lose conditional hexproof on a later turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn omenport_vigilante_keeps_committed_crime_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Omenport Vigilante Variant")
         .card_types(vec![CardType::Creature])
