@@ -23817,7 +23817,7 @@ pub(super) fn describe_conditional_choose_both_instead(
     }
 
     let condition = describe_condition(&conditional.condition);
-    let mut out = format!("Choose one. If {condition}, you may choose both instead.");
+    let mut out = format!("Choose one. If {condition} as you cast this spell, you may choose both instead.");
     for mode in &choose_true.modes {
         let description = ensure_trailing_period(mode.description.trim());
         if description.trim().is_empty() {

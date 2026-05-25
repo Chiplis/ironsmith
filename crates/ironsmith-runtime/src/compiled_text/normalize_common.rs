@@ -11060,6 +11060,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::And(left, right) => {
+            if let Some(control_types_condition) =
+                describe_you_control_two_card_types_condition(left, right)
+            {
+                return control_types_condition;
+            }
             if let Some(spell_cast_condition) = describe_both_spell_cast_condition(left, right) {
                 return spell_cast_condition;
             }
@@ -11086,6 +11091,40 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_you_control_two_card_types_condition(left: &Condition, right: &Condition) -> Option<String> {
+    fn controlled_single_card_type(condition: &Condition) -> Option<crate::types::CardType> {
+        let Condition::PlayerControls { player, filter } = condition else {
+            return None;
+        };
+        if *player != PlayerFilter::You
+            || filter.card_types.len() != 1
+            || filter.zone.is_some()
+            || filter.controller.is_some()
+            || filter.owner.is_some()
+            || !filter.all_card_types.is_empty()
+            || !filter.excluded_card_types.is_empty()
+            || !filter.subtypes.is_empty()
+            || !filter.supertypes.is_empty()
+            || filter.colors.is_some()
+            || filter.power.is_some()
+            || filter.toughness.is_some()
+        {
+            return None;
+        }
+        Some(filter.card_types[0])
+    }
+
+    let left_type = controlled_single_card_type(left)?;
+    let right_type = controlled_single_card_type(right)?;
+    if left_type == right_type {
+        return None;
+    }
+
+    let left_text = with_indefinite_article(&left_type.to_string().to_ascii_lowercase());
+    let right_text = with_indefinite_article(&right_type.to_string().to_ascii_lowercase());
+    Some(format!("you control {left_text} and {right_text}"))
 }
 
 fn describe_source_exploited_triggering_condition(

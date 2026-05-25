@@ -21841,6 +21841,26 @@ fn render_choose_between_modes_as_choose_one_or_more() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn soul_transfer_parses_and_keeps_choose_both_instead_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul Transfer")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one. If you control an artifact and an enchantment as you cast this spell, you may choose both instead.\n\
+• Exile target creature or planeswalker.\n\
+• Return target creature or planeswalker card from your graveyard to your hand.",
+        )
+        .expect("Soul Transfer should parse");
+
+    let joined = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("choose one")
+            && joined.contains("you may choose both instead"),
+        "expected Soul Transfer choose-both conditional wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_each_player_create_clause_uses_each_player_creates() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dragon Crowd")
         .card_types(vec![CardType::Sorcery])

@@ -1058,9 +1058,27 @@ fn rewrite_structure_modal_header_flag_scan_tracks_commander_and_repeat_modes() 
     let flags = super::grammar::structure::scan_modal_header_flags(&tokens);
 
     assert!(flags.commander_allows_both, "{flags:?}");
+    assert!(flags.choose_both_control_card_types.is_empty(), "{flags:?}");
     assert!(flags.same_mode_more_than_once, "{flags:?}");
     assert!(!flags.mode_must_be_unchosen, "{flags:?}");
     assert!(!flags.mode_must_be_unchosen_this_turn, "{flags:?}");
+}
+
+#[test]
+fn rewrite_structure_modal_header_flag_scan_tracks_choose_both_control_card_types() {
+    let tokens = lex_line(
+        "Choose one. If you control an artifact and an enchantment as you cast this spell, you may choose both instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify choose-both control card types line");
+    let flags = super::grammar::structure::scan_modal_header_flags(&tokens);
+
+    assert!(!flags.commander_allows_both, "{flags:?}");
+    assert_eq!(
+        flags.choose_both_control_card_types,
+        vec![CardType::Artifact, CardType::Enchantment],
+        "{flags:?}"
+    );
 }
 
 #[test]
