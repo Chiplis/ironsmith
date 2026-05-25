@@ -33583,6 +33583,26 @@ pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilt
 }
 
 pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String {
+    fn blight_amount_from_choose_and_put(
+        choose: &crate::effects::ChooseObjectsEffect,
+        put_counters: &crate::effects::PutCountersEffect,
+    ) -> Option<String> {
+        if choose.filter != crate::filter::ObjectFilter::creature().you_control()
+            || choose.count.min != 1
+            || choose.count.max != Some(1)
+            || put_counters.counter_type != crate::object::CounterType::MinusOneMinusOne
+        {
+            return None;
+        }
+        let ChooseSpec::Tagged(tag) = &put_counters.target else {
+            return None;
+        };
+        if *tag != choose.tag {
+            return None;
+        }
+        Some(describe_value(&put_counters.amount))
+    }
+
     if costs.len() == 1
         && let Some(may) = costs[0]
             .effect_ref()
@@ -33599,6 +33619,18 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         return format!("you may blight {}", describe_value(&put_counters.amount));
     }
 
+    if costs.len() == 1
+        && let Some(may) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        && may.effects.len() == 2
+        && let Some(choose) = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(put_counters) = may.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()
+        && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
+    {
+        return format!("you may blight {amount}");
+    }
+
     if costs.len() == 2
         && let Some(choose) = costs[0]
             .effect_ref()
@@ -33606,14 +33638,9 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         && let Some(put_counters) = costs[1]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
-        && choose.filter == crate::filter::ObjectFilter::creature().you_control()
-        && choose.count.min == 1
-        && choose.count.max == Some(1)
-        && put_counters.counter_type == crate::object::CounterType::MinusOneMinusOne
-        && let ChooseSpec::Tagged(tag) = &put_counters.target
-        && *tag == choose.tag
+        && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
     {
-        return format!("you may blight {}", describe_value(&put_counters.amount));
+        return format!("you may blight {amount}");
     }
 
     if costs.len() == 1
@@ -33648,7 +33675,17 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         }
     }
 
-    describe_cost_list(costs)
+    let described = describe_cost_list(costs);
+    if described == "may put a -1/-1 counter on a creature you control" {
+        return "you may blight 1".to_string();
+    }
+    if let Some(amount_text) = described
+        .strip_prefix("may put ")
+        .and_then(|rest| rest.strip_suffix(" -1/-1 counters on a creature you control"))
+    {
+        return format!("you may blight {amount_text}");
+    }
+    described
 }
 
 pub(super) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String {
