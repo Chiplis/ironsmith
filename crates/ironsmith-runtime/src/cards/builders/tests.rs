@@ -39715,3 +39715,68 @@ fn rayami_first_of_the_fallen_parses_and_renders_blood_counter_replacement() {
         "expected would-die replacement text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sorin_markov_strict_parse_regression_and_compiled_text_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sorin Markov")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Sorin])
+        .loyalty(4)
+        .parse_text(
+            "+2: Sorin Markov deals 2 damage to any target and you gain 2 life.\n−3: Target opponent's life total becomes 10.\n−7: You control target player during that player's next turn.",
+        )
+        .expect("Sorin Markov should parse strictly");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("control target player during")
+            && rendered_lower.contains("next turn"),
+        "expected control-target-player-next-turn wording in compiled output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sorin_markov_compiles_control_player_and_life_total_effects() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sorin Markov")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Sorin])
+        .loyalty(4)
+        .parse_text(
+            "+2: Sorin Markov deals 2 damage to any target and you gain 2 life.\n−3: Target opponent's life total becomes 10.\n−7: You control target player during that player's next turn.",
+        )
+        .expect("Sorin Markov should parse strictly");
+
+    let mut has_set_life_to_ten = false;
+    let mut has_control_player_next_turn = false;
+    for ability in &def.abilities {
+        let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+            continue;
+        };
+        for effect in activated.effects.flattened_default_effects() {
+            if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>()
+                && set_life.amount == crate::effect::Value::Fixed(10)
+            {
+                has_set_life_to_ten = true;
+            }
+            if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
+                && format!("{:?}", control_player.start)
+                    .to_ascii_lowercase()
+                    .contains("nextturn")
+            {
+                has_control_player_next_turn = true;
+            }
+        }
+    }
+
+    assert!(
+        has_set_life_to_ten,
+        "expected Sorin Markov to compile a set-life-total-to-10 effect"
+    );
+    assert!(
+        has_control_player_next_turn,
+        "expected Sorin Markov to compile a control-player-during-next-turn effect"
+    );
+}
