@@ -27158,6 +27158,140 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn covert_technician_combat_damage_trigger_puts_only_artifact_with_mana_value_up_to_damage() {
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::ids::ObjectId;
+
+    struct ChooseArtifactDecisionMaker {
+        accept_may: bool,
+        chosen: Option<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseArtifactDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.accept_may
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let choice = ctx
+                .candidates
+                .iter()
+                .find(|candidate| candidate.legal)
+                .map(|candidate| candidate.id);
+            self.chosen = choice;
+            choice.into_iter().collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let covert_technician = CardDefinitionBuilder::new(CardId::new(), "Covert Technician")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Vedalken, crate::types::Subtype::Ninja])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "Ninjutsu {1}{U} ({1}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Covert Technician deals combat damage to a player, you may put an artifact card with mana value less than or equal to that damage from your hand onto the battlefield.",
+        )
+        .expect("Covert Technician should parse");
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&covert_technician)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may put an artifact card with mana value that damage or less from your hand onto the battlefield"
+        ),
+        "compiled text should keep the dynamic damage mana-value gate, got {rendered}"
+    );
+
+    let technician_id = game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
+
+    let legal_artifact = CardBuilder::new(CardId::new(), "Legal Bauble")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let legal_artifact_id = game.create_object_from_card(&legal_artifact, alice, Zone::Hand);
+
+    let expensive_artifact = CardBuilder::new(CardId::new(), "Expensive Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let expensive_artifact_id = game.create_object_from_card(&expensive_artifact, alice, Zone::Hand);
+
+    let triggered = covert_technician
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Covert Technician should have a combat-damage trigger");
+
+    let mut yes_dm = ChooseArtifactDecisionMaker {
+        accept_may: true,
+        chosen: None,
+    };
+    let mut yes_ctx = ExecutionContext::new_default(technician_id, alice)
+        .with_decision_maker(&mut yes_dm)
+        .with_event_value_amount(2);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut yes_ctx)
+            .expect("Covert Technician trigger should resolve at damage=2");
+    }
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&expensive_artifact_id),
+        "artifact above damage-based mana value cap must stay in hand"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&legal_artifact_id)
+            || game.battlefield.contains(&legal_artifact_id),
+        "resolving the trigger must keep the legal artifact in a valid zone"
+    );
+
+    let mut game = setup_game();
+    let technician_id = game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
+    let legal_artifact_id = game.create_object_from_card(&legal_artifact, alice, Zone::Hand);
+    let mut no_dm = ChooseArtifactDecisionMaker {
+        accept_may: false,
+        chosen: None,
+    };
+    let mut no_ctx = ExecutionContext::new_default(technician_id, alice)
+        .with_decision_maker(&mut no_dm)
+        .with_event_value_amount(3);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut no_ctx)
+            .expect("declined Covert Technician trigger should still resolve cleanly");
+    }
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&legal_artifact_id),
+        "declining the optional trigger should keep the artifact in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

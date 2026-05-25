@@ -1,6 +1,6 @@
 use crate::{
     CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, ObjectId, PlayerId,
-    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
+    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
 };
 
 /// A reference to an object for use in filters and effects.
@@ -2444,6 +2444,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     describe_value_expr(left),
                     describe_value_expr(right)
                 )
+            }
+            Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
+            Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
+            Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {
+                "a dynamic blocker count".to_string()
             }
             _ => "a dynamic value".to_string(),
         }
