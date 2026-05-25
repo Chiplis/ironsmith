@@ -600,6 +600,39 @@ fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAs
     ))
 }
 
+fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let suffix_len = usize::from(slice_ends_with(
+        words,
+        &["as", "you", "cast", "this", "spell"],
+    )) * 5;
+    let core_words = if suffix_len > 0 {
+        &words[..words.len().saturating_sub(suffix_len)]
+    } else {
+        words
+    };
+
+    if core_words.len() != 7
+        || core_words[0] != "you"
+        || core_words[1] != "revealed"
+        || parse_subtype_word(core_words[2]).is_none()
+        || core_words[3] != "card"
+        || core_words[4] != "or"
+        || !(core_words[5] == "control" || core_words[5] == "controlled")
+        || parse_subtype_word(core_words[6]).is_none()
+        || core_words[2] != core_words[6]
+    {
+        return None;
+    }
+
+    Some(PredicateAst::Or(
+        Box::new(PredicateAst::ThisSpellPaidLabel("Behold".to_string())),
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: ObjectFilter::default().with_subtype(parse_subtype_word(core_words[2])?),
+        }),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -685,6 +718,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_happily_style_conjoined_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_revealed_or_controlled_subtype_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -3280,6 +3317,35 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_behold_or_controlled_subtype_as_cast(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If you revealed a Dragon card or controlled a Dragon as you cast this spell",
+            0,
+        )?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Or(
+                Box::new(PredicateAst::ThisSpellPaidLabel("Behold".to_string())),
+                Box::new(PredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter::default()
+                        .with_subtype(parse_subtype_word("dragon").expect("dragon subtype")),
+                }),
+            )
+        );
         Ok(())
     }
 }
