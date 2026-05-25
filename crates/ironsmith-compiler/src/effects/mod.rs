@@ -65,7 +65,7 @@ pub use ironsmith_core::{
     ScheduleEffectsWhenTaggedLeavesEffect as CoreScheduleEffectsWhenTaggedLeavesEffect, ScryEffect,
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
     SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SequenceEffect as CoreSequenceEffect,
-    SetBasePowerToughnessEffect, SetLifeTotalEffect, SharedTypeConstraint,
+    EndTurnEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SoulbondPairEffect,

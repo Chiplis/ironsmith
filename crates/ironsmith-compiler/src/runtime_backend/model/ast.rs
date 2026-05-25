@@ -1549,6 +1549,7 @@ pub(crate) enum SubjectVerbActionAst {
     SetLifeTotal {
         amount: Value,
     },
+    EndTurn,
     SkipTurn,
     SkipCombatPhases,
     SkipNextCombatPhaseThisTurn,
@@ -2956,6 +2957,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
             Self::SetLifeTotal { amount } => f.debug_tuple("SetLifeTotal").field(amount).finish(),
+            Self::EndTurn => f.write_str("EndTurn"),
             Self::SkipTurn => f.write_str("SkipTurn"),
             Self::SkipCombatPhases => f.write_str("SkipCombatPhases"),
             Self::SkipNextCombatPhaseThisTurn => f.write_str("SkipNextCombatPhaseThisTurn"),
@@ -5849,6 +5851,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::SkipTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_end_turn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::EndTurn,
         )
     }
 

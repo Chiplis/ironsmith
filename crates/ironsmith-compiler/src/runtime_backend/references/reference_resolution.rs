@@ -1656,6 +1656,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
+            | SubjectVerbActionAst::EndTurn
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -2131,6 +2132,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
+            | SubjectVerbActionAst::EndTurn
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

@@ -352,6 +352,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
+            | SubjectVerbActionAst::EndTurn
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

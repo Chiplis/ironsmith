@@ -28283,6 +28283,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&skip_draw.player)
         );
     }
+    if let Some(end_turn) = effect.downcast_ref::<crate::effects::EndTurnEffect>() {
+        if matches!(end_turn.player, PlayerFilter::You | PlayerFilter::EffectController) {
+            return "end the turn".to_string();
+        }
+        return format!("{} ends the turn", describe_player_filter(&end_turn.player));
+    }
     if let Some(skip_turn) = effect.downcast_ref::<crate::effects::SkipTurnEffect>() {
         if skip_turn.player == PlayerFilter::IteratedPlayer {
             return "that player skips that turn instead".to_string();

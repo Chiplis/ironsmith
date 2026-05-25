@@ -127,6 +127,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
+        Verb::End => parse_end(tokens, subject),
     }
 }
 

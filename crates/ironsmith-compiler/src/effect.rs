@@ -1711,6 +1711,10 @@ impl Effect {
         Self::new(crate::effects::SetLifeTotalEffect::new(amount, player))
     }
 
+    pub fn end_turn_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::EndTurnEffect::new(player))
+    }
+
     pub fn skip_turn_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::SkipTurnEffect::new(player))
     }

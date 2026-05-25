@@ -127,7 +127,7 @@ pub use effect::{
     SearchLibrarySlotsEffect, SearchSelectionMode, SequenceEffect, SetBasePowerToughnessEffect,
     SetLifeTotalEffect, SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
-    ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
+    EndTurnEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SoulbondPairEffect, SupportEffect,
     SurveilEffect, SuspectEffect, TagAttachedToSourceEffect, TagMatchingObjectsEffect,
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,

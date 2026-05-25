@@ -3923,6 +3923,21 @@ impl EmptyManaPoolEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EndTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl EndTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SkipTurnEffect {
     pub player: PlayerFilter,
 }
