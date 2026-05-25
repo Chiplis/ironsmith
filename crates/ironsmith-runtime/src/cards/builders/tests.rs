@@ -40197,3 +40197,18 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
         "expected play-permission clause in compiled text, got {rendered}"
     );
 }
+
+#[test]
+fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
+    let def = parse_oracle_card_definition("Trove Tracker");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Encore {5}{U}{U}"),
+        "expected Trove Tracker to preserve encore keyword cost line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("When this creature dies, draw a card."),
+        "expected Trove Tracker death trigger to compile, got {rendered}"
+    );
+}
