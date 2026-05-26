@@ -3190,6 +3190,38 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.as_slice() == [
+        "you",
+        "or",
+        "player",
+        "youre",
+        "attacking",
+        "has",
+        "initiative",
+    ]
+        || filtered.as_slice()
+            == [
+                "you",
+                "or",
+                "a",
+                "player",
+                "youre",
+                "attacking",
+                "has",
+                "the",
+                "initiative",
+            ]
+    {
+        return Ok(PredicateAst::Or(
+            Box::new(PredicateAst::PlayerHasInitiative {
+                player: PlayerAst::You,
+            }),
+            Box::new(PredicateAst::PlayerHasInitiative {
+                player: PlayerAst::Defending,
+            }),
+        ));
+    }
+
     if filtered.as_slice() == ["youve", "completed", "a", "dungeon"]
         || filtered.as_slice() == ["you", "have", "completed", "a", "dungeon"]
     {
@@ -3376,6 +3408,32 @@ mod tests {
             PredicateAst::PlayerWouldBeginExtraTurn {
                 player: PlayerAst::Opponent,
             }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_or_player_youre_attacking_has_initiative(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("If you or a player you're attacking has the initiative", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Or(
+                Box::new(PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                }),
+                Box::new(PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::Defending,
+                }),
+            )
         );
         Ok(())
     }

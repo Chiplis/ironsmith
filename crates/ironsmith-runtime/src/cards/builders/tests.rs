@@ -35400,6 +35400,163 @@ fn dungeon_regression_cards_render_key_mechanics() {
 }
 
 #[test]
+fn parse_oracle_undercellar_sweep_strictly_parses_and_renders_initiative_gate() {
+    let def = parse_oracle_card_definition("Undercellar Sweep");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("unsupported predicate") && !lower.contains("unsupported effect"),
+        "expected Undercellar Sweep to parse without unsupported placeholders, got {rendered}"
+    );
+    assert!(
+        lower.contains("you take the initiative"),
+        "expected Undercellar Sweep to keep ETB initiative text, got {rendered}"
+    );
+    assert!(
+        lower.contains("you or")
+            && lower.contains("attacking")
+            && lower.contains("initiative")
+            && lower.contains("create two 1/1 white soldier creature token")
+            && lower.contains("tapped and attacking"),
+        "expected Undercellar Sweep attack trigger and initiative gate to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {
+    let def = parse_oracle_card_definition("Undercellar Sweep");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_initiative(Some(alice));
+
+    let attacker = CardDefinitionBuilder::new(CardId::new(), "Attack Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker_id = game.create_object_from_definition(&attacker, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[crate::decision::AttackerDeclaration {
+            creature: attacker_id,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+    )
+    .expect("attack declaration should succeed");
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("attack trigger should go on stack");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("attack trigger should resolve");
+
+    let soldier_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| (*id, obj)))
+        .filter(|(_, obj)| {
+            game.controller_of(obj) == alice
+                && obj.kind == crate::object::ObjectKind::Token
+                && obj.name == "Soldier"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        soldier_tokens.len(),
+        2,
+        "expected initiative-on-you branch to create two Soldier tokens"
+    );
+    assert!(
+        soldier_tokens
+            .iter()
+            .all(|(id, _)| game.is_tapped(*id)),
+        "expected created Soldier tokens to enter tapped"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn undercellar_sweep_attack_trigger_branches_on_initiative_holder() {
+    let def = parse_oracle_card_definition("Undercellar Sweep");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let attacker = CardDefinitionBuilder::new(CardId::new(), "Attack Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker_id = game.create_object_from_definition(&attacker, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut run_attack = |initiative: Option<PlayerId>| {
+        game.set_initiative(initiative);
+        game.untap(attacker_id);
+        let before = game
+            .battlefield
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|obj| {
+                obj.kind == crate::object::ObjectKind::Token && game.controller_of(obj) == alice
+            })
+            .count();
+        let mut combat = crate::combat_state::CombatState::default();
+        let mut trigger_queue = crate::triggers::TriggerQueue::new();
+        crate::game_loop::apply_attacker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &[crate::decision::AttackerDeclaration {
+                creature: attacker_id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+        )
+        .expect("attack declaration should succeed");
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("attack trigger should go on stack");
+        if !game.stack.is_empty() {
+            crate::game_loop::resolve_stack_entry(&mut game)
+                .expect("attack trigger should resolve");
+        }
+        game.battlefield
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|obj| {
+                obj.kind == crate::object::ObjectKind::Token && game.controller_of(obj) == alice
+            })
+            .count()
+            - before
+    };
+
+    assert_eq!(
+        run_attack(Some(bob)),
+        2,
+        "expected defending-player initiative branch to create two tokens"
+    );
+    assert_eq!(
+        run_attack(None),
+        0,
+        "expected no-initiative branch to create no tokens"
+    );
+}
+
+#[test]
 fn parse_oracle_the_most_dangerous_gamer_regression() {
     let def = parse_oracle_card_definition("The Most Dangerous Gamer");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

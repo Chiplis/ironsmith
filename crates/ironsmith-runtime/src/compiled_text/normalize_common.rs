@@ -11256,9 +11256,37 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            if let Some(initiative_gate) = describe_you_or_attacked_player_initiative_condition(left, right)
+            {
+                return initiative_gate;
+            }
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_you_or_attacked_player_initiative_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn is_player_initiative(condition: &Condition, player: PlayerFilter) -> bool {
+        matches!(
+            condition,
+            Condition::PlayerHasInitiative {
+                player: condition_player
+            } if *condition_player == player
+        )
+    }
+
+    let matches_pair = (is_player_initiative(left, PlayerFilter::You)
+        && is_player_initiative(right, PlayerFilter::Defending))
+        || (is_player_initiative(left, PlayerFilter::Defending)
+            && is_player_initiative(right, PlayerFilter::You));
+    if !matches_pair {
+        return None;
+    }
+
+    Some("you or a player you're attacking has the initiative".to_string())
 }
 
 fn describe_you_control_two_card_types_condition(
