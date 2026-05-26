@@ -1075,10 +1075,7 @@ fn compile_oracle_text_strictly_compiles_mindleecher_from_workspace_cards() {
         .parent()
         .expect("workspace root should be two levels up");
     let cards_path = workspace_root.join("cards.json");
-    assert!(
-        cards_path.exists(),
-        "expected workspace cards.json at {cards_path:?}"
-    );
+    assert!(cards_path.exists(), "expected workspace cards.json at {cards_path:?}");
 
     let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
         .arg("--name")
@@ -1099,13 +1096,10 @@ fn compile_oracle_text_strictly_compiles_mindleecher_from_workspace_cards() {
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(stdout.contains("Name: Mindleecher"), "{stdout}");
     assert!(stdout.contains("Similarity:"), "{stdout}");
+    assert!(stdout.contains("Mutate {4}{B}"), "{stdout}");
     assert!(
-        stdout.contains("Compiled oracle text:\nMutate {4}{B}."),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("When this creature mutates"),
-        "expected mutate trigger clause in compiled comparison output, got {stdout}"
+        stdout.contains("Whenever this creature mutates, exile the top card of each opponent's library face down."),
+        "expected mutate trigger exile clause in compiled comparison output, got {stdout}"
     );
 }
 

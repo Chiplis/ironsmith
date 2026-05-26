@@ -14332,7 +14332,6 @@ fn test_archipelagore_mutate_keyword_and_trigger_condition() {
     let archipelagore = game
         .object(archipelagore_id)
         .expect("Archipelagore permanent exists");
-    let has_mutates_trigger = archipelagore.abilities.iter().any(|ability| {
         if let AbilityKind::Triggered(triggered) = &ability.kind {
             triggered.trigger.display().contains("mutates")
         } else {
@@ -14364,6 +14363,63 @@ fn test_archipelagore_mutate_keyword_and_trigger_condition() {
         monstrous_triggers.len(),
         0,
         "BecameMonstrousEvent should not trigger Archipelagore's mutates ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_mindleecher_mutates_trigger_condition() {
+    use crate::ability::AbilityKind;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::events::other::{BecameMonstrousEvent, MutatedEvent};
+    use crate::triggers::check_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let mindleecher_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Mindleecher")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Mutate {4}{B} (If you cast this spell for its mutate cost, put it over or under target non-Human creature you own. They mutate into the creature on top plus all abilities from under it.)\nWhenever this creature mutates, exile the top card of each opponent's library face down. You may look at and play those cards for as long as they remain exiled.",
+        )
+        .expect("Mindleecher should parse");
+    let mindleecher_id = game.create_object_from_definition(&mindleecher_def, alice, Zone::Battlefield);
+
+    let mindleecher = game
+        .object(mindleecher_id)
+        .expect("mindleecher permanent exists");
+    let has_mutates_trigger = mindleecher.abilities.iter().any(|ability| {
+        if let AbilityKind::Triggered(triggered) = &ability.kind {
+            triggered.trigger.display().contains("mutates")
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_mutates_trigger,
+        "Mindleecher should have a mutates triggered ability"
+    );
+
+    let mutate_event = TriggerEvent::new_with_provenance(
+        MutatedEvent::new(mindleecher_id, alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mutate_triggers = check_triggers(&game, &mutate_event);
+    assert_eq!(
+        mutate_triggers.len(),
+        1,
+        "MutatedEvent should trigger Mindleecher's ability"
+    );
+
+    let monstrous_event = TriggerEvent::new_with_provenance(
+        BecameMonstrousEvent::new(mindleecher_id, alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let monstrous_triggers = check_triggers(&game, &monstrous_event);
+    assert_eq!(
+        monstrous_triggers.len(),
+        0,
+        "BecameMonstrousEvent should not trigger Mindleecher's mutates ability"
     );
 }
 
