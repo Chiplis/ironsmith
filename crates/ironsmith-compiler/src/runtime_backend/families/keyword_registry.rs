@@ -288,6 +288,9 @@ pub(super) fn lower_alternative_cast(
     if let Some(method) = parse_prowl_line_lexed(tokens)? {
         return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
+    if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
+        return Ok(LineAst::StaticAbility(ability.into()));
+    }
     Err(CardTextError::ParseError(format!(
         "rewrite keyword lowering could not parse alternative cost line '{}'",
         line.info.raw_line
