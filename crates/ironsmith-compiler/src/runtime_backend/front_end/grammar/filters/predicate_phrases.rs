@@ -3378,12 +3378,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         let parsed = parse_predicate(&predicate_tokens)?;
-        assert_eq!(
-            parsed,
-            PredicateAst::PlayerWouldDrawCard {
-                player: PlayerAst::You
-            }
-        );
+        assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
         Ok(())
     }
 

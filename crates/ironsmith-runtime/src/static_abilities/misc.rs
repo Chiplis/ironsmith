@@ -4892,10 +4892,7 @@ mod tests {
     #[test]
     fn test_draw_replacement_exile_top_and_play_sequence() {
         let ability = DrawReplacementExileTopAndPlay::new(2);
-        assert_eq!(
-            ability.id(),
-            StaticAbilityId::DrawReplacementExileTopAndPlay
-        );
+        assert_eq!(ability.id(), StaticAbilityId::DrawReplacementExileTopAndPlay);
 
         let replacement = ability
             .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))

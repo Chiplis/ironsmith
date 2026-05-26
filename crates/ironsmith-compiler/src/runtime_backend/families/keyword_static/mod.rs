@@ -7900,12 +7900,8 @@ pub(crate) fn parse_draw_replacement_exile_top_and_play_line(
         return Ok(None);
     }
 
-    if !slice_starts_with(
-        &words,
-        &[
-            "if", "you", "would", "draw", "a", "card", "exile", "the", "top",
-        ],
-    ) {
+    if !slice_starts_with(&words, &["if", "you", "would", "draw", "a", "card", "exile", "the", "top"])
+    {
         return Ok(None);
     }
 

@@ -41315,6 +41315,7 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
         "expected Sorin Markov to compile a control-player-during-next-turn effect"
     );
 }
+
 #[test]
 fn eruth_tormented_prophet_parses_strictly_as_draw_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eruth, Tormented Prophet")
@@ -41360,13 +41361,10 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
             "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
         )
         .expect("Eruth, Tormented Prophet oracle text should parse");
-    let rendered = unprocessed_compiled_lines(&def)
-        .join("\n")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
 
     assert!(
-        rendered
-            .contains("if you would draw a card, exile the top 2 cards of your library instead"),
+        rendered.contains("if you would draw a card, exile the top 2 cards of your library instead"),
         "expected replacement clause in compiled text, got {rendered}"
     );
     assert!(
@@ -41374,7 +41372,6 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
         "expected play-permission clause in compiled text, got {rendered}"
     );
 }
-
 #[test]
 fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
     let def = parse_oracle_card_definition("Trove Tracker");
