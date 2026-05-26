@@ -730,6 +730,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_by_attached_line
         ),
+        single_static_ability_ast_passthrough_rule!(
+            parse_attached_prevent_all_combat_damage_dealt_by_attached_line
+        ),
         multi_static_ability_ast_passthrough_rule!(parse_attached_gets_and_cant_block_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_attached_has_keywords_and_triggered_ability_line),

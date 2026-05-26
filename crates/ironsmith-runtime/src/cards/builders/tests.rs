@@ -33896,6 +33896,38 @@ fn parse_wild_roads_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_demonic_torment_strict_regression() {
+    assert_oracle_card_parses_strict("Demonic Torment");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demonic_torment_compiled_text_keeps_combat_prevention_clause() {
+    let def = parse_oracle_card_definition("Demonic Torment");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all combat damage that would be dealt by enchanted creature"),
+        "expected Demonic Torment compiled text to keep combat-only prevention clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demonic_torment_grants_combat_only_damage_prevention_to_enchanted_creature() {
+    let def = parse_oracle_card_definition("Demonic Torment");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PreventAllCombatDamageDealtByThisPermanent"),
+        "expected Demonic Torment to grant combat-only prevention, got {debug}"
+    );
+    assert!(
+        !debug.contains("PreventAllDamageDealtByThisPermanent"),
+        "expected Demonic Torment to avoid all-damage prevention, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn wild_roads_compiled_text_keeps_pilot_saddle_and_crew_clause() {
     let def = parse_oracle_card_definition("Wild Roads");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();

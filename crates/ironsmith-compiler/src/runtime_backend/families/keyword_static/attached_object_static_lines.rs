@@ -1344,6 +1344,33 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     }))
 }
 
+pub(crate) fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let line_words = token_words(tokens);
+    if line_words.len() < 7 {
+        return Ok(None);
+    }
+
+    // "Prevent all combat damage that would be dealt by enchanted creature."
+    if !word_slice_starts_with(&line_words, &["prevent", "all", "combat", "damage"]) {
+        return Ok(None);
+    }
+    if !word_slice_ends_with(&line_words, &["by", "enchanted", "creature"]) {
+        return Ok(None);
+    }
+
+    let display =
+        "prevent all combat damage that would be dealt by enchanted creature".to_string();
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(StaticAbility::new(
+            crate::static_abilities::PREVENT_ALL_COMBAT_DAMAGE_DEALT_BY_THIS_PERMANENT,
+        ))),
+        display,
+        condition: None,
+    }))
+}
+
 pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

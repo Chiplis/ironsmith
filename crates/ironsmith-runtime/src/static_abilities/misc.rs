@@ -21,7 +21,8 @@ use crate::events::cause::CauseType;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
-    DamageFromSelfMatcher, DamageFromSourceToObjectMatcher, DamageToObjectMatcher,
+    DamageFromSelfCombatMatcher, DamageFromSelfMatcher, DamageFromSourceToObjectMatcher,
+    DamageToObjectMatcher,
     DamageToOtherCreatureYouControlMatcher, DamageToPlayerOrObjectMatcher,
     DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher, DamageToSelfFromSourceFilterMatcher,
 };
@@ -1692,6 +1693,33 @@ impl StaticAbilityKind for PreventAllDamageDealtByThisPermanent {
             source,
             controller,
             DamageFromSelfMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "Prevent all combat damage that would be dealt by this permanent."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllCombatDamageDealtByThisPermanent;
+
+impl StaticAbilityKind for PreventAllCombatDamageDealtByThisPermanent {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllCombatDamageDealtByThisPermanent
+    }
+
+    fn display(&self) -> String {
+        "Prevent all combat damage that would be dealt by this permanent.".to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSelfCombatMatcher::new(),
             ReplacementAction::Prevent,
         ))
     }
@@ -5669,6 +5697,52 @@ mod tests {
             crate::events::cause::EventCause::effect(),
         );
         assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_all_combat_damage_dealt_by_this_permanent_generates_replacement() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let src = ObjectId::from_raw(42);
+        let alice = PlayerId::from_index(0);
+
+        let ability = PreventAllCombatDamageDealtByThisPermanent;
+        let replacement = ability
+            .generate_replacement_effect(src, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, src, &game);
+
+        let combat = DamageEvent::with_cause(
+            src,
+            DamageTarget::Player(alice),
+            3,
+            true,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(matcher.matches_event(&combat, &ctx));
+
+        let noncombat = DamageEvent::with_cause(
+            src,
+            DamageTarget::Player(alice),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&noncombat, &ctx));
+
+        let from_other = DamageEvent::with_cause(
+            ObjectId::from_raw(7),
+            DamageTarget::Player(alice),
+            3,
+            true,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&from_other, &ctx));
     }
 
     #[test]
