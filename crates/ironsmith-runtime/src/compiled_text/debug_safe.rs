@@ -109,6 +109,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("that much +1/+1 counter", "that many +1/+1 counters")
         .replace("one or more another ", "one or more other ")
         .replace("One or more another ", "One or more other ")
+        .replace("number of card types among another ", "number of card types among other ")
+        .replace("Number of card types among another ", "Number of card types among other ")
         .replace("This creature ability costs ", "This ability costs ")
         .replace("Return all other permanent card in exile", "return all other permanent cards exiled with this artifact")
         .replace("Return all other permanent cards exiled with this artifact", "return all other permanent cards exiled with this artifact")
