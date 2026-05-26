@@ -1295,6 +1295,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         None
     };
     if let Some(prefix_len) = triggering_object_had_counter_prefix_len
+        && raw_words.get(prefix_len) == Some(&"counters")
+        && raw_words.get(prefix_len + 1) == Some(&"on")
+        && matches!(
+            raw_words.get(prefix_len + 2).copied().unwrap_or(""),
+            "it" | "them" | "this" | "that" | "itself"
+        )
+    {
+        return Ok(PredicateAst::TriggeringObjectHadAnyCounterAtLeast { count: 1 });
+    }
+
+    if let Some(prefix_len) = triggering_object_had_counter_prefix_len
         && raw_words.len() >= prefix_len + 4
         && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
             *word == "counter" || *word == "counters"
@@ -3421,6 +3432,25 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_it_had_counters_on_it() -> Result<(), CardTextError> {
+        let tokens = lex_line("if it had counters on it", 0)?;
+
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::TriggeringObjectHadAnyCounterAtLeast { count: 1 }
         );
         Ok(())
     }

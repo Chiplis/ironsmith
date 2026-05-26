@@ -155,6 +155,30 @@ fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_reluctant_role_model_strict_regression() {
+    let def = parse_oracle_card_definition("Reluctant Role Model");
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("TriggeringObjectHadAnyCounters")
+            && !abilities_debug.contains("UnsupportedParserLine"),
+        "expected Reluctant Role Model to parse strict trigger predicate, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_reluctant_role_model_compiled_text_mentions_counter_transfer_condition() {
+    let def = parse_oracle_card_definition("Reluctant Role Model");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("if it had counters on it")
+            && rendered.contains("put its counters on up to one target creature"),
+        "expected Reluctant Role Model compiled text to preserve counter-transfer clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_robe_of_the_archmagi_compiled_text_includes_class_equip_clause() {
     let def = parse_oracle_card_definition("Robe of the Archmagi");
     let lines = canonical_compiled_lines(&def);
