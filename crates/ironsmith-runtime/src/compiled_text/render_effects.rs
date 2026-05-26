@@ -12161,6 +12161,7 @@ fn describe_damage_amount_clause(amount: &Value) -> (String, Option<String>) {
 fn count_damage_prefers_equal_to(amount: &Value) -> bool {
     match amount.unhinted() {
         Value::Count(_) | Value::CountScaled(_, _) => true,
+        Value::CountersOnSource(_) | Value::CountersOn(_, _) => true,
         Value::Scaled(inner, _) => count_damage_prefers_equal_to(inner),
         _ => false,
     }

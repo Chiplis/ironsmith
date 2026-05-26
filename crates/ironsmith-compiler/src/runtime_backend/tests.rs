@@ -11093,6 +11093,26 @@ fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_controller_phrase_t
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_any_target_with_source_counters() {
+    let text = "It deals damage equal to the number of pressure counters on it to any target.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify equal-to source-counter damage sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should accept equal-to any-target damage");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("CountersOnSource(Named(\"pressure\"))"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("target: AnyTarget") || debug.contains("target: Any"),
+        "expected any-target damage lowering, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_target_gain_then_get_where_x() {
     let text = "Target creature gains trample and gets +X/+0 until end of turn, where X is the number of creatures you control.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-then-get sentence");
