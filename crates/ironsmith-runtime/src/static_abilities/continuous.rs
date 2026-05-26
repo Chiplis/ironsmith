@@ -670,6 +670,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
+        AnthemCountExpression::CountersOnSource(counter_type) => {
+            Some(format!("{} counter on it", counter_type.description()))
+        }
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }

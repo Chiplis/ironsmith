@@ -34744,6 +34744,7 @@ strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_escaped_null, "Escaped Null");
+strict_parse_card_test!(strict_parse_exuberant_fuseling, "Exuberant Fuseling");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_feudkillers_verdict, "Feudkiller's Verdict");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
@@ -34899,7 +34900,6 @@ fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_deat
         opposing_triggers, 0,
         "expected opponent permanent dying to not trigger Exuberant Fuseling"
     );
-
     let fuseling_snapshot = crate::snapshot::ObjectSnapshot::from_object(
         game.object(fuseling_id).expect("fuseling should exist"),
         &game,

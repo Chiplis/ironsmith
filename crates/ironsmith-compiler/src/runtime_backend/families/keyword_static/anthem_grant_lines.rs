@@ -2912,6 +2912,24 @@ pub(crate) fn parse_anthem_for_each_expression(
         });
     }
 
+    let rest_words = crate::runtime_backend::token_word_refs(rest);
+    if let Some(counter_word_idx) =
+        anthem_find_word_index(&rest_words, |word| matches!(word, "counter" | "counters"))
+        && counter_word_idx > 0
+        && let Some(counter_type) = parse_counter_type_word(rest_words[counter_word_idx - 1])
+    {
+        let tail_words = &rest_words[counter_word_idx + 1..];
+        let on_source_tail = anthem_word_slice_starts_with(tail_words, &["on", "it"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "him"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "her"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this", "creature"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this", "permanent"]);
+        if on_source_tail {
+            return Ok(AnthemCountExpression::CountersOnSource(counter_type));
+        }
+    }
+
     let filter = parse_object_filter(rest, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported 'for each' filter in anthem clause (clause: '{}')",

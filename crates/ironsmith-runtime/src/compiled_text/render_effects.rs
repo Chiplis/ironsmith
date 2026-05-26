@@ -26827,6 +26827,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_count_filter_value_subject(power_filter)
                 ))
             }
+            (Value::CountersOnSource(power_counter), Value::CountersOnSource(toughness_counter))
+                if power_counter == toughness_counter =>
+            {
+                Some(format!("{} counter on it", power_counter.description()))
+            }
             _ => None,
         };
         if let Some(for_each_text) = for_each_text {
@@ -26848,6 +26853,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if !matches!(modify_pt.power, Value::Fixed(_))
             && matches!(modify_pt.toughness, Value::Fixed(0))
         {
+            if let Value::CountersOnSource(counter_type) = &modify_pt.power {
+                return format!(
+                    "{} gets +1/+0 for each {} counter on it {}",
+                    describe_choose_spec(&modify_pt.target),
+                    counter_type.description(),
+                    describe_until(&modify_pt.duration)
+                );
+            }
             return format!(
                 "{} gets +X/+0 {}, where X is {}",
                 describe_choose_spec(&modify_pt.target),
