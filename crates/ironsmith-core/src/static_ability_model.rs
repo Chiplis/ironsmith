@@ -191,6 +191,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
     CantBeBlockedByMoreThan(usize),
+    CantBeBlockedExceptByNOrMore(usize),
     CantBeBlockedByPowerOrLess(i32),
     CantBeBlockedByPowerOrGreater(i32),
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(Vec<CardType>),
@@ -837,6 +838,9 @@ where
             }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
+            }
+            StaticAbilityPayload::CantBeBlockedExceptByNOrMore(count) => {
+                StaticAbilityPayload::CantBeBlockedExceptByNOrMore(count)
             }
             StaticAbilityPayload::CantBeBlockedByPowerOrLess(power) => {
                 StaticAbilityPayload::CantBeBlockedByPowerOrLess(power)
@@ -2076,6 +2080,14 @@ impl<
             id: Some(StaticAbilityId::CantBeBlockedByMoreThan),
             label: format!("can't be blocked by more than {count} creature"),
             payload: StaticAbilityPayload::CantBeBlockedByMoreThan(count),
+        }
+    }
+
+    pub fn cant_be_blocked_except_by_n_or_more(count: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantBeBlockedExceptByNOrMore),
+            label: format!("can't be blocked except by {count} or more creatures"),
+            payload: StaticAbilityPayload::CantBeBlockedExceptByNOrMore(count),
         }
     }
     pub fn enters_tapped_ability() -> Self {

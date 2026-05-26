@@ -30407,6 +30407,25 @@ fn parse_this_creature_cant_be_blocked_except_by_black_creatures() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_phyrexian_colossus_strict_and_render_three_or_more_blockers_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Colossus")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "Trample\nPhyrexian Colossus doesn't untap during your untap step.\nPay 8 life: Untap Phyrexian Colossus.\nPhyrexian Colossus can't be blocked except by three or more creatures.",
+        )
+        .expect("Phyrexian Colossus should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("can't be blocked except by 3 or more creatures")
+            || rendered.contains("can't be blocked except by three or more creatures"),
+        "expected rendered min-blockers clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_this_creature_cant_be_blocked_by_walls() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bog Rats Variant")
         .card_types(vec![CardType::Creature])

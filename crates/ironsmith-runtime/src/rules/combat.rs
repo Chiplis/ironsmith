@@ -397,11 +397,20 @@ fn protection_prevents_blocking_with_view(
 ///
 /// Most creatures require 1 blocker. Creatures with menace require 2.
 pub fn minimum_blockers(attacker: &Object) -> usize {
-    if attacker.has_static_ability_id(StaticAbilityId::Menace) {
-        2
-    } else {
-        1
-    }
+    attacker
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => static_ability.minimum_blockers(),
+            _ => None,
+        })
+        .max()
+        .or_else(|| {
+            attacker
+                .has_static_ability_id(StaticAbilityId::Menace)
+                .then_some(2)
+        })
+        .unwrap_or(1)
 }
 
 /// Returns the minimum number of blockers required to block an attacker,
@@ -412,11 +421,20 @@ pub fn minimum_blockers_with_game(attacker: &Object, game: &crate::game_state::G
 }
 
 pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameView<'_>) -> usize {
-    if view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace) {
-        2
-    } else {
-        1
-    }
+    let abilities = view
+        .calculated_characteristics(attacker.id)
+        .map(|c| c.static_abilities)
+        .unwrap_or_else(|| get_static_abilities(attacker));
+
+    abilities
+        .iter()
+        .filter_map(|ability| ability.minimum_blockers())
+        .max()
+        .or_else(|| {
+            view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace)
+                .then_some(2)
+        })
+        .unwrap_or(1)
 }
 
 /// Returns the maximum number of blockers allowed for an attacker, if restricted.
