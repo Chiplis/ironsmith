@@ -691,13 +691,19 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
 
     let guarded_markers = [
         (
-            ["shares a card type", "share a card type"],
-            ["shares a card type", "share a card type"],
+            ["shares a card type", "share a card type"].as_slice(),
+            ["shares a card type", "share a card type"].as_slice(),
             "shares-a-card-type",
         ),
         (
-            ["card type among", "card types among"],
-            ["card type among", "card types among"],
+            ["card type among", "card types among"].as_slice(),
+            [
+                "card type among",
+                "card types among",
+                "number of distinct card types in",
+                "number of card types in",
+            ]
+            .as_slice(),
             "card-types-among",
         ),
     ];
@@ -3015,6 +3021,19 @@ CardDefinition {
             authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
             Some("compiled text contains internal marker: object-predicate-debug")
         );
+    }
+
+    #[test]
+    fn authoritative_marker_guard_accepts_equivalent_card_types_in_wording() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.normalized_oracle_text =
+            "This creature's power is equal to the number of card types among cards in all graveyards".to_string();
+        snapshot.compiled_text = Some(
+            "This creature's power is equal to the number of distinct card types in all graveyards"
+                .to_string(),
+        );
+
+        assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
     }
 
     #[test]

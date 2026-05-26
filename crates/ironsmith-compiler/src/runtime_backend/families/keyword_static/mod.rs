@@ -3799,6 +3799,27 @@ pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) ->
         }
     }
 
+    if slice_starts_with(&start_words, &["card", "type", "among"])
+        || slice_starts_with(&start_words, &["card", "types", "among"])
+    {
+        let mut scope_word_idx = 3usize;
+        if matches!(start_words.get(scope_word_idx).copied(), Some("the")) {
+            scope_word_idx += 1;
+        }
+        let scope_token_idx = token_index_for_word_index(start, scope_word_idx)?;
+        let scope_tokens = trim_commas(&start[scope_token_idx..]);
+        if let Ok(filter) = parse_object_filter(&scope_tokens, false)
+            && filter.zone == Some(Zone::Graveyard)
+        {
+            let player = match filter.owner.clone() {
+                Some(player) => player,
+                None if !filter.single_graveyard => PlayerFilter::Any,
+                None => PlayerFilter::You,
+            };
+            return Some(Value::CardTypesInGraveyard(player));
+        }
+    }
+
     let filter = parse_object_filter(start, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -5601,7 +5622,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
     }
 
-    if contains_keyword_static_phrase(&filter_words, &["card", "type"])
+    if contains_any_keyword_static_phrase(&filter_words, &[&["card", "type"], &["card", "types"]])
         && slice_contains(&filter_words, &"graveyard")
     {
         let player = if contains_keyword_static_phrase(&filter_words, &["your", "graveyard"]) {

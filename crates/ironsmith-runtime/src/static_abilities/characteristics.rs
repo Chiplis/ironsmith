@@ -45,7 +45,10 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
                 describe_value(&self.power)
             )
         } else if matches!(self.toughness, Value::SourceToughness) {
-            format!("This creature's power is {}", describe_value(&self.power))
+            format!(
+                "This creature's power is equal to {}",
+                describe_value(&self.power)
+            )
         } else {
             format!(
                 "This creature's power is {}, and its toughness is {}",
@@ -137,7 +140,7 @@ mod tests {
         let ability = CharacteristicDefiningPT::new(Value::Count(filter), Value::SourceToughness);
         assert_eq!(
             ability.display(),
-            "This creature's power is the number of land cards in your graveyard"
+            "This creature's power is equal to the number of land cards in your graveyard"
         );
     }
 

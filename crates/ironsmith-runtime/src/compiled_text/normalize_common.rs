@@ -269,6 +269,23 @@ pub(super) fn describe_possessive_choose_spec(spec: &ChooseSpec) -> String {
     }
 }
 
+fn describe_card_type_graveyard_scope(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "your graveyard".to_string(),
+        PlayerFilter::Opponent | PlayerFilter::NotYou => {
+            "your opponents' graveyards".to_string()
+        }
+        PlayerFilter::Any => "all graveyards".to_string(),
+        PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::Opponent) => {
+            "target opponent's graveyard".to_string()
+        }
+        PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::You) => {
+            "your graveyard".to_string()
+        }
+        _ => format!("{} graveyard", describe_possessive_player_filter(player)),
+    }
+}
+
 pub(super) fn join_with_and(parts: &[String]) -> String {
     match parts.len() {
         0 => String::new(),
@@ -7782,8 +7799,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the damage dealt this turn by the chosen spell".to_string()
         }
         Value::CardTypesInGraveyard(filter) => format!(
-            "the number of card types among cards in {} graveyard",
-            describe_possessive_player_filter(filter)
+            "the number of card types among cards in {}",
+            describe_card_type_graveyard_scope(filter)
         ),
         Value::Devotion { player, color } => format!(
             "{} devotion to {}",
@@ -10131,12 +10148,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let subject = describe_player_filter(player);
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
             format!(
-                "there are {} or more card types among cards in {} graveyard",
-                count_text, subject
+                "there are {} or more card types among cards in {}",
+                count_text,
+                describe_card_type_graveyard_scope(player)
             )
         }
         Condition::PlayerControlsMost { player, filter } => {
