@@ -387,6 +387,7 @@ pub struct ObjectFilter {
     pub tapped: bool,
     pub untapped: bool,
     pub attacking: bool,
+    pub attacked_this_turn: bool,
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
     pub attached_to_player: Option<PlayerFilter>,
     pub nonattacking: bool,
@@ -1530,6 +1531,9 @@ impl ObjectFilter {
             if self.blocking {
                 parts.push("blocking".to_string());
             }
+        }
+        if self.attacked_this_turn {
+            post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();

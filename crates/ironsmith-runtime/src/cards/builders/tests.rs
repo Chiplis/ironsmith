@@ -41104,6 +41104,37 @@ fn parse_additional_combat_phase_followed_by_main_phase() {
 }
 
 #[test]
+fn parse_full_throttle_two_additional_combats() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Full Throttle")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "After this main phase, there are two additional combat phases.\nAt the beginning of each combat this turn, untap all creatures that attacked this turn.",
+        )
+        .expect("Full Throttle should parse");
+
+    let effect = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>())
+        .expect("additional phases effect");
+    assert_eq!(
+        effect.phases,
+        vec![
+            crate::effects::AdditionalPhase::Combat,
+            crate::effects::AdditionalPhase::Combat,
+        ]
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("After this main phase, there are two additional combat phases"),
+        "expected Full Throttle additional-combat surface, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_must_be_blocked_each_combat_this_turn_if_able() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Must Be Blocked Variant")
         .mana_cost(ManaCost::from_pips(vec![

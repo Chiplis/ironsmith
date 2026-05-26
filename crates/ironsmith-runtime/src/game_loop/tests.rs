@@ -9512,6 +9512,40 @@ fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all_effects() 
     assert_eq!(game.turn.phase, Phase::Combat);
 }
 
+#[test]
+fn full_throttle_inserts_two_additional_combats_and_reaches_normal_next_main() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+
+    let full_throttle = CardDefinitionBuilder::new(CardId::new(), "Full Throttle")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "After this main phase, there are two additional combat phases.\nAt the beginning of each combat this turn, untap all creatures that attacked this turn.",
+        )
+        .expect("Full Throttle should parse for runtime test");
+
+    let spell_id = game.create_object_from_definition(&full_throttle, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("Full Throttle should resolve");
+
+    crate::turn::advance_phase(&mut game).expect("advance to first inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to second inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to normal phase order after added combats");
+    assert_eq!(game.turn.phase, Phase::Ending);
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_resolve_stack_entry_uses_self_replacement_branch_when_condition_is_true() {

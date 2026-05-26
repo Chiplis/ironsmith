@@ -11342,6 +11342,21 @@ fn rewrite_lexed_effect_entrypoint_splits_untap_and_additional_combat_phase() {
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_parses_two_additional_combat_phases() {
+    let text = "After this main phase, there are two additional combat phases.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Full Throttle clause");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed Full Throttle clause should parse");
+
+    let native_debug = format!("{native:?}");
+    assert!(
+        native_debug.contains("AdditionalPhases")
+            && native_debug.matches("Combat").count() >= 2,
+        "expected two additional combat phases, got {native_debug}"
+    );
+}
+
+#[test]
 fn rewrite_count_word_parser_handles_digits_and_words() {
     assert_eq!(parse_count_word_rewrite("2").expect("digit count"), 2);
     assert_eq!(parse_count_word_rewrite("three").expect("word count"), 3);
