@@ -474,7 +474,10 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }
         | TriggerSpec::EntersBattlefieldTapped { .. }
-        | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::ControllerOf(
+        | TriggerSpec::EntersBattlefieldUntapped { .. }
+        | TriggerSpec::Dies(_)
+        | TriggerSpec::DiesOneOrMore(_)
+        | TriggerSpec::DiesDuringTurn { .. } => Some(PlayerFilter::ControllerOf(
             ObjectRef::tagged(TagKey::from("triggering")),
         )),
         TriggerSpec::SpellCast { caster, .. } => {

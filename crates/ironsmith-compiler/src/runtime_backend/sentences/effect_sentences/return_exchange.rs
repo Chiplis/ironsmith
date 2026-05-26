@@ -143,6 +143,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let mut to_idx = None;
+    let mut implicit_battlefield_destination = false;
     let mut idx = tokens.len();
     while idx > 0 {
         idx -= 1;
@@ -158,6 +159,15 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         {
             to_idx = Some(idx);
             break;
+        }
+    }
+    if to_idx.is_none()
+        && let Some(under_idx) = find_index(tokens, |token| token.is_word("under"))
+    {
+        let tail_tokens = &tokens[under_idx + 1..];
+        if grammar::contains_word(tail_tokens, "control") {
+            to_idx = Some(under_idx);
+            implicit_battlefield_destination = true;
         }
     }
     let to_idx = to_idx.ok_or_else(|| {
@@ -243,7 +253,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     let is_hand =
         slice_contains(&destination_words, &"hand") || slice_contains(&destination_words, &"hands");
-    let is_battlefield = slice_contains(&destination_words, &"battlefield");
+    let is_battlefield = slice_contains(&destination_words, &"battlefield")
+        || (implicit_battlefield_destination
+            && destination_words.iter().any(|word| {
+                matches!(*word, "owner" | "owners" | "owner's" | "owners'" | "your")
+            })
+            && slice_contains(&destination_words, &"control"));
     let is_graveyard = slice_contains(&destination_words, &"graveyard")
         || slice_contains(&destination_words, &"graveyards");
     let tapped = slice_contains(&destination_words, &"tapped");

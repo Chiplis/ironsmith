@@ -40925,6 +40925,115 @@ fn score_surface_normalizes_granted_death_return_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_meathook_massacre_ii_oracle_text_strictly() {
+    let def = parse_oracle_card_definition("Meathook Massacre II");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lc = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lc.contains("whenever a creature you control dies")
+            && rendered_lc.contains("you may pay 3 life")
+            && rendered_lc.contains("if you do, return it from graveyard to the battlefield"),
+        "expected self-dies return branch to resolve as a return-to-battlefield effect, got {rendered}"
+    );
+    assert!(
+        rendered_lc.contains("whenever an opponent's creature dies")
+            && rendered_lc.contains("that object's controller may lose 3 life")
+            && rendered_lc.contains("if that object's controller doesn't, return it from graveyard to the battlefield"),
+        "expected opponent-dies branch with pay-or-return clause to compile, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn meathook_massacre_ii_triggers_when_your_creature_dies() {
+    let meathook = parse_oracle_card_definition("Meathook Massacre II");
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Meathook Self Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let meathook_id = game.create_object_from_definition(&meathook, alice, Zone::Battlefield);
+    let dying = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(dying).expect("dying creature should exist"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            dying,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let meathook_triggers: Vec<_> = triggered
+        .iter()
+        .filter(|entry| entry.source == meathook_id)
+        .collect();
+    assert_eq!(
+        meathook_triggers.len(),
+        1,
+        "Meathook Massacre II should trigger once when your creature dies"
+    );
+    assert_eq!(game.life_total(alice), 20);
+    assert_eq!(game.life_total(bob), 20);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn meathook_massacre_ii_triggers_when_opponent_creature_dies() {
+    let meathook = parse_oracle_card_definition("Meathook Massacre II");
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Meathook Opponent Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let meathook_id = game.create_object_from_definition(&meathook, alice, Zone::Battlefield);
+    let bob = PlayerId::from_index(1);
+    let dying = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(dying).expect("dying creature should exist"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            dying,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let meathook_triggers: Vec<_> = triggered
+        .iter()
+        .filter(|entry| entry.source == meathook_id)
+        .collect();
+    assert_eq!(
+        meathook_triggers.len(),
+        1,
+        "Meathook Massacre II should trigger once when an opponent's creature dies"
+    );
+    assert_eq!(game.life_total(alice), 20);
+    assert_eq!(game.life_total(bob), 20);
+}
+
 #[test]
 fn score_surface_normalizes_attached_count_anthem() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Attached Count Anthem Variant")
