@@ -27163,9 +27163,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             "cast"
         };
+        let tag = cast_tagged.tag.as_str();
+        let helper_tag = tag.starts_with("targeted_")
+            || tag.starts_with("__source_")
+            || tag == "__it__"
+            || matches!(tag, "exiled" | "revealed" | "looked" | "chosen" | "searched")
+            || crate::cards::is_sentence_helper_tag(tag, "exiled")
+            || crate::cards::is_sentence_helper_tag(tag, "revealed")
+            || crate::cards::is_sentence_helper_tag(tag, "looked")
+            || crate::cards::is_sentence_helper_tag(tag, "chosen")
+            || crate::cards::is_sentence_helper_tag(tag, "searched");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.as_copy {
-            let tag = cast_tagged.tag.as_str();
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
                 !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
             });
@@ -27174,6 +27183,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else {
                 format!("a copy of {}", describe_choose_spec(&spec))
             }
+        } else if helper_tag {
+            "that card".to_string()
         } else {
             describe_choose_spec(&spec)
         };

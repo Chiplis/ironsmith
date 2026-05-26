@@ -1223,6 +1223,12 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::CreatureIsAttackingYou => {
             Some("a creature is attacking you".to_string())
         }
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) => {
+            Some(format!(
+                "you dealt combat damage to a player this turn with a {}",
+                subtype.to_string().to_ascii_lowercase()
+            ))
+        }
     }
 }
 
@@ -1611,6 +1617,10 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                 })
             })
         }
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) => game
+            .turn_store
+            .turn_history
+            .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype),
     }
 }
 

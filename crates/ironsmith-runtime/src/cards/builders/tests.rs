@@ -40994,3 +40994,40 @@ fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
         "expected Trove Tracker death trigger to compile, got {rendered}"
     );
 }
+
+#[test]
+fn parse_oracle_knowledge_exploitation_supports_prowl_keyword_line() {
+    let def = parse_oracle_card_definition("Knowledge Exploitation");
+    assert!(
+        !def.alternative_casts.is_empty(),
+        "Knowledge Exploitation should compile with a prowl alternative cost"
+    );
+
+    let has_prowl = def.alternative_casts.iter().any(|method| {
+        matches!(
+            method.cast_condition(),
+            Some(crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Rogue
+            ))
+        )
+    });
+    assert!(
+        has_prowl,
+        "Knowledge Exploitation should encode Prowl with Rogue-combat-damage condition"
+    );
+}
+
+#[test]
+fn knowledge_exploitation_compiled_text_keeps_prowl_and_target_opponent_library_clause() {
+    let def = parse_oracle_card_definition("Knowledge Exploitation");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Prowl {3}{U}"),
+        "expected Knowledge Exploitation to render the prowl keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("search target opponent's library for an instant or sorcery"),
+        "expected Knowledge Exploitation to keep search-target clause, got {rendered}"
+    );
+}

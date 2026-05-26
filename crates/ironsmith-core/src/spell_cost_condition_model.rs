@@ -1,4 +1,4 @@
-use crate::{CardType, Condition, ObjectFilter, PlayerFilter};
+use crate::{CardType, Condition, ObjectFilter, PlayerFilter, Subtype};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThisSpellCostCondition {
@@ -49,4 +49,5 @@ pub enum ThisSpellCostCondition {
     NotStartingPlayer,
     CreatureCardPutIntoYourGraveyardThisTurn,
     CreatureIsAttackingYou,
+    YouDealtCombatDamageToPlayerWithSubtypeThisTurn(Subtype),
 }
