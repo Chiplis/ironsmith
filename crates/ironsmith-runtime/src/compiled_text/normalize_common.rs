@@ -757,6 +757,8 @@ pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String 
         normalized = "This token gets +1/+1.".to_string();
     } else if normalized == "Can't block." {
         normalized = "This token can't block.".to_string();
+    } else if normalized == "Can't be blocked." {
+        normalized = "This token can't be blocked.".to_string();
     }
     if is_keyword_style_line(&normalized) {
         normalized

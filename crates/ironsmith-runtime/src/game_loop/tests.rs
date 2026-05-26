@@ -27851,6 +27851,55 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sleep_with_the_fishes_creates_unblockable_fish_token() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::effects::CreateTokenEffect;
+    use crate::ids::CardId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sleep = CardDefinitionBuilder::new(CardId::new(), "Sleep with the Fishes")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nWhen this Aura enters, tap enchanted creature and you create a 1/1 blue Fish creature token with \"This token can't be blocked.\"\nEnchanted creature doesn't untap during its controller's untap step.",
+        )
+        .expect("Sleep with the Fishes should parse");
+
+    let create_effect = sleep
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>()),
+            _ => None,
+        })
+        .expect("Sleep with the Fishes trigger should create a token");
+
+    let fish_id = game.create_object_from_definition(&create_effect.token, alice, Zone::Battlefield);
+    let blocker_id = create_creature(&mut game, "Would-be Blocker", bob, 2, 2);
+    game.refresh_continuous_state();
+
+    assert!(
+        !game.can_be_blocked(fish_id),
+        "Fish token from Sleep with the Fishes should be unblockable"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(fish_id).expect("fish token should exist"),
+            game.object(blocker_id).expect("blocker should exist"),
+            &game,
+        ),
+        "opponent creature should not be able to block Sleep with the Fishes Fish token"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn absolute_virtue_blocks_opponent_controlled_sources_from_targeting_you() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::CardId;

@@ -608,7 +608,7 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
         (
             ["can't be blocked"].as_slice(),
-            ["can't be blocked"].as_slice(),
+            ["can't be blocked", "unblockable"].as_slice(),
             "cant-be-blocked",
         ),
         (
@@ -3287,6 +3287,11 @@ CardDefinition {
         snapshot.compiled_text = Some(
             "Choose target creature you control. That creature deals damage equal to its power to target creature an opponent controls.".to_string(),
         );
+        assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
+
+        snapshot.normalized_oracle_text =
+            "This token can't be blocked until end of turn.".to_string();
+        snapshot.compiled_text = Some("This token is unblockable until end of turn.".to_string());
         assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
     }
 
