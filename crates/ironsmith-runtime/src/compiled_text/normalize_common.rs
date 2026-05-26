@@ -8618,10 +8618,14 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .join(" ");
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
         let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
+        let pt_noun_phrase = format!("{pt} {noun_phrase}");
         if plural_target {
-            format!("{target_text} become {pt} {noun_phrase}")
+            format!("{target_text} become {pt_noun_phrase}")
         } else {
-            format!("{target_text} becomes a {pt} {noun_phrase}")
+            format!(
+                "{target_text} becomes {}",
+                with_indefinite_article(&pt_noun_phrase)
+            )
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {
@@ -8639,6 +8643,9 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
+    let target_mentions_artifact = target_text.to_ascii_lowercase().contains("artifact");
+    let adds_artifact_type = card_types.iter().any(|card_type| *card_type == CardType::Artifact);
+    let artifact_type_is_redundant = target_mentions_artifact && adds_artifact_type;
     let render_as_addition_to_other_types =
         (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
             || (preserves_land_types
@@ -8647,7 +8654,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
                     .target_spec
                     .as_ref()
                     .is_some_and(is_up_to_land_subtype_target));
-    if render_as_addition_to_other_types {
+    if render_as_addition_to_other_types && !artifact_type_is_redundant {
         if plural_target {
             text.push_str(" in addition to their other types");
         } else {

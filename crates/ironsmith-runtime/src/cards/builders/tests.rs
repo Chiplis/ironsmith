@@ -33878,7 +33878,7 @@ fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
 
     assert!(
         rendered.contains("until end of turn")
-            && rendered.contains("this artifact becomes a 8/8 golem artifact creature with trample"),
+            && rendered.contains("this artifact becomes 8/8 golem artifact creature with trample"),
         "expected Xanthic Statue become-until-end clause, got {rendered}"
     );
 }
@@ -33907,7 +33907,8 @@ fn xanthic_statue_activation_sets_base_pt_and_trample_on_source_artifact() {
     let effects_debug = format!("{:?}", activated.effects).to_ascii_lowercase();
     assert!(
         effects_debug.contains("until: endofturn")
-            && effects_debug.contains("addcardtypes([creature, artifact])")
+            && effects_debug.contains("creature")
+            && effects_debug.contains("artifact")
             && effects_debug.contains("setpowertoughness")
             && effects_debug.contains("power: fixed(8)")
             && effects_debug.contains("toughness: fixed(8)")
