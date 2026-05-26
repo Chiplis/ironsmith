@@ -272,6 +272,40 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
     Ok(Some(granted))
 }
 
+pub(crate) fn parse_landwalk_as_though_block_override_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let normalized = normalize_cant_words(tokens);
+    let normalized_refs = normalized.iter().map(String::as_str).collect::<Vec<_>>();
+    let Some(can_idx) = anthem_find_word_sequence_index(&normalized_refs, &["can", "be", "blocked"])
+    else {
+        return Ok(None);
+    };
+    if can_idx == 0 {
+        return Ok(None);
+    }
+    let tail = &normalized_refs[can_idx + 3..];
+    if tail.len() != 6
+        || !matches!(tail[0..5], ["as", "though", "they", "didnt", "have"] | ["as", "though", "they", "didn't", "have"])
+        || !tail[5].ends_with("walk")
+    {
+        return Ok(None);
+    }
+
+    let Some(subject_end) = token_index_for_word_index(tokens, can_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    let AnthemSubjectAst::Filter(filter) = parse_anthem_subject(&subject_tokens)? else {
+        return Ok(None);
+    };
+
+    let removed = StaticAbility::keyword_marker(tail[5]);
+    Ok(Some(StaticAbilityAst::Static(StaticAbility::remove_ability(
+        filter, removed,
+    ))))
+}
+
 pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {

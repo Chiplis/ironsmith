@@ -11407,17 +11407,17 @@ fn parse_anger_graveyard_condition_with_land_control() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn test_parse_landwalk_as_though_clause_is_not_partially_parsed() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Landwalk Override Variant")
+fn test_parse_quagmire_landwalk_as_though_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Quagmire")
         .card_types(vec![CardType::Enchantment])
         .parse_text(
-            "Creatures with islandwalk can be blocked as though they didn't have islandwalk.",
+            "Creatures with swampwalk can be blocked as though they didn't have swampwalk.",
         )
-        .expect_err("landwalk as-though clause should not partially parse");
-    let message = format!("{err:?}");
+        .expect("quagmire landwalk as-though clause should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        message.contains("could not find verb in effect clause") || message.contains("unsupported"),
-        "expected actionable parse failure, got {message}"
+        rendered.contains("as though they didn't have swampwalk"),
+        "expected rendered as-though swampwalk override clause, got {rendered}"
     );
 }
 
