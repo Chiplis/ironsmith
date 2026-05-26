@@ -7007,7 +7007,11 @@ pub(super) fn normalize_search_you_own_clause(text: &str) -> Option<String> {
     Some(format!("Search your library for {selection}{tail}"))
 }
 
-pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {
+pub(super) fn describe_mode_choice_header(
+    max: &Value,
+    min: Option<&Value>,
+    mode_count: Option<usize>,
+) -> String {
     match (min, max) {
         (Some(Value::Fixed(min_value)), Value::Fixed(max_value)) => {
             match (*min_value, *max_value) {
@@ -7016,6 +7020,9 @@ pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> S
                 (1, 2) => "Choose one or both —".to_string(),
                 (1, n) if n > 2 => "Choose one or more —".to_string(),
                 (0, n) => {
+                    if mode_count == Some(n as usize) && n > 1 {
+                        return "Choose any number —".to_string();
+                    }
                     if let Some(word) = number_word(n) {
                         format!("Choose up to {word} —")
                     } else {

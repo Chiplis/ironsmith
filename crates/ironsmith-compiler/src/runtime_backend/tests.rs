@@ -11552,6 +11552,24 @@ fn rewrite_modal_header_parse_all_reports_cut_for_partial_choose_range() {
 }
 
 #[test]
+fn rewrite_modal_header_parse_all_accepts_choose_any_number_clause() {
+    use super::grammar::primitives::parse_all;
+
+    let tokens = lex_line("Choose any number", 0)
+        .expect("rewrite lexer should classify choose-any-number modal header");
+    let parsed = parse_all(
+        &tokens,
+        super::grammar::structure::parse_modal_header_choose_spec,
+        "modal-header",
+    )
+    .expect("choose-any-number modal header should parse");
+
+    let choose_spec = parsed.expect("choose-any-number header should produce a choose spec");
+    assert_eq!(choose_spec.min, crate::effect::Value::Fixed(0));
+    assert_eq!(choose_spec.max, None);
+}
+
+#[test]
 fn rewrite_type_line_error_mentions_type_line_subtypes_after_dash() {
     let error = parse_error_message(parse_type_line_rewrite("Legendary Creature — !"));
     assert!(

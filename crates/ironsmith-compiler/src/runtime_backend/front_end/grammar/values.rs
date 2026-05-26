@@ -552,6 +552,10 @@ pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardText
 pub(crate) fn parse_modal_choose_range(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(Option<Value>, Option<Value>)>, CardTextError> {
+    if primitives::parse_prefix(tokens, primitives::phrase(&["any", "number"])).is_some() {
+        return Ok(Some((Some(Value::Fixed(0)), None)));
+    }
+
     if let Some((range, _)) = parse_count_range_prefix(tokens) {
         return Ok(Some(range));
     }
