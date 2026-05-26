@@ -5691,6 +5691,24 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             return Ok(Some(Value::CreatureTypesAmong(filter)));
         }
     }
+    if slice_starts_with(&filter_words, &["card", "type", "among"])
+        || slice_starts_with(&filter_words, &["card", "types", "among"])
+    {
+        let Some(after_among_token_idx) = token_index_for_word_index(filter_tokens, 3) else {
+            return Ok(None);
+        };
+        let mut end_token_idx = filter_tokens.len();
+        if let Some(period_idx) = filter_tokens[after_among_token_idx..]
+            .iter()
+            .position(|token| token.is_period())
+        {
+            end_token_idx = after_among_token_idx + period_idx;
+        }
+        let card_scope_tokens = trim_commas(&filter_tokens[after_among_token_idx..end_token_idx]);
+        if let Ok(filter) = parse_object_filter(&card_scope_tokens, false) {
+            return Ok(Some(Value::CardTypesAmong(filter)));
+        }
+    }
 
     let has_card_type_among = contains_any_keyword_static_phrase(
         &filter_words,

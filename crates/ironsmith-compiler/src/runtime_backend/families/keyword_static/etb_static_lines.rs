@@ -1882,6 +1882,22 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
             multiplier,
         ));
     }
+    if etb_word_slice_starts_with(&filter_words, &["card", "type", "among"])
+        || etb_word_slice_starts_with(&filter_words, &["card", "types", "among"])
+    {
+        let mut scope_tokens = &filter_tokens[3..];
+        if scope_tokens
+            .first()
+            .is_some_and(|token| token.is_word("the"))
+        {
+            scope_tokens = &scope_tokens[1..];
+        }
+        let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
+        return Some(scale_where_x_number_value(
+            Value::CardTypesAmong(scope_filter),
+            multiplier,
+        ));
+    }
     if matches!(
         filter_words.as_slice(),
         ["creature", "that", "died", "this", "turn"]

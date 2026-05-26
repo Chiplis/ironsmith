@@ -42677,3 +42677,86 @@ fn knowledge_exploitation_compiled_text_keeps_prowl_and_target_opponent_library_
         "expected Knowledge Exploitation to keep search-target clause, got {rendered}"
     );
 }
+
+#[test]
+fn parse_oracle_loot_the_key_to_everything_strict_regression() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let debug = format!("{:?}", def.abilities);
+
+    assert!(
+        debug.contains("CardTypesAmong"),
+        "expected Loot trigger to bind X to CardTypesAmong, got {debug}"
+    );
+    assert!(
+        debug.contains("controller: Some(You)")
+            && debug.contains("excluded_card_types: [Land]")
+            && debug.contains("other: true"),
+        "expected Loot trigger to scope to other nonland permanents you control, got {debug}"
+    );
+}
+
+#[test]
+fn loot_the_key_to_everything_compiled_text_keeps_card_types_among_marker() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("where x is the number of card types among other nonland permanents you control"),
+        "expected Loot compiled text to preserve card-types-among clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may play those cards this turn"),
+        "expected Loot compiled text to preserve temporary play permission, got {rendered}"
+    );
+}
+
+#[test]
+fn loot_the_key_to_everything_runtime_count_uses_distinct_card_types_among_other_nonlands() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CardTypesAmong"),
+        "expected Loot upkeep X value to use CardTypesAmong, got {debug}"
+    );
+
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let source_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+
+    let sol_ring = parse_oracle_card_definition("Sol Ring");
+    let llanowar_elves = parse_oracle_card_definition("Llanowar Elves");
+    game.create_object_from_definition(&sol_ring, alice, crate::zone::Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves, alice, crate::zone::Zone::Battlefield);
+
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+        zone: Some(crate::zone::Zone::Battlefield),
+        controller: Some(crate::target::PlayerFilter::You),
+        excluded_card_types: vec![crate::types::CardType::Land],
+        other: true,
+        ..Default::default()
+    });
+    let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
+        .expect("Loot upkeep X value should resolve");
+    assert_eq!(resolved, 2, "artifact + creature should produce two card types");
+}
+
+#[test]
+fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlands() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let source_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+        zone: Some(crate::zone::Zone::Battlefield),
+        controller: Some(crate::target::PlayerFilter::You),
+        excluded_card_types: vec![crate::types::CardType::Land],
+        other: true,
+        ..Default::default()
+    });
+    let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
+        .expect("Loot upkeep X value should resolve");
+    assert_eq!(resolved, 0, "no other nonland permanents should produce X=0");
+}

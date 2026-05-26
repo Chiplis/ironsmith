@@ -10806,6 +10806,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(exile_top) =
+                filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+            && let Some(grant_play) =
+                filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) = describe_exile_top_then_play(exile_top, grant_play)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -18811,6 +18822,46 @@ fn describe_exile_top_then_play_without_paying_mana(
     };
     Some(format!(
         "That player exiles the top {count_text} {noun} of their library. Until end of turn, you may play {cards_text} without paying {mana_cost_text}"
+    ))
+}
+
+fn describe_exile_top_then_play(
+    exile_top: &crate::effects::ExileTopOfLibraryEffect,
+    grant_play: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    let Some(first_tag) = exile_top.moved_tags.first() else {
+        return None;
+    };
+    if grant_play.tag != *first_tag
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant_play.player != exile_top.player
+    {
+        return None;
+    }
+
+    let singular_count = matches!(exile_top.count, Value::Fixed(1));
+    let exile_clause = match &exile_top.count {
+        Value::Fixed(n) if *n >= 0 => {
+            let count_u32 = *n as u32;
+            let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
+            let noun = if *n == 1 { "card" } else { "cards" };
+            let owner = describe_possessive_player_filter(&exile_top.player);
+            format!("Exile the top {count_text} {noun} of {owner} library")
+        }
+        _ => {
+            let owner = describe_possessive_player_filter(&exile_top.player);
+            let value_text = describe_value(&exile_top.count);
+            if value_text == "X" {
+                format!("Exile the top X cards of {owner} library")
+            } else {
+                format!("Exile the top X cards of {owner} library, where X is {value_text}")
+            }
+        }
+    };
+    let cards_text = if singular_count { "that card" } else { "those cards" };
+    let verb = if grant_play.allow_land { "play" } else { "cast" };
+    Some(format!(
+        "{exile_clause}. You may {verb} {cards_text} this turn"
     ))
 }
 
