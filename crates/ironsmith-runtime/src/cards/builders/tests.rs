@@ -41296,8 +41296,7 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
             {
                 has_set_life_to_ten = true;
             }
-            if let Some(control_player) =
-                effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
+            if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
                 && format!("{:?}", control_player.start)
                     .to_ascii_lowercase()
                     .contains("nextturn")
@@ -41316,7 +41315,6 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
         "expected Sorin Markov to compile a control-player-during-next-turn effect"
     );
 }
-
 #[test]
 fn eruth_tormented_prophet_parses_strictly_as_draw_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eruth, Tormented Prophet")
