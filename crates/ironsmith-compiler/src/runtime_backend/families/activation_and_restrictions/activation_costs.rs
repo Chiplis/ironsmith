@@ -1524,6 +1524,7 @@ pub(crate) fn parse_cant_clause(
         | ["this", "cant", "be", "blocked", "this", "turn"]
         | ["cant", "be", "blocked", "this", "turn"] => return Ok(None),
         ["this", "creature", "cant", "be", "blocked"] => StaticAbility::unblockable(),
+        ["this", "token", "cant", "be", "blocked"] => StaticAbility::unblockable(),
         ["this", "cant", "be", "blocked"] => StaticAbility::unblockable(),
         ["cant", "be", "blocked"] => StaticAbility::unblockable(),
         _ => {
@@ -1572,6 +1573,26 @@ mod tests {
                 || display
                     .contains("cant attack or block unless there are seven or more cards in exile"),
             "expected original conditional attack/block restriction text, got {display}"
+        );
+    }
+
+    #[test]
+    fn parse_this_token_cant_be_blocked_clause() {
+        let tokens = tokenize_line("This token can't be blocked.", 0);
+
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("this-token-cant-be-blocked clause should parse")
+            .expect("expected unblockable static ability");
+
+        assert_eq!(abilities.len(), 1);
+        let display = abilities[0].display().to_ascii_lowercase();
+        let debug = format!("{:?}", abilities[0]).to_ascii_lowercase();
+        assert!(
+            display.contains("can't be blocked")
+                || display.contains("cant be blocked")
+                || display.contains("unblockable")
+                || debug.contains("unblockable"),
+            "expected unblockable static ability, display={display}, debug={debug}"
         );
     }
 }

@@ -3725,6 +3725,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
                 "this token can't attack or block".to_string(),
             )));
+        } else if has_words(&["cant", "be", "blocked"]) {
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::unblockable()));
         } else if has_words(&["cant", "block"]) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::cant_block()));
         }
@@ -4313,6 +4315,20 @@ mod parse_compile_tests {
         assert!(
             !debug.contains("label: \"Cumulative upkeep {G}\""),
             "quoted cumulative upkeep should not remain a keyword marker, got {debug}"
+        );
+    }
+
+    #[test]
+    fn token_definition_lowers_quoted_unblockable_keyword() {
+        let source_text = "1/1 blue Fish creature token with \"This token can't be blocked.\"";
+
+        let def = token_definition_for(source_text)
+            .expect("quoted unblockable token text should build token");
+        let debug = format!("{def:#?}");
+
+        assert!(
+            debug.contains("Unblockable"),
+            "expected quoted unblockable token text to lower into a static ability, got {debug}"
         );
     }
 

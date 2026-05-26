@@ -20863,6 +20863,30 @@ fn parse_mercenary_token_with_tap_pump_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sleep_with_the_fishes_keeps_unblockable_token_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sleep with the Fishes")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nWhen this Aura enters, tap enchanted creature and you create a 1/1 blue Fish creature token with \"This token can't be blocked.\"\nEnchanted creature doesn't untap during its controller's untap step.",
+        )
+        .expect("Sleep with the Fishes should parse");
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("can't be blocked") || compiled.contains("cant be blocked"),
+        "expected compiled text to keep unblockable token clause, got {compiled}"
+    );
+    assert!(
+        compiled.contains("doesn't untap during its controller's untap step")
+            || compiled.contains("doesnt untap during its controller's untap step")
+            || compiled.contains("doesnt untap during its controllers untap step"),
+        "expected compiled text to keep enchanted-creature untap restriction, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_token_becomes_tapped_damage_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Trigger Token Variant")
         .card_types(vec![CardType::Creature])

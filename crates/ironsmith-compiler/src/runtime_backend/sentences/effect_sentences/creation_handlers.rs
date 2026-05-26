@@ -1075,6 +1075,12 @@ pub(crate) fn parse_create(
     }
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
 
+    let grants_unblockable = word_slice_contains_sequence(
+        &tail_words,
+        &["this", "token", "cant", "be", "blocked"],
+    ) || word_slice_contains_sequence(&tail_words, &["this", "creature", "cant", "be", "blocked"])
+        || word_slice_contains_sequence(&tail_words, &["cant", "be", "blocked"]);
+
     if let Some((start, end)) = rules_text_range {
         if start < end && end <= modifier_tail_words.len() {
             modifier_tail_words = modifier_tail_words[..start]
@@ -1120,6 +1126,9 @@ pub(crate) fn parse_create(
     let mut granted_abilities = Vec::new();
     if word_slice_contains(&modifier_tail_words, "decayed") {
         granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
+    }
+    if grants_unblockable {
+        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Unblockable));
     }
     let references_iterated_object = attached_to_target
         .as_ref()
