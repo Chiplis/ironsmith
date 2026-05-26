@@ -30150,6 +30150,9 @@ fn describe_mana_usage_restriction(
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
+        crate::ability::ManaUsageRestriction::ActivateAbility => {
+            Some("Spend this mana only to activate abilities".to_string())
+        }
     }
 }
 
