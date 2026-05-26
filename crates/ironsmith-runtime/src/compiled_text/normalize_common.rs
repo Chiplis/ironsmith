@@ -9154,6 +9154,7 @@ pub(super) fn describe_until(until: &Until) -> String {
         Until::Forever => "forever".to_string(),
         Until::EndOfTurn => "until end of turn".to_string(),
         Until::YourNextTurn => "until your next turn".to_string(),
+        Until::YourNextTurnEnd => "until the end of your next turn".to_string(),
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),

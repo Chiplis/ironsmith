@@ -4973,6 +4973,10 @@ fn compile_subject_verb_effect(
                     crate::game_state::PlayerControlStart::Immediate,
                     crate::game_state::PlayerControlDuration::UntilEndOfTurn,
                 ),
+                ControlDurationAst::UntilYourNextTurnEnd => (
+                    crate::game_state::PlayerControlStart::Immediate,
+                    crate::game_state::PlayerControlDuration::UntilEndOfTurn,
+                ),
                 ControlDurationAst::DuringNextTurn => (
                     crate::game_state::PlayerControlStart::NextTurn,
                     crate::game_state::PlayerControlDuration::UntilEndOfTurn,

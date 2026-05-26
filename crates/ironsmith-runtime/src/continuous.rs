@@ -2171,6 +2171,7 @@ fn continuous_effect_duration_is_active(
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.turn.active_player == effect.controller)
         }
+        Until::YourNextTurnEnd => game.turn.turn_number <= effect.expires_end_of_turn,
         Until::YourNextUpkeep => {
             if game.turn.turn_number <= effect.expires_end_of_turn
                 || game.turn.active_player != effect.controller

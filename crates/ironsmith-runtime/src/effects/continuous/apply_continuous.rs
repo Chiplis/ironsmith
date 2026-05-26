@@ -10,7 +10,7 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::ids::ObjectId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::ChooseSpec;
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -52,6 +52,72 @@ pub type ApplyContinuousEffect = ironsmith_core::ApplyContinuousEffect<
     crate::ConditionExpr,
     EffectSourceType,
 >;
+
+fn next_turn_number_for_player(game: &GameState, player: PlayerId) -> u32 {
+    if game.turn_store.turn_order.is_empty() {
+        return game.turn.turn_number;
+    }
+
+    let mut simulated_active_player = game.turn.active_player;
+    let mut simulated_turn_number = game.turn.turn_number;
+    let mut simulated_extra_turns = game.turn_store.extra_turns.clone();
+    let mut simulated_skip_next_turn = game.turn_store.skip_next_turn.clone();
+    let max_iterations = game
+        .turn_store
+        .turn_order
+        .len()
+        .saturating_mul(16)
+        .saturating_add(simulated_extra_turns.len().saturating_mul(2))
+        .saturating_add(16)
+        .max(1);
+
+    for _ in 0..max_iterations {
+        let next_player = if !simulated_extra_turns.is_empty() {
+            simulated_extra_turns.remove(0)
+        } else {
+            let current_index = game
+                .turn_store
+                .turn_order
+                .iter()
+                .position(|&p| p == simulated_active_player)
+                .unwrap_or(0);
+
+            let mut next_index = (current_index + 1) % game.turn_store.turn_order.len();
+            let start_index = next_index;
+
+            loop {
+                let candidate = game.turn_store.turn_order[next_index];
+                let is_in_game = game.player(candidate).is_some_and(|p| p.is_in_game());
+
+                if is_in_game {
+                    if simulated_skip_next_turn.remove(&candidate) {
+                        next_index = (next_index + 1) % game.turn_store.turn_order.len();
+                        if next_index == start_index {
+                            break;
+                        }
+                        continue;
+                    }
+                    break;
+                }
+
+                next_index = (next_index + 1) % game.turn_store.turn_order.len();
+                if next_index == start_index {
+                    break;
+                }
+            }
+
+            game.turn_store.turn_order[next_index]
+        };
+
+        simulated_turn_number = simulated_turn_number.saturating_add(1);
+        simulated_active_player = next_player;
+        if simulated_active_player == player {
+            return simulated_turn_number;
+        }
+    }
+
+    game.turn.turn_number.saturating_add(1)
+}
 
 fn resolve_target(
     effect: &ApplyContinuousEffect,
@@ -363,6 +429,7 @@ impl EffectExecutor for ApplyContinuousEffect {
                 | Until::YourNextTurn
                 | Until::YourNextUpkeep
                 | Until::ControllersNextUntapStep => game.turn.turn_number,
+                Until::YourNextTurnEnd => next_turn_number_for_player(game, ctx.controller),
                 _ => u32::MAX,
             };
             let mut effect = ContinuousEffect::new(
@@ -498,6 +565,33 @@ mod tests {
 
         assert_eq!(game.soulbond_partner(paired_a), None);
         assert_eq!(game.soulbond_partner(paired_b), None);
+    }
+
+    #[test]
+    fn change_controller_until_next_turn_end_survives_controller_next_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.active_player = bob;
+        let source = create_creature(&mut game, "Source", alice);
+        let target = create_creature(&mut game, "Target", bob);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = Effect::new(ApplyContinuousEffect::new(
+            EffectTarget::Specific(target),
+            Modification::ChangeController(alice),
+            Until::YourNextTurnEnd,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("execute control change");
+        assert_eq!(game.current_controller(target), Some(alice));
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, alice);
+        assert_eq!(game.current_controller(target), Some(alice));
+
+        game.next_turn();
+        assert_eq!(game.current_controller(target), Some(bob));
     }
 
     #[test]

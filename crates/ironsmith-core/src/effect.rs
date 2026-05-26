@@ -65,6 +65,7 @@ pub enum Until {
     Forever,
     EndOfTurn,
     YourNextTurn,
+    YourNextTurnEnd,
     YourNextUpkeep,
     ControllersNextUntapStep,
     EndOfCombat,

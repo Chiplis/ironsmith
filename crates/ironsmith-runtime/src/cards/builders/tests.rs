@@ -11477,6 +11477,25 @@ fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_treasure_nabber_keeps_next_turn_end_control_duration() {
+    let def = parse_oracle_card_definition("Treasure Nabber");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever an opponent taps an artifact for mana")
+            && rendered.contains("gain control of that artifact until the end of your next turn"),
+        "expected Treasure Nabber to preserve the next-turn-end control duration, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChangeControllerToEffectController")
+            && debug.contains("YourNextTurnEnd"),
+        "expected Treasure Nabber to lower as a control-change duration through your next turn end, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Rescuer")
         .mana_cost(ManaCost::from_pips(vec![

@@ -695,6 +695,7 @@ impl RestrictionEffectInstance {
                 !(current_turn > self.expires_end_of_turn
                     && game.turn.active_player == self.controller)
             }
+            crate::effect::Until::YourNextTurnEnd => current_turn <= self.expires_end_of_turn,
             crate::effect::Until::YourNextUpkeep => {
                 if current_turn <= self.expires_end_of_turn
                     || game.turn.active_player != self.controller
@@ -749,6 +750,7 @@ impl GoadEffectInstance {
                 !(current_turn > self.expires_end_of_turn
                     && game.turn.active_player == self.goaded_by)
             }
+            crate::effect::Until::YourNextTurnEnd => current_turn <= self.expires_end_of_turn,
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),

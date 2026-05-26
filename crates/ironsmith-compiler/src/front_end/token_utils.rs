@@ -9,6 +9,7 @@ pub enum TurnDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilYourNextTurnEnd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -556,11 +557,11 @@ pub fn parse_turn_duration_prefix(
         ),
         (
             &["until", "the", "end", "of", "your", "next", "turn"],
-            TurnDurationPhrase::UntilYourNextTurn,
+            TurnDurationPhrase::UntilYourNextTurnEnd,
         ),
         (
             &["until", "end", "of", "your", "next", "turn"],
-            TurnDurationPhrase::UntilYourNextTurn,
+            TurnDurationPhrase::UntilYourNextTurnEnd,
         ),
         (
             &["until", "the", "end", "of", "turn"],
@@ -595,11 +596,11 @@ pub fn parse_turn_duration_suffix(
         ),
         (
             &["until", "the", "end", "of", "your", "next", "turn"],
-            TurnDurationPhrase::UntilYourNextTurn,
+            TurnDurationPhrase::UntilYourNextTurnEnd,
         ),
         (
             &["until", "end", "of", "your", "next", "turn"],
-            TurnDurationPhrase::UntilYourNextTurn,
+            TurnDurationPhrase::UntilYourNextTurnEnd,
         ),
         (
             &["until", "the", "end", "of", "turn"],

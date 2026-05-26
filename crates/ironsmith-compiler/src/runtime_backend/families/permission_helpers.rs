@@ -406,7 +406,9 @@ fn permission_lifetime_from_turn_duration(duration: TurnDurationPhrase) -> Permi
     match duration {
         TurnDurationPhrase::ThisTurn => PermissionLifetime::ThisTurn,
         TurnDurationPhrase::UntilEndOfTurn => PermissionLifetime::UntilEndOfTurn,
-        TurnDurationPhrase::UntilYourNextTurn => PermissionLifetime::UntilYourNextTurn,
+        TurnDurationPhrase::UntilYourNextTurn | TurnDurationPhrase::UntilYourNextTurnEnd => {
+            PermissionLifetime::UntilYourNextTurn
+        }
     }
 }
 

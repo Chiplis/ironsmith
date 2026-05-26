@@ -267,14 +267,23 @@ pub(crate) fn parse_gain_control(
     let duration = parse_control_duration(duration_tokens)?;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let base_effect = match target_ast {
-        TargetAst::Player(filter, _) => EffectAst::subject_verb_control_player(
-            player,
-            PlayerFilter::Target(Box::new(filter)),
-            duration,
-        ),
+        TargetAst::Player(filter, _) => {
+            if matches!(duration, ControlDurationAst::UntilYourNextTurnEnd) {
+                return Err(CardTextError::ParseError(
+                    "unsupported player-control duration until the end of your next turn"
+                        .to_string(),
+                ));
+            }
+            EffectAst::subject_verb_control_player(
+                player,
+                PlayerFilter::Target(Box::new(filter)),
+                duration,
+            )
+        }
         _ => {
             let until = match duration {
                 ControlDurationAst::UntilEndOfTurn => Until::EndOfTurn,
+                ControlDurationAst::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
                 ControlDurationAst::Forever => Until::Forever,
                 ControlDurationAst::AsLongAsYouControlSource => Until::YouStopControllingThis,
                 ControlDurationAst::DuringNextTurn => {
@@ -336,6 +345,9 @@ pub(crate) fn parse_control_duration(
 
     let has_until = grammar::contains_word(tokens, "until");
     let has_end = grammar::contains_word(tokens, "end");
+    if has_until && has_end && has_next && has_turn {
+        return Ok(ControlDurationAst::UntilYourNextTurnEnd);
+    }
     if has_until && has_end && has_turn {
         return Ok(ControlDurationAst::UntilEndOfTurn);
     }

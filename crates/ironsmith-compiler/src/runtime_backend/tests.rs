@@ -4729,7 +4729,7 @@ fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
 
     assert_eq!(
         prefix_duration,
-        super::token_primitives::TurnDurationPhrase::UntilYourNextTurn
+        super::token_primitives::TurnDurationPhrase::UntilYourNextTurnEnd
     );
     assert_eq!(
         TokenWordView::new(prefix_remainder).to_word_refs(),

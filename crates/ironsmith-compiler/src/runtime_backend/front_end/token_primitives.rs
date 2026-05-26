@@ -20,6 +20,7 @@ pub(crate) enum TurnDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilYourNextTurnEnd,
 }
 
 #[allow(dead_code)]
@@ -37,6 +38,7 @@ fn until_from_turn_duration_phrase(duration: TurnDurationPhrase) -> Until {
     match duration {
         TurnDurationPhrase::ThisTurn | TurnDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
         TurnDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+        TurnDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
     }
 }
 
@@ -629,9 +631,9 @@ fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<T
             grammar::phrase(&["until", "your", "next", "turn"])
                 .value(TurnDurationPhrase::UntilYourNextTurn),
             grammar::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
-                .value(TurnDurationPhrase::UntilYourNextTurn),
+                .value(TurnDurationPhrase::UntilYourNextTurnEnd),
             grammar::phrase(&["until", "end", "of", "your", "next", "turn"])
-                .value(TurnDurationPhrase::UntilYourNextTurn),
+                .value(TurnDurationPhrase::UntilYourNextTurnEnd),
             grammar::phrase(&["until", "the", "end", "of", "turn"])
                 .value(TurnDurationPhrase::UntilEndOfTurn),
             grammar::phrase(&["until", "end", "of", "turn"])
@@ -645,10 +647,12 @@ fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<T
 
 fn turn_duration_from_suffix_phrase(phrase: &[&str]) -> Option<TurnDurationPhrase> {
     match phrase {
-        ["until", "your", "next", "turn"]
-        | ["until", "the", "end", "of", "your", "next", "turn"]
-        | ["until", "end", "of", "your", "next", "turn"] => {
+        ["until", "your", "next", "turn"] => {
             Some(TurnDurationPhrase::UntilYourNextTurn)
+        }
+        ["until", "the", "end", "of", "your", "next", "turn"]
+        | ["until", "end", "of", "your", "next", "turn"] => {
+            Some(TurnDurationPhrase::UntilYourNextTurnEnd)
         }
         ["until", "the", "end", "of", "turn"] | ["until", "end", "of", "turn"] => {
             Some(TurnDurationPhrase::UntilEndOfTurn)

@@ -73,6 +73,7 @@ pub enum ZoneReplacementDurationAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlDurationAst {
     UntilEndOfTurn,
+    UntilYourNextTurnEnd,
     DuringNextTurn,
     AsLongAsYouControlSource,
     Forever,
