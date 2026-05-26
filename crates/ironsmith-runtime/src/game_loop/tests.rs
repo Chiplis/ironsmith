@@ -26353,7 +26353,8 @@ fn test_cream_of_the_crop_etb_trigger_uses_may_and_source_power_rearrange() {
 
     let trigger_debug = format!("{:#?}", trigger).to_ascii_lowercase();
     assert!(
-        trigger_debug.contains("youcontrol") && trigger_debug.contains("enter"),
+        trigger_debug.contains("controller: some(\n                    you,")
+            && trigger_debug.contains("card_types: [\n                    creature,"),
         "Cream trigger should only watch your creatures entering, got {trigger_debug}"
     );
     assert!(
