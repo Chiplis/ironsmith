@@ -232,10 +232,17 @@ pub(crate) fn parse_become_clause(
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
 
-    if word_slice_starts_with(
+    let aura_with_enchant_creature_words = if word_slice_starts_with(
         become_words,
         &["aura", "enchantment", "with", "enchant", "creature"],
     ) {
+        Some(&become_words[5..])
+    } else if word_slice_starts_with(become_words, &["aura", "with", "enchant", "creature"]) {
+        Some(&become_words[4..])
+    } else {
+        None
+    };
+    if let Some(aura_tail_words) = aura_with_enchant_creature_words {
         if matches!(
             target_subject_words.as_slice(),
             ["it"] | ["this"] | ["this", "creature"]
@@ -243,7 +250,7 @@ pub(crate) fn parse_become_clause(
         {
             target = TargetAst::Source(span_from_tokens(subject_tokens));
         }
-        let attachment_filter = if word_slice_starts_with(&become_words[5..], &["you", "control"]) {
+        let attachment_filter = if word_slice_starts_with(aura_tail_words, &["you", "control"]) {
             ObjectFilter::creature().you_control()
         } else {
             ObjectFilter::creature()
