@@ -8655,14 +8655,25 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
     let tail = describe_apply_continuous_tail(effect);
-    if let Some(tail) = &tail {
-        text.push(' ');
-        text.push_str(tail);
-    }
-    if preserves_land_types && !render_as_addition_to_other_types {
-        if !plural_target && target_text == "target land" && tail.is_none() {
+    let inline_still_land =
+        preserves_land_types && !render_as_addition_to_other_types && !plural_target && target_text == "target land";
+    match &tail {
+        Some(tail) if inline_still_land => {
             text.push_str(" that's still a land");
-        } else if plural_target {
+            text.push(' ');
+            text.push_str(tail);
+        }
+        Some(tail) => {
+            text.push(' ');
+            text.push_str(tail);
+        }
+        None if inline_still_land => {
+            text.push_str(" that's still a land");
+        }
+        None => {}
+    }
+    if preserves_land_types && !render_as_addition_to_other_types && !inline_still_land {
+        if plural_target {
             text.push_str(". They're still lands");
         } else {
             text.push_str(". It's still a land");

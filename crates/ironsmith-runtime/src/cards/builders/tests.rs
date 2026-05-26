@@ -34824,6 +34824,88 @@ strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Mada
 strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn strict_parse_animate_land() {
+    assert_oracle_card_parses_strict("Animate Land");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn animate_land_compiled_text_keeps_animation_clause() {
+    let def = parse_oracle_card_definition("Animate Land");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target land becomes a 3/3 creature")
+            && rendered.contains("until end of turn")
+            && rendered.contains("still a land"),
+        "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn animate_land_runtime_animates_target_land_until_end_of_turn() {
+    let def = parse_oracle_card_definition("Animate Land");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Animate Land should produce spell effects")
+        .clone();
+    let apply = spell
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                        })
+                })
+        })
+        .expect("Animate Land should lower to an ApplyContinuousEffect");
+
+    let target_spec = apply
+        .target_spec
+        .as_ref()
+        .expect("Animate Land should carry an explicit target spec");
+    let ChooseSpec::Target(inner) = target_spec else {
+        panic!("expected Animate Land target to be target-only, got {target_spec:?}");
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("expected Animate Land target to be an object filter, got {inner:?}");
+    };
+    assert!(
+        filter.card_types == vec![CardType::Land] && !filter.card_types.contains(&CardType::Creature),
+        "expected Animate Land to target lands only, got {filter:?}"
+    );
+
+    assert_eq!(apply.until, crate::effect::Until::EndOfTurn);
+    assert!(
+        matches!(apply.modification, Some(crate::continuous::Modification::AddCardTypes(ref added)) if added == &vec![CardType::Creature]),
+        "expected Animate Land to add creature card type, got {apply:?}"
+    );
+    assert!(
+        apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::SetPowerToughness {
+                    power: Value::Fixed(3),
+                    toughness: Value::Fixed(3),
+                    ..
+                }
+            )
+        }),
+        "expected Animate Land to set base power/toughness to 3/3, got {apply:?}"
+    );
+}
+
 #[test]
 fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {
     let def = parse_oracle_card_definition("Escaped Null");
