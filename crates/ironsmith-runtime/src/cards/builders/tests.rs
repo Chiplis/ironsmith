@@ -7520,6 +7520,60 @@ fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_vault_101_birthday_party_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vault 101: Birthday Party")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI - Create a 1/1 white Human Soldier creature token and a Food token. (A Food token is an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nII, III - You may put an Aura or Equipment card from your hand or graveyard onto the battlefield. If an Equipment is put onto the battlefield this way, you may attach it to a creature you control.",
+        )
+        .expect("Vault 101: Birthday Party should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported predicate") && !rendered.contains("unsupported effect"),
+        "Vault 101: Birthday Party should parse without unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_vault_101_birthday_party_renders_equipment_only_attach_branch() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vault 101: Birthday Party")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "II, III - You may put an Aura or Equipment card from your hand or graveyard onto the battlefield. If an Equipment is put onto the battlefield this way, you may attach it to a creature you control.",
+        )
+        .expect("Vault 101: Birthday Party chapter II/III line should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if an equipment is put onto the battlefield this way")
+            || rendered.contains("if that permanent is an equipment")
+            || rendered.contains("if it is an equipment")
+            || rendered.contains("if it matches equipment"),
+        "expected conditional Equipment-only attach branch, got {rendered}"
+    );
+    assert!(
+        rendered.contains("attach") && rendered.contains("creature you control"),
+        "expected optional attach branch targeting your creature, got {rendered}"
+    );
+
+    let effect_debug = format!("{:?}", def.abilities);
+    assert!(
+        effect_debug.contains("ConditionalEffect")
+            && effect_debug.contains("TaggedObjectMatches")
+            && effect_debug.contains("Equipment")
+            && effect_debug.contains("AttachObjectsEffect"),
+        "expected parsed chapter line to gate attach behavior to moved Equipment objects, got {effect_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_top_card_of_that_players_library_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Theft Probe")
         .card_types(vec![CardType::Creature])
