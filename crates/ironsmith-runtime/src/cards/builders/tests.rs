@@ -36533,6 +36533,33 @@ fn parse_oracle_treasure_keeper_keeps_mana_value_or_less_filter() {
 }
 
 #[test]
+fn parse_oracle_glamdring_keeps_damage_scaled_free_cast_clause() {
+    let def = parse_oracle_card_definition("Glamdring");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Glamdring to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("cast an instant or sorcery spell")
+            && rendered.contains("from your hand")
+            && rendered.contains("without paying its mana cost"),
+        "expected Glamdring to keep its hand free-cast clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("first strike"),
+        "expected Glamdring to keep granted first strike, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value less than or equal to that amount"),
+        "expected Glamdring to keep the dynamic damage-based mana value limit, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_transmogrify_shuffle_rest_into_library() {
     let def = parse_oracle_card_definition("Transmogrify");
     let rendered = unprocessed_compiled_lines(&def)

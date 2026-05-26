@@ -1809,6 +1809,30 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn generated_definition_support_accepts_glamdring() {
+        let text = "Mana cost: {2}\nType: Legendary Artifact\nEquipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard.\nWhenever equipped creature deals combat damage to a player, you may cast an instant or sorcery spell from your hand with mana value less than or equal to that damage without paying its mana cost.\nEquip {3}";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Glamdring")
+            .parse_text(text)
+            .expect("glamdring parse should succeed");
+
+        assert!(
+            generated_definition_is_supported(&definition),
+            "{:?}\n{definition:#?}",
+            generated_definition_support_issues(&definition)
+        );
+
+        let debug = format!("{definition:#?}").to_ascii_lowercase();
+        assert!(!debug.contains("unimplemented"));
+        assert!(
+            debug.contains("maycastmatchingspellwithoutpayingmanacost")
+                && debug.contains("eventvalue")
+                && debug.contains("amount"),
+            "Glamdring should keep the dynamic 'that damage' mana value gate, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn generated_definition_support_accepts_deepcavern_imp() {
         let text = "Mana cost: {2}{B}\nType: Creature — Imp Rebel\nPower/Toughness: 2/2\nFlying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
         let definition = CardDefinitionBuilder::new(CardId::new(), "Deepcavern Imp")

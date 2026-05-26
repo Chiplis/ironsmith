@@ -29720,16 +29720,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
                 });
-        let mut spell_text = describe_cast_limit_spell_filter(&may_cast_matching.filter);
-        if has_tagged_mana_value_cap && !may_cast_matching.filter.card_types.is_empty() {
+        let mut spell_text = if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
                 .filter
                 .card_types
                 .iter()
                 .map(|card_type| card_type.to_string().to_ascii_lowercase())
                 .collect();
-            spell_text = format!("a {} spell", join_with_or(&card_type_words));
-        }
+            let joined = join_with_or(&card_type_words);
+            let article = if joined.starts_with('i')
+                || joined.starts_with('a')
+                || joined.starts_with('e')
+                || joined.starts_with('o')
+                || joined.starts_with('u')
+            {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {joined} spell")
+        } else {
+            describe_cast_limit_spell_filter(&may_cast_matching.filter)
+        };
         if spell_text == "spell" {
             spell_text = "a spell".to_string();
         } else if !spell_text.starts_with("a ")
@@ -29759,6 +29771,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         let mana_value_limit_text = if has_tagged_mana_value_cap {
             " with mana value less than or equal to that spell's mana value"
+        } else if matches!(
+            may_cast_matching.filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(ref value))
+                if matches!(
+                    value.as_ref(),
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )
+        ) {
+            " with mana value less than or equal to that amount"
         } else {
             ""
         };
