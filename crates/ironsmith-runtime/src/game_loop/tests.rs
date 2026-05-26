@@ -26315,6 +26315,62 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
     assert_eq!(plains_in_hand, 2, "Oreskos Explorer should find two Plains");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_cream_of_the_crop_etb_trigger_uses_may_and_source_power_rearrange() {
+    use crate::ability::AbilityKind;
+    use crate::card::PowerToughness;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let cream = CardDefinitionBuilder::new(CardId::new(), "Cream of the Crop")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever a creature you control enters, you may look at the top X cards of your library, where X is that creature's power. If you do, put one of those cards on top of your library and the rest on the bottom of your library in any order.")
+        .expect("Cream of the Crop text should parse");
+    let grizzly = CardDefinitionBuilder::new(CardId::new(), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("")
+        .expect("vanilla creature should parse");
+
+    let cream_id = game.create_object_from_definition(&cream, alice, Zone::Battlefield);
+    let _creature_id = game.create_object_from_definition(&grizzly, alice, Zone::Battlefield);
+
+    let trigger = game
+        .object(cream_id)
+        .expect("Cream of the Crop should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cream of the Crop should have an enters trigger");
+
+    let trigger_debug = format!("{:#?}", trigger).to_ascii_lowercase();
+    assert!(
+        trigger_debug.contains("youcontrol") && trigger_debug.contains("enter"),
+        "Cream trigger should only watch your creatures entering, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("mayeffect"),
+        "Cream trigger should preserve the may branch, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("lookattopcards") && trigger_debug.contains("powerof"),
+        "Cream trigger should scale looked card count from the entering creature's power, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("rearrangelookedcardsinlibrary")
+            && trigger_debug.contains("min: 1"),
+        "Cream trigger should rearrange looked cards by choosing exactly one for top, got {trigger_debug}"
+    );
+}
+
 fn doubling_chant_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Doubling Chant")
         .mana_cost(ManaCost::from_pips(vec![

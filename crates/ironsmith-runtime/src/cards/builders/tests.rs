@@ -40854,6 +40854,30 @@ fn parse_oracle_consult_the_star_charts_keeps_kicker_choice_override_surface() {
 }
 
 #[test]
+fn parse_oracle_cream_of_the_crop_keeps_power_scaled_rearrange_surface() {
+    let def = parse_oracle_card_definition("Cream of the Crop");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("whenever a creature you control enters")
+            && rendered.contains("look at the top x cards of your library")
+            && rendered.contains("where x is its power")
+            && rendered.contains("if you do")
+            && rendered.contains("put one of those cards on top of your library")
+            && rendered.contains("the rest on the bottom of your library in any order"),
+        "expected Cream of the Crop scored text to keep the full top/bottom rearrange wording, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("rearrangelookedcardsinlibrary")
+            && abilities_debug.contains("powerof"),
+        "expected Cream of the Crop definition to use looked-card rearrange with source-power count, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_divergent_transformations_keeps_reveal_until_creature_surface() {
     let def = parse_oracle_card_definition("Divergent Transformations");
     let spell_debug = format!("{:#?}", def.spell_effect);
