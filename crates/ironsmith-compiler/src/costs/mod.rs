@@ -29,6 +29,7 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect
             .downcast_ref::<effects::ReturnToHandEffect>()
             .is_some()
+        || effect.downcast_ref::<effects::MoveToZoneEffect>().is_some()
         || effect
             .downcast_ref::<effects::RemoveCountersEffect>()
             .is_some()

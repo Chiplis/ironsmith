@@ -23836,6 +23836,27 @@ fn parse_additional_cost_mixed_life_and_sacrifice_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn necrotic_fumes_parses_with_exile_creature_additional_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necrotic Fumes")
+        .parse_text(
+            "As an additional cost to cast this spell, exile a creature you control.\nExile target creature or planeswalker.",
+        )
+        .expect("Necrotic Fumes should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("as an additional cost to cast this spell, exile a creature you control"),
+        "expected Necrotic Fumes additional cost clause, got {rendered}"
+    );
+    assert!(
+        lower.contains("exile target creature or planeswalker"),
+        "expected Necrotic Fumes exile target clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_additional_cost_with_non_cost_effect_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Impossible Additional Cost")
         .parse_text("As an additional cost to cast this spell, draw a card.")
