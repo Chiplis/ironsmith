@@ -449,18 +449,6 @@ fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bo
         || parse_unsupported_play_cast_permission_clause_lexed(tokens)?.is_some())
 }
 
-fn starts_with_until_end_of_turn_trigger_clause(clause_words: &[&str]) -> bool {
-    (word_slice_starts_with(clause_words, &["until", "end", "of", "turn"])
-        || word_slice_starts_with(clause_words, &["until", "the", "end", "of", "turn"]))
-        && clause_words
-            .get(if clause_words.get(1) == Some(&"the") {
-                5
-            } else {
-                4
-            })
-            .is_some_and(|word| matches!(*word, "when" | "whenever" | "at"))
-}
-
 fn is_would_enter_replacement_clause(clause_words: &[&str]) -> bool {
     clause_words.iter().any(|word| *word == "would")
         && clause_words
@@ -860,12 +848,6 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if starts_with_until_end_of_turn_trigger_clause(&clause_words) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported until-end-of-turn permission clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
     if is_would_enter_replacement_clause(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported would-enter replacement clause (clause: '{}')",

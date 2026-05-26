@@ -14033,14 +14033,57 @@ fn parse_inline_whenever_clause_keeps_its_controller_subject() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("{1}{R}{R}: Until end of turn, whenever you cast a black spell, put a +1/+1 counter on this creature.")
-        .expect_err("until-end-of-turn whenever grant is currently unsupported");
-    let rendered = format!("{err:?}").to_ascii_lowercase();
+        .expect("until-end-of-turn whenever grant should parse");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported until-end-of-turn permission clause"),
-        "expected explicit unsupported until-end-of-turn permission error, got {rendered}"
+        rendered.contains("gains \"whenever") && rendered.contains("until end of turn"),
+        "expected temporary granted trigger wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn apple_of_eden_isu_relic_parses_strictly_with_until_end_of_turn_this_way_trigger() {
+    let text = "{T}, Pay 4 life, Sacrifice Apple of Eden: Look at target opponent's hand and exile those cards face down. You may play those cards this turn, and mana of any type can be spent to cast them. Until end of turn, whenever you play a land or cast a spell this way, its owner draws a card. At the beginning of the next end step, return the exiled cards to their owner's hand. Activate only as a sorcery.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Apple of Eden, Isu Relic")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(text)
+        .expect("Apple of Eden, Isu Relic should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("whenever you play a land")
+            && lower.contains("casts a spell")
+            && lower.contains("owner draws a card"),
+        "expected compiled text to include the until-end-of-turn play/cast owner-draw trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn apple_of_eden_isu_relic_trigger_tracks_both_land_play_and_spell_cast_paths() {
+    let text = "{T}, Pay 4 life, Sacrifice Apple of Eden: Look at target opponent's hand and exile those cards face down. You may play those cards this turn, and mana of any type can be spent to cast them. Until end of turn, whenever you play a land or cast a spell this way, its owner draws a card. At the beginning of the next end step, return the exiled cards to their owner's hand. Activate only as a sorcery.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Apple of Eden, Isu Relic")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(text)
+        .expect("Apple of Eden, Isu Relic should parse");
+
+    let debug = format!("{:#?}", def).to_ascii_lowercase();
+    assert!(
+        debug.contains("ortrigger")
+            && debug.contains("playerplayslandtrigger")
+            && debug.contains("spellcasttrigger"),
+        "expected temporary granted trigger to cover both play-land and cast-spell branches, got {debug}"
+    );
+    assert!(
+        debug.contains("drawcardseffect") && debug.contains("ownerof") && debug.contains("triggering"),
+        "expected trigger resolution to draw a card for the triggering object's owner, got {debug}"
     );
 }
 
