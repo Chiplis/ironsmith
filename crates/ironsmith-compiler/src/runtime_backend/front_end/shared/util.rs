@@ -5254,8 +5254,17 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
                 line
             ))
         })?;
-    let trailing_words = crate::runtime_backend::token_word_refs(&tokens[cost_clause_end + 1..]);
-    if !trailing_words.is_empty() {
+    let trailing_tokens = tokens.get(cost_clause_end + 1..).unwrap_or_default();
+    let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
+    let trailing_condition = if trailing_words.is_empty() {
+        None
+    } else if trailing_words.first().copied() == Some("if") {
+        let condition_tokens = trim_commas(trailing_tokens.get(1..).unwrap_or_default());
+        parse_this_spell_cost_condition(&condition_tokens)
+    } else {
+        None
+    };
+    if !trailing_words.is_empty() && trailing_condition.is_none() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
             line,
@@ -5279,7 +5288,7 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost",
         total_cost,
-        condition: None,
+        condition: trailing_condition,
     }))
 }
 

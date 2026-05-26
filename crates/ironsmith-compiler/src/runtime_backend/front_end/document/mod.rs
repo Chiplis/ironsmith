@@ -1654,6 +1654,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_cst_rewrites_freerunning_keyword_line_to_alternative_cost()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Brotherhood Ambushers")
+                .card_types(vec![CardType::Creature]),
+            "Freerunning {3}{B} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Keyword(keyword)] => {
+                assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
+                assert_eq!(
+                    render_token_slice(&keyword.parse_tokens),
+                    "You may pay {3}{B} rather than pay this spell's mana cost if you've dealt combat damage to a player this turn with an Assassin."
+                );
+            }
+            other => panic!("expected one freerunning keyword line, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn static_line_cst_recognizes_compound_unblockable_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Enchanted creature gets +2/+2 and can't be blocked.");
 

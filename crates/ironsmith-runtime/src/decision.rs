@@ -2134,6 +2134,128 @@ mod tests {
     }
 
     #[test]
+    fn brotherhood_ambushers_freerunning_condition_reduces_cost_after_assassin_combat_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9601), "Brotherhood Ambushers")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(4),
+                ManaSymbol::Black,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let freerunning_condition =
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Assassin,
+            );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(1),
+            freerunning_condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("Brotherhood Ambushers should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Brotherhood Ambushers should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("Brotherhood Ambushers should have mana cost");
+        let before_damage = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            before_damage.to_oracle(),
+            "{4}{B}",
+            "freerunning condition should be false before Assassin combat damage"
+        );
+
+        let assassin = CardBuilder::new(CardId::from_raw(9602), "Assassin Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Assassin])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let assassin_id = game.create_object_from_card(&assassin, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, assassin_id, bob, 2);
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Brotherhood Ambushers should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("Brotherhood Ambushers should have mana cost");
+        let after_damage = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            after_damage.to_oracle(),
+            "{3}{B}",
+            "freerunning condition should become true after your Assassin deals combat damage"
+        );
+    }
+
+    #[test]
+    fn brotherhood_ambushers_freerunning_condition_rejects_noncombat_or_nonassassin_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9603), "Brotherhood Ambushers")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(4),
+                ManaSymbol::Black,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let freerunning_condition =
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Assassin,
+            );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(1),
+            freerunning_condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("Brotherhood Ambushers should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let warrior = CardBuilder::new(CardId::from_raw(9604), "Warrior Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Warrior])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let warrior_id = game.create_object_from_card(&warrior, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, warrior_id, bob, 2);
+
+        let assassin = CardBuilder::new(CardId::from_raw(9605), "Assassin Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Assassin])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let assassin_id = game.create_object_from_card(&assassin, alice, Zone::Battlefield);
+        stage_noncombat_damage_to_player_for_test(&mut game, assassin_id, bob, 1);
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Brotherhood Ambushers should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("Brotherhood Ambushers should have mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            effective.to_oracle(),
+            "{4}{B}",
+            "freerunning condition should stay false when damage is noncombat or from non-Assassin creatures"
+        );
+    }
+
+    #[test]
     fn this_spell_cost_reduction_supports_devotion_where_x_is_clause() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -41428,3 +41428,36 @@ fn knowledge_exploitation_compiled_text_keeps_prowl_and_target_opponent_library_
         "expected Knowledge Exploitation to keep search-target clause, got {rendered}"
     );
 }
+
+#[test]
+fn parse_oracle_brotherhood_ambushers_supports_freerunning_keyword_line() {
+    let def = parse_oracle_card_definition("Brotherhood Ambushers");
+    assert!(
+        !def.alternative_casts.is_empty(),
+        "Brotherhood Ambushers should compile with a freerunning alternative cost"
+    );
+
+    let has_assassin_condition = def.alternative_casts.iter().any(|method| {
+        matches!(
+            method.cast_condition(),
+            Some(crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Assassin
+            ))
+        )
+    });
+    assert!(
+        has_assassin_condition,
+        "Brotherhood Ambushers should encode freerunning with Assassin combat-damage condition"
+    );
+}
+
+#[test]
+fn brotherhood_ambushers_compiled_text_keeps_freerunning_keyword_line() {
+    let def = parse_oracle_card_definition("Brotherhood Ambushers");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Freerunning {3}{B}"),
+        "expected Brotherhood Ambushers to render its freerunning keyword cost, got {rendered}"
+    );
+}

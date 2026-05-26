@@ -4486,6 +4486,60 @@ pub(crate) fn parse_this_spell_cost_condition(
         }
     }
 
+    // you've dealt combat damage to a player this turn with an Assassin
+    if (slice_starts_with(&w, &["youve", "dealt", "combat", "damage", "to", "a", "player"])
+        || slice_starts_with(
+            &w,
+            &["you've", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["you", "ve", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["if", "youve", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["if", "you've", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["if", "you", "ve", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["you", "dealt", "combat", "damage", "to", "a", "player"],
+        )
+        || slice_starts_with(
+            &w,
+            &["if", "you", "dealt", "combat", "damage", "to", "a", "player"],
+        ))
+        && let Some(with_idx) = find_index(&w, |word| *word == "with")
+        && with_idx >= 2
+        && w[with_idx - 2] == "this"
+        && w[with_idx - 1] == "turn"
+    {
+        let article_idx = with_idx + 1;
+        let subtype_idx = with_idx + 2;
+        if w.get(article_idx).is_some_and(|word| *word == "a" || *word == "an")
+            && let Some(subtype_word) = w.get(subtype_idx)
+            && let Some(subtype) = if *subtype_word == "assassin" {
+                Some(Subtype::Assassin)
+            } else {
+                parse_subtype_word(subtype_word)
+                    .or_else(|| parse_subtype_flexible(subtype_word))
+                    .or_else(|| str_strip_suffix(subtype_word, "s").and_then(parse_subtype_word))
+                    .or_else(|| str_strip_suffix(subtype_word, "s").and_then(parse_subtype_flexible))
+            }
+        {
+            return Some(ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                subtype,
+            ));
+        }
+    }
+
     if let Some(condition_expr) = parse_conjoined_this_spell_cost_condition(tokens) {
         return Some(ThisSpellCostCondition::ConditionExpr {
             condition: condition_expr,
@@ -4553,7 +4607,25 @@ pub(crate) fn parse_trailing_this_spell_cost_condition(
             clause_words.join(" ")
         )));
     }
-    let Some(condition) = parse_this_spell_cost_condition(&condition_tokens) else {
+    let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
+    let explicit_assassin_condition = (slice_starts_with(
+        &condition_words,
+        &["youve", "dealt", "combat", "damage", "to", "a", "player"],
+    ) || slice_starts_with(
+        &condition_words,
+        &["you've", "dealt", "combat", "damage", "to", "a", "player"],
+    ) || slice_starts_with(
+        &condition_words,
+        &["you", "ve", "dealt", "combat", "damage", "to", "a", "player"],
+    )) && condition_words.windows(3).any(|window| window == ["with", "an", "assassin"]);
+
+    let Some(condition) = parse_this_spell_cost_condition(&condition_tokens).or_else(|| {
+        explicit_assassin_condition.then_some(
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Assassin,
+            ),
+        )
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported this-spell cost condition (clause: '{}')",
             clause_words.join(" ")

@@ -595,6 +595,45 @@ pub(super) fn run_surge_line_family(
     )))
 }
 
+pub(super) fn run_freerunning_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let Some(rest) = raw.strip_prefix("Freerunning ") else {
+        return Ok(None);
+    };
+    let cost_text = rest
+        .split_once('(')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    if cost_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "freerunning keyword missing cost: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let rewritten = format!(
+        "You may pay {cost_text} rather than pay this spell's mana cost if you've dealt combat damage to a player this turn with an Assassin."
+    );
+    let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower freerunning keyword line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    keyword.text = ctx.line.info.raw_line.clone();
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Keyword(keyword),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

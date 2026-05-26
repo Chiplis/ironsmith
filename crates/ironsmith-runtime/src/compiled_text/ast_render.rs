@@ -1762,6 +1762,26 @@ pub(super) fn describe_alternative_cast_line(
                 .map(|cost| format!("Prowl {}", cost.to_oracle()))
                 .unwrap_or_else(|| "Prowl".to_string())
         }
+        method
+            if method.is_composed_cost()
+                && method.name().eq_ignore_ascii_case("Parsed alternative cost")
+                && matches!(
+                    method.cast_condition(),
+                    Some(crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                        crate::types::Subtype::Assassin
+                    ))
+                ) =>
+        {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Freerunning {} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)",
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Freerunning".to_string())
+        }
         method if method.is_composed_cost() => {
             let name = method.name();
             let mana_cost = method.mana_cost();
