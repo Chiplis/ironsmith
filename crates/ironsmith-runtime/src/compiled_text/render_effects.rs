@@ -33051,9 +33051,12 @@ pub(super) fn describe_ability(
             if static_ability.id() == crate::static_abilities::StaticAbilityId::SoulbondSharedBonus
                 && let Some(granted) = static_ability.granted_inline_ability()
             {
+                let granted_surface = normalize_granted_triggered_ability_surface(
+                    describe_inline_ability(granted),
+                );
                 return vec![format!(
-                    "Static ability {index}: As long as this creature is paired with another creature, both creatures have \"{}\"",
-                    describe_inline_ability(granted)
+                    "Static ability {index}: As long as this creature is paired with another creature, each of those creatures has \"{}\"",
+                    granted_surface
                 )];
             }
             if let Some(levels) = static_ability.level_abilities()
@@ -33448,6 +33451,38 @@ pub(super) fn describe_ability(
             vec![line]
         }
     }
+}
+
+fn normalize_granted_triggered_ability_surface(surface: String) -> String {
+    let Some((head, tail)) = surface.split_once(": ") else {
+        return surface;
+    };
+    let lower_head = head.to_ascii_lowercase();
+    if !(lower_head.starts_with("when ")
+        || lower_head.starts_with("whenever ")
+        || lower_head.starts_with("at the beginning "))
+    {
+        return surface;
+    }
+
+    let tail = tail
+        .strip_prefix("You ")
+        .or_else(|| tail.strip_prefix("you "))
+        .unwrap_or(tail)
+        .trim_start();
+    if tail.is_empty() {
+        return surface;
+    }
+
+    let mut normalized_tail = lowercase_first(tail);
+    if !normalized_tail.ends_with('.')
+        && !normalized_tail.ends_with('!')
+        && !normalized_tail.ends_with('?')
+    {
+        normalized_tail.push('.');
+    }
+
+    format!("{head}, {normalized_tail}")
 }
 
 fn normalize_zone_bound_self_exile_cost(

@@ -26199,6 +26199,11 @@ fn render_source_surface_for_hard_triggered_and_static_clauses() {
             "soulbond",
         ),
         (
+            "Doom Weaver",
+            "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+            "when this creature dies",
+        ),
+        (
             "Hearth Elemental Variant",
             "This spell costs {X} less to cast, where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure.",
             "costs {x} less to cast, where x is",

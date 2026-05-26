@@ -4795,6 +4795,104 @@ fn joint_assault_pumps_target_and_its_soulbond_partner() {
 }
 
 #[test]
+fn doom_weaver_grants_dies_trigger_to_soulbond_partner() {
+    let doom_weaver = CardDefinitionBuilder::new(CardId::new(), "Doom Weaver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spider, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(1, 8))
+        .parse_text(
+            "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+        )
+        .expect("Doom Weaver should parse");
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let doom_weaver_id = game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        let library_card = CardBuilder::new(CardId::new(), format!("Draw Fodder {idx}"))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&library_card, alice, Zone::Library);
+    }
+    let partner = CardBuilder::new(CardId::new(), "Soulbond Partner")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let partner_id = game.create_object_from_card(&partner, alice, Zone::Battlefield);
+    game.set_soulbond_pair(doom_weaver_id, partner_id);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let moved = game.move_object_by_effect(partner_id, Zone::Graveyard);
+    assert!(moved.is_some(), "partner should move to the graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "partner death should trigger Doom Weaver grant"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Doom Weaver trigger should be put on stack");
+
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("granted dies trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 3,
+        "partner should draw cards equal to its power when it dies while paired"
+    );
+}
+
+#[test]
+fn doom_weaver_dies_trigger_not_granted_when_unpaired() {
+    let doom_weaver = CardDefinitionBuilder::new(CardId::new(), "Doom Weaver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spider, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(1, 8))
+        .parse_text(
+            "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+        )
+        .expect("Doom Weaver should parse");
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let _doom_weaver_id = game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        let library_card = CardBuilder::new(CardId::new(), format!("No Draw Fodder {idx}"))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&library_card, alice, Zone::Library);
+    }
+    let partner = CardBuilder::new(CardId::new(), "Unpaired Partner")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let partner_id = game.create_object_from_card(&partner, alice, Zone::Battlefield);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let moved = game.move_object_by_effect(partner_id, Zone::Graveyard);
+    assert!(moved.is_some(), "partner should move to the graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "unpaired partner death should not trigger draw"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before,
+        "unpaired death should not draw cards"
+    );
+}
+
+#[test]
 fn test_extract_target_specs_necromentia_uses_one_target_opponent_requirement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Necromentia")
         .card_types(vec![CardType::Sorcery])
