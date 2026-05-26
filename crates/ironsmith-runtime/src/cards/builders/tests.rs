@@ -34017,6 +34017,12 @@ fn exuberant_fuseling_compiled_text_keeps_oil_counter_scaling_clause() {
         rendered.contains("this creature gets +1/+0 for each oil counter on it"),
         "expected Exuberant Fuseling to keep its oil-counter scaling clause, got {rendered}"
     );
+    assert!(
+        rendered.contains(
+            "when this creature enters and whenever another creature or artifact you control is put into a graveyard from the battlefield"
+        ),
+        "expected Exuberant Fuseling trigger wording to preserve enters-and-whenever structure, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -34112,6 +34118,29 @@ fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_deat
     assert_eq!(
         opposing_triggers, 0,
         "expected opponent permanent dying to not trigger Exuberant Fuseling"
+    );
+
+    let fuseling_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(fuseling_id).expect("fuseling should exist"),
+        &game,
+    );
+    let fuseling_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            fuseling_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(fuseling_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let self_dies_triggers = crate::triggers::check_triggers(&game, &fuseling_dies_event)
+        .into_iter()
+        .filter(|entry| entry.source == fuseling_id)
+        .count();
+    assert_eq!(
+        self_dies_triggers, 0,
+        "expected Exuberant Fuseling to not trigger from its own death under the 'another' clause"
     );
 }
 
