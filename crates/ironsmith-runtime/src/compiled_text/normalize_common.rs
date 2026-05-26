@@ -4659,6 +4659,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Whenever this or another {rest}");
     }
+    if let Some(rest) = normalized.strip_prefix("When this creature enters or a ")
+        && let Some((subject, effect_clause)) =
+            rest.split_once(" you control other than this is put into a graveyard from the battlefield,")
+    {
+        return format!(
+            "When this creature enters and whenever another {subject} you control is put into a graveyard from the battlefield,{effect_clause}"
+        );
+    }
     if let Some((left, right)) = normalized.split_once(" or Whenever another ") {
         if left.starts_with("Whenever ") {
             return format!("{left} or another {right}");
