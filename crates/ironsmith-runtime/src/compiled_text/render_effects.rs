@@ -10806,6 +10806,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(exile_top) =
+                filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+            && let Some(grant_play) =
+                filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) = describe_exile_top_then_play(exile_top, grant_play)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -18811,6 +18822,46 @@ fn describe_exile_top_then_play_without_paying_mana(
     };
     Some(format!(
         "That player exiles the top {count_text} {noun} of their library. Until end of turn, you may play {cards_text} without paying {mana_cost_text}"
+    ))
+}
+
+fn describe_exile_top_then_play(
+    exile_top: &crate::effects::ExileTopOfLibraryEffect,
+    grant_play: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    let Some(first_tag) = exile_top.moved_tags.first() else {
+        return None;
+    };
+    if grant_play.tag != *first_tag
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant_play.player != exile_top.player
+    {
+        return None;
+    }
+
+    let singular_count = matches!(exile_top.count, Value::Fixed(1));
+    let exile_clause = match &exile_top.count {
+        Value::Fixed(n) if *n >= 0 => {
+            let count_u32 = *n as u32;
+            let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
+            let noun = if *n == 1 { "card" } else { "cards" };
+            let owner = describe_possessive_player_filter(&exile_top.player);
+            format!("Exile the top {count_text} {noun} of {owner} library")
+        }
+        _ => {
+            let owner = describe_possessive_player_filter(&exile_top.player);
+            let value_text = describe_value(&exile_top.count);
+            if value_text == "X" {
+                format!("Exile the top X cards of {owner} library")
+            } else {
+                format!("Exile the top X cards of {owner} library, where X is {value_text}")
+            }
+        }
+    };
+    let cards_text = if singular_count { "that card" } else { "those cards" };
+    let verb = if grant_play.allow_land { "play" } else { "cast" };
+    Some(format!(
+        "{exile_clause}. You may {verb} {cards_text} this turn"
     ))
 }
 
@@ -26827,6 +26878,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_count_filter_value_subject(power_filter)
                 ))
             }
+            (Value::CountersOnSource(power_counter), Value::CountersOnSource(toughness_counter))
+                if power_counter == toughness_counter =>
+            {
+                Some(format!("{} counter on it", power_counter.description()))
+            }
             _ => None,
         };
         if let Some(for_each_text) = for_each_text {
@@ -26848,6 +26904,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if !matches!(modify_pt.power, Value::Fixed(_))
             && matches!(modify_pt.toughness, Value::Fixed(0))
         {
+            if let Value::CountersOnSource(counter_type) = &modify_pt.power {
+                return format!(
+                    "{} gets +1/+0 for each {} counter on it {}",
+                    describe_choose_spec(&modify_pt.target),
+                    counter_type.description(),
+                    describe_until(&modify_pt.duration)
+                );
+            }
             return format!(
                 "{} gets +X/+0 {}, where X is {}",
                 describe_choose_spec(&modify_pt.target),
@@ -28740,23 +28804,30 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_until(&prevent_damage.duration)
         };
+        let source_text = if prevent_damage.source_of_your_choice {
+            " by a source of your choice"
+        } else {
+            ""
+        };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
             return format!(
-                "Prevent the next {} {} that would be dealt to {} {}. For each 1 damage prevented this way, put a {} counter on {}",
+                "Prevent the next {} {} that would be dealt to {} {}{}. For each 1 damage prevented this way, put a {} counter on {}",
                 describe_value(&prevent_damage.amount),
                 damage_text,
                 describe_choose_spec(&prevent_damage.target),
                 timing,
+                source_text,
                 describe_counter_type(put.counter_type),
                 describe_prevention_follow_up_target(&prevent_damage.target)
             );
         }
         return format!(
-            "Prevent the next {} {} that would be dealt to {} {}",
+            "Prevent the next {} {} that would be dealt to {} {}{}",
             describe_value(&prevent_damage.amount),
             damage_text,
             describe_choose_spec(&prevent_damage.target),
-            timing
+            timing,
+            source_text
         );
     }
     if let Some(prevent_all_target) =
@@ -33031,9 +33102,12 @@ pub(super) fn describe_ability(
             if static_ability.id() == crate::static_abilities::StaticAbilityId::SoulbondSharedBonus
                 && let Some(granted) = static_ability.granted_inline_ability()
             {
+                let granted_surface = normalize_granted_triggered_ability_surface(
+                    describe_inline_ability(granted),
+                );
                 return vec![format!(
-                    "Static ability {index}: As long as this creature is paired with another creature, both creatures have \"{}\"",
-                    describe_inline_ability(granted)
+                    "Static ability {index}: As long as this creature is paired with another creature, each of those creatures has \"{}\"",
+                    granted_surface
                 )];
             }
             if let Some(levels) = static_ability.level_abilities()
@@ -33428,6 +33502,38 @@ pub(super) fn describe_ability(
             vec![line]
         }
     }
+}
+
+fn normalize_granted_triggered_ability_surface(surface: String) -> String {
+    let Some((head, tail)) = surface.split_once(": ") else {
+        return surface;
+    };
+    let lower_head = head.to_ascii_lowercase();
+    if !(lower_head.starts_with("when ")
+        || lower_head.starts_with("whenever ")
+        || lower_head.starts_with("at the beginning "))
+    {
+        return surface;
+    }
+
+    let tail = tail
+        .strip_prefix("You ")
+        .or_else(|| tail.strip_prefix("you "))
+        .unwrap_or(tail)
+        .trim_start();
+    if tail.is_empty() {
+        return surface;
+    }
+
+    let mut normalized_tail = lowercase_first(tail);
+    if !normalized_tail.ends_with('.')
+        && !normalized_tail.ends_with('!')
+        && !normalized_tail.ends_with('?')
+    {
+        normalized_tail.push('.');
+    }
+
+    format!("{head}, {normalized_tail}")
 }
 
 fn normalize_zone_bound_self_exile_cost(

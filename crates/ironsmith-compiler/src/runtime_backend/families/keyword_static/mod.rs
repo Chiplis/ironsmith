@@ -358,6 +358,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
         ],
+        "parse_landwalk_as_though_block_override_line" => vec![
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Pair("creatures", "with"),
+        ],
         "parse_multi_subject_anthem_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
@@ -677,6 +681,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
+        single_static_ability_ast_rule!(parse_landwalk_as_though_block_override_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_granted_keyword_static_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
@@ -901,6 +906,32 @@ fn parse_static_ability_ast_line_early_lexed(
     }
 
     let words = parser_text_word_refs(tokens);
+    if words.starts_with(&["this", "creature", "can", "block"]) {
+        let mut idx = 4usize;
+        if words.get(idx).copied() == Some("an") {
+            idx += 1;
+        }
+
+        if words.get(idx).copied() == Some("additional") {
+            idx += 1;
+            let mut additional = 1usize;
+            if let Some((count, used)) = parse_number(&tokens[idx..]) {
+                additional = count as usize;
+                idx += used;
+            }
+
+            if matches!(words.get(idx).copied(), Some("creature") | Some("creatures"))
+                && (words.get(idx + 1..).unwrap_or_default().is_empty()
+                    || words.get(idx + 1..) == Some(&["each", "combat"][..])
+                    || words.get(idx + 1..) == Some(&["this", "turn"][..]))
+            {
+                return Ok(Some(vec![
+                    StaticAbility::can_block_additional_creature_each_combat(additional).into(),
+                ]));
+            }
+        }
+    }
+
     let normalized_line = render_token_slice(tokens)
         .to_ascii_lowercase()
         .replace('\u{2019}', "'")
@@ -1618,33 +1649,44 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        normalized.as_slice(),
-        [
-            "this",
-            "creature",
-            "can",
-            "block",
-            "an",
-            "additional",
-            "creature",
-            "each",
-            "combat"
-        ] | [
-            "this",
-            "creature",
-            "can",
-            "block",
-            "an",
-            "additional",
-            "creature"
-        ]
-    ) {
-        return Ok(Some(
-            StaticAbility::can_block_additional_creature_each_combat(1),
-        ));
+    if !slice_starts_with(&normalized, &["this", "creature", "can", "block"])
+        || !matches!(
+            normalized.last().copied(),
+            Some("combat") | Some("turn") | Some("creature") | Some("creatures")
+        )
+    {
+        return Ok(None);
     }
-    Ok(None)
+
+    let mut idx = 4usize;
+    if normalized.get(idx).copied() == Some("an") {
+        idx += 1;
+    }
+
+    if normalized.get(idx).copied() != Some("additional") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let mut additional = 1usize;
+    if let Some((count, used)) = parse_number(&tokens[idx..]) {
+        additional = count as usize;
+        idx += used;
+    }
+
+    if !matches!(normalized.get(idx).copied(), Some("creature") | Some("creatures")) {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let tail = &normalized[idx..];
+    if !tail.is_empty() && tail != ["each", "combat"] && tail != ["this", "turn"] {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        StaticAbility::can_block_additional_creature_each_combat(additional),
+    ))
 }
 
 pub(crate) fn parse_skulk_rules_text_line(
@@ -3799,6 +3841,27 @@ pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) ->
         }
     }
 
+    if slice_starts_with(&start_words, &["card", "type", "among"])
+        || slice_starts_with(&start_words, &["card", "types", "among"])
+    {
+        let mut scope_word_idx = 3usize;
+        if matches!(start_words.get(scope_word_idx).copied(), Some("the")) {
+            scope_word_idx += 1;
+        }
+        let scope_token_idx = token_index_for_word_index(start, scope_word_idx)?;
+        let scope_tokens = trim_commas(&start[scope_token_idx..]);
+        if let Ok(filter) = parse_object_filter(&scope_tokens, false)
+            && filter.zone == Some(Zone::Graveyard)
+        {
+            let player = match filter.owner.clone() {
+                Some(player) => player,
+                None if !filter.single_graveyard => PlayerFilter::Any,
+                None => PlayerFilter::You,
+            };
+            return Some(Value::CardTypesInGraveyard(player));
+        }
+    }
+
     let filter = parse_object_filter(start, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -5601,7 +5664,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
     }
 
-    if contains_keyword_static_phrase(&filter_words, &["card", "type"])
+    if contains_any_keyword_static_phrase(&filter_words, &[&["card", "type"], &["card", "types"]])
         && slice_contains(&filter_words, &"graveyard")
     {
         let player = if contains_keyword_static_phrase(&filter_words, &["your", "graveyard"]) {
@@ -5668,6 +5731,24 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             trim_commas(&filter_tokens[after_among_token_idx..end_token_idx]);
         if let Ok(filter) = parse_object_filter(&creature_scope_tokens, false) {
             return Ok(Some(Value::CreatureTypesAmong(filter)));
+        }
+    }
+    if slice_starts_with(&filter_words, &["card", "type", "among"])
+        || slice_starts_with(&filter_words, &["card", "types", "among"])
+    {
+        let Some(after_among_token_idx) = token_index_for_word_index(filter_tokens, 3) else {
+            return Ok(None);
+        };
+        let mut end_token_idx = filter_tokens.len();
+        if let Some(period_idx) = filter_tokens[after_among_token_idx..]
+            .iter()
+            .position(|token| token.is_period())
+        {
+            end_token_idx = after_among_token_idx + period_idx;
+        }
+        let card_scope_tokens = trim_commas(&filter_tokens[after_among_token_idx..end_token_idx]);
+        if let Ok(filter) = parse_object_filter(&card_scope_tokens, false) {
+            return Ok(Some(Value::CardTypesAmong(filter)));
         }
     }
 

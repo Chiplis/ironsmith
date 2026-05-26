@@ -608,7 +608,7 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
         (
             ["can't be blocked"].as_slice(),
-            ["can't be blocked"].as_slice(),
+            ["can't be blocked", "unblockable"].as_slice(),
             "cant-be-blocked",
         ),
         (
@@ -691,13 +691,19 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
 
     let guarded_markers = [
         (
-            ["shares a card type", "share a card type"],
-            ["shares a card type", "share a card type"],
+            ["shares a card type", "share a card type"].as_slice(),
+            ["shares a card type", "share a card type"].as_slice(),
             "shares-a-card-type",
         ),
         (
-            ["card type among", "card types among"],
-            ["card type among", "card types among"],
+            ["card type among", "card types among"].as_slice(),
+            [
+                "card type among",
+                "card types among",
+                "number of distinct card types in",
+                "number of card types in",
+            ]
+            .as_slice(),
             "card-types-among",
         ),
     ];
@@ -3018,6 +3024,19 @@ CardDefinition {
     }
 
     #[test]
+    fn authoritative_marker_guard_accepts_equivalent_card_types_in_wording() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.normalized_oracle_text =
+            "This creature's power is equal to the number of card types among cards in all graveyards".to_string();
+        snapshot.compiled_text = Some(
+            "This creature's power is equal to the number of distinct card types in all graveyards"
+                .to_string(),
+        );
+
+        assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
+    }
+
+    #[test]
     fn authoritative_marker_guard_rejects_malformed_compiled_text() {
         let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
 
@@ -3287,6 +3306,11 @@ CardDefinition {
         snapshot.compiled_text = Some(
             "Choose target creature you control. That creature deals damage equal to its power to target creature an opponent controls.".to_string(),
         );
+        assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
+
+        snapshot.normalized_oracle_text =
+            "This token can't be blocked until end of turn.".to_string();
+        snapshot.compiled_text = Some("This token is unblockable until end of turn.".to_string());
         assert!(authoritative_semantic_marker_parse_error(&snapshot).is_none());
     }
 

@@ -3301,6 +3301,7 @@ pub struct PreventDamageEffect<E> {
     pub target: ChooseSpec,
     pub until: Until,
     pub follow_up_effects: Vec<E>,
+    pub source_of_your_choice: bool,
 }
 
 impl<E> PreventDamageEffect<E> {
@@ -3310,11 +3311,17 @@ impl<E> PreventDamageEffect<E> {
             target,
             until,
             follow_up_effects: Vec::new(),
+            source_of_your_choice: false,
         }
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_source_of_your_choice(mut self) -> Self {
+        self.source_of_your_choice = true;
         self
     }
 }

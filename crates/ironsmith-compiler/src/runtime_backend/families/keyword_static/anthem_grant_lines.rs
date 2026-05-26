@@ -272,6 +272,40 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
     Ok(Some(granted))
 }
 
+pub(crate) fn parse_landwalk_as_though_block_override_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let normalized = normalize_cant_words(tokens);
+    let normalized_refs = normalized.iter().map(String::as_str).collect::<Vec<_>>();
+    let Some(can_idx) = anthem_find_word_sequence_index(&normalized_refs, &["can", "be", "blocked"])
+    else {
+        return Ok(None);
+    };
+    if can_idx == 0 {
+        return Ok(None);
+    }
+    let tail = &normalized_refs[can_idx + 3..];
+    if tail.len() != 6
+        || !matches!(tail[0..5], ["as", "though", "they", "didnt", "have"] | ["as", "though", "they", "didn't", "have"])
+        || !tail[5].ends_with("walk")
+    {
+        return Ok(None);
+    }
+
+    let Some(subject_end) = token_index_for_word_index(tokens, can_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    let AnthemSubjectAst::Filter(filter) = parse_anthem_subject(&subject_tokens)? else {
+        return Ok(None);
+    };
+
+    let removed = StaticAbility::keyword_marker(tail[5]);
+    Ok(Some(StaticAbilityAst::Static(StaticAbility::remove_ability(
+        filter, removed,
+    ))))
+}
+
 pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -2910,6 +2944,24 @@ pub(crate) fn parse_anthem_for_each_expression(
             player: PlayerFilter::You,
             symbol: crate::mana::ManaSymbol::Green,
         });
+    }
+
+    let rest_words = crate::runtime_backend::token_word_refs(rest);
+    if let Some(counter_word_idx) =
+        anthem_find_word_index(&rest_words, |word| matches!(word, "counter" | "counters"))
+        && counter_word_idx > 0
+        && let Some(counter_type) = parse_counter_type_word(rest_words[counter_word_idx - 1])
+    {
+        let tail_words = &rest_words[counter_word_idx + 1..];
+        let on_source_tail = anthem_word_slice_starts_with(tail_words, &["on", "it"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "him"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "her"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this", "creature"])
+            || anthem_word_slice_starts_with(tail_words, &["on", "this", "permanent"]);
+        if on_source_tail {
+            return Ok(AnthemCountExpression::CountersOnSource(counter_type));
+        }
     }
 
     let filter = parse_object_filter(rest, false).map_err(|_| {

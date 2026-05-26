@@ -670,6 +670,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
+        AnthemCountExpression::CountersOnSource(counter_type) => {
+            Some(format!("{} counter on it", counter_type.description()))
+        }
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }
@@ -973,6 +976,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 comparison_display(comparison),
                 describe_anthem_count_expression(count)
             )
+        }
+        crate::ConditionExpr::Or(left, right) => {
+            let left_text = describe_static_condition(left).replacen("as long as ", "", 1);
+            let right_text = describe_static_condition(right).replacen("as long as ", "", 1);
+            format!("as long as {left_text} or {right_text}")
         }
         crate::ConditionExpr::ValueComparison {
             left: Value::Speed(crate::target::PlayerFilter::You),
@@ -2197,6 +2205,24 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
+        if self
+            .ability
+            .landwalk_kind()
+            .is_some()
+            && self.filter.card_types.len() == 1
+            && self.filter.card_types[0] == crate::types::CardType::Creature
+            && self
+                .filter
+                .ability_markers
+                .iter()
+                .any(|marker| marker.eq_ignore_ascii_case(&self.ability.display()))
+        {
+            return format!(
+                "{} can be blocked as though they didn't have {}",
+                pluralized_subject_text(&self.filter),
+                self.ability.display().to_ascii_lowercase()
+            );
+        }
         let subject = pluralized_subject_text(&self.filter);
         let singular_subject = subject.starts_with("enchanted ")
             || subject.starts_with("equipped ")

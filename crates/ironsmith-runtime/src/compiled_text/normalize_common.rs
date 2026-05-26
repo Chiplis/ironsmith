@@ -269,6 +269,23 @@ pub(super) fn describe_possessive_choose_spec(spec: &ChooseSpec) -> String {
     }
 }
 
+fn describe_card_type_graveyard_scope(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "your graveyard".to_string(),
+        PlayerFilter::Opponent | PlayerFilter::NotYou => {
+            "your opponents' graveyards".to_string()
+        }
+        PlayerFilter::Any => "all graveyards".to_string(),
+        PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::Opponent) => {
+            "target opponent's graveyard".to_string()
+        }
+        PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::You) => {
+            "your graveyard".to_string()
+        }
+        _ => format!("{} graveyard", describe_possessive_player_filter(player)),
+    }
+}
+
 pub(super) fn join_with_and(parts: &[String]) -> String {
     match parts.len() {
         0 => String::new(),
@@ -757,6 +774,8 @@ pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String 
         normalized = "This token gets +1/+1.".to_string();
     } else if normalized == "Can't block." {
         normalized = "This token can't block.".to_string();
+    } else if normalized == "Can't be blocked." {
+        normalized = "This token can't be blocked.".to_string();
     }
     if is_keyword_style_line(&normalized) {
         normalized
@@ -919,6 +938,9 @@ pub(super) fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
     };
 
     let (head, tail) = body.split_once(": ")?;
+    if head.contains('"') {
+        return None;
+    }
     let normalized_head = if let Some(rest) = head.strip_prefix("You ") {
         format!("you {rest}")
     } else {
@@ -4659,6 +4681,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Whenever this or another {rest}");
     }
+    if let Some(rest) = normalized.strip_prefix("When this creature enters or a ")
+        && let Some((subject, effect_clause)) =
+            rest.split_once(" you control other than this is put into a graveyard from the battlefield,")
+    {
+        return format!(
+            "When this creature enters and whenever another {subject} you control is put into a graveyard from the battlefield,{effect_clause}"
+        );
+    }
     if let Some((left, right)) = normalized.split_once(" or Whenever another ") {
         if left.starts_with("Whenever ") {
             return format!("{left} or another {right}");
@@ -7772,8 +7802,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the damage dealt this turn by the chosen spell".to_string()
         }
         Value::CardTypesInGraveyard(filter) => format!(
-            "the number of card types among cards in {} graveyard",
-            describe_possessive_player_filter(filter)
+            "the number of card types among cards in {}",
+            describe_card_type_graveyard_scope(filter)
         ),
         Value::Devotion { player, color } => format!(
             "{} devotion to {}",
@@ -10122,12 +10152,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let subject = describe_player_filter(player);
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
             format!(
-                "there are {} or more card types among cards in {} graveyard",
-                count_text, subject
+                "there are {} or more card types among cards in {}",
+                count_text,
+                describe_card_type_graveyard_scope(player)
             )
         }
         Condition::PlayerControlsMost { player, filter } => {
@@ -11247,9 +11277,37 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            if let Some(initiative_gate) = describe_you_or_attacked_player_initiative_condition(left, right)
+            {
+                return initiative_gate;
+            }
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_you_or_attacked_player_initiative_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn is_player_initiative(condition: &Condition, player: PlayerFilter) -> bool {
+        matches!(
+            condition,
+            Condition::PlayerHasInitiative {
+                player: condition_player
+            } if *condition_player == player
+        )
+    }
+
+    let matches_pair = (is_player_initiative(left, PlayerFilter::You)
+        && is_player_initiative(right, PlayerFilter::Defending))
+        || (is_player_initiative(left, PlayerFilter::Defending)
+            && is_player_initiative(right, PlayerFilter::You));
+    if !matches_pair {
+        return None;
+    }
+
+    Some("you or a player you're attacking has the initiative".to_string())
 }
 
 fn describe_you_control_two_card_types_condition(

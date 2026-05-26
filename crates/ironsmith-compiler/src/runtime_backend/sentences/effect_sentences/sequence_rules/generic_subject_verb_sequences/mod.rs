@@ -408,6 +408,7 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
                     amount,
                     target,
                     duration,
+                    ..
                 },
             ..
         }) => (Some(amount.clone()), target.clone(), duration.clone()),

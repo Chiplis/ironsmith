@@ -509,6 +509,34 @@ pub(crate) fn parse_cant_clause(
         } else {
             5
         };
+        if let Some(amount_word) = normalized.get(idx).copied()
+            && normalized.get(idx + 1) == Some(&"or")
+            && normalized.get(idx + 2) == Some(&"more")
+            && normalized
+                .get(idx + 3)
+                .is_some_and(|word| *word == "creature" || *word == "creatures")
+            && idx + 4 == normalized.len()
+        {
+            let amount_tokens = vec![OwnedLexToken::word(
+                amount_word.to_string(),
+                TextSpan::synthetic(),
+            )];
+            let (min_blockers, used) = parse_number(&amount_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "invalid blocker threshold in cant-be-blocked-except clause (clause: '{}')",
+                    normalized.join(" ")
+                ))
+            })?;
+            if used != 1 {
+                return Err(CardTextError::ParseError(format!(
+                    "invalid blocker threshold in cant-be-blocked-except clause (clause: '{}')",
+                    normalized.join(" ")
+                )));
+            }
+            return Ok(Some(StaticAbility::cant_be_blocked_except_by_n_or_more(
+                min_blockers as usize,
+            )));
+        }
         if let Some(color_word) = normalized.get(idx)
             && normalized
                 .get(idx + 1)
@@ -1524,6 +1552,7 @@ pub(crate) fn parse_cant_clause(
         | ["this", "cant", "be", "blocked", "this", "turn"]
         | ["cant", "be", "blocked", "this", "turn"] => return Ok(None),
         ["this", "creature", "cant", "be", "blocked"] => StaticAbility::unblockable(),
+        ["this", "token", "cant", "be", "blocked"] => StaticAbility::unblockable(),
         ["this", "cant", "be", "blocked"] => StaticAbility::unblockable(),
         ["cant", "be", "blocked"] => StaticAbility::unblockable(),
         _ => {
@@ -1572,6 +1601,26 @@ mod tests {
                 || display
                     .contains("cant attack or block unless there are seven or more cards in exile"),
             "expected original conditional attack/block restriction text, got {display}"
+        );
+    }
+
+    #[test]
+    fn parse_this_token_cant_be_blocked_clause() {
+        let tokens = tokenize_line("This token can't be blocked.", 0);
+
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("this-token-cant-be-blocked clause should parse")
+            .expect("expected unblockable static ability");
+
+        assert_eq!(abilities.len(), 1);
+        let display = abilities[0].display().to_ascii_lowercase();
+        let debug = format!("{:?}", abilities[0]).to_ascii_lowercase();
+        assert!(
+            display.contains("can't be blocked")
+                || display.contains("cant be blocked")
+                || display.contains("unblockable")
+                || debug.contains("unblockable"),
+            "expected unblockable static ability, display={display}, debug={debug}"
         );
     }
 }

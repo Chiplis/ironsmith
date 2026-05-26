@@ -2,6 +2,7 @@ use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
+const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
 const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
 
 pub(super) fn run_trailing_keyword_activation_line_family(
@@ -257,6 +258,57 @@ pub(super) fn run_split_top_look_and_top_land_play_line_family(
         ],
         next_idx: ctx.idx + 1,
     }))
+}
+
+pub(super) fn run_graveyard_cast_control_condition_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let raw_no_period = raw.trim_end_matches('.');
+    let lower = raw_no_period.to_ascii_lowercase();
+    let prefix = "you may cast this card from your graveyard as long as you control a ";
+    if !lower.starts_with(prefix) || !lower.ends_with(" permanent") {
+        return Ok(None);
+    }
+
+    let Some(condition_text) = raw_no_period.get(prefix.len()..) else {
+        return Ok(None);
+    };
+    let condition_text = condition_text.trim();
+    let Some(color_pair_text) = condition_text.strip_suffix(" permanent") else {
+        return Ok(None);
+    };
+    let color_pair_text = color_pair_text.trim();
+    let Some((left, right)) = color_pair_text.split_once(" or ") else {
+        return Ok(None);
+    };
+
+    let left = left.trim();
+    let right = right.trim();
+    if left.is_empty() || right.is_empty() {
+        return Ok(None);
+    }
+
+    let permission_line = rewrite_line_normalized(
+        ctx.line,
+        "You may cast this card from your graveyard.",
+    )?;
+    let Some(mut static_cst) = parse_static_line_cst(&permission_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower graveyard-cast control condition line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    static_cst.chosen_option_label = Some(format!(
+        "{CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX}{}_{}",
+        left.to_ascii_lowercase(),
+        right.to_ascii_lowercase()
+    ));
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(static_cst),
+        ctx.idx + 1,
+    )))
 }
 
 pub(super) fn run_champion_line_family(
@@ -775,6 +827,7 @@ pub(super) fn run_statement_probe_line_family(
             ctx.preprocessed,
             &ctx.line.tokens,
         ))
+        && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
         return Ok(Some(LineDispatchResult::single(
@@ -783,6 +836,21 @@ pub(super) fn run_statement_probe_line_family(
         )));
     }
     Ok(None)
+}
+
+fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words.starts_with(&["this", "creature", "can", "block"]) {
+        return false;
+    }
+
+    let has_additional = words.iter().any(|word| *word == "additional");
+    let has_creature_noun = words.iter().any(|word| *word == "creature" || *word == "creatures");
+    if !has_additional || !has_creature_noun {
+        return false;
+    }
+
+    words.ends_with(&["each", "combat"]) || words.ends_with(&["this", "turn"])
 }
 
 pub(super) fn run_static_line_family(

@@ -397,11 +397,20 @@ fn protection_prevents_blocking_with_view(
 ///
 /// Most creatures require 1 blocker. Creatures with menace require 2.
 pub fn minimum_blockers(attacker: &Object) -> usize {
-    if attacker.has_static_ability_id(StaticAbilityId::Menace) {
-        2
-    } else {
-        1
-    }
+    attacker
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => static_ability.minimum_blockers(),
+            _ => None,
+        })
+        .max()
+        .or_else(|| {
+            attacker
+                .has_static_ability_id(StaticAbilityId::Menace)
+                .then_some(2)
+        })
+        .unwrap_or(1)
 }
 
 /// Returns the minimum number of blockers required to block an attacker,
@@ -412,11 +421,20 @@ pub fn minimum_blockers_with_game(attacker: &Object, game: &crate::game_state::G
 }
 
 pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameView<'_>) -> usize {
-    if view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace) {
-        2
-    } else {
-        1
-    }
+    let abilities = view
+        .calculated_characteristics(attacker.id)
+        .map(|c| c.static_abilities)
+        .unwrap_or_else(|| get_static_abilities(attacker));
+
+    abilities
+        .iter()
+        .filter_map(|ability| ability.minimum_blockers())
+        .max()
+        .or_else(|| {
+            view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace)
+                .then_some(2)
+        })
+        .unwrap_or(1)
 }
 
 /// Returns the maximum number of blockers allowed for an attacker, if restricted.
@@ -1507,5 +1525,67 @@ mod tests {
             game.object(blocker_id).expect("blocker should exist"),
             &game,
         ));
+    }
+
+    #[test]
+    fn test_quagmire_allows_blocking_swampwalk_creatures() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Bog Raider", 2, 2);
+        attacker.owner = alice;
+        add_ability(&mut attacker, StaticAbility::landwalk(crate::types::Subtype::Swamp));
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.owner = bob;
+
+        let mut swamp = make_creature("Swamp", 0, 1);
+        swamp.owner = bob;
+        swamp.card_types = vec![CardType::Land];
+        swamp.subtypes = vec![crate::types::Subtype::Swamp];
+
+        let mut quagmire = make_creature("Quagmire", 0, 0);
+        quagmire.owner = alice;
+        quagmire.card_types = vec![CardType::Enchantment];
+        quagmire.abilities.push(Ability::static_ability(StaticAbility::remove_ability(
+            crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
+            StaticAbility::landwalk(crate::types::Subtype::Swamp),
+        )));
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(swamp);
+        assert!(!can_block(&attacker, &blocker, &game));
+
+        game.add_object(quagmire);
+        assert!(can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_quagmire_does_not_affect_non_swampwalk_attackers() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Vanilla Attacker", 2, 2);
+        attacker.owner = alice;
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.owner = bob;
+
+        let mut quagmire = make_creature("Quagmire", 0, 0);
+        quagmire.owner = alice;
+        quagmire.card_types = vec![CardType::Enchantment];
+        quagmire.abilities.push(Ability::static_ability(StaticAbility::remove_ability(
+            crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
+            StaticAbility::landwalk(crate::types::Subtype::Swamp),
+        )));
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(quagmire);
+
+        assert!(can_block(&attacker, &blocker, &game));
     }
 }

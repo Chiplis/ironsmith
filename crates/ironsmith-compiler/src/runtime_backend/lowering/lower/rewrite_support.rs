@@ -8,6 +8,11 @@ pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Op
     {
         return Some(vec![Zone::Library]);
     }
+    if str_contains(normalized.as_str(), "cast this card from your graveyard")
+        || str_contains(normalized.as_str(), "play this card from your graveyard")
+    {
+        return Some(vec![Zone::Graveyard]);
+    }
 
     let mut zones = Vec::new();
     for (needles, zone) in [

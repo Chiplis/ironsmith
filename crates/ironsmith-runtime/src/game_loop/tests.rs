@@ -4795,6 +4795,104 @@ fn joint_assault_pumps_target_and_its_soulbond_partner() {
 }
 
 #[test]
+fn doom_weaver_grants_dies_trigger_to_soulbond_partner() {
+    let doom_weaver = CardDefinitionBuilder::new(CardId::new(), "Doom Weaver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spider, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(1, 8))
+        .parse_text(
+            "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+        )
+        .expect("Doom Weaver should parse");
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let doom_weaver_id = game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        let library_card = CardBuilder::new(CardId::new(), format!("Draw Fodder {idx}"))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&library_card, alice, Zone::Library);
+    }
+    let partner = CardBuilder::new(CardId::new(), "Soulbond Partner")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let partner_id = game.create_object_from_card(&partner, alice, Zone::Battlefield);
+    game.set_soulbond_pair(doom_weaver_id, partner_id);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let moved = game.move_object_by_effect(partner_id, Zone::Graveyard);
+    assert!(moved.is_some(), "partner should move to the graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "partner death should trigger Doom Weaver grant"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Doom Weaver trigger should be put on stack");
+
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("granted dies trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 3,
+        "partner should draw cards equal to its power when it dies while paired"
+    );
+}
+
+#[test]
+fn doom_weaver_dies_trigger_not_granted_when_unpaired() {
+    let doom_weaver = CardDefinitionBuilder::new(CardId::new(), "Doom Weaver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spider, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(1, 8))
+        .parse_text(
+            "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+        )
+        .expect("Doom Weaver should parse");
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let _doom_weaver_id = game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        let library_card = CardBuilder::new(CardId::new(), format!("No Draw Fodder {idx}"))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&library_card, alice, Zone::Library);
+    }
+    let partner = CardBuilder::new(CardId::new(), "Unpaired Partner")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let partner_id = game.create_object_from_card(&partner, alice, Zone::Battlefield);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let moved = game.move_object_by_effect(partner_id, Zone::Graveyard);
+    assert!(moved.is_some(), "partner should move to the graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "unpaired partner death should not trigger draw"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before,
+        "unpaired death should not draw cards"
+    );
+}
+
+#[test]
 fn test_extract_target_specs_necromentia_uses_one_target_opponent_requirement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Necromentia")
         .card_types(vec![CardType::Sorcery])
@@ -7952,6 +8050,81 @@ fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_abili
 }
 
 #[test]
+fn watcher_in_the_web_can_block_eight_attackers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let watcher = create_creature(&mut game, "Watcher in the Web", bob, 2, 5);
+
+    game.object_mut(watcher)
+        .expect("watcher exists")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut declarations = Vec::new();
+    for idx in 0..8 {
+        let attacker = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        declarations.push(BlockerDeclaration {
+            blocker: watcher,
+            blocking: attacker,
+        });
+    }
+
+    apply_blocker_declarations(&mut game, &mut combat, &mut tq, &declarations, bob)
+        .expect("Watcher in the Web should block up to eight attackers");
+}
+
+#[test]
+fn watcher_in_the_web_cannot_block_nine_attackers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let watcher = create_creature(&mut game, "Watcher in the Web", bob, 2, 5);
+
+    game.object_mut(watcher)
+        .expect("watcher exists")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut declarations = Vec::new();
+    for idx in 0..9 {
+        let attacker = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        declarations.push(BlockerDeclaration {
+            blocker: watcher,
+            blocking: attacker,
+        });
+    }
+
+    let err = apply_blocker_declarations(&mut game, &mut combat, &mut tq, &declarations, bob)
+        .expect_err("Watcher in the Web should not block nine attackers");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("InvalidBlockers"),
+        "expected invalid blockers error, got {message}"
+    );
+}
+
+#[test]
 fn test_apply_blocker_declarations_enforces_maximum_blockers() {
     let mut game = setup_game();
     let mut tq = TriggerQueue::new();
@@ -7995,6 +8168,105 @@ fn test_apply_blocker_declarations_enforces_maximum_blockers() {
     assert!(
         msg.contains("InvalidBlockers"),
         "expected invalid blockers error, got {msg}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phyrexian_colossus_requires_three_or_more_blockers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let colossus_def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Colossus")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "Trample\nPhyrexian Colossus doesn't untap during your untap step.\nPay 8 life: Untap Phyrexian Colossus.\nPhyrexian Colossus can't be blocked except by three or more creatures.",
+        )
+        .expect("Phyrexian Colossus should parse for combat test");
+    let attacker = game.create_object_from_definition(&colossus_def, alice, Zone::Battlefield);
+    let blocker1 = create_creature(&mut game, "Blocker 1", bob, 1, 1);
+    let blocker2 = create_creature(&mut game, "Blocker 2", bob, 1, 1);
+    let blocker3 = create_creature(&mut game, "Blocker 3", bob, 1, 1);
+
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(bob),
+    });
+
+    let two_blockers = vec![
+        BlockerDeclaration {
+            blocker: blocker1,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker2,
+            blocking: attacker,
+        },
+    ];
+
+    let err = apply_blocker_declarations(&mut game, &mut combat, &mut tq, &two_blockers, bob)
+        .expect_err("two blockers should be illegal against Phyrexian Colossus");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("requires 3 blockers") || msg.contains("needs at least 3 blockers"),
+        "expected minimum-blockers rejection, got {msg}"
+    );
+
+    let three_blockers = vec![
+        BlockerDeclaration {
+            blocker: blocker1,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker2,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker3,
+            blocking: attacker,
+        },
+    ];
+
+    apply_blocker_declarations(&mut game, &mut combat, &mut tq, &three_blockers, bob)
+        .expect("three blockers should be legal against Phyrexian Colossus");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phyrexian_colossus_untap_activation_requires_eight_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let colossus_def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Colossus")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "Trample\nPhyrexian Colossus doesn't untap during your untap step.\nPay 8 life: Untap Phyrexian Colossus.\nPhyrexian Colossus can't be blocked except by three or more creatures.",
+        )
+        .expect("Phyrexian Colossus should parse for activation test");
+    let colossus_id = game.create_object_from_definition(&colossus_def, alice, Zone::Battlefield);
+
+    game.player_mut(alice).expect("alice exists").life = 20;
+    let can_activate_with_twenty = compute_legal_actions(&game, alice)
+        .into_iter()
+        .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
+    assert!(
+        can_activate_with_twenty,
+        "Phyrexian Colossus untap ability should be legal at 20 life"
+    );
+
+    game.player_mut(alice).expect("alice exists").life = 7;
+    let can_activate_with_seven = compute_legal_actions(&game, alice)
+        .into_iter()
+        .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
+    assert!(
+        !can_activate_with_seven,
+        "Phyrexian Colossus untap ability should be illegal below 8 life"
     );
 }
 
@@ -17233,6 +17505,125 @@ fn test_legend_rule_with_different_controllers() {
 // ============================================================================
 // Flashback Tests
 // ============================================================================
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_marang_river_prowler_not_castable_from_graveyard_without_black_or_green_permanent() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_610), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let actions = compute_legal_actions(&game, alice);
+    let graveyard_cast = actions.iter().find(|action| {
+        matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                ..
+            } if *spell_id == prowler_id
+        )
+    });
+    assert!(
+        graveyard_cast.is_none(),
+        "Marang River Prowler should not be castable from graveyard without a black or green permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_marang_river_prowler_castable_from_graveyard_with_black_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_611), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let black_permanent = CardBuilder::new(CardId::from_raw(72_612), "Black Permanent Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+        .color_indicator(crate::color::ColorSet::BLACK)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&black_permanent, alice, Zone::Battlefield);
+
+    let can_play_from_graveyard = game.effect_store.grant_registry.card_can_play_from_zone(
+        &game,
+        prowler_id,
+        Zone::Graveyard,
+        alice,
+    );
+    assert!(
+        can_play_from_graveyard,
+        "Marang River Prowler should grant play-from-graveyard when you control a black permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_marang_river_prowler_castable_from_graveyard_with_green_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_613), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let green_permanent = CardBuilder::new(CardId::from_raw(72_614), "Green Permanent Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .color_indicator(crate::color::ColorSet::GREEN)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&green_permanent, alice, Zone::Battlefield);
+
+    let can_play_from_graveyard = game.effect_store.grant_registry.card_can_play_from_zone(
+        &game,
+        prowler_id,
+        Zone::Graveyard,
+        alice,
+    );
+    assert!(
+        can_play_from_graveyard,
+        "Marang River Prowler should grant play-from-graveyard when you control a green permanent"
+    );
+}
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
@@ -27846,6 +28237,55 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
                     .is_some_and(|object| object.name == "Discard Fodder" && object.owner == alice)
             }),
         "the discarded card should end up in Alice's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sleep_with_the_fishes_creates_unblockable_fish_token() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::effects::CreateTokenEffect;
+    use crate::ids::CardId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sleep = CardDefinitionBuilder::new(CardId::new(), "Sleep with the Fishes")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nWhen this Aura enters, tap enchanted creature and you create a 1/1 blue Fish creature token with \"This token can't be blocked.\"\nEnchanted creature doesn't untap during its controller's untap step.",
+        )
+        .expect("Sleep with the Fishes should parse");
+
+    let create_effect = sleep
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>()),
+            _ => None,
+        })
+        .expect("Sleep with the Fishes trigger should create a token");
+
+    let fish_id = game.create_object_from_definition(&create_effect.token, alice, Zone::Battlefield);
+    let blocker_id = create_creature(&mut game, "Would-be Blocker", bob, 2, 2);
+    game.refresh_continuous_state();
+
+    assert!(
+        !game.can_be_blocked(fish_id),
+        "Fish token from Sleep with the Fishes should be unblockable"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(fish_id).expect("fish token should exist"),
+            game.object(blocker_id).expect("blocker should exist"),
+            &game,
+        ),
+        "opponent creature should not be able to block Sleep with the Fishes Fish token"
     );
 }
 

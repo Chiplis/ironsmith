@@ -1446,6 +1446,7 @@ fn compile_subject_verb_effect(
             amount,
             target,
             duration,
+            source_of_your_choice,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             if let TargetAst::Object(filter, explicit_target_span, _) = target
@@ -1463,7 +1464,15 @@ fn compile_subject_verb_effect(
                 Ok((vec![effect], Vec::new()))
             } else {
                 compile_effect_for_target(target, ctx, |spec| {
-                    Effect::prevent_damage(amount.clone(), spec, duration.clone())
+                    if *source_of_your_choice {
+                        Effect::prevent_damage_with_source_choice(
+                            amount.clone(),
+                            spec,
+                            duration.clone(),
+                        )
+                    } else {
+                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
+                    }
                 })
             }
         }

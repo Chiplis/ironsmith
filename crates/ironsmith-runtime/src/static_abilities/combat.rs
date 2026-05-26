@@ -652,6 +652,39 @@ impl StaticAbilityKind for CantBeBlockedByMoreThan {
     }
 }
 
+/// Can't be blocked except by N or more creatures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CantBeBlockedExceptByNOrMore {
+    pub min_blockers: usize,
+}
+
+impl CantBeBlockedExceptByNOrMore {
+    pub const fn new(min_blockers: usize) -> Self {
+        Self { min_blockers }
+    }
+}
+
+impl StaticAbilityKind for CantBeBlockedExceptByNOrMore {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeBlockedExceptByNOrMore
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Can't be blocked except by {} or more creatures",
+            self.min_blockers
+        )
+    }
+
+    fn grants_evasion(&self) -> bool {
+        true
+    }
+
+    fn minimum_blockers(&self) -> Option<usize> {
+        Some(self.min_blockers)
+    }
+}
+
 // Can attack as though it didn't have defender.
 define_combat_ability!(
     CanAttackAsThoughNoDefender,
