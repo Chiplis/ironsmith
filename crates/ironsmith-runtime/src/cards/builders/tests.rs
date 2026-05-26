@@ -37102,7 +37102,7 @@ fn parse_megatron_life_lost_turn_mana_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Megatron Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
-            "Your opponents can't cast spells during combat.\nAt the beginning of each of your postcombat main phases, you may convert Megatron. If you do, add {C} for each 1 life your opponents have lost this turn.",
+            "More Than Meets the Eye {1}{R}{W}{B} (You may cast this card converted for {1}{R}{W}{B}.)\nYour opponents can't cast spells during combat.\nAt the beginning of each of your postcombat main phases, you may convert Megatron. If you do, add {C} for each 1 life your opponents have lost this turn.",
         )
         .expect("life-lost mana clause should parse");
 
@@ -37110,7 +37110,8 @@ fn parse_megatron_life_lost_turn_mana_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("during combat")
+        rendered.contains("more than meets the eye {1}{r}{w}{b}")
+            && rendered.contains("during combat")
             && rendered.contains("convert")
             && !rendered.contains("transform")
             && rendered.contains("add {c} for each 1 life your opponents have lost this turn")

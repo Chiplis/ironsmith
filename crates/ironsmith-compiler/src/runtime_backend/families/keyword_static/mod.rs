@@ -212,6 +212,7 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
     text.starts_with("prototype ")
+        || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
         || is_ticket_power_toughness_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."

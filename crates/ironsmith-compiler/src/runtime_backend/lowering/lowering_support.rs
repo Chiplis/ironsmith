@@ -931,6 +931,7 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
     text == "compleated"
         || text.starts_with("prototype ")
+        || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
         || is_ticket_power_toughness_sticker_marker_line(&text)
         || text.starts_with("dredge ")
