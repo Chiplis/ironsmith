@@ -39,7 +39,6 @@ use super::util::{
     parse_jump_start_line_lexed, parse_kicker_line_lexed, parse_madness_line_lexed,
     parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_offspring_line_lexed,
     parse_prowl_line_lexed,
-    parse_mutate_line_lexed,
     parse_reinforce_line_lexed, parse_replicate_line_lexed, parse_retrace_line_lexed,
     parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
     parse_transmute_line_lexed, parse_warp_line_lexed,
@@ -287,9 +286,6 @@ pub(super) fn lower_alternative_cast(
         return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     if let Some(method) = parse_prowl_line_lexed(tokens)? {
-        return Ok(LineAst::AlternativeCastingMethod(method.into()));
-    }
-    if let Some(method) = parse_mutate_line_lexed(tokens)? {
         return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
@@ -969,7 +965,6 @@ fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTex
         || parse_jump_start_line_lexed(tokens)?.is_some()
         || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_prowl_line_lexed(tokens)?.is_some()
-        || parse_mutate_line_lexed(tokens)?.is_some()
         || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some())
 }
 

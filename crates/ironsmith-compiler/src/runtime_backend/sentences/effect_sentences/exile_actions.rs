@@ -426,6 +426,7 @@ pub(crate) fn parse_exile_top_library_clause(
             )],
         });
     }
+
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let (player, used_words) = parse_library_owner_prefix(&owner_words, default_player)?;
     if used_words < owner_words.len() {
