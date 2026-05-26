@@ -13077,6 +13077,41 @@ fn heaven_sent_strict_compile_succeeds() {
 }
 
 #[test]
+fn ruthless_cullblade_strict_compile_succeeds() {
+    let oracle_text = "As long as an opponent has 10 or less life, Ruthless Cullblade gets +2/+1.";
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ruthless Cullblade")
+        .parse_text(oracle_text)
+        .expect("Ruthless Cullblade text should parse");
+
+    assert_eq!(def.name(), "Ruthless Cullblade");
+    let debug = format!("{:?}", def.abilities);
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("LifeTotal(Opponent)"), "{debug}");
+    assert!(debug.contains("LessThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(10)"), "{debug}");
+}
+
+#[test]
+fn ruthless_cullblade_compiled_condition_uses_opponent_life_threshold() {
+    let oracle_text = "As long as an opponent has 10 or less life, Ruthless Cullblade gets +2/+1.";
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ruthless Cullblade")
+        .parse_text(oracle_text)
+        .expect("Ruthless Cullblade text should parse");
+
+    let rendered = format!("{def:#?}");
+    assert!(
+        rendered.contains("LifeTotal(")
+            && rendered.contains("Opponent")
+            && rendered.contains("LessThanOrEqual")
+            && rendered.contains("Fixed(")
+            && rendered.contains("10"),
+        "expected compiled condition to retain opponent life-threshold clause, got: {rendered}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_battlefield_count_predicate_parses_other_creatures() {
     let tokens = lex_line(
         "there are two or more other creatures on the battlefield",
