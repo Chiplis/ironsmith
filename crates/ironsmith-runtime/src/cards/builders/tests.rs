@@ -32921,6 +32921,45 @@ fn parse_oran_rief_the_vastwood_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_james_wandering_dad_follow_him_strict_regression() {
+    assert_oracle_card_parses_strict("James, Wandering Dad // Follow Him");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
+    let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("spend this mana only to activate abilities"),
+        "expected James, Wandering Dad // Follow Him compiled text to preserve spend restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() {
+    let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.mana_output.is_some() => Some(activated),
+            _ => None,
+        })
+        .expect("James, Wandering Dad should have a mana ability");
+
+    assert!(
+        activated
+            .mana_usage_restrictions
+            .contains(&crate::ability::ManaUsageRestriction::ActivateAbility),
+        "expected James, Wandering Dad mana ability to keep activate-abilities usage restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
     let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();

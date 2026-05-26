@@ -724,6 +724,7 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
             restrict_to_matching_spell,
             ..
         } => *restrict_to_matching_spell,
+        crate::ability::ManaUsageRestriction::ActivateAbility => true,
     }
 }
 
@@ -771,6 +772,7 @@ fn restriction_bonus_applies_to_payment_source(
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
+        crate::ability::ManaUsageRestriction::ActivateAbility => false,
     }
 }
 
@@ -835,6 +837,7 @@ pub(super) fn payment_source_matches_restriction(
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
         }
+        crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
 }
 
@@ -973,6 +976,7 @@ pub(super) fn apply_spent_mana_bonuses(
                 enters_with_counters,
                 granted_abilities,
             ),
+            crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 
         if grant_uncounterable || !enters_with_counters.is_empty() {
@@ -4734,6 +4738,66 @@ mod priority_mana_tests {
                         if static_ability.id() == StaticAbilityId::CantBeCountered
                 )),
             "spending restricted Cavern-style mana should make the matching spell uncounterable"
+        );
+    }
+
+    #[test]
+    fn james_wandering_dad_follow_him_restricted_mana_only_pays_for_activated_abilities() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let james = CardDefinitionBuilder::new(CardId::new(), "James, Wandering Dad // Follow Him")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{T}: Add {C}{C}. Spend this mana only to activate abilities.")
+            .expect("James mana ability text should parse");
+
+        let restriction = james
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) if !activated.mana_usage_restrictions.is_empty() => {
+                    activated.mana_usage_restrictions.first().cloned()
+                }
+                _ => None,
+            })
+            .expect("James mana ability should include a usage restriction");
+
+        let source_id = game.new_object_id();
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Colorless,
+                source: source_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction],
+            });
+
+        let mana_rock = CardDefinitionBuilder::new(CardId::new(), "Ability Target")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let mana_rock_id = game.create_object_from_definition(&mana_rock, alice, Zone::Battlefield);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(mana_rock_id)).is_some(),
+            "James restricted mana should be spendable to activate abilities"
+        );
+
+        let mut game = setup_game();
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Colorless,
+                source: source_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![crate::ability::ManaUsageRestriction::ActivateAbility],
+            });
+
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Spell Target")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(spell_id)).is_none(),
+            "James restricted mana should not be spendable to cast spells"
         );
     }
 

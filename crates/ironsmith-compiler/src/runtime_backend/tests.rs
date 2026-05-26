@@ -2509,6 +2509,17 @@ fn rewrite_spell_mana_restriction_wraps_preceding_mana_effect() {
 }
 
 #[test]
+fn rewrite_activate_ability_mana_restriction_parses() {
+    let tokens = lex_line("Spend this mana only to activate abilities.", 0)
+        .expect("rewrite lexer should classify mana restriction");
+
+    assert!(matches!(
+        parse_mana_usage_restriction_sentence_lexed(&tokens),
+        Some(crate::ability::ManaUsageRestriction::ActivateAbility)
+    ));
+}
+
+#[test]
 fn learn_keyword_line_lowers_to_real_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Learn Variant")
         .card_types(vec![CardType::Sorcery])
