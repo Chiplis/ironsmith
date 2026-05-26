@@ -4323,6 +4323,24 @@ pub(crate) fn parse_evoke_line_lexed(
     }))
 }
 
+pub(crate) fn parse_prowl_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "prowl") else {
+        return Ok(None);
+    };
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Prowl",
+        total_cost,
+        condition: Some(
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Rogue,
+            ),
+        ),
+    }))
+}
+
 pub(crate) fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ManaCost>, CardTextError> {

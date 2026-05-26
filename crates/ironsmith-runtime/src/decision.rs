@@ -464,6 +464,25 @@ mod tests {
         game.stage_turn_history_event(&event);
     }
 
+    fn stage_combat_damage_to_player_for_test(
+        game: &mut GameState,
+        source: ObjectId,
+        player: PlayerId,
+        amount: u32,
+    ) {
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent::with_cause(
+                source,
+                crate::events::DamageTarget::Player(player),
+                amount,
+                true,
+                crate::events::cause::EventCause::effect(),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.stage_turn_history_event(&event);
+    }
+
     fn stage_artifact_sacrifice_for_test(game: &mut GameState, player: PlayerId) {
         let artifact = CardBuilder::new(CardId::new(), "Sacrificed Artifact")
             .card_types(vec![CardType::Artifact])
@@ -1946,6 +1965,129 @@ mod tests {
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(effective.to_oracle(), "{5}{B}");
+    }
+
+    #[test]
+    fn knowledge_exploitation_prowl_alternative_cost_requires_rogue_combat_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9501), "Knowledge Exploitation")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(5),
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let prowl_condition =
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Rogue,
+            );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            prowl_condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("knowledge exploitation should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("knowledge exploitation should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("knowledge exploitation should have mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            effective.to_oracle(),
+            "{5}{U}",
+            "prowl condition should be false before Rogue combat damage"
+        );
+
+
+        let rogue = CardBuilder::new(CardId::from_raw(9502), "Rogue Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Rogue])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let rogue_id = game.create_object_from_card(&rogue, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, rogue_id, bob, 2);
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("knowledge exploitation should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("knowledge exploitation should have mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            effective.to_oracle(),
+            "{3}{U}",
+            "prowl condition should become true after your Rogue deals combat damage to a player"
+        );
+    }
+
+    #[test]
+    fn knowledge_exploitation_prowl_alternative_cost_rejects_noncombat_or_nonrogue_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9503), "Knowledge Exploitation")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(5),
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let prowl_condition =
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                Subtype::Rogue,
+            );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            prowl_condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("knowledge exploitation should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let wizard = CardBuilder::new(CardId::from_raw(9504), "Wizard Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let wizard_id = game.create_object_from_card(&wizard, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, wizard_id, bob, 2);
+
+        let rogue = CardBuilder::new(CardId::from_raw(9505), "Rogue Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Rogue])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let rogue_id = game.create_object_from_card(&rogue, alice, Zone::Battlefield);
+        stage_noncombat_damage_to_player_for_test(&mut game, rogue_id, bob, 1);
+
+        let spell_obj = game
+            .object(spell_id)
+            .expect("knowledge exploitation should exist");
+        let base_cost = spell_obj
+            .mana_cost
+            .as_ref()
+            .expect("knowledge exploitation should have mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            effective.to_oracle(),
+            "{5}{U}",
+            "prowl condition should stay false when damage is noncombat or from non-Rogue creatures"
+        );
     }
 
     #[test]

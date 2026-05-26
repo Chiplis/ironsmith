@@ -1756,6 +1756,12 @@ pub(super) fn describe_alternative_cast_line(
                 })
                 .unwrap_or_else(|| "Surge".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Prowl") => {
+            method
+                .mana_cost()
+                .map(|cost| format!("Prowl {}", cost.to_oracle()))
+                .unwrap_or_else(|| "Prowl".to_string())
+        }
         method if method.is_composed_cost() => {
             let name = method.name();
             let mana_cost = method.mana_cost();
