@@ -7998,6 +7998,105 @@ fn test_apply_blocker_declarations_enforces_maximum_blockers() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phyrexian_colossus_requires_three_or_more_blockers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let colossus_def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Colossus")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "Trample\nPhyrexian Colossus doesn't untap during your untap step.\nPay 8 life: Untap Phyrexian Colossus.\nPhyrexian Colossus can't be blocked except by three or more creatures.",
+        )
+        .expect("Phyrexian Colossus should parse for combat test");
+    let attacker = game.create_object_from_definition(&colossus_def, alice, Zone::Battlefield);
+    let blocker1 = create_creature(&mut game, "Blocker 1", bob, 1, 1);
+    let blocker2 = create_creature(&mut game, "Blocker 2", bob, 1, 1);
+    let blocker3 = create_creature(&mut game, "Blocker 3", bob, 1, 1);
+
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(bob),
+    });
+
+    let two_blockers = vec![
+        BlockerDeclaration {
+            blocker: blocker1,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker2,
+            blocking: attacker,
+        },
+    ];
+
+    let err = apply_blocker_declarations(&mut game, &mut combat, &mut tq, &two_blockers, bob)
+        .expect_err("two blockers should be illegal against Phyrexian Colossus");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("requires 3 blockers") || msg.contains("needs at least 3 blockers"),
+        "expected minimum-blockers rejection, got {msg}"
+    );
+
+    let three_blockers = vec![
+        BlockerDeclaration {
+            blocker: blocker1,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker2,
+            blocking: attacker,
+        },
+        BlockerDeclaration {
+            blocker: blocker3,
+            blocking: attacker,
+        },
+    ];
+
+    apply_blocker_declarations(&mut game, &mut combat, &mut tq, &three_blockers, bob)
+        .expect("three blockers should be legal against Phyrexian Colossus");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phyrexian_colossus_untap_activation_requires_eight_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let colossus_def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Colossus")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "Trample\nPhyrexian Colossus doesn't untap during your untap step.\nPay 8 life: Untap Phyrexian Colossus.\nPhyrexian Colossus can't be blocked except by three or more creatures.",
+        )
+        .expect("Phyrexian Colossus should parse for activation test");
+    let colossus_id = game.create_object_from_definition(&colossus_def, alice, Zone::Battlefield);
+
+    game.player_mut(alice).expect("alice exists").life = 20;
+    let can_activate_with_twenty = compute_legal_actions(&game, alice)
+        .into_iter()
+        .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
+    assert!(
+        can_activate_with_twenty,
+        "Phyrexian Colossus untap ability should be legal at 20 life"
+    );
+
+    game.player_mut(alice).expect("alice exists").life = 7;
+    let can_activate_with_seven = compute_legal_actions(&game, alice)
+        .into_iter()
+        .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == colossus_id));
+    assert!(
+        !can_activate_with_seven,
+        "Phyrexian Colossus untap ability should be illegal below 8 life"
+    );
+}
+
 #[test]
 fn test_marhault_elsdragon_rampage_buffs_for_blockers_beyond_first() {
     let mut game = setup_game();

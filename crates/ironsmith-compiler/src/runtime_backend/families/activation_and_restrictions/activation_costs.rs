@@ -509,6 +509,34 @@ pub(crate) fn parse_cant_clause(
         } else {
             5
         };
+        if let Some(amount_word) = normalized.get(idx).copied()
+            && normalized.get(idx + 1) == Some(&"or")
+            && normalized.get(idx + 2) == Some(&"more")
+            && normalized
+                .get(idx + 3)
+                .is_some_and(|word| *word == "creature" || *word == "creatures")
+            && idx + 4 == normalized.len()
+        {
+            let amount_tokens = vec![OwnedLexToken::word(
+                amount_word.to_string(),
+                TextSpan::synthetic(),
+            )];
+            let (min_blockers, used) = parse_number(&amount_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "invalid blocker threshold in cant-be-blocked-except clause (clause: '{}')",
+                    normalized.join(" ")
+                ))
+            })?;
+            if used != 1 {
+                return Err(CardTextError::ParseError(format!(
+                    "invalid blocker threshold in cant-be-blocked-except clause (clause: '{}')",
+                    normalized.join(" ")
+                )));
+            }
+            return Ok(Some(StaticAbility::cant_be_blocked_except_by_n_or_more(
+                min_blockers as usize,
+            )));
+        }
         if let Some(color_word) = normalized.get(idx)
             && normalized
                 .get(idx + 1)

@@ -510,6 +510,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the minimum number of blockers required to block this creature.
+    fn minimum_blockers(&self) -> Option<usize> {
+        None
+    }
+
     /// Returns how many additional attackers this creature can block.
     ///
     /// Used for abilities like "This creature can block an additional creature each combat."
@@ -1242,6 +1247,10 @@ impl StaticAbility {
         self.0.maximum_blockers()
     }
 
+    pub fn minimum_blockers(&self) -> Option<usize> {
+        self.0.minimum_blockers()
+    }
+
     pub fn additional_blockable_attackers(&self) -> Option<usize> {
         self.0.additional_blockable_attackers()
     }
@@ -1828,6 +1837,10 @@ impl StaticAbility {
 
     pub fn cant_be_blocked_by_more_than(max_blockers: usize) -> Self {
         Self::new(CantBeBlockedByMoreThan::new(max_blockers))
+    }
+
+    pub fn cant_be_blocked_except_by_n_or_more(min_blockers: usize) -> Self {
+        Self::new(CantBeBlockedExceptByNOrMore::new(min_blockers))
     }
 
     pub fn can_attack_as_though_no_defender() -> Self {

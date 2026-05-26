@@ -929,6 +929,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbility::cant_be_blocked_by_more_than(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedExceptByNOrMore(count) => {
+                StaticAbility::cant_be_blocked_except_by_n_or_more(*count)
+            }
             ironsmith_core::StaticAbilityPayload::CantBeBlockedByPowerOrLess(power) => {
                 StaticAbility::cant_be_blocked_by_power_or_less(*power)
             }
@@ -1674,6 +1677,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_menace(&self) -> bool {
         self.id() == StaticAbilityId::Menace
+    }
+
+    fn minimum_blockers(&self) -> Option<usize> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedExceptByNOrMore(count) => {
+                Some(*count)
+            }
+            _ if self.id() == StaticAbilityId::Menace => Some(2),
+            _ => None,
+        }
+    }
+
+    fn maximum_blockers(&self) -> Option<usize> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => Some(*count),
+            _ => None,
+        }
     }
 
     fn has_flying(&self) -> bool {
