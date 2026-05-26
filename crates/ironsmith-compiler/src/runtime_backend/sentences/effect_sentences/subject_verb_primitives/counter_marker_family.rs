@@ -447,14 +447,23 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         return Ok(None);
     }
 
-    let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) else {
+    let mut implicit_under_destination = false;
+    let split_idx = if let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) {
+        to_idx
+    } else if let Some(under_idx) = find_index(tokens, |token| token.is_word("under")) {
+        if under_idx <= 1 {
+            return Ok(None);
+        }
+        implicit_under_destination = true;
+        under_idx
+    } else {
         return Ok(None);
     };
-    if to_idx <= 1 {
+    if split_idx <= 1 {
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..to_idx]);
+    let target_tokens = trim_commas(&tokens[1..split_idx]);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing return target before destination (clause: '{}')",
@@ -462,11 +471,16 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         )));
     }
 
-    let destination_tokens = trim_commas(&tokens[to_idx + 1..]);
+    let destination_start = if implicit_under_destination {
+        split_idx
+    } else {
+        split_idx + 1
+    };
+    let destination_tokens = trim_commas(&tokens[destination_start..]);
     if destination_tokens.is_empty() {
         return Ok(None);
     }
-    if !grammar::contains_word(&destination_tokens, "battlefield") {
+    if !implicit_under_destination && !grammar::contains_word(&destination_tokens, "battlefield") {
         return Ok(None);
     }
 
@@ -480,16 +494,28 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     let base_destination_word_storage =
         crate::runtime_backend::token_word_refs(&destination_tokens[..with_idx]);
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
-    let Some(battlefield_idx) = find_index(&base_destination_words, |word| *word == "battlefield")
-    else {
-        return Ok(None);
+    let battlefield_idx = if implicit_under_destination {
+        0usize
+    } else {
+        let Some(idx) = find_index(&base_destination_words, |word| *word == "battlefield") else {
+            return Ok(None);
+        };
+        idx
     };
     let tapped = slice_contains(&base_destination_words, &"tapped");
-    let destination_tail: Vec<&str> = base_destination_words[battlefield_idx + 1..]
-        .iter()
-        .copied()
-        .filter(|word| *word != "tapped")
-        .collect();
+    let destination_tail: Vec<&str> = if implicit_under_destination {
+        base_destination_words
+            .iter()
+            .copied()
+            .filter(|word| *word != "tapped")
+            .collect()
+    } else {
+        base_destination_words[battlefield_idx + 1..]
+            .iter()
+            .copied()
+            .filter(|word| *word != "tapped")
+            .collect()
+    };
     let battlefield_controller = if destination_tail.is_empty()
         || destination_tail == ["under", "its", "control"]
         || destination_tail == ["under", "their", "control"]

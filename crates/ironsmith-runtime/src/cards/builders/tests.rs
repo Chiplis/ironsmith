@@ -40935,14 +40935,29 @@ fn parse_meathook_massacre_ii_oracle_text_strictly() {
     assert!(
         rendered_lc.contains("whenever a creature you control dies")
             && rendered_lc.contains("you may pay 3 life")
-            && rendered_lc.contains("if you do, return it from graveyard to the battlefield"),
+            && rendered_lc.contains("if you do, put that card onto the battlefield under your control")
+            && rendered_lc.contains("put a finality counter on it"),
         "expected self-dies return branch to resolve as a return-to-battlefield effect, got {rendered}"
     );
     assert!(
         rendered_lc.contains("whenever an opponent's creature dies")
             && rendered_lc.contains("that object's controller may lose 3 life")
-            && rendered_lc.contains("if that object's controller doesn't, return it from graveyard to the battlefield"),
+            && rendered_lc.contains("if that object's controller doesn't, put that card onto the battlefield under your control")
+            && rendered_lc.contains("put a finality counter on it"),
         "expected opponent-dies branch with pay-or-return clause to compile, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_meathook_massacre_ii_compiled_definition_tracks_finality_counter_returns() {
+    let def = parse_oracle_card_definition("Meathook Massacre II");
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+
+    assert!(
+        debug.matches("counter_type: finality").count() >= 2
+            && debug.matches("battlefield_controller: you").count() >= 2,
+        "expected both death triggers to return the creature with a finality counter, got {debug}"
     );
 }
 
@@ -41032,6 +41047,46 @@ fn meathook_massacre_ii_triggers_when_opponent_creature_dies() {
     );
     assert_eq!(game.life_total(alice), 20);
     assert_eq!(game.life_total(bob), 20);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn meathook_massacre_ii_does_not_trigger_for_noncreature_death() {
+    let meathook = parse_oracle_card_definition("Meathook Massacre II");
+    let noncreature = CardDefinitionBuilder::new(CardId::new(), "Meathook Noncreature")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let meathook_id = game.create_object_from_definition(&meathook, alice, Zone::Battlefield);
+    let dying = game.create_object_from_definition(&noncreature, alice, Zone::Battlefield);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(dying).expect("dying object should exist"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            dying,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let meathook_triggers: Vec<_> = triggered
+        .iter()
+        .filter(|entry| entry.source == meathook_id)
+        .collect();
+    assert_eq!(
+        meathook_triggers.len(),
+        0,
+        "Meathook Massacre II should not trigger when a noncreature dies"
+    );
 }
 
 #[test]
