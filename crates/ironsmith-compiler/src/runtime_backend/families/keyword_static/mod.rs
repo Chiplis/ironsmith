@@ -358,6 +358,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
         ],
+        "parse_landwalk_as_though_block_override_line" => vec![
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Pair("creatures", "with"),
+        ],
         "parse_multi_subject_anthem_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
@@ -677,6 +681,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
+        single_static_ability_ast_rule!(parse_landwalk_as_though_block_override_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_granted_keyword_static_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
