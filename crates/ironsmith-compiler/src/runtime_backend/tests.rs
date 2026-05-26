@@ -10367,6 +10367,24 @@ fn rewrite_sequence_registry_matches_looked_cards_reveal_top_rest_bottom_bundle(
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_may_rearrange_looked_cards_bundle() {
+    let text = "Whenever a creature you control enters, you may look at the top X cards of your library, where X is that creature's power. If you do, put one of those cards on top of your library and the rest on the bottom of your library in any order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Cream of the Crop text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Cream of the Crop sequence should parse");
+    let debug = format!("{parsed:#?}").to_ascii_lowercase();
+
+    assert!(debug.contains("lookattopcards"), "{debug}");
+    assert!(debug.contains("powerof"), "{debug}");
+    assert!(debug.contains("rearrangelookedcardsinlibrary"), "{debug}");
+    assert!(
+        debug.contains("min: 1") && debug.contains("dynamic_x: false"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_divvy_pile_choice_bundle() {
     let text = "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard. (Piles can be empty.)";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify divvy pile text");

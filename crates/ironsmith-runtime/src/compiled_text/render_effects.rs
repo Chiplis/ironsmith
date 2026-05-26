@@ -26676,29 +26676,31 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
-        let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+        let (count_text, noun, where_clause) = describe_top_count_noun_and_where_clause(&look_at_top.count);
         if look_at_top.reveal {
             if look_at_top.player == PlayerFilter::You {
-                return format!("Reveal the top {count_text} {noun} of your library");
+                return format!("Reveal the top {count_text} {noun} of your library{where_clause}");
             }
             let subject = describe_player_filter(&look_at_top.player);
             let verb = player_verb(&subject, "reveal", "reveals");
-            return format!("{subject} {verb} the top {count_text} {noun} of {owner} library");
+            return format!(
+                "{subject} {verb} the top {count_text} {noun} of {owner} library{where_clause}"
+            );
         }
-        return format!("Look at the top {count_text} {noun} of {owner} library");
+        return format!("Look at the top {count_text} {noun} of {owner} library{where_clause}");
     }
     if let Some(rearrange) =
         effect.downcast_ref::<crate::effects::RearrangeLookedCardsInLibraryEffect>()
     {
         let count_text = match (rearrange.count.min, rearrange.count.max) {
             (0, Some(1)) => "up to one".to_string(),
-            (min, Some(max)) if min == max => max.to_string(),
+            (min, Some(max)) if min == max => small_number_word(max as u32).unwrap_or_else(|| max.to_string()),
             (0, Some(max)) => format!("up to {max}"),
             (min, Some(max)) => format!("between {min} and {max}"),
             (min, None) => format!("at least {min}"),
         };
         return format!(
-            "Put {count_text} of the looked-at cards on top of your library and the rest on the bottom of your library in a random order"
+            "Put {count_text} of those cards on top of your library and the rest on the bottom of your library in any order"
         );
     }
     if let Some(look_at_hand) = effect.downcast_ref::<crate::effects::LookAtHandEffect>() {

@@ -553,6 +553,81 @@ pub(crate) fn parse_put_into_hand(
     let has_hand = grammar::contains_word(tokens, "hand");
     let has_into = grammar::contains_word(tokens, "into");
 
+    // "Put one of those cards on top of your library and the rest on the bottom of your library"
+    if grammar::contains_word(tokens, "rest")
+        && grammar::contains_word(tokens, "top")
+        && grammar::contains_word(tokens, "bottom")
+        && grammar::contains_word(tokens, "library")
+        && clause_words.iter().any(|w| *w == "and" || *w == "then")
+    {
+        let mut up_to = false;
+        let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
+            && tokens.get(1).is_some_and(|t| t.is_word("to"))
+        {
+            up_to = true;
+            parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
+        } else {
+            parse_number(tokens)
+        }
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing put count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+
+        let mut idx = used;
+        if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+            idx += 1;
+        }
+        if tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+            idx += 1;
+        } else if tokens.get(idx).is_some_and(|t| t.is_word("those")) {
+            idx += 1;
+            if tokens
+                .get(idx)
+                .is_some_and(|t| t.is_word("card") || t.is_word("cards"))
+            {
+                idx += 1;
+            }
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported library rearrange put clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        if !tokens.get(idx).is_some_and(|t| t.is_word("on"))
+            || !tokens.get(idx + 1).is_some_and(|t| t.is_word("top"))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported library rearrange put clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let library_owner = if grammar::contains_word(tokens, "your") {
+            PlayerAst::You
+        } else if grammar::contains_word(tokens, "their")
+            || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
+        {
+            PlayerAst::That
+        } else {
+            player
+        };
+
+        let choice_count = if up_to {
+            ChoiceCount::up_to(count as usize)
+        } else {
+            ChoiceCount::exactly(count as usize)
+        };
+        return Ok(EffectAst::subject_verb_rearrange_looked_cards_in_library(
+            library_owner,
+            TagKey::from(IT_TAG),
+            choice_count,
+        ));
+    }
+
     if has_hand && has_into && (has_it || has_them) {
         // "Put N of them into your hand and the rest on the bottom of your library in any order."
         if has_them
