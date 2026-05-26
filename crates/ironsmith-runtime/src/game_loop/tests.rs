@@ -12414,6 +12414,293 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn necrotic_fumes_cast_exiles_paid_creature_and_target_creature() {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let necrotic_fumes = CardDefinitionBuilder::new(CardId::from_raw(100_780), "Necrotic Fumes")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, exile a creature you control.\nExile target creature or planeswalker.",
+        )
+        .expect("Necrotic Fumes should parse");
+
+    let cost_creature = CardBuilder::new(CardId::new(), "Cost Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_creature = CardBuilder::new(CardId::new(), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let cost_creature_id = game.create_object_from_card(&cost_creature, alice, Zone::Battlefield);
+    let target_creature_id = game.create_object_from_card(&target_creature, bob, Zone::Battlefield);
+    let spell_id = game.create_object_from_definition(&necrotic_fumes, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Necrotic Fumes cast should start");
+
+    for _ in 0..6 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
+                )
+                .expect("Necrotic Fumes should accept creature target")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|opt| opt.description.to_ascii_lowercase().contains("exile"))
+                    .map(|opt| opt.index)
+                    .unwrap_or(0);
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Necrotic Fumes should accept additional cost choice")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == cost_creature_id && candidate.legal),
+                    "additional cost chooser should allow exiling the controller's creature"
+                );
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(cost_creature_id),
+                )
+                .expect("Necrotic Fumes should accept exiling chosen cost creature")
+            }
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+                break;
+            }
+            other => panic!("unexpected cast flow state for Necrotic Fumes: {other:?}"),
+        };
+    }
+
+    assert_eq!(game.stack.len(), 1, "Necrotic Fumes should be on stack after costs");
+    let cost_creature_exiled = game.exile.iter().any(|&id| {
+        game.object(id)
+            .is_some_and(|obj| obj.name == "Cost Creature" && obj.owner == alice)
+    });
+    assert!(
+        cost_creature_exiled,
+        "the additional-cost creature should be exiled while casting"
+    );
+
+    resolve_stack_entry(&mut game).expect("Necrotic Fumes should resolve");
+    let target_creature_exiled = game.exile.iter().any(|&id| {
+        game.object(id)
+            .is_some_and(|obj| obj.name == "Target Creature" && obj.owner == bob)
+    });
+    assert!(
+        target_creature_exiled,
+        "the targeted creature should be exiled on resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necrotic_fumes_cast_exiles_target_planeswalker() {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let necrotic_fumes = CardDefinitionBuilder::new(CardId::from_raw(100_781), "Necrotic Fumes")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, exile a creature you control.\nExile target creature or planeswalker.",
+        )
+        .expect("Necrotic Fumes should parse");
+
+    let cost_creature = CardBuilder::new(CardId::new(), "Cost Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_planeswalker = CardBuilder::new(CardId::new(), "Target Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .build();
+
+    let cost_creature_id = game.create_object_from_card(&cost_creature, alice, Zone::Battlefield);
+    let target_planeswalker_id =
+        game.create_object_from_card(&target_planeswalker, bob, Zone::Battlefield);
+    let spell_id = game.create_object_from_definition(&necrotic_fumes, alice, Zone::Hand);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Necrotic Fumes cast should start");
+
+    for _ in 0..6 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Targets(vec![Target::Object(target_planeswalker_id)]),
+                )
+                .expect("Necrotic Fumes should accept planeswalker target")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::CardCostChoice(cost_creature_id),
+            )
+            .expect("Necrotic Fumes should accept cost creature choice"),
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+                break;
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx.options.first().map(|opt| opt.index).unwrap_or(0);
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Necrotic Fumes should accept cost-step option")
+            }
+            other => panic!("unexpected cast flow state for Necrotic Fumes: {other:?}"),
+        };
+    }
+
+    resolve_stack_entry(&mut game).expect("Necrotic Fumes should resolve against planeswalker");
+    let target_planeswalker_exiled = game.exile.iter().any(|&id| {
+        game.object(id)
+            .is_some_and(|obj| obj.name == "Target Planeswalker" && obj.owner == bob)
+    });
+    assert!(
+        target_planeswalker_exiled,
+        "the targeted planeswalker should be exiled on resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necrotic_fumes_cost_prompt_has_no_legal_creature_without_controller_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let necrotic_fumes = CardDefinitionBuilder::new(CardId::from_raw(100_782), "Necrotic Fumes")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, exile a creature you control.\nExile target creature or planeswalker.",
+        )
+        .expect("Necrotic Fumes should parse");
+
+    let target_creature = CardBuilder::new(CardId::new(), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let target_creature_id = game.create_object_from_card(&target_creature, bob, Zone::Battlefield);
+    let spell_id = game.create_object_from_definition(&necrotic_fumes, alice, Zone::Hand);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Necrotic Fumes cast should reach cost/target prompts");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {
+            let err = apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
+            )
+            .expect_err("Necrotic Fumes target confirmation should fail without payable cost");
+            let detail = format!("{err:?}").to_ascii_lowercase();
+            assert!(
+                detail.contains("failed to pay deferred spell cost")
+                    || detail.contains("insufficient")
+                    || detail.contains("additional cost"),
+                "expected a cost-payment failure when no creature can be exiled, got {detail}"
+            );
+        }
+        other => panic!("unexpected Necrotic Fumes cast flow without cost creature: {other:?}"),
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
     use crate::game_state::Phase;
