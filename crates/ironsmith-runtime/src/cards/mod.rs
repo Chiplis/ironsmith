@@ -1381,6 +1381,28 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_watcher_in_the_web_oracle_text_and_render_additional_blockers() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Watcher in the Web")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Flash\nReach\nThis creature can block an additional seven creatures each combat.",
+            )
+            .expect("Watcher in the Web oracle text should parse strictly");
+
+        let compiled = crate::compiled_text::canonical_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains("block")
+                && compiled.contains("additional")
+                && compiled.contains("7")
+                && compiled.contains("combat"),
+            "expected compiled text to preserve seven-additional-blockers clause, got {compiled}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_enchanted_creature_cant_attack_or_block_static() {
         use crate::static_abilities::StaticAbilityId;
 

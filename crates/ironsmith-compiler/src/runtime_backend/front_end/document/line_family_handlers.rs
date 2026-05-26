@@ -827,6 +827,7 @@ pub(super) fn run_statement_probe_line_family(
             ctx.preprocessed,
             &ctx.line.tokens,
         ))
+        && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
         return Ok(Some(LineDispatchResult::single(
@@ -835,6 +836,21 @@ pub(super) fn run_statement_probe_line_family(
         )));
     }
     Ok(None)
+}
+
+fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words.starts_with(&["this", "creature", "can", "block"]) {
+        return false;
+    }
+
+    let has_additional = words.iter().any(|word| *word == "additional");
+    let has_creature_noun = words.iter().any(|word| *word == "creature" || *word == "creatures");
+    if !has_additional || !has_creature_noun {
+        return false;
+    }
+
+    words.ends_with(&["each", "combat"]) || words.ends_with(&["this", "turn"])
 }
 
 pub(super) fn run_static_line_family(
