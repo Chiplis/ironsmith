@@ -13034,6 +13034,36 @@ fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
+    struct ChooseNamedSourceDecisionMaker {
+        source_name: &'static str,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseNamedSourceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if let Some(chosen) = ctx.candidates.iter().find_map(|candidate| {
+                if !candidate.legal {
+                    return None;
+                }
+                let matches_name = game
+                    .object(candidate.id)
+                    .is_some_and(|object| object.name == self.source_name);
+                if matches_name {
+                    Some(candidate.id)
+                } else {
+                    None
+                }
+            }) {
+                vec![chosen]
+            } else {
+                crate::decision::AutoPassDecisionMaker.decide_objects(game, ctx)
+            }
+        }
+    }
+
     let def = parse_oracle_card_definition("Healing Grace");
     let spell = def
         .spell_effect
@@ -13044,7 +13074,7 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
-    let damage_source = game.create_object_from_definition(
+    let chosen_source = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(91_100), "Damage Source")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -13052,8 +13082,18 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
         bob,
         Zone::Battlefield,
     );
+    let other_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_102), "Other Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
 
-    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut dm = ChooseNamedSourceDecisionMaker {
+        source_name: "Damage Source",
+    };
     let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
         .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
         .with_target_assignments(vec![crate::game_state::TargetAssignment {
@@ -13076,7 +13116,7 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
 
     let (first_damage, first_prevented) = crate::events::processing::process_damage_with_event(
         &mut game,
-        damage_source,
+        chosen_source,
         crate::events::DamageTarget::Player(bob),
         2,
         false,
@@ -13090,7 +13130,7 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
 
     let (second_damage, second_prevented) = crate::events::processing::process_damage_with_event(
         &mut game,
-        damage_source,
+        chosen_source,
         crate::events::DamageTarget::Player(bob),
         2,
         false,
@@ -13100,6 +13140,24 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
     assert!(
         second_prevented || second_damage < 2,
         "second damage application should still be partially prevented"
+    );
+
+    let (other_source_damage, other_source_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            other_source,
+            crate::events::DamageTarget::Player(bob),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        other_source_damage, 2,
+        "non-chosen source damage should not be prevented"
+    );
+    assert!(
+        !other_source_prevented,
+        "non-chosen source damage should remain fully unprevented"
     );
 }
 
