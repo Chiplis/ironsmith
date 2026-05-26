@@ -755,4 +755,29 @@ mod tests {
         assert_eq!(object.abilities.len(), 1);
         assert!(object.abilities[0].is_mana_ability());
     }
+
+    #[test]
+    fn megatron_tyrant_strict_compiles_without_keyword_fallback() {
+        let definition = compile_to_runtime_definition(
+            "Megatron, Tyrant // Megatron, Destructive Force",
+            "Mana cost: {3}{R}{W}{B}\nType: Legendary Artifact Creature — Robot\nPower/Toughness: 7/5\nMore Than Meets the Eye {1}{R}{W}{B} (You may cast this card converted for {1}{R}{W}{B}.)\nYour opponents can't cast spells during combat.\nAt the beginning of each of your postcombat main phases, you may convert Megatron. If you do, add {C} for each 1 life your opponents have lost this turn.",
+            false,
+        )
+        .expect("Megatron should strict-compile without unsupported keyword fallbacks");
+
+        let debug = format!("{definition:#?}");
+        assert!(
+            !debug.contains("KeywordFallbackText") && !debug.contains("RuleFallbackText"),
+            "Megatron should not lower to fallback static abilities:\n{debug}"
+        );
+        assert!(
+            debug.to_ascii_lowercase()
+                .contains("more than meets the eye {1}{r}{w}{b}")
+                && debug.contains("OpponentsCantCastSpells")
+                && debug.contains("ConvertEffect")
+                && debug.contains("AddScaledManaEffect")
+                && debug.contains("LifeLostThisTurn"),
+            "Megatron should preserve keyword marker and main ability semantics:\n{debug}"
+        );
+    }
 }
