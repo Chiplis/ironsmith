@@ -7473,6 +7473,105 @@ fn test_parse_manifest_dread_trigger_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn they_came_from_the_pipes_strict_parse_includes_manifest_dread_twice_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "They Came from the Pipes")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, manifest dread twice. (To manifest dread, look at the top two cards of your library. Put one onto the battlefield face down as a 2/2 creature and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.)\nWhenever a face-down creature you control enters, draw a card.",
+        )
+        .expect("They Came from the Pipes should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest dread")
+            && (rendered.contains("twice") || rendered.contains("2 times")),
+        "expected compiled text to preserve the manifest-dread-twice clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("whenever a face-down creature you control enters, draw a card"),
+        "expected face-down ETB draw trigger in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "They Came from the Pipes should not rely on unsupported parser fallback: {rendered}"
+    );
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("RepeatEffects") && abilities_debug.contains("Fixed(2)"),
+        "expected manifest dread twice to lower to a repeat effect with count 2, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn they_came_from_the_pipes_face_down_trigger_respects_controller() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "They Came from the Pipes")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, manifest dread twice. (To manifest dread, look at the top two cards of your library. Put one onto the battlefield face down as a 2/2 creature and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.)\nWhenever a face-down creature you control enters, draw a card.",
+        )
+        .expect("They Came from the Pipes should parse strictly");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let vanilla_creature = CardDefinitionBuilder::new(CardId::from_raw(2), "Vanilla Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice_face_down = game.create_object_from_definition(&vanilla_creature, alice, Zone::Battlefield);
+    game.set_face_down(alice_face_down);
+    let alice_etb = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            alice_face_down,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let alice_trigger_count = crate::triggers::check_triggers(&game, &alice_etb)
+        .iter()
+        .filter(|entry| entry.source == source_id)
+        .count();
+    assert_eq!(
+        alice_trigger_count, 1,
+        "expected They Came from the Pipes to trigger for your own face-down creature ETB"
+    );
+
+    let bob_face_down = game.create_object_from_definition(&vanilla_creature, bob, Zone::Battlefield);
+    game.set_face_down(bob_face_down);
+    let bob_etb = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            bob_face_down,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let bob_trigger_count = crate::triggers::check_triggers(&game, &bob_etb)
+        .iter()
+        .filter(|entry| entry.source == source_id)
+        .count();
+    assert_eq!(
+        bob_trigger_count, 0,
+        "expected They Came from the Pipes not to trigger for opponent face-down creature ETB"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Probe")
         .card_types(vec![CardType::Creature])
