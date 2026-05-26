@@ -35103,6 +35103,89 @@ fn strict_parse_shared_parser_regression_cards() {
     }
 }
 
+#[test]
+fn strict_parse_nighthawk_scavenger_regression() {
+    assert_oracle_card_parses_strict("Nighthawk Scavenger");
+}
+
+#[test]
+fn nighthawk_scavenger_compiled_text_preserves_card_types_among_clause() {
+    let def = parse_oracle_card_definition("Nighthawk Scavenger");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        (rendered.contains("power is 1 plus") || rendered.contains("power is equal to 1 plus"))
+            && (rendered
+                .contains("1 plus the number of card types among cards in your opponents' graveyard")
+            || rendered
+                .contains("1 plus the number of card types among cards in your opponents' graveyards")
+            || rendered.contains("1 plus the number of distinct card types in your opponents' graveyard")
+            || rendered
+                .contains("1 plus the number of distinct card types in your opponents' graveyards")),
+        "expected Nighthawk Scavenger to keep a card-types-in-opponents-graveyards scaling clause, got {rendered}"
+    );
+}
+
+#[test]
+fn nighthawk_scavenger_characteristic_runtime_scaling_regression() {
+    let def = parse_oracle_card_definition("Nighthawk Scavenger");
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT =>
+            {
+                Some(static_ability)
+            }
+            _ => None,
+        })
+        .expect("Nighthawk Scavenger should have a characteristic-defining power ability");
+
+    let game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let effects = static_ability.generate_effects(
+        crate::ids::ObjectId::from_raw(1),
+        crate::ids::PlayerId::from_index(0),
+        &game,
+    );
+    let crate::continuous::Modification::SetPowerToughness {
+        power,
+        toughness,
+        sublayer: _,
+    } = &effects[0].modification
+    else {
+        panic!("expected Nighthawk Scavenger to use a SetPowerToughness CDA");
+    };
+
+    let is_expected_power = match power {
+        crate::effect::Value::Add(left, right) => {
+            matches!(
+                (&**left, &**right),
+                (
+                    crate::effect::Value::Fixed(1),
+                    crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Opponent)
+                ) | (
+                    crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Opponent),
+                    crate::effect::Value::Fixed(1)
+                )
+            )
+        }
+        _ => false,
+    };
+    assert!(
+        is_expected_power,
+        "expected Nighthawk Scavenger power to be 1 plus card types in opponents' graveyards, got {:?}",
+        power
+    );
+    assert!(
+        matches!(toughness, crate::effect::Value::SourceToughness),
+        "expected Nighthawk Scavenger toughness CDA axis to keep source toughness, got {:?}",
+        toughness
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {
