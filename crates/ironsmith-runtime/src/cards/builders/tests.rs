@@ -155,6 +155,30 @@ fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_robe_of_the_archmagi_compiled_text_includes_class_equip_clause() {
+    let def = parse_oracle_card_definition("Robe of the Archmagi");
+    let lines = canonical_compiled_lines(&def);
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "Whenever equipped creature deals combat damage to a player, you draw that many cards."),
+        "expected Robe trigger text in compiled output, got {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Equip {4}"),
+        "expected base equip line in compiled output, got {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "Equip Shaman or Warlock or Wizard {1}"),
+        "expected class-qualified equip line in compiled output, got {lines:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
     struct ChooseMemnite;
 

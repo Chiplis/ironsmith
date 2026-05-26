@@ -754,26 +754,37 @@ fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<Objec
     if words.is_empty() {
         return None;
     }
-    if words.last().copied() == Some("creature") {
-        let subtype_words = &words[..words.len().saturating_sub(1)];
-        if subtype_words.is_empty() {
-            return None;
-        }
-        if subtype_words.len() != 1 {
-            return None;
-        }
-        let subtype = parse_subtype_flexible(subtype_words[0])?;
-        let mut filter = ObjectFilter::creature().you_control();
-        push_unique(&mut filter.subtypes, subtype);
-        return Some(filter);
+    let mut subtype_words = words.as_slice();
+    if subtype_words.last().copied() == Some("creature") {
+        subtype_words = &subtype_words[..subtype_words.len().saturating_sub(1)];
     }
-
-    if words.len() != 1 {
+    if subtype_words.is_empty() {
         return None;
     }
-    let subtype = parse_subtype_flexible(words[0])?;
+
+    let mut parsed_subtypes = Vec::new();
+    let mut saw_subtype = false;
+    for word in subtype_words {
+        if matches!(*word, "or" | "and" | "and/or") {
+            if !saw_subtype {
+                return None;
+            }
+            continue;
+        }
+
+        let subtype = parse_subtype_flexible(word)?;
+        push_unique(&mut parsed_subtypes, subtype);
+        saw_subtype = true;
+    }
+
+    if parsed_subtypes.is_empty() {
+        return None;
+    }
+
     let mut filter = ObjectFilter::creature().you_control();
-    push_unique(&mut filter.subtypes, subtype);
+    for subtype in parsed_subtypes {
+        push_unique(&mut filter.subtypes, subtype);
+    }
     Some(filter)
 }
 

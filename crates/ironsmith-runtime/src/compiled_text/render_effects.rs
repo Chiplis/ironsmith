@@ -32617,6 +32617,14 @@ fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
             if filter.subtypes.len() == 1 {
                 return Some(filter.subtypes[0].to_string());
             }
+            if filter.subtypes.len() > 1 {
+                let names = filter
+                    .subtypes
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
+                return Some(names.join(" or "));
+            }
             None
         }
         _ => None,
