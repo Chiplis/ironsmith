@@ -1406,6 +1406,27 @@ fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_marang_river_prowler_graveyard_cast_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Skulk")
+            && rendered.contains("You may cast this card from your graveyard")
+            && rendered.contains("as long as you control a black permanent or you control a green permanent"),
+        "expected graveyard-cast condition for Marang River Prowler, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_max_speed_draw_replacement_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vnwxt Parse Test")
         .card_types(vec![CardType::Creature])

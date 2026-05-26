@@ -1,6 +1,7 @@
 use super::*;
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
+const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
 const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
 
 pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::ConditionExpr {
@@ -21,7 +22,46 @@ pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::Condition
             right: crate::effect::Value::Fixed(threshold),
         };
     }
+    if let Some(color_pair) = label.strip_prefix(CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX) {
+        let Some((left_name, right_name)) = color_pair.split_once('_') else {
+            return crate::ConditionExpr::SourceChosenOption(label.to_string());
+        };
+        let Some(left) = color_from_label(left_name) else {
+            return crate::ConditionExpr::SourceChosenOption(label.to_string());
+        };
+        let Some(right) = color_from_label(right_name) else {
+            return crate::ConditionExpr::SourceChosenOption(label.to_string());
+        };
+        let left_filter = ObjectFilter::permanent()
+            .you_control()
+            .with_colors(ColorSet::from_color(left));
+        let right_filter = ObjectFilter::permanent()
+            .you_control()
+            .with_colors(ColorSet::from_color(right));
+        let left_condition = crate::ConditionExpr::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(left_filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: Some(format!("you control a {left_name} permanent")),
+        };
+        let right_condition = crate::ConditionExpr::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(right_filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: Some(format!("you control a {right_name} permanent")),
+        };
+        return crate::ConditionExpr::Or(Box::new(left_condition), Box::new(right_condition));
+    }
     crate::ConditionExpr::SourceChosenOption(label.to_string())
+}
+
+fn color_from_label(label: &str) -> Option<crate::Color> {
+    match label {
+        "white" => Some(crate::Color::White),
+        "blue" => Some(crate::Color::Blue),
+        "black" => Some(crate::Color::Black),
+        "red" => Some(crate::Color::Red),
+        "green" => Some(crate::Color::Green),
+        _ => None,
+    }
 }
 
 pub(crate) fn strip_non_keyword_label_prefix_for_lowering_lexed(

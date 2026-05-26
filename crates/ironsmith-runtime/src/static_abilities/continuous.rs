@@ -977,6 +977,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 describe_anthem_count_expression(count)
             )
         }
+        crate::ConditionExpr::Or(left, right) => {
+            let left_text = describe_static_condition(left).replacen("as long as ", "", 1);
+            let right_text = describe_static_condition(right).replacen("as long as ", "", 1);
+            format!("as long as {left_text} or {right_text}")
+        }
         crate::ConditionExpr::ValueComparison {
             left: Value::Speed(crate::target::PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
