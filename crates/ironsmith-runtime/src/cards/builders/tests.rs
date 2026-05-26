@@ -33963,6 +33963,7 @@ strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_escaped_null, "Escaped Null");
+strict_parse_card_test!(strict_parse_exuberant_fuseling, "Exuberant Fuseling");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_feudkillers_verdict, "Feudkiller's Verdict");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
@@ -34005,6 +34006,112 @@ fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {
         rendered.contains("whenever this creature blocks or this creature becomes blocked")
             && rendered.contains("gets +5/+0 until end of turn"),
         "expected Escaped Null to keep its combat trigger and pump clause, got {rendered}"
+    );
+}
+
+#[test]
+fn exuberant_fuseling_compiled_text_keeps_oil_counter_scaling_clause() {
+    let def = parse_oracle_card_definition("Exuberant Fuseling");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("this creature gets +1/+0 for each oil counter on it"),
+        "expected Exuberant Fuseling to keep its oil-counter scaling clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_death_only() {
+    let def = parse_oracle_card_definition("Exuberant Fuseling");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let fuseling_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let etb_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            fuseling_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut etb_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &etb_event)
+        .into_iter()
+        .filter(|entry| entry.source == fuseling_id)
+    {
+        etb_queue.add(entry);
+    }
+    assert_eq!(
+        etb_queue.entries.len(),
+        1,
+        "expected Exuberant Fuseling ETB branch to trigger once"
+    );
+
+    let allied_artifact = CardDefinitionBuilder::new(CardId::new(), "Allied Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let allied_artifact_id =
+        game.create_object_from_definition(&allied_artifact, alice, Zone::Battlefield);
+    let allied_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(allied_artifact_id)
+            .expect("allied artifact should exist"),
+        &game,
+    );
+    let allied_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            allied_artifact_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(allied_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut allied_dies_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &allied_dies_event)
+        .into_iter()
+        .filter(|entry| entry.source == fuseling_id)
+    {
+        allied_dies_queue.add(entry);
+    }
+    assert_eq!(
+        allied_dies_queue.entries.len(),
+        1,
+        "expected another controlled artifact dying to trigger Exuberant Fuseling"
+    );
+
+    let opposing_artifact = CardDefinitionBuilder::new(CardId::new(), "Opposing Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let opposing_artifact_id =
+        game.create_object_from_definition(&opposing_artifact, bob, Zone::Battlefield);
+    let opposing_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(opposing_artifact_id)
+            .expect("opposing artifact should exist"),
+        &game,
+    );
+    let opposing_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            opposing_artifact_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(opposing_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let opposing_triggers = crate::triggers::check_triggers(&game, &opposing_dies_event)
+        .into_iter()
+        .filter(|entry| entry.source == fuseling_id)
+        .count();
+    assert_eq!(
+        opposing_triggers, 0,
+        "expected opponent permanent dying to not trigger Exuberant Fuseling"
     );
 }
 
