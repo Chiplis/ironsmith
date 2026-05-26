@@ -17323,6 +17323,46 @@ fn test_marang_river_prowler_castable_from_graveyard_with_black_permanent() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_marang_river_prowler_castable_from_graveyard_with_green_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_613), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let green_permanent = CardBuilder::new(CardId::from_raw(72_614), "Green Permanent Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+        .color_indicator(crate::color::ColorSet::GREEN)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&green_permanent, alice, Zone::Battlefield);
+
+    let can_play_from_graveyard = game.effect_store.grant_registry.card_can_play_from_zone(
+        &game,
+        prowler_id,
+        Zone::Graveyard,
+        alice,
+    );
+    assert!(
+        can_play_from_graveyard,
+        "Marang River Prowler should grant play-from-graveyard when you control a green permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_flashback_appears_in_legal_actions_from_graveyard() {
     use crate::cards::definitions::think_twice;
     use crate::decision::compute_legal_actions;
