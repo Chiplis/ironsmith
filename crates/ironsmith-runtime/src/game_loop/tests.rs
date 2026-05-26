@@ -12635,6 +12635,109 @@ fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn raphael_tag_team_tough_trigger_only_happens_first_time_each_turn_and_adds_combat_phase() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let raphael_def = CardDefinitionBuilder::new(CardId::new(), "Raphael, Tag Team Tough")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Menace (This creature can't be blocked except by two or more creatures.)\nWhenever Raphael deals combat damage to a player for the first time each turn, untap all attacking creatures. After this combat phase, there is an additional combat phase.",
+        )
+        .expect("Raphael, Tag Team Tough should parse");
+
+    let raphael_id = game.create_object_from_definition(&raphael_def, alice, Zone::Battlefield);
+    let ally_id = create_creature(&mut game, "Attacking Ally", alice, 2, 2);
+    let bystander_id = create_creature(&mut game, "Bystander", alice, 2, 2);
+
+    game.tap(raphael_id);
+    game.tap(ally_id);
+    game.tap(bystander_id);
+
+    game.combat = Some(CombatState {
+        attackers: vec![
+            crate::combat_state::AttackerInfo {
+                creature: raphael_id,
+                target: AttackTarget::Player(bob),
+            },
+            crate::combat_state::AttackerInfo {
+                creature: ally_id,
+                target: AttackTarget::Player(bob),
+            },
+        ],
+        blockers: std::collections::HashMap::new(),
+        ..Default::default()
+    });
+    if let Some(combat) = game.combat.as_mut() {
+        combat.blockers.insert(raphael_id, Vec::new());
+        combat.blockers.insert(ally_id, Vec::new());
+    }
+
+    let first_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            raphael_id,
+            crate::events::DamageTarget::Player(bob),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(raphael_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, first_damage, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Raphael should trigger for first combat damage this turn");
+    assert_eq!(game.stack.len(), 1, "first damage should queue one trigger");
+
+    resolve_stack_entry(&mut game).expect("Raphael trigger should resolve");
+
+    assert!(
+        !game.is_tapped(raphael_id) && !game.is_tapped(ally_id),
+        "Raphael trigger should untap all attacking creatures"
+    );
+    assert!(
+        game.is_tapped(bystander_id),
+        "nonattacking creatures should stay tapped"
+    );
+    assert_eq!(
+        game.turn_store.additional_phases,
+        vec![Phase::Combat],
+        "Raphael trigger should queue one additional combat phase"
+    );
+
+    let second_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            raphael_id,
+            crate::events::DamageTarget::Player(bob),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(raphael_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    queue_triggers_from_event(&mut game, &mut trigger_queue, second_damage, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second damage event should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "Raphael should not trigger again from later combat damage this turn"
+    );
+    assert_eq!(
+        game.turn_store.additional_phases,
+        vec![Phase::Combat],
+        "second damage should not add another additional combat phase"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
