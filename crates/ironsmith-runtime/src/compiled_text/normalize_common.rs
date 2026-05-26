@@ -10928,6 +10928,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             "the triggering object had {min_count} or more {} counters",
             counter_type.description()
         ),
+        Condition::TriggeringObjectHadAnyCounters { min_count } => {
+            if *min_count == 1 {
+                "it had counters on it".to_string()
+            } else {
+                format!("the triggering object had {min_count} or more counters")
+            }
+        }
         Condition::ControlCreaturesTotalPowerAtLeast(power) => format!(
             "creatures you control have total power {power} or greater"
         ),

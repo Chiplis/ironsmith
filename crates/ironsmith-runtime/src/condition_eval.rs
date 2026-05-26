@@ -129,6 +129,7 @@ fn source_escaped(game: &GameState, source: ObjectId) -> bool {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::object::CounterType;
     use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -143,6 +144,74 @@ mod tests {
             .build();
         let owner = game.players[owner_index].id;
         game.create_object_from_card(&card, owner, Zone::Hand);
+    }
+
+    #[test]
+    fn reluctant_role_model_trigger_condition_passes_when_triggering_object_had_any_counters() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let creature = CardBuilder::new(CardId::from_raw(90_001), "Countered Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        game.object_mut(creature_id)
+            .expect("creature should exist")
+            .counters
+            .insert(CounterType::Lifelink, 1);
+        let snapshot = {
+            let object = game.object(creature_id).expect("creature should exist");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        };
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let condition = Condition::TriggeringObjectHadAnyCounters { min_count: 1 };
+        let ctx = ExecutionContext::new_default(game.new_object_id(), alice).with_triggering_event(event);
+
+        assert!(
+            evaluate_condition(&game, &condition, &ctx).expect("condition should evaluate"),
+            "expected Reluctant Role Model style condition to pass when the dying creature had counters"
+        );
+    }
+
+    #[test]
+    fn reluctant_role_model_trigger_condition_fails_without_counters() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let creature = CardBuilder::new(CardId::from_raw(90_002), "Vanilla Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let snapshot = {
+            let object = game.object(creature_id).expect("creature should exist");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        };
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let condition = Condition::TriggeringObjectHadAnyCounters { min_count: 1 };
+        let ctx = ExecutionContext::new_default(game.new_object_id(), alice).with_triggering_event(event);
+
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).expect("condition should evaluate"),
+            "expected Reluctant Role Model style condition to fail when the dying creature had no counters"
+        );
     }
 
     #[test]
@@ -926,6 +995,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
+        Condition::TriggeringObjectHadAnyCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
         Condition::CardInYourGraveyard { .. } => {}
         Condition::ActivationTiming(..) => {}
@@ -1287,6 +1357,10 @@ pub fn evaluate_condition_external(
             .is_some_and(|snapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             }),
+        Condition::TriggeringObjectHadAnyCounters { min_count } => ctx
+            .triggering_event
+            .and_then(|event| event.snapshot())
+            .is_some_and(|snapshot| snapshot.counters.values().copied().sum::<u32>() >= *min_count),
 
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
@@ -2359,7 +2433,9 @@ fn evaluate_condition_simple(
         Condition::FirstTimeThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
-        Condition::TriggeringObjectWasEnchanted | Condition::TriggeringObjectHadCounters { .. } => {
+        Condition::TriggeringObjectWasEnchanted
+        | Condition::TriggeringObjectHadCounters { .. }
+        | Condition::TriggeringObjectHadAnyCounters { .. } => {
             false
         }
         Condition::ControlCreaturesTotalPowerAtLeast(_)
@@ -3317,6 +3393,11 @@ fn evaluate_condition(
             .is_some_and(|snapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             })),
+        Condition::TriggeringObjectHadAnyCounters { min_count } => Ok(ctx
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.snapshot())
+            .is_some_and(|snapshot| snapshot.counters.values().copied().sum::<u32>() >= *min_count)),
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
                 .battlefield

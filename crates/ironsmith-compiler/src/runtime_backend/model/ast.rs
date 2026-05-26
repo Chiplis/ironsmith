@@ -510,6 +510,9 @@ pub(crate) enum PredicateAst {
         counter_type: CounterType,
         count: u32,
     },
+    TriggeringObjectHadAnyCounterAtLeast {
+        count: u32,
+    },
     SourceHasCounterAtLeast {
         counter_type: CounterType,
         count: u32,

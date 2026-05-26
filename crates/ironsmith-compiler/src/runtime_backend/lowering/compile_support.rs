@@ -542,6 +542,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
             counter_type: *counter_type,
             min_count: *count,
         },
+        PredicateAst::TriggeringObjectHadAnyCounterAtLeast { count } => {
+            Condition::TriggeringObjectHadAnyCounters { min_count: *count }
+        }
         PredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count,

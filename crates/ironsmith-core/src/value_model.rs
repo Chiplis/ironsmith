@@ -765,6 +765,9 @@ pub enum Condition {
         counter_type: CounterType,
         min_count: u32,
     },
+    TriggeringObjectHadAnyCounters {
+        min_count: u32,
+    },
     ControlCreaturesTotalPowerAtLeast(u32),
     CardInYourGraveyard {
         card_types: Vec<crate::CardType>,
