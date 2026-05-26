@@ -381,6 +381,22 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             continue;
         };
         let lower = word.to_ascii_lowercase();
+        if matches!(lower.as_str(), "end" | "ends")
+            && tokens
+                .get(idx.saturating_sub(1))
+                .and_then(OwnedLexToken::as_word)
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+                == Some("until")
+            && tokens
+                .get(idx + 1)
+                .and_then(OwnedLexToken::as_word)
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+                == Some("of")
+        {
+            continue;
+        }
         if matches!(lower.as_str(), "counter" | "counters")
             && tokens
                 .get(idx + 1)
