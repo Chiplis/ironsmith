@@ -718,6 +718,18 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     };
 
     let parse_mana_value_segment = |segment: &[&str]| -> Option<Value> {
+        let is_tagged_that_object_mana_value = || {
+            if segment.len() < 4
+                || segment[0] != "that"
+                || segment[segment.len() - 2] != "mana"
+                || segment[segment.len() - 1] != "value"
+            {
+                return false;
+            }
+
+            !segment[1..segment.len() - 2].is_empty()
+        };
+
         if slice_starts_with(&segment, &["that", "spell", "mana", "value"])
             || slice_starts_with(&segment, &["that", "spell's", "mana", "value"])
             || slice_starts_with(&segment, &["that", "spells", "mana", "value"])
@@ -808,6 +820,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             || slice_starts_with(&segment, &["sacrificed", "artifacts", "mana", "value"])
             || slice_starts_with(&segment, &["sacrificed", "permanents", "mana", "value"])
             || slice_starts_with(&segment, &["its", "mana", "value"])
+            || is_tagged_that_object_mana_value()
         {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(IT_TAG),

@@ -3199,11 +3199,14 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 | "card"
                 | "cards"
         ) || parse_card_type(normalized).is_some()
+            || parse_subtype_word(normalized).is_some()
             || str_strip_suffix(normalized, "s")
-                .is_some_and(|singular| parse_card_type(singular).is_some())
+                .is_some_and(|singular| {
+                    parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
+                })
     });
     if remaining_words.len() >= 3
-        && remaining_words[0] == "that"
+        && matches!(remaining_words[0], "that" | "the")
         && second_word_is_object_head
         && matches!(
             remaining_words[2],
@@ -3271,8 +3274,11 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 | "card"
                 | "cards"
         ) || parse_card_type(object_head).is_some()
+            || parse_subtype_word(object_head).is_some()
             || str_strip_suffix(object_head, "s")
-                .is_some_and(|singular| parse_card_type(singular).is_some()))
+                .is_some_and(|singular| {
+                    parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
+                }))
         {
             let player = if str_starts_with(remaining_words[1], "owner") {
                 PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
