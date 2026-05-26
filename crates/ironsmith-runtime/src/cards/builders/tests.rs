@@ -7413,6 +7413,43 @@ fn test_parse_adapt_activation_with_reminder_text_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_rageform_parses_and_renders_aura_become_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rageform")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, it becomes an Aura with enchant creature. Manifest the top card of your library and attach this enchantment to it. (To manifest a card, put it onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)\nEnchanted creature has double strike. (It deals both first-strike and regular combat damage.)",
+        )
+        .expect("Rageform should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("becomes an aura in addition to its other types")
+            && rendered.contains("has enchant restriction"),
+        "expected aura become + enchant restriction clauses in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("manifest the top card of your library"),
+        "expected manifest clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("attach this enchantment to it"),
+        "expected attach clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("enchanted creature has double strike"),
+        "expected enchanted-creature static line, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "Rageform should not rely on parser fallback markers: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_dread_trigger_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Dread Probe")
         .card_types(vec![CardType::Creature])

@@ -685,6 +685,93 @@ fn test_natures_embrace_land_branch_grants_mana_not_creature_bonus() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_rageform_grants_double_strike_only_to_attached_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let attached_creature = CardBuilder::new(CardId::new(), "Attached Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attached_creature_id =
+        game.create_object_from_card(&attached_creature, alice, Zone::Battlefield);
+
+    let unattached_creature = CardBuilder::new(CardId::new(), "Unattached Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let unattached_creature_id =
+        game.create_object_from_card(&unattached_creature, alice, Zone::Battlefield);
+
+    let rageform_def = CardDefinitionBuilder::new(CardId::new(), "Rageform")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, it becomes an Aura with enchant creature. Manifest the top card of your library and attach this enchantment to it.\nEnchanted creature has double strike.",
+        )
+        .expect("Rageform should parse for runtime behavior test");
+    let rageform_id = game.create_object_from_definition(&rageform_def, alice, Zone::Battlefield);
+
+    {
+        let rageform = game.object_mut(rageform_id).expect("Rageform should exist");
+        rageform.attached_to = Some(crate::object::AttachmentTarget::Object(attached_creature_id));
+    }
+    {
+        let creature = game
+            .object_mut(attached_creature_id)
+            .expect("attached creature should exist");
+        creature.attachments.push(rageform_id);
+    }
+
+    assert!(
+        game.object_has_ability(attached_creature_id, &StaticAbility::double_strike()),
+        "Rageform should grant double strike to the enchanted creature"
+    );
+    assert!(
+        !game.object_has_ability(unattached_creature_id, &StaticAbility::double_strike()),
+        "Rageform should not grant double strike to creatures it does not enchant"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_rageform_can_enchant_opponents_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bob_creature = CardBuilder::new(CardId::new(), "Opponent Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bob_creature_id = game.create_object_from_card(&bob_creature, bob, Zone::Battlefield);
+
+    let rageform_def = CardDefinitionBuilder::new(CardId::new(), "Rageform")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, it becomes an Aura with enchant creature. Manifest the top card of your library and attach this enchantment to it.\nEnchanted creature has double strike.",
+        )
+        .expect("Rageform should parse for opponent-attachment test");
+    let rageform_id = game.create_object_from_definition(&rageform_def, alice, Zone::Battlefield);
+
+    {
+        let rageform = game.object_mut(rageform_id).expect("Rageform should exist");
+        rageform.attached_to = Some(crate::object::AttachmentTarget::Object(bob_creature_id));
+    }
+    {
+        let creature = game
+            .object_mut(bob_creature_id)
+            .expect("opponent creature should exist");
+        creature.attachments.push(rageform_id);
+    }
+
+    assert!(
+        game.object_has_ability(bob_creature_id, &StaticAbility::double_strike()),
+        "enchant creature should allow Rageform to grant double strike to an opponent's creature"
+    );
+}
+
 /// Tests that Urza's Saga survives under Blood Moon even with max lore counters.
 ///
 /// Scenario: Urza's Saga has 3 lore counters (would normally sacrifice).
