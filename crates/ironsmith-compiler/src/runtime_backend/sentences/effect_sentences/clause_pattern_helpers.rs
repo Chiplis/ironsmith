@@ -139,12 +139,18 @@ pub(crate) fn parse_prevent_next_damage_clause(
             ))
         })?;
     let this_turn_idx = idx + this_turn_rel;
-    if this_turn_idx + 2 != clause_words.len() {
+    let source_of_your_choice = if this_turn_idx + 2 == clause_words.len() {
+        false
+    } else if clause_words[this_turn_idx + 2..]
+        == ["by", "a", "source", "of", "your", "choice"]
+    {
+        true
+    } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing prevent-next damage clause (clause: '{}')",
             clause_words.join(" ")
         )));
-    }
+    };
 
     let target_words = &clause_words[idx..this_turn_idx];
     if target_words.is_empty() {
@@ -159,10 +165,11 @@ pub(crate) fn parse_prevent_next_damage_clause(
         .collect::<Vec<_>>();
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(EffectAst::subject_verb_prevent_damage(
+    Ok(Some(EffectAst::subject_verb_prevent_damage_with_source_choice(
         amount,
         target,
         Until::EndOfTurn,
+        source_of_your_choice,
     )))
 }
 

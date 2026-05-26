@@ -577,16 +577,18 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventDamageEffect<M::Effect>>(&effect)
     {
+        let mut prevent = crate::effects::PreventDamageEffect::new(
+            payload.amount.clone(),
+            payload.target.clone(),
+            payload.until.clone(),
+        )
+        .with_follow_up_effects(convert_effects(
+            payload.follow_up_effects.iter().cloned(),
+            hooks,
+        )?);
+        prevent.source_of_your_choice = payload.source_of_your_choice;
         return Ok(Effect::new(
-            crate::effects::PreventDamageEffect::new(
-                payload.amount.clone(),
-                payload.target.clone(),
-                payload.until.clone(),
-            )
-            .with_follow_up_effects(convert_effects(
-                payload.follow_up_effects.iter().cloned(),
-                hooks,
-            )?),
+            prevent,
         ));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {

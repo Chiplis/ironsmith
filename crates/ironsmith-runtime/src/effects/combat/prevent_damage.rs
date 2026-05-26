@@ -41,6 +41,8 @@ pub struct PreventDamageEffect {
     pub damage_filter: DamageFilter,
     /// Effects to run using the amount this shield actually prevented.
     pub follow_up_effects: Vec<Effect>,
+    /// Whether the source is chosen as the effect resolves.
+    pub source_of_your_choice: bool,
 }
 
 impl PreventDamageEffect {
@@ -52,6 +54,7 @@ impl PreventDamageEffect {
             duration,
             damage_filter: DamageFilter::all(),
             follow_up_effects: Vec::new(),
+            source_of_your_choice: false,
         }
     }
 
@@ -70,6 +73,7 @@ impl PreventDamageEffect {
         self.damage_filter = filter;
         self
     }
+
 
     /// Execute these effects using the amount this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {

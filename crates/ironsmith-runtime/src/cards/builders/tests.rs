@@ -13020,6 +13020,152 @@ fn parse_prevent_next_damage_rejects_trailing_tail_strictly() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
+    let def = parse_oracle_card_definition("Healing Grace");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Prevent the next 3 damage")
+            && rendered.contains("by a source of your choice")
+            && rendered.contains("You gain 3 life"),
+        "expected Healing Grace prevention + source choice + life gain in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
+    let def = parse_oracle_card_definition("Healing Grace");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Healing Grace should produce spell effects")
+        .clone();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_100), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+        .expect("Healing Grace should resolve");
+
+    assert_eq!(game.players[0].life, 23, "Healing Grace should gain 3 life for the caster");
+
+    let (first_damage, first_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(first_damage, 0, "first 2 damage should be prevented");
+    assert!(
+        first_prevented || first_damage == 0,
+        "first damage application should reflect prevention"
+    );
+
+    let (second_damage, second_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(second_damage, 1, "shield should have exactly 1 prevention remaining");
+    assert!(
+        second_prevented || second_damage < 2,
+        "second damage application should still be partially prevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn healing_grace_runtime_only_protects_chosen_target() {
+    let def = parse_oracle_card_definition("Healing Grace");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Healing Grace should produce spell effects")
+        .clone();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_101), "Damage Source Two")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Healing Grace should resolve");
+
+    let (damage_to_alice, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(damage_to_alice, 2, "non-targeted player should not be protected");
+
+    let (damage_to_bob, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(damage_to_bob, 0, "chosen target should receive prevented damage");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_target_opponent_chooses_creature_then_other_cant_block() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eunuchs Variant")
             .parse_text(
