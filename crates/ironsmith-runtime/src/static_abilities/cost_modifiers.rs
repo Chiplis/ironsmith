@@ -1651,6 +1651,13 @@ impl StaticAbilityKind for ThisSpellCostReduction {
         if let Some(tail) = tail {
             line.push(' ');
             line.push_str(&tail);
+        } else if matches!(self.reduction, Value::X)
+            && matches!(
+                self.condition,
+                ThisSpellCostCondition::LifeTotalLessThanStarting
+            )
+        {
+            line.push_str(", where X is the difference");
         }
         if is_domain_cost_reduction(&self.reduction, &self.condition) {
             line = format!("Domain — {line}");

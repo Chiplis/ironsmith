@@ -21728,6 +21728,51 @@ fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn shadow_of_mortality_strict_parser_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(90_321), "Shadow of Mortality")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If your life total is less than your starting life total, this spell costs {X} less to cast, where X is the difference.\nTrample",
+        )
+        .expect("Shadow of Mortality should parse through conditional this-spell reduction");
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("expected this-spell cost reduction for Shadow of Mortality");
+
+    assert!(matches!(
+        reduction.condition,
+        crate::static_abilities::ThisSpellCostCondition::LifeTotalLessThanStarting
+    ));
+    assert!(matches!(reduction.reduction, crate::effect::Value::X));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn shadow_of_mortality_compiled_text_keeps_life_difference_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(90_322), "Shadow of Mortality")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If your life total is less than your starting life total, this spell costs {X} less to cast, where X is the difference.\nTrample",
+        )
+        .expect("Shadow of Mortality should parse for compiled text regression");
+
+    let compiled = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        compiled.contains("This spell costs {X} less to cast")
+            && compiled.contains("where X is the difference")
+            && compiled.contains("if your life total is less than your starting life total"),
+        "expected conditional X reduction clause with explicit difference wording in compiled text, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_this_spell_cost_reduction_counts_creature_types_with_cap() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Changeling Variant")
         .card_types(vec![CardType::Creature])

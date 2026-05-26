@@ -1968,6 +1968,49 @@ mod tests {
     }
 
     #[test]
+    fn shadow_of_mortality_cost_reduction_applies_only_below_starting_life() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(9_146), "Shadow of Mortality")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(13)],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Black],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::X,
+            crate::static_abilities::ThisSpellCostCondition::LifeTotalLessThanStarting,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let at_starting_life = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            at_starting_life.to_oracle(),
+            "{13}{B}{B}",
+            "cost reduction must not apply at starting life total"
+        );
+
+        game.player_mut(alice).expect("player exists").life = 12;
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let reduced = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            reduced.to_oracle(),
+            "{5}{B}{B}",
+            "cost reduction must equal life lost from starting life total"
+        );
+    }
+
+    #[test]
     fn knowledge_exploitation_prowl_alternative_cost_requires_rogue_combat_damage() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
