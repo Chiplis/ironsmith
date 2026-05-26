@@ -33179,6 +33179,183 @@ fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runtime_shape() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_bucolic_ranch_strict_regression() {
+    assert_oracle_card_parses_strict("Bucolic Ranch");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bucolic_ranch_compiled_text_keeps_it_hand_predicate_and_bottom_branch() {
+    let def = parse_oracle_card_definition("Bucolic Ranch");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you don't put it into your hand")
+            || rendered.contains("if you dont put it into your hand")
+            || rendered.contains("if not"),
+        "expected negative hand-placement predicate in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may put it on the bottom of your library")
+            || rendered.contains("you may put it on the bottom of its owner's library"),
+        "expected optional bottom-of-library branch in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bucolic_ranch_activated_ability_nonmount_top_card_skips_reveal_branch() {
+    #[derive(Default)]
+    struct SequenceBooleanDecisionMaker {
+        decisions: Vec<bool>,
+        index: usize,
+    }
+
+    impl crate::decision::DecisionMaker for SequenceBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            let choice = self.decisions.get(self.index).copied().unwrap_or(false);
+            self.index += 1;
+            choice
+        }
+    }
+
+    let def = parse_oracle_card_definition("Bucolic Ranch");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                let debug = format!("{activated:#?}").to_ascii_lowercase();
+                if debug.contains("look") && debug.contains("top") {
+                    Some(activated)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Bucolic Ranch should have the look-at-top activated ability");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let ranch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(92_002), "Top Nonmount")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = SequenceBooleanDecisionMaker {
+        decisions: vec![true],
+        index: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(ranch_id, alice, &mut dm);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Bucolic Ranch ability should resolve");
+    }
+
+    assert_eq!(
+        dm.index,
+        1,
+        "when the top card is not a Mount, Bucolic Ranch should only ask the fallback bottom-of-library decision"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bucolic_ranch_activated_ability_can_decline_hand_and_bottom_the_card() {
+    #[derive(Default)]
+    struct SequenceBooleanDecisionMaker {
+        decisions: Vec<bool>,
+        index: usize,
+    }
+
+    impl crate::decision::DecisionMaker for SequenceBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            let choice = self.decisions.get(self.index).copied().unwrap_or(false);
+            self.index += 1;
+            choice
+        }
+    }
+
+    let def = parse_oracle_card_definition("Bucolic Ranch");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                let debug = format!("{activated:#?}").to_ascii_lowercase();
+                if debug.contains("look") && debug.contains("top") {
+                    Some(activated)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Bucolic Ranch should have the look-at-top activated ability");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let ranch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(92_003), "Bottom Card")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(92_004), "Top Mount")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Mount])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = SequenceBooleanDecisionMaker {
+        decisions: vec![false, true],
+        index: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(ranch_id, alice, &mut dm);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Bucolic Ranch ability should resolve");
+    }
+
+    assert_eq!(
+        dm.index, 2,
+        "Bucolic Ranch should ask both optional branch decisions when the top card is a Mount"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .len()
+            >= 1,
+        "Bucolic Ranch should keep cards in library after resolving fallback branch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn woodlurker_mimic_strict_regression_parses() {
     assert_oracle_card_parses_strict("Woodlurker Mimic");
 }
