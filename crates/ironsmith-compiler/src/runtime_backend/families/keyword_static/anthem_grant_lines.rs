@@ -871,6 +871,8 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
+    let attached_subject_filter =
+        infer_attached_subject_filter_from_condition_expr(condition.as_ref());
     let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
     let subject = if subject_words.as_slice()
         == ["the", "first", "spell", "you", "cast", "each", "turn"]
@@ -882,7 +884,10 @@ pub(crate) fn parse_granted_keyword_static_line(
                 .first_spell_cast_each_turn(),
         )
     } else {
-        parse_anthem_subject(&subject_tokens)?
+        parse_anthem_subject_with_attached_fallback(
+            &subject_tokens,
+            attached_subject_filter.as_ref(),
+        )?
     };
 
     let grants_conspire = actions
@@ -1941,6 +1946,20 @@ fn parse_anthem_subject_with_attached_fallback(
     parse_anthem_subject(tokens)
 }
 
+fn infer_attached_subject_filter_from_condition_expr(
+    condition: Option<&crate::ConditionExpr>,
+) -> Option<ObjectFilter> {
+    match condition {
+        Some(crate::ConditionExpr::EnchantedPermanentIsCreature)
+        | Some(crate::ConditionExpr::EnchantedPermanentIsLand)
+        | Some(crate::ConditionExpr::EnchantedPermanentIsEquipment)
+        | Some(crate::ConditionExpr::EnchantedPermanentIsVehicle) => {
+            Some(ObjectFilter::tagged("enchanted"))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_static_quantity_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
@@ -2173,6 +2192,11 @@ pub(crate) fn parse_static_condition_clause(
         || clause_words == ["enchanted", "permanent", "is", "creature"]
     {
         return Ok(crate::ConditionExpr::EnchantedPermanentIsCreature);
+    }
+    if clause_words == ["enchanted", "permanent", "is", "a", "land"]
+        || clause_words == ["enchanted", "permanent", "is", "land"]
+    {
+        return Ok(crate::ConditionExpr::EnchantedPermanentIsLand);
     }
     if clause_words == ["enchanted", "permanent", "is", "an", "equipment"]
         || clause_words == ["enchanted", "permanent", "is", "a", "equipment"]
@@ -6501,7 +6525,11 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 continue;
             }
         };
-        let subject = match parse_anthem_subject(&subject_tokens) {
+        let attached_subject_filter = infer_attached_subject_filter_from_condition_expr(condition.as_ref());
+        let subject = match parse_anthem_subject_with_attached_fallback(
+            &subject_tokens,
+            attached_subject_filter.as_ref(),
+        ) {
             Ok(subject) => subject,
             Err(err) => {
                 deferred_error.get_or_insert(err);

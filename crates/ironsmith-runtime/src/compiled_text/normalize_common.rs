@@ -10924,6 +10924,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()
         }
+        Condition::EnchantedPermanentIsLand => "enchanted permanent is a land".to_string(),
         Condition::EnchantedPermanentIsEquipment => {
             "enchanted permanent is an equipment".to_string()
         }

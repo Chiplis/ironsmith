@@ -1006,6 +1006,19 @@ pub(super) fn have_verb_for_subject(subject: &str) -> &'static str {
     }
 }
 
+fn merge_line_conditions_compatible(left: &str, right: &str) -> bool {
+    match (
+        parse_conditional_subject_predicate(left),
+        parse_conditional_subject_predicate(right),
+    ) {
+        (Some(left_conditional), Some(right_conditional)) => left_conditional
+            .condition
+            .eq_ignore_ascii_case(&right_conditional.condition),
+        (Some(_), None) | (None, Some(_)) => false,
+        (None, None) => true,
+    }
+}
+
 pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
@@ -1092,6 +1105,7 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                 && let Some((right_subject, right_tail)) = split_have_clause(right)
                 && left_subject.eq_ignore_ascii_case(&right_subject)
                 && left_rest.contains(" and has ")
+                && merge_line_conditions_compatible(left, right)
             {
                 let right_tail = normalize_keyword_predicate_case(&right_tail);
                 let left_key = strip_parenthetical_segments(left_rest).to_ascii_lowercase();
