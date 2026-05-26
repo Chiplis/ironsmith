@@ -1279,9 +1279,24 @@ pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
         )));
     }
 
+    let creature_only = grammar::words_match_prefix(tokens, &["for", "each", "creature", "card"])
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["for", "each", "creature"]).is_some();
+    let loop_effects = if creature_only {
+        vec![EffectAst::Conditional {
+            predicate: crate::cards::builders::PredicateAst::ItMatches(
+                ObjectFilter::default().with_type(CardType::Creature),
+            ),
+            if_true: effects,
+            if_false: vec![],
+        }]
+    } else {
+        effects
+    };
+
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
-        effects,
+        effects: loop_effects,
     }]))
 }
 

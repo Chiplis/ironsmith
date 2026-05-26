@@ -24340,6 +24340,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         let tag = for_each_tagged.tag.as_str();
+        let mut described_effects = for_each_tagged.effects.as_slice();
         let subject = if tag.starts_with("destroyed_")
             || crate::cards::is_sentence_helper_tag(tag, "destroyed")
         {
@@ -24351,6 +24352,42 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
             "For each object sacrificed this way".to_string()
+        } else if tag.starts_with("milled_")
+            || crate::cards::is_sentence_helper_tag(tag, "milled")
+        {
+            if for_each_tagged.effects.len() == 1 {
+                if let Some(conditional) =
+                    for_each_tagged.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
+                {
+                    if conditional.if_false.is_empty() {
+                        if let crate::effect::Condition::TaggedObjectMatches(condition_tag, filter) =
+                            &conditional.condition
+                        {
+                            if condition_tag.as_str() == "__it__" {
+                                described_effects = conditional.if_true.as_slice();
+                                let filter_description = filter.description();
+                                let filter_text = strip_indefinite_article(&filter_description);
+                                let card_text = if filter_text.ends_with("card") {
+                                    filter_text.to_string()
+                                } else {
+                                    format!("{filter_text} card")
+                                };
+                                format!("For each {card_text} milled this way")
+                            } else {
+                                "For each object milled this way".to_string()
+                            }
+                        } else {
+                            "For each object milled this way".to_string()
+                        }
+                    } else {
+                        "For each object milled this way".to_string()
+                    }
+                } else {
+                    "For each object milled this way".to_string()
+                }
+            } else {
+                "For each object milled this way".to_string()
+            }
         } else if tag.is_empty() {
             "For each tagged object".to_string()
         } else {
@@ -24358,7 +24395,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         return format!(
             "{subject}, {}",
-            describe_effect_list(&for_each_tagged.effects)
+            describe_effect_list(described_effects)
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {

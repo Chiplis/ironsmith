@@ -33318,6 +33318,38 @@ fn parse_rankle_master_of_pranks_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_dread_summons_strict_regression() {
+    assert_oracle_card_parses_strict("Dread Summons");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dread_summons_compiled_text_keeps_milled_this_way_token_clause() {
+    let def = parse_oracle_card_definition("Dread Summons");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("each player mills x cards"),
+        "expected Dread Summons to keep the mill-X clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each creature card milled this way")
+            && rendered.contains("2/2 black zombie creature token")
+            && rendered.contains("tapped"),
+        "expected Dread Summons to render its milled-this-way token clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("if it's a creature"),
+        "expected Dread Summons to render creature-card identity directly, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        "expected Dread Summons compiled text to avoid internal tag markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();

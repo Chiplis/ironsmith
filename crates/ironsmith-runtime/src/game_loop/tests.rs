@@ -2089,6 +2089,177 @@ fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyar
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn dread_summons_mills_each_player_and_creates_tapped_zombies_for_milled_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dread_summons = CardDefinitionBuilder::new(CardId::from_raw(99_260), "Dread Summons")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Each player mills X cards. For each creature card put into a graveyard this way, you create a tapped 2/2 black Zombie creature token. (To mill a card, a player puts the top card of their library into their graveyard.)")
+        .expect("Dread Summons should parse for runtime regression");
+
+    let spell_id = game.create_object_from_definition(&dread_summons, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_x(2));
+
+    let make_library_card = |id: u32, name: &str, card_types: Vec<CardType>| {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(card_types)
+            .build()
+    };
+
+    game.create_object_from_card(
+        &make_library_card(99_261, "Alice Bottom Relic", vec![CardType::Artifact]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_262, "Alice Second Top Charm", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_263, "Alice Top Ghoul", vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+
+    game.create_object_from_card(
+        &make_library_card(99_264, "Bob Bottom Relic", vec![CardType::Artifact]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_265, "Bob Second Top Marsh", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_266, "Bob Top Zombie", vec![CardType::Creature]),
+        bob,
+        Zone::Library,
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let zombie_tokens_before = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Zombie")
+        .count();
+
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Dread Summons should resolve");
+
+    let alice_graveyard_names = game
+        .player(alice)
+        .expect("alice exists")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        alice_graveyard_names.contains(&"Alice Top Ghoul".to_string())
+            && alice_graveyard_names.contains(&"Alice Second Top Charm".to_string()),
+        "Dread Summons should mill Alice's top two library cards, got {:?}",
+        alice_graveyard_names
+    );
+
+    let bob_graveyard_names = game
+        .player(bob)
+        .expect("bob exists")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        bob_graveyard_names.contains(&"Bob Top Zombie".to_string())
+            && bob_graveyard_names.contains(&"Bob Second Top Marsh".to_string()),
+        "Dread Summons should mill Bob's top two library cards, got {:?}",
+        bob_graveyard_names
+    );
+
+    let zombie_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| (*id, obj)))
+        .filter(|(id, obj)| {
+            game.controller_of(obj) == alice
+                && obj.name == "Zombie"
+                && obj.kind == ObjectKind::Token
+                && game.is_tapped(*id)
+        })
+        .count();
+    assert_eq!(
+        zombie_tokens,
+        zombie_tokens_before + 2,
+        "Dread Summons should create one tapped Zombie per milled creature card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dread_summons_does_not_create_tokens_when_no_creatures_are_milled() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dread_summons = CardDefinitionBuilder::new(CardId::from_raw(99_267), "Dread Summons")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Each player mills X cards. For each creature card put into a graveyard this way, you create a tapped 2/2 black Zombie creature token. (To mill a card, a player puts the top card of their library into their graveyard.)")
+        .expect("Dread Summons should parse for no-creature branch regression");
+
+    let spell_id = game.create_object_from_definition(&dread_summons, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_x(1));
+
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_268), "Alice Top Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_269), "Bob Top Ritual")
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let zombie_tokens_before = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Zombie")
+        .count();
+
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Dread Summons should resolve");
+
+    let zombie_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Zombie")
+        .count();
+    assert_eq!(
+        zombie_tokens, zombie_tokens_before,
+        "Dread Summons should not create Zombies when no creature cards are milled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
