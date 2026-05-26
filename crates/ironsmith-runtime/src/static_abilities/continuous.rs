@@ -849,6 +849,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::EnchantedPermanentIsCreature => {
             "as long as enchanted permanent is a creature".to_string()
         }
+        crate::ConditionExpr::EnchantedPermanentIsLand => {
+            "as long as enchanted permanent is a land".to_string()
+        }
         crate::ConditionExpr::EnchantedPermanentIsEquipment => {
             "as long as enchanted permanent is an equipment".to_string()
         }

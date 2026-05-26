@@ -935,6 +935,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::VoteOptionGetsMoreVotes(..) => {}
         Condition::VoteOptionGetsMoreVotesOrTied(..) => {}
         Condition::EnchantedPermanentIsCreature => {}
+        Condition::EnchantedPermanentIsLand => {}
         Condition::EnchantedPermanentIsEquipment => {}
         Condition::EnchantedPermanentIsVehicle => {}
         Condition::EquippedCreatureTapped => {}
@@ -1587,6 +1588,10 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| game.object_has_card_type(attached, CardType::Creature)),
+        Condition::EnchantedPermanentIsLand => game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+            .is_some_and(|attached| game.object_has_card_type(attached, CardType::Land)),
         Condition::EnchantedPermanentIsEquipment => game
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
@@ -2364,6 +2369,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsEquipped
         | Condition::SourceIsEnchanted
         | Condition::EnchantedPermanentIsCreature
+        | Condition::EnchantedPermanentIsLand
         | Condition::EnchantedPermanentIsEquipment
         | Condition::EnchantedPermanentIsVehicle
         | Condition::EquippedCreatureTapped
@@ -3362,6 +3368,12 @@ fn evaluate_condition(
             .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.object_has_card_type(attached, crate::types::CardType::Creature)
+            })),
+        Condition::EnchantedPermanentIsLand => Ok(game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+            .is_some_and(|attached| {
+                game.object_has_card_type(attached, crate::types::CardType::Land)
             })),
         Condition::EnchantedPermanentIsEquipment => Ok(game
             .object(ctx.source)

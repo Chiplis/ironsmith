@@ -776,6 +776,7 @@ pub enum Condition {
     SourceIsEquipped,
     SourceIsEnchanted,
     EnchantedPermanentIsCreature,
+    EnchantedPermanentIsLand,
     EnchantedPermanentIsEquipment,
     EnchantedPermanentIsVehicle,
     EquippedCreatureTapped,

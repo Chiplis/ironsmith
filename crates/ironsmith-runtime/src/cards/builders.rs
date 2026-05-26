@@ -11176,6 +11176,41 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_natures_embrace_creature_or_land_static_conditions() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Nature's Embrace")
+            .parse_text(
+                "Enchant creature or land\nAs long as enchanted permanent is a creature, it gets +2/+2.\nAs long as enchanted permanent is a land, it has \"{T}: Add two mana of any one color.\"",
+            )
+            .expect("Nature's Embrace should parse");
+
+        let displays: Vec<String> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("enchanted permanent gets +2/+2")
+                    && display.contains("as long as enchanted permanent is a creature")
+            }),
+            "expected creature branch with +2/+2, got: {displays:?}"
+        );
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("as long as enchanted permanent is a land")
+                    && (display.to_ascii_lowercase().contains("add two mana")
+                        || display.contains("{T}: Add"))
+            }),
+            "expected land branch granting mana ability, got: {displays:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_conditional_attached_anthem_keyword_and_activated_grant() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Careful Cultivation Variant")
             .parse_text(

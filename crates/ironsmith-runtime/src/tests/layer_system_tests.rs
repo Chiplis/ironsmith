@@ -592,6 +592,99 @@ fn test_conditional_attached_creature_check_uses_in_progress_characteristics() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_natures_embrace_creature_branch_applies_only_creature_bonus() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let creature = CardBuilder::new(CardId::new(), "Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Nature's Embrace")
+        .parse_text(
+            "Enchant creature or land\nAs long as enchanted permanent is a creature, it gets +2/+2.\nAs long as enchanted permanent is a land, it has \"{T}: Add two mana of any one color.\"",
+        )
+        .expect("Nature's Embrace should parse");
+    let aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+
+    {
+        let aura = game.object_mut(aura_id).expect("aura should exist");
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+    }
+    {
+        let creature = game.object_mut(creature_id).expect("creature should exist");
+        creature.attachments.push(aura_id);
+    }
+
+    let chars = game
+        .calculated_characteristics(creature_id)
+        .expect("conditional attached effect should evaluate");
+
+    assert_eq!(chars.power, Some(4));
+    assert_eq!(chars.toughness, Some(4));
+    assert!(
+        !chars.abilities.iter().any(|ability| {
+            crate::ability::ability_surface_text_for_tests(ability).is_some_and(|text| {
+                text.to_ascii_lowercase().contains("add two mana of any one color")
+            })
+        }),
+        "creature branch should not gain the land mana ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_natures_embrace_land_branch_grants_mana_not_creature_bonus() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let land = CardBuilder::new(CardId::new(), "Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Nature's Embrace")
+        .parse_text(
+            "Enchant creature or land\nAs long as enchanted permanent is a creature, it gets +2/+2.\nAs long as enchanted permanent is a land, it has \"{T}: Add two mana of any one color.\"",
+        )
+        .expect("Nature's Embrace should parse");
+    let aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+
+    {
+        let aura = game.object_mut(aura_id).expect("aura should exist");
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(land_id));
+    }
+    {
+        let land = game.object_mut(land_id).expect("land should exist");
+        land.attachments.push(aura_id);
+    }
+
+    let chars = game
+        .calculated_characteristics(land_id)
+        .expect("conditional attached effect should evaluate");
+
+    assert!(
+        chars.abilities.iter().any(|ability| {
+            crate::ability::ability_surface_text_for_tests(ability).is_some_and(|text| {
+                text.to_ascii_lowercase().contains("add two mana of any one color")
+            })
+        }),
+        "land branch should gain the two-mana ability"
+    );
+    assert_eq!(
+        chars.power, None,
+        "land branch should not gain creature power/toughness"
+    );
+    assert_eq!(
+        chars.toughness, None,
+        "land branch should not gain creature power/toughness"
+    );
+}
+
 /// Tests that Urza's Saga survives under Blood Moon even with max lore counters.
 ///
 /// Scenario: Urza's Saga has 3 lore counters (would normally sacrifice).
