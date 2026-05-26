@@ -1848,9 +1848,43 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
-    if clause_words == ["manifest", "dread"] {
-        return Ok(Some(EffectAst::subject_verb_manifest_dread(
-            PlayerAst::Implicit,
+    if clause_words.starts_with(&["manifest", "dread"]) {
+        let manifest_dread = EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit);
+        let trailing_words = &clause_words[2..];
+        if trailing_words.is_empty() {
+            return Ok(Some(manifest_dread));
+        }
+
+        if trailing_words == ["twice"] {
+            return Ok(Some(EffectAst::RepeatEffects {
+                count: Value::Fixed(2),
+                effects: vec![manifest_dread],
+            }));
+        }
+
+        if matches!(trailing_words.last(), Some(&"time") | Some(&"times")) {
+            let value_tokens = &clause_tokens[2..clause_tokens.len() - 1];
+            let (count, used) = parse_value(value_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing manifest dread count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            if used != value_tokens.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported manifest dread count tail (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            return Ok(Some(EffectAst::RepeatEffects {
+                count,
+                effects: vec![manifest_dread],
+            }));
+        }
+
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing manifest dread clause (clause: '{}')",
+            clause_words.join(" ")
         )));
     }
 

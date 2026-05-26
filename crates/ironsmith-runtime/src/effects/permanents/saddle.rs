@@ -21,7 +21,9 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::static_abilities::StaticAbilityId;
 use crate::triggers::TriggerEvent;
+use crate::ability::AbilityKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SaddleCostEffect {
@@ -60,6 +62,47 @@ impl SaddleCostEffect {
             .and_then(|calc| calc.power)
             .or_else(|| game.object(object_id).and_then(|obj| obj.power()))
             .unwrap_or(0)
+    }
+
+    fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
+        let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
+            game.object(object_id)
+                .map(|obj| obj.abilities.clone())
+                .unwrap_or_default()
+        });
+        abilities
+            .into_iter()
+            .filter_map(|ability| match ability.kind {
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::KeywordMarker =>
+                {
+                    Some(static_ability.display().to_ascii_lowercase())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn saddle_power_bonus_from_marker(marker: &str) -> Option<i32> {
+        let prefixes = [
+            "this creature saddles mounts and crews vehicles as though its power were ",
+            "this token saddles mounts and crews vehicles as though its power were ",
+        ];
+        prefixes.iter().find_map(|prefix| {
+            marker
+                .strip_prefix(prefix)
+                .and_then(|rest| rest.strip_suffix(" greater."))
+                .and_then(|amount| amount.parse::<i32>().ok())
+        })
+    }
+
+    fn saddle_value(game: &GameState, object_id: ObjectId) -> i32 {
+        let base = Self::object_power(game, object_id);
+        let bonus: i32 = Self::keyword_marker_texts(game, object_id)
+            .iter()
+            .filter_map(|marker| Self::saddle_power_bonus_from_marker(marker))
+            .sum();
+        base + bonus
     }
 }
 
@@ -104,20 +147,20 @@ impl EffectExecutor for SaddleCostEffect {
         // If the decision maker picked a set that doesn't meet the requirement,
         // greedily add remaining candidates until it does (or we exhaust options).
         let required = self.required_power as i32;
-        let mut total_power: i32 = chosen.iter().map(|id| Self::object_power(game, *id)).sum();
+        let mut total_power: i32 = chosen.iter().map(|id| Self::saddle_value(game, *id)).sum();
         if total_power < required {
             let mut remaining: Vec<ObjectId> = candidates
                 .iter()
                 .copied()
                 .filter(|id| !chosen.contains(id))
                 .collect();
-            remaining.sort_by_key(|id| -Self::object_power(game, *id));
+            remaining.sort_by_key(|id| -Self::saddle_value(game, *id));
             for id in remaining {
                 if total_power >= required {
                     break;
                 }
                 chosen.push(id);
-                total_power += Self::object_power(game, id);
+                total_power += Self::saddle_value(game, id);
             }
         }
 
@@ -175,7 +218,7 @@ impl CostExecutableEffect for SaddleCostEffect {
         let candidates = Self::saddle_candidates(game, controller, source);
         let total: i32 = candidates
             .iter()
-            .map(|id| Self::object_power(game, *id))
+            .map(|id| Self::saddle_value(game, *id))
             .sum();
         if total >= self.required_power as i32 {
             Ok(())

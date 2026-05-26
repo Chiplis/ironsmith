@@ -2105,6 +2105,9 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.attacked_this_turn && !game.creature_attacked_this_turn(object.id) {
+            return false;
+        }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let Some(defending_player) = attacking_defending_player_for_object(object.id, game)
             else {
@@ -2698,6 +2701,9 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
         if self.enlist_eligible && !object_is_enlist_eligible(game, snapshot.object_id) {
+            return false;
+        }
+        if self.attacked_this_turn && !game.creature_attacked_this_turn(snapshot.object_id) {
             return false;
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
@@ -3339,6 +3345,9 @@ impl ObjectFilterExt for ObjectFilter {
             if self.blocking {
                 parts.push("blocking".to_string());
             }
+        }
+        if self.attacked_this_turn {
+            post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();

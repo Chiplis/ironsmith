@@ -12555,6 +12555,8 @@ fn describe_static_ability_with_subject(
     );
     line = line.replace("This creature creature ", "This creature ");
     line = line.replace("this creature creature ", "this creature ");
+    line = line.replace("This land land ", "This land ");
+    line = line.replace("this land land ", "this land ");
     line = line.replace(
         "number of other creature artifact you control",
         "number of other creatures and/or artifacts you control",
@@ -26676,29 +26678,31 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
-        let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+        let (count_text, noun, where_clause) = describe_top_count_noun_and_where_clause(&look_at_top.count);
         if look_at_top.reveal {
             if look_at_top.player == PlayerFilter::You {
-                return format!("Reveal the top {count_text} {noun} of your library");
+                return format!("Reveal the top {count_text} {noun} of your library{where_clause}");
             }
             let subject = describe_player_filter(&look_at_top.player);
             let verb = player_verb(&subject, "reveal", "reveals");
-            return format!("{subject} {verb} the top {count_text} {noun} of {owner} library");
+            return format!(
+                "{subject} {verb} the top {count_text} {noun} of {owner} library{where_clause}"
+            );
         }
-        return format!("Look at the top {count_text} {noun} of {owner} library");
+        return format!("Look at the top {count_text} {noun} of {owner} library{where_clause}");
     }
     if let Some(rearrange) =
         effect.downcast_ref::<crate::effects::RearrangeLookedCardsInLibraryEffect>()
     {
         let count_text = match (rearrange.count.min, rearrange.count.max) {
             (0, Some(1)) => "up to one".to_string(),
-            (min, Some(max)) if min == max => max.to_string(),
+            (min, Some(max)) if min == max => small_number_word(max as u32).unwrap_or_else(|| max.to_string()),
             (0, Some(max)) => format!("up to {max}"),
             (min, Some(max)) => format!("between {min} and {max}"),
             (min, None) => format!("at least {min}"),
         };
         return format!(
-            "Put {count_text} of the looked-at cards on top of your library and the rest on the bottom of your library in a random order"
+            "Put {count_text} of those cards on top of your library and the rest on the bottom of your library in any order"
         );
     }
     if let Some(look_at_hand) = effect.downcast_ref::<crate::effects::LookAtHandEffect>() {
@@ -28367,6 +28371,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if additional_phases.phases
             == [
                 crate::effects::AdditionalPhase::Combat,
+                crate::effects::AdditionalPhase::Combat,
+            ]
+        {
+            return "After this main phase, there are two additional combat phases".to_string();
+        }
+        if additional_phases.phases
+            == [
+                crate::effects::AdditionalPhase::Combat,
                 crate::effects::AdditionalPhase::Main,
             ]
         {
@@ -29708,16 +29720,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
                 });
-        let mut spell_text = describe_cast_limit_spell_filter(&may_cast_matching.filter);
-        if has_tagged_mana_value_cap && !may_cast_matching.filter.card_types.is_empty() {
+        let mut spell_text = if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
                 .filter
                 .card_types
                 .iter()
                 .map(|card_type| card_type.to_string().to_ascii_lowercase())
                 .collect();
-            spell_text = format!("a {} spell", join_with_or(&card_type_words));
-        }
+            let joined = join_with_or(&card_type_words);
+            let article = if joined.starts_with('i')
+                || joined.starts_with('a')
+                || joined.starts_with('e')
+                || joined.starts_with('o')
+                || joined.starts_with('u')
+            {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {joined} spell")
+        } else {
+            describe_cast_limit_spell_filter(&may_cast_matching.filter)
+        };
         if spell_text == "spell" {
             spell_text = "a spell".to_string();
         } else if !spell_text.starts_with("a ")
@@ -29747,6 +29771,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         let mana_value_limit_text = if has_tagged_mana_value_cap {
             " with mana value less than or equal to that spell's mana value"
+        } else if matches!(
+            may_cast_matching.filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(ref value))
+                if matches!(
+                    value.as_ref(),
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )
+        ) {
+            " with mana value less than or equal to that amount"
         } else {
             ""
         };
@@ -31416,12 +31449,42 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
                 &sacrifice.filter,
                 &sacrifice.count,
             )?);
+        } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            parts.push(cumulative_upkeep_move_to_zone_text(move_to_zone)?);
         }
     }
     if parts.is_empty() {
         None
     } else {
         Some(parts.join(" and "))
+    }
+}
+
+fn cumulative_upkeep_move_to_zone_text(
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if move_to_zone.zone != Zone::Library || move_to_zone.to_top {
+        return None;
+    }
+    let filter = match move_to_zone.target.base() {
+        ChooseSpec::Object(filter) => filter,
+        _ => return None,
+    };
+    if filter.zone != Some(Zone::Graveyard) {
+        return None;
+    }
+    let count = move_to_zone.target.count();
+    if count.min == 0 || count.max != Some(count.min) {
+        return None;
+    }
+
+    let count_text = ironsmith_core::cardinal_word(count.min as usize as u32)?;
+    if count.min == 1 {
+        Some("Put a card from a single graveyard on the bottom of its owner's library".to_string())
+    } else {
+        Some(format!(
+            "Put {count_text} cards from a single graveyard on the bottom of their owner's library"
+        ))
     }
 }
 

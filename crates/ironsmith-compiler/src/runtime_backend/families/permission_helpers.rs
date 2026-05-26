@@ -1303,55 +1303,43 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
-    let expected_tail_with_split_possessive = [
-        "from",
-        "your",
-        "graveyard",
-        "with",
-        "mana",
-        "value",
-        "less",
-        "than",
-        "or",
-        "equal",
-        "to",
-        "that",
-        "spell",
-        "s",
-        "mana",
-        "value",
-        "without",
-        "paying",
-        "its",
-        "mana",
-        "cost",
-    ];
-    let expected_tail_with_word_possessive = [
-        "from",
-        "your",
-        "graveyard",
-        "with",
-        "mana",
-        "value",
-        "less",
-        "than",
-        "or",
-        "equal",
-        "to",
-        "that",
-        "spells",
-        "mana",
-        "value",
-        "without",
-        "paying",
-        "its",
-        "mana",
-        "cost",
-    ];
     let normalized_tail = &normalized_words[from_idx..];
-    if normalized_tail != expected_tail_with_split_possessive
-        && normalized_tail != expected_tail_with_word_possessive
+    if normalized_tail.len() < 12
+        || normalized_tail[0] != "from"
+        || normalized_tail[1] != "your"
+        || !matches!(normalized_tail[2].as_str(), "graveyard" | "hand")
+        || normalized_tail[3] != "with"
+        || normalized_tail[4] != "mana"
+        || normalized_tail[5] != "value"
     {
+        return Ok(None);
+    }
+
+    let Some(without_idx) = normalized_tail
+        .iter()
+        .position(|word| word.as_str() == "without")
+    else {
+        return Ok(None);
+    };
+    if without_idx <= 6 {
+        return Ok(None);
+    }
+    if normalized_tail[without_idx..]
+        != ["without", "paying", "its", "mana", "cost"]
+    {
+        return Ok(None);
+    }
+
+    let comparison_tokens_start = from_idx + 6;
+    let comparison_tokens_end = from_idx + without_idx;
+    let comparison_tokens = &rest_tokens[comparison_tokens_start..comparison_tokens_end];
+    let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
+        return Ok(None);
+    };
+    let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+        return Ok(None);
+    };
+    if used != rhs_tokens.len() {
         return Ok(None);
     }
 
@@ -1365,18 +1353,53 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     };
     filter.owner = Some(crate::target::PlayerFilter::You);
-    filter
-        .tagged_constraints
-        .push(crate::filter::TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
-        });
+    filter.mana_value = Some(match operator {
+        ValueComparisonOperator::Equal => crate::filter::Comparison::EqualExpr(Box::new(rhs_value)),
+        ValueComparisonOperator::NotEqual => {
+            crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::LessThan => {
+            crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::LessThanOrEqual => {
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::GreaterThan => {
+            crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::GreaterThanOrEqual => {
+            crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
+        }
+    });
+
+    let graveyard_uses_tagged_spell_mana_value = matches!(normalized_tail[2].as_str(), "graveyard")
+        && (normalized_tail
+            .windows(5)
+            .any(|window| window == ["that", "spell", "s", "mana", "value"])
+            || normalized_tail
+                .windows(4)
+                .any(|window| window == ["that", "spells", "mana", "value"]));
+    if graveyard_uses_tagged_spell_mana_value {
+        filter.mana_value = None;
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
+            });
+    }
+
+    let zone = if normalized_tail[2] == "hand" {
+        Zone::Hand
+    } else {
+        Zone::Graveyard
+    };
 
     Ok(Some(
         EffectAst::may_cast_matching_spell_without_paying_mana_cost(
             lead.player,
             filter,
-            Zone::Graveyard,
+            zone,
         ),
     ))
 }

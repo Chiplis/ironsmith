@@ -963,6 +963,10 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
+    if contains_any_filter_phrase(&all_words, &[&["attacked", "this", "turn"]]) {
+        filter.attacked_this_turn = true;
+    }
+
     for (idx, word) in all_words.iter().enumerate() {
         let idx: usize = idx;
         let is_negated_word = set_has(&negated_word_indices, &idx);

@@ -1015,6 +1015,30 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             operator,
             right,
         } => {
+            if let (
+                crate::effect::Value::LifeTotal(player),
+                crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                crate::effect::Value::Fixed(threshold),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "as long as {} has {} or less life",
+                    describe_static_player(player),
+                    threshold
+                );
+            }
+            if let (
+                crate::effect::Value::LifeTotal(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                crate::effect::Value::Fixed(threshold),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "as long as {} has {} or more life",
+                    describe_static_player(player),
+                    threshold
+                );
+            }
             let operator_text = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
@@ -4119,6 +4143,18 @@ mod tests {
                 right: Value::Fixed(7),
             }),
             "as long as your devotion to black and red is less than seven"
+        );
+    }
+
+    #[test]
+    fn describe_static_condition_displays_opponent_life_threshold() {
+        assert_eq!(
+            describe_static_condition(&crate::ConditionExpr::ValueComparison {
+                left: Value::LifeTotal(PlayerFilter::Opponent),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: Value::Fixed(10),
+            }),
+            "as long as an opponent has 10 or less life"
         );
     }
 

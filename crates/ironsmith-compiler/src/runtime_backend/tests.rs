@@ -4567,6 +4567,61 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
 }
 
 #[test]
+fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
+    let tokens = lex_line(
+        "Cast an instant or sorcery spell from your hand with mana value less than or equal to that damage without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Glamdring cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Glamdring cast clause should parse as a supported effect");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+            },
+        ] => (player, filter, zone),
+        _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
+    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
+    assert_eq!(
+        filter.mana_value,
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+        )))
+    );
+}
+
+#[test]
+fn rewrite_lexed_parse_glamdring_static_clause_keeps_first_strike_and_anthem() {
+    let tokens = lex_line(
+        "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard",
+        0,
+    )
+    .expect("rewrite lexer should classify Glamdring static clause");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Glamdring static clause should parse as static ability");
+
+    let debug = format!("{parsed:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("firststrike") && debug.contains("anthem"),
+        "expected static clause to keep both first strike and anthem, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
     let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify until-next-turn permission clause");
@@ -10367,6 +10422,24 @@ fn rewrite_sequence_registry_matches_looked_cards_reveal_top_rest_bottom_bundle(
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_may_rearrange_looked_cards_bundle() {
+    let text = "Whenever a creature you control enters, you may look at the top X cards of your library, where X is that creature's power. If you do, put one of those cards on top of your library and the rest on the bottom of your library in any order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Cream of the Crop text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Cream of the Crop sequence should parse");
+    let debug = format!("{parsed:#?}").to_ascii_lowercase();
+
+    assert!(debug.contains("lookattopcards"), "{debug}");
+    assert!(debug.contains("powerof"), "{debug}");
+    assert!(debug.contains("rearrangelookedcardsinlibrary"), "{debug}");
+    assert!(
+        debug.contains("min: 1") && debug.contains("dynamic_x: false"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_divvy_pile_choice_bundle() {
     let text = "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard. (Piles can be empty.)";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify divvy pile text");
@@ -11342,6 +11415,21 @@ fn rewrite_lexed_effect_entrypoint_splits_untap_and_additional_combat_phase() {
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_parses_two_additional_combat_phases() {
+    let text = "After this main phase, there are two additional combat phases.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Full Throttle clause");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed Full Throttle clause should parse");
+
+    let native_debug = format!("{native:?}");
+    assert!(
+        native_debug.contains("AdditionalPhases")
+            && native_debug.matches("Combat").count() >= 2,
+        "expected two additional combat phases, got {native_debug}"
+    );
+}
+
+#[test]
 fn rewrite_count_word_parser_handles_digits_and_words() {
     assert_eq!(parse_count_word_rewrite("2").expect("digit count"), 2);
     assert_eq!(parse_count_word_rewrite("three").expect("word count"), 3);
@@ -11673,6 +11761,9 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         .expect("parser should parse add-counter cost");
     let counter_remove = parse_activation_cost_rewrite("Remove a +1/+1 counter from this creature")
         .expect("parser should parse remove-counter cost");
+    let counter_remove_unspecified =
+        parse_activation_cost_rewrite("Remove a counter from this creature")
+            .expect("parser should parse unspecified remove-counter cost");
     let exile_hand = parse_activation_cost_rewrite("Exile a blue card from your hand")
         .expect("parser should parse exile-from-hand cost");
     let reveal_source = parse_activation_cost_rewrite("Reveal this card from your hand")
@@ -11701,6 +11792,16 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
             counter_type: CounterType::PlusOnePlusOne,
             count: 1
         }]
+    ));
+    assert!(matches!(
+        counter_remove_unspecified.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type: None,
+            count: 1,
+            filter_text,
+            display_x: false,
+            dynamic: false,
+        }] if filter_text == "this creature"
     ));
     assert!(matches!(
         exile_hand.segments.as_slice(),
@@ -13041,6 +13142,41 @@ fn heaven_sent_strict_compile_succeeds() {
     assert!(debug.contains("LifeTotal(Opponent)"), "{debug}");
     assert!(debug.contains("LessThanOrEqual"), "{debug}");
     assert!(debug.contains("Fixed(0)"), "{debug}");
+}
+
+#[test]
+fn ruthless_cullblade_strict_compile_succeeds() {
+    let oracle_text = "As long as an opponent has 10 or less life, Ruthless Cullblade gets +2/+1.";
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ruthless Cullblade")
+        .parse_text(oracle_text)
+        .expect("Ruthless Cullblade text should parse");
+
+    assert_eq!(def.name(), "Ruthless Cullblade");
+    let debug = format!("{:?}", def.abilities);
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("LifeTotal(Opponent)"), "{debug}");
+    assert!(debug.contains("LessThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(10)"), "{debug}");
+}
+
+#[test]
+fn ruthless_cullblade_compiled_condition_uses_opponent_life_threshold() {
+    let oracle_text = "As long as an opponent has 10 or less life, Ruthless Cullblade gets +2/+1.";
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ruthless Cullblade")
+        .parse_text(oracle_text)
+        .expect("Ruthless Cullblade text should parse");
+
+    let rendered = format!("{def:#?}");
+    assert!(
+        rendered.contains("LifeTotal(")
+            && rendered.contains("Opponent")
+            && rendered.contains("LessThanOrEqual")
+            && rendered.contains("Fixed(")
+            && rendered.contains("10"),
+        "expected compiled condition to retain opponent life-threshold clause, got: {rendered}"
+    );
 }
 
 #[test]

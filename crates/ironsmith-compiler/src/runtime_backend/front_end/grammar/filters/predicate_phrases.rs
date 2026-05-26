@@ -3078,6 +3078,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.len() >= 7
+        && filtered[1] == "is"
+        && filtered[2] == "put"
+        && slice_ends_with(&filtered, &["onto", "battlefield", "this", "way"])
+    {
+        let filter_words = &filtered[..filtered.len() - 6];
+        let filter_tokens = filter_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&filter_tokens, false)?;
+        return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));
+    }
+
     let didnt_put_into_hand = matches!(
         filtered.as_slice(),
         ["you", "dont", "put", "the", "card", "into", "your", "hand"]
@@ -3369,6 +3383,48 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_supports_if_equipment_is_put_onto_the_battlefield_this_way(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("If an Equipment is put onto the battlefield this way", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let equipment_filter_tokens = lex_line("an Equipment", 0)?;
+        let equipment_filter = parse_object_filter(&equipment_filter_tokens, false)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::TaggedMatches(TagKey::from(IT_TAG), equipment_filter)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_if_aura_is_put_onto_the_battlefield_this_way(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("If an Aura is put onto the battlefield this way", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let aura_filter_tokens = lex_line("an Aura", 0)?;
+        let aura_filter = parse_object_filter(&aura_filter_tokens, false)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::TaggedMatches(TagKey::from(IT_TAG), aura_filter)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_you_would_draw_card() -> Result<(), CardTextError> {
         let tokens = lex_line("If you would draw a card", 0)?;
         let predicate_tokens = tokens
@@ -3378,12 +3434,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         let parsed = parse_predicate(&predicate_tokens)?;
-        assert_eq!(
-            parsed,
-            PredicateAst::PlayerWouldDrawCard {
-                player: PlayerAst::You
-            }
-        );
+        assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
         Ok(())
     }
 

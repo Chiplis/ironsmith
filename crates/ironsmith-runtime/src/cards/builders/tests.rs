@@ -7473,6 +7473,105 @@ fn test_parse_manifest_dread_trigger_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn they_came_from_the_pipes_strict_parse_includes_manifest_dread_twice_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "They Came from the Pipes")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, manifest dread twice. (To manifest dread, look at the top two cards of your library. Put one onto the battlefield face down as a 2/2 creature and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.)\nWhenever a face-down creature you control enters, draw a card.",
+        )
+        .expect("They Came from the Pipes should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest dread")
+            && (rendered.contains("twice") || rendered.contains("2 times")),
+        "expected compiled text to preserve the manifest-dread-twice clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("whenever a face-down creature you control enters, draw a card"),
+        "expected face-down ETB draw trigger in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "They Came from the Pipes should not rely on unsupported parser fallback: {rendered}"
+    );
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("RepeatEffects") && abilities_debug.contains("Fixed(2)"),
+        "expected manifest dread twice to lower to a repeat effect with count 2, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn they_came_from_the_pipes_face_down_trigger_respects_controller() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "They Came from the Pipes")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, manifest dread twice. (To manifest dread, look at the top two cards of your library. Put one onto the battlefield face down as a 2/2 creature and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.)\nWhenever a face-down creature you control enters, draw a card.",
+        )
+        .expect("They Came from the Pipes should parse strictly");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let vanilla_creature = CardDefinitionBuilder::new(CardId::from_raw(2), "Vanilla Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice_face_down = game.create_object_from_definition(&vanilla_creature, alice, Zone::Battlefield);
+    game.set_face_down(alice_face_down);
+    let alice_etb = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            alice_face_down,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let alice_trigger_count = crate::triggers::check_triggers(&game, &alice_etb)
+        .iter()
+        .filter(|entry| entry.source == source_id)
+        .count();
+    assert_eq!(
+        alice_trigger_count, 1,
+        "expected They Came from the Pipes to trigger for your own face-down creature ETB"
+    );
+
+    let bob_face_down = game.create_object_from_definition(&vanilla_creature, bob, Zone::Battlefield);
+    game.set_face_down(bob_face_down);
+    let bob_etb = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            bob_face_down,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let bob_trigger_count = crate::triggers::check_triggers(&game, &bob_etb)
+        .iter()
+        .filter(|entry| entry.source == source_id)
+        .count();
+    assert_eq!(
+        bob_trigger_count, 0,
+        "expected They Came from the Pipes not to trigger for opponent face-down creature ETB"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Probe")
         .card_types(vec![CardType::Creature])
@@ -7491,6 +7590,60 @@ fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "manifest trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_vault_101_birthday_party_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vault 101: Birthday Party")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI - Create a 1/1 white Human Soldier creature token and a Food token. (A Food token is an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nII, III - You may put an Aura or Equipment card from your hand or graveyard onto the battlefield. If an Equipment is put onto the battlefield this way, you may attach it to a creature you control.",
+        )
+        .expect("Vault 101: Birthday Party should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported predicate") && !rendered.contains("unsupported effect"),
+        "Vault 101: Birthday Party should parse without unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_vault_101_birthday_party_renders_equipment_only_attach_branch() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vault 101: Birthday Party")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "II, III - You may put an Aura or Equipment card from your hand or graveyard onto the battlefield. If an Equipment is put onto the battlefield this way, you may attach it to a creature you control.",
+        )
+        .expect("Vault 101: Birthday Party chapter II/III line should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if an equipment is put onto the battlefield this way")
+            || rendered.contains("if that permanent is an equipment")
+            || rendered.contains("if it is an equipment")
+            || rendered.contains("if it matches equipment"),
+        "expected conditional Equipment-only attach branch, got {rendered}"
+    );
+    assert!(
+        rendered.contains("attach") && rendered.contains("creature you control"),
+        "expected optional attach branch targeting your creature, got {rendered}"
+    );
+
+    let effect_debug = format!("{:?}", def.abilities);
+    assert!(
+        effect_debug.contains("ConditionalEffect")
+            && effect_debug.contains("TaggedObjectMatches")
+            && effect_debug.contains("Equipment")
+            && effect_debug.contains("AttachObjectsEffect"),
+        "expected parsed chapter line to gate attach behavior to moved Equipment objects, got {effect_debug}"
     );
 }
 
@@ -33337,6 +33490,115 @@ fn parse_rankle_master_of_pranks_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_wild_roads_strict_regression() {
+    assert_oracle_card_parses_strict("Wild Roads");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wild_roads_compiled_text_keeps_pilot_saddle_and_crew_clause() {
+    let def = parse_oracle_card_definition("Wild Roads");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("saddles mounts and crews vehicles as though its power were 2 greater"),
+        "expected Wild Roads compiled text to preserve Pilot token saddle/crew clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
+    let def = parse_oracle_card_definition("Wild Roads");
+    let pilot = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+                .map(|create| create.token.clone()),
+            _ => None,
+        })
+        .expect("Wild Roads should have an activated ability that creates a Pilot token");
+
+    let alice = PlayerId::from_index(0);
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let pilot_id = game.create_object_from_definition(&pilot, alice, Zone::Battlefield);
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let crew_cost = crate::effects::CrewCostEffect { required_power: 3 };
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
+        .expect("Wild Roads Pilot token should crew as though its power were 2 greater");
+
+    let mount_id = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    let saddle_cost = crate::effects::SaddleCostEffect::new(3);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&saddle_cost, &game, mount_id, alice)
+        .expect("Wild Roads Pilot token should saddle as though its power were 2 greater");
+
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla 1/1")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mut baseline_crew = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_crew.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_vehicle =
+        baseline_crew.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crew_cost,
+            &baseline_crew,
+            baseline_vehicle,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Wild Roads Pilot marker should not satisfy crew 3"
+    );
+
+    let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_mount = baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &saddle_cost,
+            &baseline_saddle,
+            baseline_mount,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Wild Roads Pilot marker should not satisfy saddle 3"
+    );
+
+    assert!(
+        game.object(pilot_id).is_some(),
+        "sanity check: Wild Roads Pilot token should exist on battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_brambleback_brute_strict_regression() {
+    assert_oracle_card_parses_strict("Brambleback Brute");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
@@ -33368,6 +33630,151 @@ fn rankle_master_of_pranks_compiled_text_keeps_choose_any_number_modal_header() 
     assert!(
         rendered.contains("choose any number"),
         "expected Rankle, Master of Pranks compiled text to preserve choose-any-number modal header, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn brambleback_brute_compiled_text_keeps_unspecified_remove_counter_activation_cost() {
+    let def = parse_oracle_card_definition("Brambleback Brute");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("remove a counter from this creature"),
+        "expected Brambleback Brute compiled text to keep unspecified remove-counter cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target creature can't block this turn"),
+        "expected Brambleback Brute compiled text to keep can't-block effect, got {rendered}"
+    );
+    assert!(
+        rendered.contains("activate only as a sorcery"),
+        "expected Brambleback Brute compiled text to keep sorcery-speed activation rider, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn brambleback_brute_activation_cost_and_effect_runtime_regression() {
+    let def = parse_oracle_card_definition("Brambleback Brute");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Brambleback Brute should have one activated ability");
+
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::SorcerySpeed,
+        "Brambleback Brute activation must stay sorcery speed"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    let brute_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Blocking Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    assert!(
+        game.add_counters(brute_id, crate::object::CounterType::MinusOneMinusOne, 2)
+            .is_some(),
+        "Brambleback Brute should be on battlefield"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("first Brambleback Brute activation cost should be payable");
+
+    let counters_after_first = game
+        .object(brute_id)
+        .expect("Brambleback Brute should still be on battlefield")
+        .counters
+        .get(&crate::object::CounterType::MinusOneMinusOne)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        counters_after_first, 1,
+        "first activation should remove exactly one counter from Brambleback Brute"
+    );
+
+    let mut resolve_ctx = crate::effects::ExecutionContext::new(brute_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut resolve_ctx,
+        alice,
+        brute_id,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Brambleback Brute ability effect should resolve");
+    assert!(
+        !game.can_block(target_id),
+        "target creature should be unable to block this turn after Brambleback Brute resolves"
+    );
+
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("second Brambleback Brute activation cost should be payable");
+
+    let counters_after_second = game
+        .object(brute_id)
+        .expect("Brambleback Brute should still be on battlefield")
+        .counters
+        .get(&crate::object::CounterType::MinusOneMinusOne)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        counters_after_second, 0,
+        "second activation should remove the last counter from Brambleback Brute"
+    );
+
+    let pay_third = crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    );
+    assert!(
+        pay_third.is_err(),
+        "activation should fail once Brambleback Brute has no counters left"
     );
 }
 
@@ -36268,6 +36675,33 @@ fn parse_oracle_treasure_keeper_keeps_mana_value_or_less_filter() {
     assert!(
         !rendered.contains("named less"),
         "expected Treasure Keeper to avoid bogus named-Less parsing, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_glamdring_keeps_damage_scaled_free_cast_clause() {
+    let def = parse_oracle_card_definition("Glamdring");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Glamdring to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("cast an instant or sorcery spell")
+            && rendered.contains("from your hand")
+            && rendered.contains("without paying its mana cost"),
+        "expected Glamdring to keep its hand free-cast clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("first strike"),
+        "expected Glamdring to keep granted first strike, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value less than or equal to that amount"),
+        "expected Glamdring to keep the dynamic damage-based mana value limit, got {rendered}"
     );
 }
 
@@ -40873,6 +41307,30 @@ fn parse_oracle_consult_the_star_charts_keeps_kicker_choice_override_surface() {
 }
 
 #[test]
+fn parse_oracle_cream_of_the_crop_keeps_power_scaled_rearrange_surface() {
+    let def = parse_oracle_card_definition("Cream of the Crop");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("whenever a creature you control enters")
+            && rendered.contains("look at the top x cards of your library")
+            && rendered.contains("where x is its power")
+            && rendered.contains("if you do")
+            && rendered.contains("put one of those cards on top of your library")
+            && rendered.contains("the rest on the bottom of your library in any order"),
+        "expected Cream of the Crop scored text to keep the full top/bottom rearrange wording, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("rearrangelookedcardsinlibrary")
+            && abilities_debug.contains("powerof"),
+        "expected Cream of the Crop definition to use looked-card rearrange with source-power count, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_divergent_transformations_keeps_reveal_until_creature_surface() {
     let def = parse_oracle_card_definition("Divergent Transformations");
     let spell_debug = format!("{:#?}", def.spell_effect);
@@ -41123,6 +41581,37 @@ fn parse_additional_combat_phase_followed_by_main_phase() {
 }
 
 #[test]
+fn parse_full_throttle_two_additional_combats() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Full Throttle")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "After this main phase, there are two additional combat phases.\nAt the beginning of each combat this turn, untap all creatures that attacked this turn.",
+        )
+        .expect("Full Throttle should parse");
+
+    let effect = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>())
+        .expect("additional phases effect");
+    assert_eq!(
+        effect.phases,
+        vec![
+            crate::effects::AdditionalPhase::Combat,
+            crate::effects::AdditionalPhase::Combat,
+        ]
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("After this main phase, there are two additional combat phases"),
+        "expected Full Throttle additional-combat surface, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_must_be_blocked_each_combat_this_turn_if_able() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Must Be Blocked Variant")
         .mana_cost(ManaCost::from_pips(vec![
@@ -41291,8 +41780,7 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
             {
                 has_set_life_to_ten = true;
             }
-            if let Some(control_player) =
-                effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
+            if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
                 && format!("{:?}", control_player.start)
                     .to_ascii_lowercase()
                     .contains("nextturn")
@@ -41357,13 +41845,10 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
             "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
         )
         .expect("Eruth, Tormented Prophet oracle text should parse");
-    let rendered = unprocessed_compiled_lines(&def)
-        .join("\n")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
 
     assert!(
-        rendered
-            .contains("if you would draw a card, exile the top 2 cards of your library instead"),
+        rendered.contains("if you would draw a card, exile the top 2 cards of your library instead"),
         "expected replacement clause in compiled text, got {rendered}"
     );
     assert!(
@@ -41371,7 +41856,6 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
         "expected play-permission clause in compiled text, got {rendered}"
     );
 }
-
 #[test]
 fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
     let def = parse_oracle_card_definition("Trove Tracker");

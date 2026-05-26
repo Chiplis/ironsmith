@@ -5,6 +5,10 @@ use ironsmith_core::CostComponent as _;
 fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     use crate::effects;
 
+    if effect.payload_type_name().ends_with("MoveToZoneEffect") {
+        return true;
+    }
+
     if effect.downcast_ref::<effects::PayManaEffect>().is_some()
         || effect.downcast_ref::<effects::TapEffect>().is_some()
         || effect.downcast_ref::<effects::UntapEffect>().is_some()
@@ -30,6 +34,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             .downcast_ref::<effects::ReturnToHandEffect>()
             .is_some()
         || effect.downcast_ref::<effects::MoveToZoneEffect>().is_some()
+        || effect
+            .downcast_ref::<ironsmith_core::effect::MoveToZoneEffect>()
+            .is_some()
         || effect
             .downcast_ref::<effects::RemoveCountersEffect>()
             .is_some()
@@ -247,5 +254,26 @@ pub(crate) fn total_cost_to_payment_effects(
                 panic!("unsupported alternative total cost branch count")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn payment_effect_to_cost_accepts_move_to_zone_effect() {
+        let effect = crate::effect::Effect::move_to_zone(
+            crate::target::ChooseSpec::Object(
+                crate::target::ObjectFilter::default().in_zone(crate::zone::Zone::Graveyard),
+            )
+            .with_count(crate::effect::ChoiceCount::exactly(2)),
+            crate::zone::Zone::Library,
+            false,
+        );
+
+        let cost = payment_effect_to_cost(effect)
+            .expect("move-to-zone effects should be marked cost-executable");
+        assert!(matches!(cost, Cost::Effect(_)));
     }
 }

@@ -104,6 +104,66 @@ fn sublime_archangel_grants_real_exalted_triggers_to_other_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let glamdring = CardDefinitionBuilder::new(CardId::from_raw(72_101), "Glamdring")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard.\nWhenever equipped creature deals combat damage to a player, you may cast an instant or sorcery spell from your hand with mana value less than or equal to that damage without paying its mana cost.\nEquip {3}",
+        )
+        .expect("Glamdring should parse");
+    let glamdring_id = game.create_object_from_definition(&glamdring, alice, Zone::Battlefield);
+
+    let attacker_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let instant = CardBuilder::new(CardId::from_raw(72_102), "Shock")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&instant, alice, Zone::Graveyard);
+    let sorcery = CardBuilder::new(CardId::from_raw(72_103), "Ponder")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&sorcery, alice, Zone::Graveyard);
+
+    if let Some(equipment) = game.object_mut(glamdring_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(attacker_id));
+    }
+    if let Some(attacker) = game.object_mut(attacker_id) {
+        attacker.attachments.push(glamdring_id);
+    }
+
+    assert_eq!(game.calculated_power(attacker_id), Some(4));
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(attacker_id, Vec::new());
+
+    let first_strike_events = execute_combat_damage_step(&mut game, &combat, true);
+    assert_eq!(first_strike_events.len(), 1, "equipped Bearer should hit in first-strike step");
+    assert_eq!(game.player(bob).unwrap().life, 16, "Bearer should deal 4 first-strike damage");
+
+    let regular_events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(regular_events.len(), 0, "first strike should suppress regular damage step hit");
+
+    if let Some(equipment) = game.object_mut(glamdring_id) {
+        equipment.attached_to = None;
+    }
+    if let Some(attacker) = game.object_mut(attacker_id) {
+        attacker.attachments.clear();
+    }
+
+    assert_eq!(game.calculated_power(attacker_id), Some(2));
+}
+
 #[test]
 fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     let mut game = setup_game();
@@ -9510,6 +9570,40 @@ fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all_effects() 
 
     crate::turn::advance_phase(&mut game).expect("advance to inserted combat");
     assert_eq!(game.turn.phase, Phase::Combat);
+}
+
+#[test]
+fn full_throttle_inserts_two_additional_combats_and_reaches_normal_next_main() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+
+    let full_throttle = CardDefinitionBuilder::new(CardId::new(), "Full Throttle")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "After this main phase, there are two additional combat phases.\nAt the beginning of each combat this turn, untap all creatures that attacked this turn.",
+        )
+        .expect("Full Throttle should parse for runtime test");
+
+    let spell_id = game.create_object_from_definition(&full_throttle, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("Full Throttle should resolve");
+
+    crate::turn::advance_phase(&mut game).expect("advance to first inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to second inserted combat");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to normal phase order after added combats");
+    assert_eq!(game.turn.phase, Phase::Ending);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -26313,6 +26407,63 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
         .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Plains"))
         .count();
     assert_eq!(plains_in_hand, 2, "Oreskos Explorer should find two Plains");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_cream_of_the_crop_etb_trigger_uses_may_and_source_power_rearrange() {
+    use crate::ability::AbilityKind;
+    use crate::card::PowerToughness;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let cream = CardDefinitionBuilder::new(CardId::new(), "Cream of the Crop")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever a creature you control enters, you may look at the top X cards of your library, where X is that creature's power. If you do, put one of those cards on top of your library and the rest on the bottom of your library in any order.")
+        .expect("Cream of the Crop text should parse");
+    let grizzly = CardDefinitionBuilder::new(CardId::new(), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("")
+        .expect("vanilla creature should parse");
+
+    let cream_id = game.create_object_from_definition(&cream, alice, Zone::Battlefield);
+    let _creature_id = game.create_object_from_definition(&grizzly, alice, Zone::Battlefield);
+
+    let trigger = game
+        .object(cream_id)
+        .expect("Cream of the Crop should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cream of the Crop should have an enters trigger");
+
+    let trigger_debug = format!("{:#?}", trigger).to_ascii_lowercase();
+    assert!(
+        trigger_debug.contains("controller: some(\n                    you,")
+            && trigger_debug.contains("card_types: [\n                    creature,"),
+        "Cream trigger should only watch your creatures entering, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("mayeffect"),
+        "Cream trigger should preserve the may branch, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("lookattopcards") && trigger_debug.contains("powerof"),
+        "Cream trigger should scale looked card count from the entering creature's power, got {trigger_debug}"
+    );
+    assert!(
+        trigger_debug.contains("rearrangelookedcardsinlibrary")
+            && trigger_debug.contains("min: 1"),
+        "Cream trigger should rearrange looked cards by choosing exactly one for top, got {trigger_debug}"
+    );
 }
 
 fn doubling_chant_definition() -> crate::cards::CardDefinition {

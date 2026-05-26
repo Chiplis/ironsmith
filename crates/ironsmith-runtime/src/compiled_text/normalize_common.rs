@@ -595,7 +595,17 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
 }
 
 fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
-    matches!(abilities, [ability] if ability == "\"This token can't block.\"")
+    match abilities {
+        [ability] => {
+            if ability == "\"This token can't block.\"" {
+                return true;
+            }
+            ability
+                .to_ascii_lowercase()
+                .starts_with("\"this token saddles mounts and crews vehicles as though its power were ")
+        }
+        _ => false,
+    }
 }
 
 fn token_has_non_toxic_poison_trigger(token: &CardDefinition) -> bool {

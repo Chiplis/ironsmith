@@ -48,9 +48,9 @@ use super::for_each_helpers::{
 use super::search_library::parse_restriction_duration;
 use super::subject_verb_primitives::{find_unquoted_token_word, try_build_unless};
 use super::verb_dispatch::parse_effect_with_verb;
-use super::verb_handlers::parse_control_duration;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
 use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
+use super::verb_handlers::parse_control_duration;
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
@@ -216,9 +216,7 @@ fn common_player_action_pattern_for(
     None
 }
 
-fn parse_control_player_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+fn parse_control_player_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
     let Some(control_word_idx) = words
         .iter()

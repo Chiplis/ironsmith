@@ -9851,6 +9851,144 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[test]
+    fn parse_jotun_grunt_cumulative_upkeep_strict_regression() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Jötun Grunt")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![
+                vec![crate::mana::ManaSymbol::Generic(1)],
+                vec![crate::mana::ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Giant, Subtype::Soldier])
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+            .parse_text("Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)")
+            .expect("Jötun Grunt should parse strictly");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("CumulativeUpkeepEffect") && debug.contains("MoveToZoneEffect"),
+            "expected Jötun Grunt cumulative upkeep move effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("KeywordMarker")
+                && !debug.contains("KeywordFallbackText")
+                && !debug.contains("RuleFallbackText"),
+            "Jötun Grunt should not compile as fallback marker text: {debug}"
+        );
+
+        let joined = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            joined.contains("cumulative upkeep")
+                && joined.contains("put two cards from a single graveyard"),
+            "expected compiled text to include Jötun Grunt upkeep clause, got {joined}"
+        );
+    }
+
+    #[test]
+    fn jotun_grunt_cumulative_upkeep_runtime_branches() {
+        use crate::effects::{ExecutionContext, execute_effect};
+        use crate::ids::{CardId as RuntimeCardId, PlayerId};
+        use crate::zone::Zone;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Jötun Grunt")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+            .parse_text("Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)")
+            .expect("Jötun Grunt should parse");
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+            .expect("expected Jötun Grunt cumulative upkeep triggered ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected triggered ability");
+        };
+
+        let run_upkeep = |game: &mut crate::game_state::GameState,
+                          source: crate::ids::ObjectId,
+                          controller: PlayerId| {
+            let mut ctx = ExecutionContext::new_default(source, controller);
+            for effect in &triggered.effects {
+                execute_effect(game, effect, &mut ctx)
+                    .expect("Jötun Grunt upkeep trigger should execute");
+            }
+        };
+
+        let mut game_paid =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70300), "Jötun Grunt")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+            .build();
+        let source_paid = game_paid.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        for idx in 0..2 {
+            let card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70310 + idx), "Graveyard Fodder")
+                .card_types(vec![CardType::Creature])
+                .build();
+            game_paid.create_object_from_card(&card, bob, Zone::Graveyard);
+        }
+
+        run_upkeep(&mut game_paid, source_paid, alice);
+        let source_obj_paid = game_paid
+            .object(source_paid)
+            .expect("source should remain when upkeep cost is payable");
+        assert_eq!(
+            source_obj_paid
+                .counters
+                .get(&CounterType::Age)
+                .copied()
+                .unwrap_or(0),
+            1,
+            "upkeep should add one age counter"
+        );
+        assert_eq!(
+            game_paid
+                .player(bob)
+                .expect("bob should exist")
+                .graveyard
+                .len(),
+            0,
+            "paying upkeep should move two cards out of the chosen graveyard"
+        );
+
+        let mut game_unpaid =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source_unpaid = game_unpaid.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let one_card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70400), "Only Card")
+            .card_types(vec![CardType::Creature])
+            .build();
+        game_unpaid.create_object_from_card(&one_card, bob, Zone::Graveyard);
+
+        run_upkeep(&mut game_unpaid, source_unpaid, alice);
+        let source_obj_unpaid = game_unpaid
+            .object(source_unpaid)
+            .expect("source should still exist for insufficient graveyard branch");
+        assert_eq!(
+            source_obj_unpaid
+                .counters
+                .get(&CounterType::Age)
+                .copied()
+                .unwrap_or(0),
+            1,
+            "insufficient graveyard branch should still add an age counter"
+        );
+        assert_eq!(
+            game_unpaid
+                .player(bob)
+                .expect("bob should exist")
+                .graveyard
+                .len(),
+            0,
+            "single-card graveyard branch should still move available cards"
+        );
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn parse_filter_granted_cumulative_upkeep_compiles_as_granted_triggered_ability() {

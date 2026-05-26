@@ -2087,6 +2087,10 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(condition);
     }
 
+    if let Some(condition) = parse_life_total_static_condition(&tokens) {
+        return Ok(condition);
+    }
+
     if clause_words.len() >= 6
         && clause_words[0] == "you"
         && clause_words[1] == "have"
@@ -2795,6 +2799,40 @@ fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crat
             count: count as i32,
         });
     }
+    None
+}
+
+fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let (player, count_start_idx) = match clause_words.as_slice() {
+        ["you", "have", ..] => (PlayerFilter::You, 2usize),
+        ["that", "player", "has", ..] => (PlayerFilter::Target(Box::new(PlayerFilter::Any)), 3),
+        ["an", "opponent", "has", ..] => (PlayerFilter::Opponent, 3usize),
+        ["opponent", "has", ..] => (PlayerFilter::Opponent, 2usize),
+        ["a", "player", "has", ..] => (PlayerFilter::Any, 3usize),
+        ["player", "has", ..] => (PlayerFilter::Any, 2usize),
+        _ => return None,
+    };
+
+    let count_tokens = tokens.get(count_start_idx..)?;
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_tokens = count_tokens.get(used..)?;
+    let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+    if tail_words.as_slice() == ["or", "less", "life"] {
+        return Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::LifeTotal(player),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: crate::effect::Value::Fixed(count as i32),
+        });
+    }
+    if tail_words.as_slice() == ["or", "more", "life"] {
+        return Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::LifeTotal(player),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(count as i32),
+        });
+    }
+
     None
 }
 
@@ -3596,7 +3634,71 @@ pub(crate) fn parse_anthem_and_keyword_line(
         return Ok(None);
     };
 
-    if have_idx <= get_idx {
+    if have_idx < get_idx {
+        let have_token_idx = tokens.iter().enumerate().find_map(|(idx, token)| {
+            (idx < get_idx && (token.is_word("have") || token.is_word("has"))).then_some(idx)
+        });
+        let Some(have_token_idx) = have_token_idx else {
+            return Ok(None);
+        };
+
+        let subject_tokens = trim_edge_punctuation(&tokens[..have_token_idx]);
+        if subject_tokens.is_empty() {
+            return Ok(None);
+        }
+        let subject = parse_anthem_subject(&subject_tokens)?;
+
+        let keyword_tokens = trim_edge_punctuation(&tokens[have_token_idx + 1..get_idx]);
+        if keyword_tokens.is_empty() {
+            return Ok(None);
+        }
+        let keyword_tokens = if keyword_tokens
+            .first()
+            .is_some_and(|token| token.is_word("and"))
+        {
+            trim_edge_punctuation(&keyword_tokens[1..])
+        } else {
+            keyword_tokens
+        };
+        let keyword_tokens = if keyword_tokens
+            .last()
+            .is_some_and(|token| token.is_word("and"))
+        {
+            trim_edge_punctuation(&keyword_tokens[..keyword_tokens.len().saturating_sub(1)])
+        } else {
+            keyword_tokens
+        };
+        if keyword_tokens.is_empty() {
+            return Ok(None);
+        }
+
+        let Some(actions) = parse_ability_line(&keyword_tokens) else {
+            return Ok(None);
+        };
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+
+        let mut anthem_tokens = subject_tokens.clone();
+        anthem_tokens.extend_from_slice(&tokens[get_idx..]);
+        let Some(anthem) = parse_anthem_line(&anthem_tokens)? else {
+            return Ok(None);
+        };
+        let mut result = vec![StaticAbilityAst::from(anthem)];
+        let grant_clause = ParsedAnthemClause {
+            subject,
+            power: AnthemValue::Fixed(0),
+            toughness: AnthemValue::Fixed(0),
+            condition: None,
+        };
+        for action in actions
+            .into_iter()
+            .filter(|action| action.lowers_to_static_ability())
+        {
+            result.push(grant_keyword_action_for_anthem_subject(&grant_clause, action));
+        }
+        return Ok(Some(result));
+    }
+
+    if have_idx == get_idx {
         return Ok(None);
     }
 

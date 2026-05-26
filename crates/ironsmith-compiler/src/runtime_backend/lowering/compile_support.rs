@@ -1894,6 +1894,16 @@ pub(crate) fn parse_crew_amount(words: &[&str]) -> Option<u32> {
     u32::try_from(amount).ok()
 }
 
+pub(crate) fn parse_as_though_power_were_greater_amount(words: &[&str]) -> Option<u32> {
+    let were_idx = find_index(words, |word| *word == "were")?;
+    let amount_word = words.get(were_idx + 1)?;
+    if words.get(were_idx + 2).copied() != Some("greater") {
+        return None;
+    }
+    let amount = parse_number_word(amount_word)?;
+    u32::try_from(amount).ok()
+}
+
 pub(crate) fn parse_equip_amount(words: &[&str]) -> Option<u32> {
     let equip_idx = find_index(words, |word| *word == "equip")?;
     let amount_word = words.get(equip_idx + 1)?;
@@ -3484,8 +3494,15 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if let Some(symbol) = parse_token_tap_add_single_mana_symbol(&words) {
             builder = builder.with_ability(token_tap_add_single_mana_ability(symbol));
         }
-        if has_words(&["crews", "vehicles", "power", "greater", "2"]) {
-            return None;
+        if !applied_quoted_keyword
+            && has_words(&["saddles", "mounts", "crews", "vehicles", "power", "greater"])
+            && let Some(amount) = parse_as_though_power_were_greater_amount(&words)
+        {
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+                format!(
+                    "This creature saddles Mounts and crews Vehicles as though its power were {amount} greater."
+                ),
+            )));
         }
         if has_word("banding") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::banding()));
