@@ -257,6 +257,18 @@ pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Optio
         [
             "after",
             "this",
+            "combat",
+            "phase",
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+        ]
+        | [
+            "after",
+            "this",
             "main",
             "phase",
             "there",
