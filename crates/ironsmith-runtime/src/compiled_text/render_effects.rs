@@ -28753,23 +28753,30 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_until(&prevent_damage.duration)
         };
+        let source_text = if prevent_damage.source_of_your_choice {
+            " by a source of your choice"
+        } else {
+            ""
+        };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
             return format!(
-                "Prevent the next {} {} that would be dealt to {} {}. For each 1 damage prevented this way, put a {} counter on {}",
+                "Prevent the next {} {} that would be dealt to {} {}{}. For each 1 damage prevented this way, put a {} counter on {}",
                 describe_value(&prevent_damage.amount),
                 damage_text,
                 describe_choose_spec(&prevent_damage.target),
                 timing,
+                source_text,
                 describe_counter_type(put.counter_type),
                 describe_prevention_follow_up_target(&prevent_damage.target)
             );
         }
         return format!(
-            "Prevent the next {} {} that would be dealt to {} {}",
+            "Prevent the next {} {} that would be dealt to {} {}{}",
             describe_value(&prevent_damage.amount),
             damage_text,
             describe_choose_spec(&prevent_damage.target),
-            timing
+            timing,
+            source_text
         );
     }
     if let Some(prevent_all_target) =

@@ -951,6 +951,7 @@ pub(crate) enum SubjectVerbActionAst {
         amount: Value,
         target: TargetAst,
         duration: Until,
+        source_of_your_choice: bool,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -2045,6 +2046,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 amount,
                 target,
                 duration,
+                ..
             } => f
                 .debug_struct("PreventDamage")
                 .field("amount", amount)
@@ -3393,6 +3395,15 @@ impl EffectAst {
         target: TargetAst,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_prevent_damage_with_source_choice(amount, target, duration, false)
+    }
+
+    pub(crate) fn subject_verb_prevent_damage_with_source_choice(
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3400,6 +3411,7 @@ impl EffectAst {
                 amount,
                 target,
                 duration,
+                source_of_your_choice,
             },
         )
     }

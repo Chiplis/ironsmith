@@ -1129,6 +1129,17 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_damage_with_source_choice(
+        amount: Value,
+        target: crate::target::ChooseSpec,
+        until: Until,
+    ) -> Self {
+        Self::new(
+            crate::effects::PreventDamageEffect::new(amount, target, until)
+                .with_source_of_your_choice(),
+        )
+    }
+
     pub fn prevent_all_combat_damage(until: Until) -> Self {
         Self::new(crate::effects::PreventAllCombatDamageEffect::new(
             crate::effects::CombatDamagePreventionTarget::All,
