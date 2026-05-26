@@ -11498,6 +11498,32 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_doom_weaver_soulbond_shared_dies_draw_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Doom Weaver")
+            .parse_text(
+                "Reach\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+            )
+            .expect("Doom Weaver should parse");
+
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        let rendered_lower = rendered.to_ascii_lowercase();
+        assert!(
+            rendered_lower.contains("as long as this creature is paired with another creature"),
+            "expected soulbond shared condition in compiled text, got: {rendered}"
+        );
+        assert!(
+            rendered_lower.contains("each of those creatures has"),
+            "expected soulbond shared recipient wording in compiled text, got: {rendered}"
+        );
+        assert!(
+            rendered_lower.contains("when this creature dies")
+                && rendered_lower.contains("draw cards equal to its power"),
+            "expected granted dies trigger draw clause in compiled text, got: {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
             .parse_text(

@@ -938,6 +938,9 @@ pub(super) fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
     };
 
     let (head, tail) = body.split_once(": ")?;
+    if head.contains('"') {
+        return None;
+    }
     let normalized_head = if let Some(rest) = head.strip_prefix("You ") {
         format!("you {rest}")
     } else {
