@@ -6625,6 +6625,197 @@ fn stack_spell_with_granted_static_ability_still_executes_spell_effect() {
 }
 
 #[test]
+fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damage_to_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mine_def = CardDefinitionBuilder::new(CardId::from_raw(994_000), "Magma Mine")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{4}: Put a pressure counter on this artifact.\n{T}, Sacrifice this artifact: It deals damage equal to the number of pressure counters on it to any target.",
+        )
+        .expect("Magma Mine text should parse");
+    let mine_id = game.create_object_from_definition(&mine_def, alice, Zone::Battlefield);
+    game.add_counters(
+        mine_id,
+        crate::object::CounterType::Named("pressure"),
+        3,
+    )
+        .expect("pressure counters should be addable to Magma Mine");
+
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::Red, 4);
+    }
+
+    let ability_index = game
+        .object(mine_id)
+        .expect("Magma Mine should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                let debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+                debug.contains("dealdamageeffect")
+            } else {
+                false
+            }
+        })
+        .expect("Magma Mine should have a damage activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == mine_id && *idx == ability_index
+            )
+        })
+        .expect("Magma Mine activation should be legal with mana available");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Magma Mine activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Magma Mine activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing player target should complete activation");
+
+    assert!(
+        game.object(mine_id).is_none(),
+        "Magma Mine should be sacrificed as part of activation cost"
+    );
+
+    resolve_stack_entry(&mut game).expect("Magma Mine ability should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        17,
+        "Magma Mine should deal damage equal to pressure counters on source"
+    );
+}
+
+#[test]
+fn magma_mine_activated_ability_uses_current_pressure_counter_count_when_zero() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mine_def = CardDefinitionBuilder::new(CardId::from_raw(994_010), "Magma Mine")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{4}: Put a pressure counter on this artifact.\n{T}, Sacrifice this artifact: It deals damage equal to the number of pressure counters on it to any target.",
+        )
+        .expect("Magma Mine text should parse");
+    let mine_id = game.create_object_from_definition(&mine_def, alice, Zone::Battlefield);
+
+    let target_creature = CardBuilder::new(CardId::from_raw(994_001), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target_creature, bob, Zone::Battlefield);
+
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::Red, 4);
+    }
+
+    let ability_index = game
+        .object(mine_id)
+        .expect("Magma Mine should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                let debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+                debug.contains("dealdamageeffect")
+            } else {
+                false
+            }
+        })
+        .expect("Magma Mine should have a damage activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == mine_id && *idx == ability_index
+            )
+        })
+        .expect("Magma Mine activation should be legal with mana available");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Magma Mine activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Magma Mine activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("choosing creature target should complete activation");
+
+    resolve_stack_entry(&mut game).expect("Magma Mine ability should resolve");
+
+    assert_eq!(
+        game.damage_on(target_id),
+        0,
+        "without pressure counters, Magma Mine should deal zero damage"
+    );
+}
+
+#[test]
 fn protected_stack_spell_still_resolves_after_failed_counterspell() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

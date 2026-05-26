@@ -36421,6 +36421,27 @@ fn parse_oracle_opaline_bracers_charge_counter_scaling_regression() {
 }
 
 #[test]
+fn parse_oracle_magma_mine_pressure_counter_damage_regression() {
+    let def = parse_oracle_card_definition("Magma Mine");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("deals damage")
+            && rendered.contains("to any target")
+            && rendered.contains("equal to the number of pressure counters on this artifact"),
+        "expected pressure-counter damage wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CountersOnSource(Named(\"pressure\"))"),
+        "expected activated ability to count pressure counters on source, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_commanders_insignia_commander_cast_count_regression() {
     let def = parse_oracle_card_definition("Commander's Insignia");
     let rendered = unprocessed_compiled_lines(&def)

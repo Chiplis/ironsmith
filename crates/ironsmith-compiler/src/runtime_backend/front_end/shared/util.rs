@@ -1235,6 +1235,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "lore" => Some(CounterType::Lore),
         "luck" => Some(CounterType::Luck),
         "oil" => Some(CounterType::Oil),
+        "pressure" => Some(CounterType::Named(intern_counter_name("pressure"))),
         _ => None,
     }
 }

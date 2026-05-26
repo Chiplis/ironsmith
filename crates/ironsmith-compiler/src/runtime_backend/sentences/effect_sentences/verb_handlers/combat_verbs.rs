@@ -358,7 +358,14 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         )));
     };
 
-    let amount_tokens = &tokens[..target_to_idx];
+    let amount_tokens = if tokens
+        .first()
+        .is_some_and(|token| token.is_word("damage"))
+    {
+        &tokens[1..target_to_idx]
+    } else {
+        &tokens[..target_to_idx]
+    };
     let amount = parse_add_mana_equal_amount_value(amount_tokens)
         .or(parse_equal_to_aggregate_filter_value(amount_tokens))
         .or(parse_devotion_value_from_add_clause(amount_tokens)?)
