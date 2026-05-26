@@ -33574,6 +33574,12 @@ fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_brambleback_brute_strict_regression() {
+    assert_oracle_card_parses_strict("Brambleback Brute");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
@@ -33605,6 +33611,151 @@ fn rankle_master_of_pranks_compiled_text_keeps_choose_any_number_modal_header() 
     assert!(
         rendered.contains("choose any number"),
         "expected Rankle, Master of Pranks compiled text to preserve choose-any-number modal header, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn brambleback_brute_compiled_text_keeps_unspecified_remove_counter_activation_cost() {
+    let def = parse_oracle_card_definition("Brambleback Brute");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("remove a counter from this creature"),
+        "expected Brambleback Brute compiled text to keep unspecified remove-counter cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target creature can't block this turn"),
+        "expected Brambleback Brute compiled text to keep can't-block effect, got {rendered}"
+    );
+    assert!(
+        rendered.contains("activate only as a sorcery"),
+        "expected Brambleback Brute compiled text to keep sorcery-speed activation rider, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn brambleback_brute_activation_cost_and_effect_runtime_regression() {
+    let def = parse_oracle_card_definition("Brambleback Brute");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Brambleback Brute should have one activated ability");
+
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::SorcerySpeed,
+        "Brambleback Brute activation must stay sorcery speed"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    let brute_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Blocking Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    assert!(
+        game.add_counters(brute_id, crate::object::CounterType::MinusOneMinusOne, 2)
+            .is_some(),
+        "Brambleback Brute should be on battlefield"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("first Brambleback Brute activation cost should be payable");
+
+    let counters_after_first = game
+        .object(brute_id)
+        .expect("Brambleback Brute should still be on battlefield")
+        .counters
+        .get(&crate::object::CounterType::MinusOneMinusOne)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        counters_after_first, 1,
+        "first activation should remove exactly one counter from Brambleback Brute"
+    );
+
+    let mut resolve_ctx = crate::effects::ExecutionContext::new(brute_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut resolve_ctx,
+        alice,
+        brute_id,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Brambleback Brute ability effect should resolve");
+    assert!(
+        !game.can_block(target_id),
+        "target creature should be unable to block this turn after Brambleback Brute resolves"
+    );
+
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("second Brambleback Brute activation cost should be payable");
+
+    let counters_after_second = game
+        .object(brute_id)
+        .expect("Brambleback Brute should still be on battlefield")
+        .counters
+        .get(&crate::object::CounterType::MinusOneMinusOne)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        counters_after_second, 0,
+        "second activation should remove the last counter from Brambleback Brute"
+    );
+
+    let pay_third = crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        brute_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    );
+    assert!(
+        pay_third.is_err(),
+        "activation should fail once Brambleback Brute has no counters left"
     );
 }
 

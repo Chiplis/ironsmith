@@ -1312,14 +1312,19 @@ fn parse_remove_counter_segment_tokens(
         });
     }
 
-    let counter_type = counter_type.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "rewrite remove-counter parser missing counter type in '{raw}'"
-        ))
-    })?;
-    Ok(ActivationCostSegmentCst::RemoveCounters {
-        counter_type,
+    if let Some(counter_type) = counter_type {
+        return Ok(ActivationCostSegmentCst::RemoveCounters {
+            counter_type,
+            count,
+        });
+    }
+
+    Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+        counter_type: None,
         count,
+        filter_text: target_filter_text,
+        display_x: false,
+        dynamic: false,
     })
 }
 
