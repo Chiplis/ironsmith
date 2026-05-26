@@ -28371,6 +28371,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if additional_phases.phases
             == [
                 crate::effects::AdditionalPhase::Combat,
+                crate::effects::AdditionalPhase::Combat,
+            ]
+        {
+            return "After this main phase, there are two additional combat phases".to_string();
+        }
+        if additional_phases.phases
+            == [
+                crate::effects::AdditionalPhase::Combat,
                 crate::effects::AdditionalPhase::Main,
             ]
         {
