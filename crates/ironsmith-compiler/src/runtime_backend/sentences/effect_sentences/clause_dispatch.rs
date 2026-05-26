@@ -1447,7 +1447,10 @@ pub(crate) fn parse_effect_clause_lexed(
 
 fn rewrite_theyre_characteristic_clause(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let starts_with_theyre = matches!(words.as_slice(), ["theyre", ..] | ["they", "re", ..]);
+    let starts_with_theyre = matches!(words.as_slice(), ["theyre", ..] | ["they", "re", ..])
+        || tokens
+            .first()
+            .is_some_and(|token| token.is_word("they're"));
     if !starts_with_theyre {
         return None;
     }
@@ -1457,7 +1460,10 @@ fn rewrite_theyre_characteristic_clause(tokens: &[OwnedLexToken]) -> Option<Vec<
     }
 
     let mut rewritten = tokens.to_vec();
-    if rewritten.first().is_some_and(|token| token.is_word("theyre")) {
+    if rewritten
+        .first()
+        .is_some_and(|token| token.is_word("theyre") || token.is_word("they're"))
+    {
         rewritten[0] = OwnedLexToken::synthetic_word("they");
         rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
         return Some(rewritten);
@@ -1477,6 +1483,17 @@ mod tests {
 
     fn lex_tail(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex test tail")
+    }
+
+    #[test]
+    fn rewrite_theyre_characteristic_clause_handles_apostrophe_form() {
+        let tokens = lex_tail("they're 5/5 artifact creatures");
+        let rewritten = rewrite_theyre_characteristic_clause(&tokens)
+            .expect("apostrophe contraction should rewrite into a become clause");
+        assert_eq!(
+            crate::runtime_backend::token_word_refs(&rewritten),
+            vec!["they", "become", "5/5", "artifact", "creatures"]
+        );
     }
 
     #[test]
