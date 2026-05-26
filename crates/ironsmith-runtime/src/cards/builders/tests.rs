@@ -14540,6 +14540,68 @@ fn kaya_orzhov_usurper_plus_one_conditional_life_gain_branch_true_with_creature_
     );
 }
 
+#[test]
+fn kaya_orzhov_usurper_plus_one_conditional_life_gain_branch_true_with_mixed_tagged_cards() {
+    let def = parse_oracle_card_definition("Kaya, Orzhov Usurper");
+    let conditional = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>()),
+            _ => None,
+        })
+        .expect("Kaya, Orzhov Usurper +1 should lower a conditional life-gain effect");
+    let tag = match &conditional.condition {
+        Condition::TaggedObjectMatches(tag, _) => tag.clone(),
+        other => panic!("expected tagged-object condition for Kaya +1, got {other:?}"),
+    };
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+
+    let noncreature_def = CardDefinitionBuilder::new(CardId::from_raw(777003), "Tagged Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let noncreature_id =
+        game.create_object_from_definition(&noncreature_def, alice, crate::zone::Zone::Exile);
+    let noncreature_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(noncreature_id)
+            .expect("tagged noncreature should exist"),
+        &game,
+    );
+
+    let creature_def = CardDefinitionBuilder::new(CardId::from_raw(777004), "Tagged Witness")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_id = game.create_object_from_definition(&creature_def, alice, crate::zone::Zone::Exile);
+    let creature_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(creature_id).expect("tagged creature should exist"),
+        &game,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice).with_tagged_objects(
+        std::collections::HashMap::from([(tag, vec![noncreature_snapshot, creature_snapshot])]),
+    );
+    crate::effects::execute_effect(
+        &mut game,
+        &crate::effect::Effect::new(conditional.clone()),
+        &mut ctx,
+    )
+    .expect("Kaya, Orzhov Usurper conditional +1 effect should resolve");
+
+    assert_eq!(
+        game.life_total(alice),
+        22,
+        "controller should gain life when at least one tagged exiled card is a creature"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
