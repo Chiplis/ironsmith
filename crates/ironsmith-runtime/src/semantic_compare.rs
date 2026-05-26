@@ -1365,6 +1365,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "Target opponent's nonland permanent",
             "Target nonland permanent an opponent controls",
         );
+    normalized = normalize_named_soulbond_pairing_surface(&normalized);
     for (from, to) in [
         (
             " from your hand if you dont this land enters tapped",
@@ -2836,6 +2837,40 @@ fn normalize_target_count_wording(text: &str) -> String {
     for token in number_tokens {
         normalized = normalized.replace(&format!("target {token} "), &format!("{token} "));
         normalized = normalized.replace(&format!("Target {token} "), &format!("{token} "));
+    }
+    normalized
+}
+
+fn normalize_named_soulbond_pairing_surface(text: &str) -> String {
+    let marker = " is paired with another creature, each of those creatures has ";
+    let mut normalized = String::with_capacity(text.len());
+    for segment in text.split_inclusive('\n') {
+        let (line, line_ending) = if let Some(stripped) = segment.strip_suffix('\n') {
+            (stripped, "\n")
+        } else {
+            (segment, "")
+        };
+
+        if let Some(rest) = line.strip_prefix("As long as ")
+            && let Some(marker_idx) = rest.find(marker)
+        {
+            normalized.push_str("As long as this creature");
+            normalized.push_str(&rest[marker_idx..]);
+            normalized.push_str(line_ending);
+            continue;
+        }
+
+        if let Some(rest) = line.strip_prefix("as long as ")
+            && let Some(marker_idx) = rest.find(marker)
+        {
+            normalized.push_str("as long as this creature");
+            normalized.push_str(&rest[marker_idx..]);
+            normalized.push_str(line_ending);
+            continue;
+        }
+
+        normalized.push_str(line);
+        normalized.push_str(line_ending);
     }
     normalized
 }
@@ -6288,6 +6323,24 @@ As long as this creature is paired with another creature, each of those creature
         assert!(
             !mismatch,
             "expected no mismatch for soulbond keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_named_soulbond_pairing_surface() {
+        let oracle = "As long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"";
+        let compiled = vec![String::from(
+            "Static ability 3: As long as this creature is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected named soulbond pairing wording normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for named soulbond pairing wording"
         );
     }
 
