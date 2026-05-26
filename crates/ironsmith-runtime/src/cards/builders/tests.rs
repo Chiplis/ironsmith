@@ -42760,3 +42760,51 @@ fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlands() {
         .expect("Loot upkeep X value should resolve");
     assert_eq!(resolved, 0, "no other nonland permanents should produce X=0");
 }
+
+#[test]
+fn loot_the_key_to_everything_runtime_count_ignores_lands_and_opponents_permanents() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let bob = crate::ids::PlayerId::from_index(1);
+    let source_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+
+    let forest = parse_oracle_card_definition("Forest");
+    let shivan_dragon = parse_oracle_card_definition("Shivan Dragon");
+    game.create_object_from_definition(&forest, alice, crate::zone::Zone::Battlefield);
+    game.create_object_from_definition(&shivan_dragon, bob, crate::zone::Zone::Battlefield);
+
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+        zone: Some(crate::zone::Zone::Battlefield),
+        controller: Some(crate::target::PlayerFilter::You),
+        excluded_card_types: vec![crate::types::CardType::Land],
+        other: true,
+        ..Default::default()
+    });
+    let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
+        .expect("Loot upkeep X value should resolve");
+    assert_eq!(
+        resolved, 0,
+        "lands and opponents' permanents should not contribute to Loot's X"
+    );
+}
+
+#[test]
+fn loot_the_key_to_everything_runtime_grants_play_permission_until_end_of_turn() {
+    let def = parse_oracle_card_definition("Loot, the Key to Everything");
+    let debug = format!("{:?}", def.abilities);
+
+    assert!(
+        debug.contains("GrantPlayTaggedEffect"),
+        "expected Loot upkeep trigger to grant play permission to exiled cards, got {debug}"
+    );
+    assert!(
+        debug.contains("duration: UntilEndOfTurn"),
+        "expected Loot play permission duration to end at end of turn, got {debug}"
+    );
+    assert!(
+        debug.contains("allow_land: true"),
+        "expected Loot play permission to allow lands as well as spells, got {debug}"
+    );
+}
