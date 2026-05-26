@@ -897,10 +897,10 @@ pub(crate) enum SubjectVerbActionAst {
         zone: Zone,
     },
     PutSomeIntoHandRestIntoGraveyard {
-        count: u32,
+        count: ChoiceCount,
     },
     PutSomeIntoHandRestOnBottomOfLibrary {
-        count: u32,
+        count: ChoiceCount,
     },
     AdditionalLandPlays {
         count: Value,
@@ -3252,6 +3252,16 @@ impl EffectAst {
         player: PlayerAst,
         count: u32,
     ) -> Self {
+        Self::subject_verb_put_some_into_hand_rest_into_graveyard_with_count(
+            player,
+            ChoiceCount::exactly(count as usize),
+        )
+    }
+
+    pub(crate) fn subject_verb_put_some_into_hand_rest_into_graveyard_with_count(
+        player: PlayerAst,
+        count: ChoiceCount,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -3274,6 +3284,16 @@ impl EffectAst {
     pub(crate) fn subject_verb_put_some_into_hand_rest_on_bottom_of_library(
         player: PlayerAst,
         count: u32,
+    ) -> Self {
+        Self::subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(
+            player,
+            ChoiceCount::exactly(count as usize),
+        )
+    }
+
+    pub(crate) fn subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(
+        player: PlayerAst,
+        count: ChoiceCount,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,

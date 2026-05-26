@@ -534,7 +534,16 @@ pub(crate) fn parse_put_into_hand(
             && grammar::contains_word(tokens, "library")
             && clause_words.iter().any(|w| *w == "and" || *w == "then")
         {
-            let (count, used) = parse_number(tokens).ok_or_else(|| {
+            let mut up_to = false;
+            let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
+                && tokens.get(1).is_some_and(|t| t.is_word("to"))
+            {
+                up_to = true;
+                parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
+            } else {
+                parse_number(tokens)
+            }
+            .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing put count (clause: '{}')",
                     clause_words.join(" ")
@@ -561,12 +570,12 @@ pub(crate) fn parse_put_into_hand(
                 player
             };
 
-            return Ok(
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-                    dest_player,
-                    count as u32,
-                ),
-            );
+            let choice_count = if up_to {
+                ChoiceCount::up_to(count as usize)
+            } else {
+                ChoiceCount::exactly(count as usize)
+            };
+            return Ok(EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(dest_player, choice_count));
         }
 
         // "Put N of them into your hand and the rest into your graveyard."
@@ -575,7 +584,16 @@ pub(crate) fn parse_put_into_hand(
             && grammar::contains_word(tokens, "graveyard")
             && clause_words.iter().any(|w| *w == "and" || *w == "then")
         {
-            let (count, used) = parse_number(tokens).ok_or_else(|| {
+            let mut up_to = false;
+            let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
+                && tokens.get(1).is_some_and(|t| t.is_word("to"))
+            {
+                up_to = true;
+                parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
+            } else {
+                parse_number(tokens)
+            }
+            .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing put count (clause: '{}')",
                     clause_words.join(" ")
@@ -604,10 +622,12 @@ pub(crate) fn parse_put_into_hand(
                 player
             };
 
-            return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
-                dest_player,
-                count as u32,
-            ));
+            let choice_count = if up_to {
+                ChoiceCount::up_to(count as usize)
+            } else {
+                ChoiceCount::exactly(count as usize)
+            };
+            return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard_with_count(dest_player, choice_count));
         }
 
         let effect = EffectAst::subject_verb_put_into_hand(player, ObjectRefAst::Tagged(TagKey::from(IT_TAG)));

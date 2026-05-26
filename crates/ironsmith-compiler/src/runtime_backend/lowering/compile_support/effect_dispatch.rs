@@ -5291,11 +5291,12 @@ fn compile_subject_verb_effect(
 fn compile_put_some_into_hand_rest_to_zone(
     role: SubjectRole,
     player: PlayerAst,
-    count: u32,
+    count: ChoiceCount,
     rest_zone: Zone,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     use crate::effect::Condition;
+    use crate::effects::consult_helpers::LibraryBottomOrder;
     use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 
     let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
@@ -5303,6 +5304,7 @@ fn compile_put_some_into_hand_rest_to_zone(
     })?;
     let subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
     let chooser = subject.as_chooser();
+    let player_filter = subject.clone_player_filter();
     let choices = subject.into_choices();
 
     let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
@@ -5312,7 +5314,7 @@ fn compile_put_some_into_hand_rest_to_zone(
     let choose = Effect::new(
         crate::effects::ChooseObjectsEffect::new(
             choose_filter,
-            ChoiceCount::exactly(count as usize),
+            count,
             chooser,
             chosen_tag_key.clone(),
         )
@@ -5334,15 +5336,24 @@ fn compile_put_some_into_hand_rest_to_zone(
             tag: TagKey::from("__it__"),
             relation: TaggedOpbjectRelation::SameStableId,
         });
-    let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key, membership_filter);
-    let move_rest = Effect::for_each_tagged(
-        looked_tag,
-        vec![Effect::conditional(
-            in_chosen,
-            Vec::new(),
-            vec![Effect::move_to_zone(ChooseSpec::Iterated, rest_zone, false)],
-        )],
-    );
+    let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key.clone(), membership_filter);
+    let move_rest = if rest_zone == Zone::Library {
+        Effect::put_tagged_remainder_on_library_bottom(
+            TagKey::from(looked_tag.as_str()),
+            Some(chosen_tag_key),
+            LibraryBottomOrder::Random,
+            player_filter,
+        )
+    } else {
+        Effect::for_each_tagged(
+            looked_tag,
+            vec![Effect::conditional(
+                in_chosen,
+                Vec::new(),
+                vec![Effect::move_to_zone(ChooseSpec::Iterated, rest_zone, false)],
+            )],
+        )
+    };
 
     Ok((vec![choose, move_chosen, move_rest], choices))
 }

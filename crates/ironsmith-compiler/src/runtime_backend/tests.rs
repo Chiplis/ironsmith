@@ -10523,6 +10523,21 @@ fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_into_hand_rest_bottom() {
+    let text = "Look at the top X cards of your library. Put up to two of them into your hand and the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify The Mana Rig activated text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(
+        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary") && debug.contains("up_to"),
+        "expected up-to counted looked-card move with remainder to bottom, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_optional_consult_battlefield_graveyard_family() {
     let text = "You may reveal cards from the top of your library until you reveal a land card. If you do, put that card onto the battlefield and put all other cards revealed this way into your graveyard.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify optional consult text");

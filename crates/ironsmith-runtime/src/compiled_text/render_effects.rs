@@ -8985,10 +8985,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 return None;
             }
             let mut idx = 2usize;
+            let mut reveals_selection = false;
             if effects
                 .get(idx)
                 .is_some_and(|effect| for_each_reveals_iterated_tag(effect, &choose.tag))
             {
+                reveals_selection = true;
                 idx += 1;
             }
             if !effects
@@ -9020,6 +9022,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                     && constraint.tag == look.tag)
             });
             let mut filter_text = filter.description();
+            let unfiltered_looked_cards = filter_text == "permanent";
+            if unfiltered_looked_cards {
+                filter_text = if choose.count.max == Some(1) {
+                    "card".to_string()
+                } else {
+                    "cards".to_string()
+                };
+            }
             if !filter_text.contains("card") {
                 filter_text.push_str(if choose.count.max == Some(1) {
                     " card"
@@ -9027,7 +9037,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                     " cards"
                 });
             }
-            let selection = if choose.count.max == Some(1) {
+            let selection = if unfiltered_looked_cards {
+                match (choose.count.min, choose.count.max) {
+                    (0, Some(1)) => "up to one of them".to_string(),
+                    (1, Some(1)) => "one of them".to_string(),
+                    (0, Some(max)) => {
+                        let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
+                        format!("up to {max_text} of them")
+                    }
+                    _ => format!("{} of them", describe_choice_count(&choose.count)),
+                }
+            } else if choose.count.max == Some(1) {
                 with_indefinite_article(&filter_text)
             } else {
                 let count_text = match (choose.count.min, choose.count.max) {
@@ -9040,10 +9060,24 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 format!("{count_text} {filter_text}")
             };
             Some((
-                format!(
-                    "{}. You may reveal {selection} from among them and put them into your hand. Put the rest on the bottom of your library{order_text}",
-                    describe_effect(effects[0])
-                ),
+                if reveals_selection {
+                    format!(
+                        "{}. You may reveal {selection} from among them and put them into your hand. Put the rest on the bottom of your library{order_text}",
+                        describe_effect(effects[0])
+                    )
+                } else {
+                    if unfiltered_looked_cards {
+                        format!(
+                            "{}. Put {selection} into your hand and the rest on the bottom of your library{order_text}",
+                            describe_effect(effects[0])
+                        )
+                    } else {
+                        format!(
+                            "{}. Put {selection} from among them into your hand. Put the rest on the bottom of your library{order_text}",
+                            describe_effect(effects[0])
+                        )
+                    }
+                },
                 idx + 1,
             ))
         }
