@@ -242,6 +242,7 @@ pub(super) fn parse_static_line_cst(
             | "while voting, you get an additional vote."
     ) || is_first_equip_cost_alternative_line(normalized)
         || is_additional_land_play_static_line(normalized)
+        || is_can_block_additional_creatures_static_line(normalized)
     {
         return Ok(Some(make_static(None)));
     }
@@ -331,6 +332,14 @@ fn is_additional_land_play_static_line(normalized: &str) -> bool {
             "turns"
         ])
     )
+}
+
+fn is_can_block_additional_creatures_static_line(normalized: &str) -> bool {
+    let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
+    if !normalized.starts_with("this creature can block an additional ") {
+        return false;
+    }
+    normalized.ends_with(" each combat") || normalized.ends_with(" this turn")
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {

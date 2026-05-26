@@ -901,6 +901,32 @@ fn parse_static_ability_ast_line_early_lexed(
     }
 
     let words = parser_text_word_refs(tokens);
+    if words.starts_with(&["this", "creature", "can", "block"]) {
+        let mut idx = 4usize;
+        if words.get(idx).copied() == Some("an") {
+            idx += 1;
+        }
+
+        if words.get(idx).copied() == Some("additional") {
+            idx += 1;
+            let mut additional = 1usize;
+            if let Some((count, used)) = parse_number(&tokens[idx..]) {
+                additional = count as usize;
+                idx += used;
+            }
+
+            if matches!(words.get(idx).copied(), Some("creature") | Some("creatures"))
+                && (words.get(idx + 1..).unwrap_or_default().is_empty()
+                    || words.get(idx + 1..) == Some(&["each", "combat"][..])
+                    || words.get(idx + 1..) == Some(&["this", "turn"][..]))
+            {
+                return Ok(Some(vec![
+                    StaticAbility::can_block_additional_creature_each_combat(additional).into(),
+                ]));
+            }
+        }
+    }
+
     let normalized_line = render_token_slice(tokens)
         .to_ascii_lowercase()
         .replace('\u{2019}', "'")
@@ -1618,33 +1644,44 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        normalized.as_slice(),
-        [
-            "this",
-            "creature",
-            "can",
-            "block",
-            "an",
-            "additional",
-            "creature",
-            "each",
-            "combat"
-        ] | [
-            "this",
-            "creature",
-            "can",
-            "block",
-            "an",
-            "additional",
-            "creature"
-        ]
-    ) {
-        return Ok(Some(
-            StaticAbility::can_block_additional_creature_each_combat(1),
-        ));
+    if !slice_starts_with(&normalized, &["this", "creature", "can", "block"])
+        || !matches!(
+            normalized.last().copied(),
+            Some("combat") | Some("turn") | Some("creature") | Some("creatures")
+        )
+    {
+        return Ok(None);
     }
-    Ok(None)
+
+    let mut idx = 4usize;
+    if normalized.get(idx).copied() == Some("an") {
+        idx += 1;
+    }
+
+    if normalized.get(idx).copied() != Some("additional") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let mut additional = 1usize;
+    if let Some((count, used)) = parse_number(&tokens[idx..]) {
+        additional = count as usize;
+        idx += used;
+    }
+
+    if !matches!(normalized.get(idx).copied(), Some("creature") | Some("creatures")) {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let tail = &normalized[idx..];
+    if !tail.is_empty() && tail != ["each", "combat"] && tail != ["this", "turn"] {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        StaticAbility::can_block_additional_creature_each_combat(additional),
+    ))
 }
 
 pub(crate) fn parse_skulk_rules_text_line(

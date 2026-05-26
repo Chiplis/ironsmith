@@ -7952,6 +7952,81 @@ fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_abili
 }
 
 #[test]
+fn watcher_in_the_web_can_block_eight_attackers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let watcher = create_creature(&mut game, "Watcher in the Web", bob, 2, 5);
+
+    game.object_mut(watcher)
+        .expect("watcher exists")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut declarations = Vec::new();
+    for idx in 0..8 {
+        let attacker = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        declarations.push(BlockerDeclaration {
+            blocker: watcher,
+            blocking: attacker,
+        });
+    }
+
+    apply_blocker_declarations(&mut game, &mut combat, &mut tq, &declarations, bob)
+        .expect("Watcher in the Web should block up to eight attackers");
+}
+
+#[test]
+fn watcher_in_the_web_cannot_block_nine_attackers() {
+    let mut game = setup_game();
+    let mut tq = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let watcher = create_creature(&mut game, "Watcher in the Web", bob, 2, 5);
+
+    game.object_mut(watcher)
+        .expect("watcher exists")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut declarations = Vec::new();
+    for idx in 0..9 {
+        let attacker = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        declarations.push(BlockerDeclaration {
+            blocker: watcher,
+            blocking: attacker,
+        });
+    }
+
+    let err = apply_blocker_declarations(&mut game, &mut combat, &mut tq, &declarations, bob)
+        .expect_err("Watcher in the Web should not block nine attackers");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("InvalidBlockers"),
+        "expected invalid blockers error, got {message}"
+    );
+}
+
+#[test]
 fn test_apply_blocker_declarations_enforces_maximum_blockers() {
     let mut game = setup_game();
     let mut tq = TriggerQueue::new();
