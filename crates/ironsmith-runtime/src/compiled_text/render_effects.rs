@@ -31416,12 +31416,42 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
                 &sacrifice.filter,
                 &sacrifice.count,
             )?);
+        } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            parts.push(cumulative_upkeep_move_to_zone_text(move_to_zone)?);
         }
     }
     if parts.is_empty() {
         None
     } else {
         Some(parts.join(" and "))
+    }
+}
+
+fn cumulative_upkeep_move_to_zone_text(
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if move_to_zone.zone != Zone::Library || move_to_zone.to_top {
+        return None;
+    }
+    let filter = match move_to_zone.target.base() {
+        ChooseSpec::Object(filter) => filter,
+        _ => return None,
+    };
+    if filter.zone != Some(Zone::Graveyard) {
+        return None;
+    }
+    let count = move_to_zone.target.count();
+    if count.min == 0 || count.max != Some(count.min) {
+        return None;
+    }
+
+    let count_text = ironsmith_core::cardinal_word(count.min as usize as u32)?;
+    if count.min == 1 {
+        Some("Put a card from a single graveyard on the bottom of its owner's library".to_string())
+    } else {
+        Some(format!(
+            "Put {count_text} cards from a single graveyard on the bottom of their owner's library"
+        ))
     }
 }
 
