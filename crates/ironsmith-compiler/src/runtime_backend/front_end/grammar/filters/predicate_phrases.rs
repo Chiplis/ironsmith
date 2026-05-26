@@ -653,6 +653,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
         filtered.remove(1);
     }
+    if let Some(instead_idx) = filtered.iter().position(|word| *word == "instead")
+        && instead_idx > 0
+    {
+        let maybe_predicate = &filtered[..instead_idx];
+        let paid_tail = maybe_predicate.len() >= 3
+            && (maybe_predicate[maybe_predicate.len() - 3..] == ["cost", "was", "paid"]
+                || maybe_predicate[maybe_predicate.len() - 3..] == ["cost", "wasnt", "paid"]);
+        let unpaid_tail = maybe_predicate.len() >= 4
+            && maybe_predicate[maybe_predicate.len() - 4..] == ["cost", "was", "not", "paid"];
+        if paid_tail || unpaid_tail {
+            filtered.truncate(instead_idx);
+        }
+    }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
@@ -2367,7 +2380,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered[0] == "this"
         && matches!(
             filtered[1],
-            "spell's" | "spells" | "card's" | "creature's" | "permanent's"
+            "spell's"
+                | "spells"
+                | "card's"
+                | "cards"
+                | "creature's"
+                | "creatures"
+                | "permanent's"
+                | "permanents"
         )
         && filtered[3] == "cost"
         && filtered[4] == "was"
@@ -3314,6 +3334,28 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::ThisSpellPaidLabel("Surge".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_accepts_paid_label_with_trailing_instead_effect_tail(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If this creature's spectacle cost was paid instead discard your hand",
+            0,
+        )?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::ThisSpellPaidLabel("Spectacle".to_string())
         );
         Ok(())
     }
