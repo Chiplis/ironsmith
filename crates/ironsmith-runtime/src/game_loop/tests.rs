@@ -8103,6 +8103,10 @@ fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
 
     for _ in 0..6 {
         game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
@@ -12343,6 +12347,10 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
 
     let corpse_cobble = CardDefinitionBuilder::new(CardId::from_raw(10001), "Corpse Cobble")
         .mana_cost(ManaCost::from_pips(vec![
@@ -17233,6 +17241,85 @@ fn test_legend_rule_with_different_controllers() {
 // ============================================================================
 // Flashback Tests
 // ============================================================================
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_marang_river_prowler_not_castable_from_graveyard_without_black_or_green_permanent() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_610), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let actions = compute_legal_actions(&game, alice);
+    let graveyard_cast = actions.iter().find(|action| {
+        matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                ..
+            } if *spell_id == prowler_id
+        )
+    });
+    assert!(
+        graveyard_cast.is_none(),
+        "Marang River Prowler should not be castable from graveyard without a black or green permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_marang_river_prowler_castable_from_graveyard_with_black_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let prowler = CardDefinitionBuilder::new(CardId::from_raw(72_611), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+    let prowler_id = game.create_object_from_definition(&prowler, alice, Zone::Graveyard);
+
+    let black_permanent = CardBuilder::new(CardId::from_raw(72_612), "Black Permanent Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+        .color_indicator(crate::color::ColorSet::BLACK)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&black_permanent, alice, Zone::Battlefield);
+
+    let can_play_from_graveyard = game.effect_store.grant_registry.card_can_play_from_zone(
+        &game,
+        prowler_id,
+        Zone::Graveyard,
+        alice,
+    );
+    assert!(
+        can_play_from_graveyard,
+        "Marang River Prowler should grant play-from-graveyard when you control a black permanent"
+    );
+}
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]

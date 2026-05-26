@@ -350,7 +350,7 @@ fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
         "expected one-shot graveyard-to-exile replacement for cast spell, got {debug}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered = canonical_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains("Spells you cast from your graveyard cost {2} less to cast")
             && rendered.contains(triggered),
@@ -1401,6 +1401,27 @@ fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permission() {
             && rendered.contains("You may cast this card from your graveyard")
             && rendered.contains("as long as you have max speed"),
         "expected speed keyword plus max-speed graveyard cast permission, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_marang_river_prowler_graveyard_cast_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Marang River Prowler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Skulk (This creature can't be blocked by creatures with greater power.)\nYou may cast this card from your graveyard as long as you control a black or green permanent.",
+        )
+        .expect("Marang River Prowler should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Skulk")
+            && rendered.contains("You may cast this card from your graveyard")
+            && rendered.contains("as long as you control a black permanent or you control a green permanent"),
+        "expected graveyard-cast condition for Marang River Prowler, got {rendered}"
     );
 }
 
