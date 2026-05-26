@@ -17938,6 +17938,134 @@ fn test_auriok_steelshaper_anthem_requires_being_equipped_and_only_buffs_soldier
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_robe_of_the_archmagi_equip_branches_and_damage_trigger() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let robe_def = CardDefinitionBuilder::new(CardId::new(), "Robe of the Archmagi")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Whenever equipped creature deals combat damage to a player, you draw that many cards.\n\
+             Equip {4}\n\
+             Equip Shaman, Warlock, or Wizard {1}",
+        )
+        .expect("Robe of the Archmagi should parse");
+    let robe_id = game.create_object_from_definition(&robe_def, alice, Zone::Battlefield);
+
+    let bear_id = create_creature(&mut game, "Vanilla Bear", alice, 2, 2);
+    let wizard_id = CardBuilder::new(CardId::from_raw(88_001), "Apprentice Wizard")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let wizard_id = game.create_object_from_card(&wizard_id, alice, Zone::Battlefield);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let one_mana_actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        one_mana_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility {
+                source,
+                ability_index: idx
+            } if *source == robe_id && *idx == 2
+        )),
+        "expected subtype-qualified equip ability to be legal with one mana when a Wizard is present"
+    );
+    if let Some(wizard) = game.object_mut(wizard_id) {
+        wizard.subtypes.clear();
+    }
+    let no_wizard_actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        !no_wizard_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility {
+                source,
+                ability_index: idx
+            } if *source == robe_id && *idx == 2
+        )),
+        "expected subtype-qualified equip ability to be unavailable without a Shaman, Warlock, or Wizard"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let four_mana_actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        four_mana_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility {
+                source,
+                ability_index: idx
+            } if *source == robe_id && *idx == 1
+        )),
+        "expected base Equip {{4}} ability to be legal with four mana"
+    );
+
+    let triggered = robe_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Robe should have its combat-damage trigger");
+
+    for id in [88_010, 88_011, 88_012] {
+        let draw_card = CardBuilder::new(CardId::from_raw(id), "Draw Fodder")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&draw_card, alice, Zone::Library);
+    }
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let library_before = game.player(alice).expect("alice exists").library.len();
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            bear_id,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(bear_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut dm = AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(robe_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Robe trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 3,
+        "Robe trigger should draw cards equal to combat damage dealt"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before - 3,
+        "Robe trigger should move the same number of cards from library to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     use crate::PriorityResponse;
     use crate::cards::CardDefinitionBuilder;

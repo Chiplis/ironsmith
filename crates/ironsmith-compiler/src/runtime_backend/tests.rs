@@ -1757,6 +1757,35 @@ fn rewrite_document_parser_supports_equip_with_subtype_qualifier() {
 }
 
 #[test]
+fn rewrite_document_parser_supports_robe_of_the_archmagi() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Robe of the Archmagi")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment]);
+
+    let def = builder
+        .parse_text(
+            "Whenever equipped creature deals combat damage to a player, you draw that many cards.\n\
+             Equip {4}\n\
+             Equip Shaman, Warlock, or Wizard {1}",
+        )
+        .expect("expected Robe of the Archmagi to parse strictly");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("Shaman")
+            && abilities_debug.contains("Warlock")
+            && abilities_debug.contains("Wizard"),
+        "expected subtype-disjunction equip target filter, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("DrawCardsEffect")
+            && abilities_debug.contains("EventValue(")
+            && abilities_debug.contains("Amount"),
+        "expected triggered draw-that-many effect to be preserved, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn rewrite_document_parser_splits_activation_cost_on_colon_outside_quotes() {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Quoted Colon Variant")
         .card_types(vec![CardType::Artifact]);
