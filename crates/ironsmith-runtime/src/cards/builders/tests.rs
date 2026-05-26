@@ -350,7 +350,7 @@ fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
         "expected one-shot graveyard-to-exile replacement for cast spell, got {debug}"
     );
 
-    let rendered = canonical_compiled_lines(&def).join("\n");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains("Spells you cast from your graveyard cost {2} less to cast")
             && rendered.contains(triggered),

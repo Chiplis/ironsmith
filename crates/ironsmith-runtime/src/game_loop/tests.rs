@@ -8103,10 +8103,6 @@ fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
-    game.player_mut(alice)
-        .unwrap()
-        .mana_pool
-        .add(ManaSymbol::Blue, 3);
 
     for _ in 0..6 {
         game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
@@ -12347,10 +12343,6 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(alice);
-    game.player_mut(alice)
-        .unwrap()
-        .mana_pool
-        .add(ManaSymbol::Blue, 3);
 
     let corpse_cobble = CardDefinitionBuilder::new(CardId::from_raw(10001), "Corpse Cobble")
         .mana_cost(ManaCost::from_pips(vec![
