@@ -6963,6 +6963,152 @@ fn test_parse_spectacle_keyword_line_compiles_to_alternative_cast() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_rix_maadi_reveler_parses_with_spectacle_paid_predicate() {
+    let def = parse_oracle_card_definition("Rix Maadi Reveler");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected Rix Maadi Reveler to parse without unsupported placeholders, got {debug}"
+    );
+    assert!(
+        debug.contains("condition: ThisSpellPaidLabel(") && debug.contains("\"Spectacle\""),
+        "expected spectacle-paid predicate in compiled definition, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("you discard a card")
+            && rendered.contains("Draw a card")
+            && rendered.contains("If this spell's spectacle cost was paid, instead you discard your hand")
+            && rendered.contains("You draw three cards"),
+        "expected Rix Maadi Reveler compiled text to keep both ETB branches, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_rix_maadi_reveler_etb_uses_base_branch_when_spectacle_not_paid() {
+    use crate::ability::AbilityKind;
+    use crate::condition_eval::evaluate_condition_resolution;
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::tests::test_helpers::setup_two_player_game;
+    use crate::zone::Zone;
+
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let def = parse_oracle_card_definition("Rix Maadi Reveler");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Filler")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    for _ in 0..2 {
+        game.create_object_from_definition(&filler, alice, Zone::Hand);
+    }
+    for _ in 0..3 {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Rix Maadi Reveler ETB trigger should exist");
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    let segment = &triggered.effects.segments[0];
+    let replacement = &segment.self_replacements[0];
+    assert!(
+        !evaluate_condition_resolution(&game, &replacement.condition, &ctx)
+            .expect("condition evaluation should succeed"),
+        "spectacle branch should be false when spectacle was not paid"
+    );
+    for effect in &segment.default_effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Rix Maadi Reveler ETB should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("player exists").hand.len(),
+        2,
+        "without spectacle payment, ETB should discard 1 then draw 1"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
+    use crate::ability::AbilityKind;
+    use crate::condition_eval::evaluate_condition_resolution;
+    use crate::cost::OptionalCostsPaid;
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::tests::test_helpers::setup_two_player_game;
+    use crate::zone::Zone;
+
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let def = parse_oracle_card_definition("Rix Maadi Reveler");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Filler")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    for _ in 0..2 {
+        game.create_object_from_definition(&filler, alice, Zone::Hand);
+    }
+    for _ in 0..4 {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+
+    let paid = OptionalCostsPaid {
+        costs: vec![("Spectacle".to_string(), 1)],
+    };
+    game.object_mut(source)
+        .expect("source object exists")
+        .optional_costs_paid = paid.clone();
+
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Rix Maadi Reveler ETB trigger should exist");
+
+    let mut ctx = ExecutionContext::new_default(source, alice).with_optional_costs_paid(paid);
+    let segment = &triggered.effects.segments[0];
+    let replacement = &segment.self_replacements[0];
+    assert!(
+        evaluate_condition_resolution(&game, &replacement.condition, &ctx)
+            .expect("condition evaluation should succeed"),
+        "spectacle branch should be true when spectacle was paid"
+    );
+    for effect in &replacement.replacement_effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Rix Maadi Reveler ETB should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("player exists").hand.len(),
+        3,
+        "with spectacle payment, ETB should discard hand then draw three"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disturb Probe")
         .card_types(vec![CardType::Creature])
