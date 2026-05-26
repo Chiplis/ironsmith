@@ -36264,13 +36264,17 @@ fn parse_oracle_glamdring_keeps_damage_scaled_free_cast_clause() {
         "expected Glamdring to compile without unsupported effects, got {rendered}"
     );
     assert!(
-        rendered.contains("cast a spell matching instant or sorcery")
+        rendered.contains("cast an instant or sorcery spell")
             && rendered.contains("from your hand")
             && rendered.contains("without paying its mana cost"),
         "expected Glamdring to keep its hand free-cast clause, got {rendered}"
     );
     assert!(
-        rendered.contains("mana value that damage or less"),
+        rendered.contains("first strike"),
+        "expected Glamdring to keep granted first strike, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value less than or equal to that amount"),
         "expected Glamdring to keep the dynamic damage-based mana value limit, got {rendered}"
     );
 }

@@ -4604,6 +4604,24 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_parse_glamdring_static_clause_keeps_first_strike_and_anthem() {
+    let tokens = lex_line(
+        "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard",
+        0,
+    )
+    .expect("rewrite lexer should classify Glamdring static clause");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Glamdring static clause should parse as static ability");
+
+    let debug = format!("{parsed:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("firststrike") && debug.contains("anthem"),
+        "expected static clause to keep both first strike and anthem, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
     let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify until-next-turn permission clause");

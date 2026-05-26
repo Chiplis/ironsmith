@@ -104,6 +104,66 @@ fn sublime_archangel_grants_real_exalted_triggers_to_other_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let glamdring = CardDefinitionBuilder::new(CardId::from_raw(72_101), "Glamdring")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard.\nWhenever equipped creature deals combat damage to a player, you may cast an instant or sorcery spell from your hand with mana value less than or equal to that damage without paying its mana cost.\nEquip {3}",
+        )
+        .expect("Glamdring should parse");
+    let glamdring_id = game.create_object_from_definition(&glamdring, alice, Zone::Battlefield);
+
+    let attacker_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let instant = CardBuilder::new(CardId::from_raw(72_102), "Shock")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&instant, alice, Zone::Graveyard);
+    let sorcery = CardBuilder::new(CardId::from_raw(72_103), "Ponder")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&sorcery, alice, Zone::Graveyard);
+
+    if let Some(equipment) = game.object_mut(glamdring_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(attacker_id));
+    }
+    if let Some(attacker) = game.object_mut(attacker_id) {
+        attacker.attachments.push(glamdring_id);
+    }
+
+    assert_eq!(game.calculated_power(attacker_id), Some(4));
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(attacker_id, Vec::new());
+
+    let first_strike_events = execute_combat_damage_step(&mut game, &combat, true);
+    assert_eq!(first_strike_events.len(), 1, "equipped Bearer should hit in first-strike step");
+    assert_eq!(game.player(bob).unwrap().life, 16, "Bearer should deal 4 first-strike damage");
+
+    let regular_events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(regular_events.len(), 0, "first strike should suppress regular damage step hit");
+
+    if let Some(equipment) = game.object_mut(glamdring_id) {
+        equipment.attached_to = None;
+    }
+    if let Some(attacker) = game.object_mut(attacker_id) {
+        attacker.attachments.clear();
+    }
+
+    assert_eq!(game.calculated_power(attacker_id), Some(2));
+}
+
 #[test]
 fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     let mut game = setup_game();
