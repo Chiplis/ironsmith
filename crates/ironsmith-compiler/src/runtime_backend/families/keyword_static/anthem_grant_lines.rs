@@ -2087,6 +2087,10 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(condition);
     }
 
+    if let Some(condition) = parse_life_total_static_condition(&tokens) {
+        return Ok(condition);
+    }
+
     if clause_words.len() >= 6
         && clause_words[0] == "you"
         && clause_words[1] == "have"
@@ -2795,6 +2799,40 @@ fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crat
             count: count as i32,
         });
     }
+    None
+}
+
+fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let (player, count_start_idx) = match clause_words.as_slice() {
+        ["you", "have", ..] => (PlayerFilter::You, 2usize),
+        ["that", "player", "has", ..] => (PlayerFilter::Target(Box::new(PlayerFilter::Any)), 3),
+        ["an", "opponent", "has", ..] => (PlayerFilter::Opponent, 3usize),
+        ["opponent", "has", ..] => (PlayerFilter::Opponent, 2usize),
+        ["a", "player", "has", ..] => (PlayerFilter::Any, 3usize),
+        ["player", "has", ..] => (PlayerFilter::Any, 2usize),
+        _ => return None,
+    };
+
+    let count_tokens = tokens.get(count_start_idx..)?;
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_tokens = count_tokens.get(used..)?;
+    let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+    if tail_words.as_slice() == ["or", "less", "life"] {
+        return Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::LifeTotal(player),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: crate::effect::Value::Fixed(count as i32),
+        });
+    }
+    if tail_words.as_slice() == ["or", "more", "life"] {
+        return Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::LifeTotal(player),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(count as i32),
+        });
+    }
+
     None
 }
 
