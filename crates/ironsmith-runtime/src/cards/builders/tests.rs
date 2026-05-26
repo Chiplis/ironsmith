@@ -8291,6 +8291,39 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_word_of_blasting_uses_destroyed_wall_mana_value_for_damage() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Word of Blasting")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target Wall. It can't be regenerated. Word of Blasting deals damage equal to that Wall's mana value to the Wall's controller.",
+        )
+        .expect("Word of Blasting should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("DestroyNoRegenerationEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("ManaValueOf"),
+        "expected destroy/no-regeneration plus mana-value damage linkage, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target wall")
+            && rendered.contains("it can't be regenerated")
+            && rendered.contains("deals damage equal to its mana value to that object's controller"),
+        "expected Word of Blasting compiled text to preserve wall mana-value damage clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_scent_of_cinder_uses_source_damage_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scent of Cinder")
         .card_types(vec![CardType::Sorcery])

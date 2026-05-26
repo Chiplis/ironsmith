@@ -15611,6 +15611,136 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_word_of_blasting_destroys_wall_and_deals_mana_value_damage_to_controller() {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let word_def = CardDefinitionBuilder::new(CardId::new(), "Word of Blasting")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target Wall. It can't be regenerated. Word of Blasting deals damage equal to that Wall's mana value to the Wall's controller.",
+        )
+        .expect("Word of Blasting should parse");
+    let spell_id = game.create_object_from_definition(&word_def, alice, Zone::Hand);
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let wall = CardBuilder::new(CardId::new(), "Runed Wall")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wall])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .build();
+    let wall_id = game.create_object_from_card(&wall, bob, Zone::Battlefield);
+
+    let cast_action = LegalAction::CastSpell {
+        spell_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    };
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+
+    let cast_response = PriorityResponse::PriorityAction(cast_action);
+    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("Word of Blasting cast should start");
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_)
+            )
+        ),
+        "Word of Blasting cast should request a wall target"
+    );
+
+    let choose_target = PriorityResponse::Targets(vec![Target::Object(wall_id)]);
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &choose_target)
+        .expect("should accept wall target");
+    assert_eq!(game.stack.len(), 1, "Word of Blasting should be on stack");
+
+    resolve_stack_entry(&mut game).expect("Word of Blasting should resolve");
+
+    assert!(
+        !game.battlefield.contains(&wall_id),
+        "Word of Blasting should destroy the targeted Wall"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob should exist").life,
+        16,
+        "Word of Blasting should deal damage equal to the destroyed Wall's mana value"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_word_of_blasting_has_no_cast_action_without_a_wall_target() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let word_def = CardDefinitionBuilder::new(CardId::new(), "Word of Blasting")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target Wall. It can't be regenerated. Word of Blasting deals damage equal to that Wall's mana value to the Wall's controller.",
+        )
+        .expect("Word of Blasting should parse");
+    let spell_id = game.create_object_from_definition(&word_def, alice, Zone::Hand);
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let non_wall = CardBuilder::new(CardId::new(), "Vanilla Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&non_wall, bob, Zone::Battlefield);
+
+    let actions = compute_legal_actions(&game, alice);
+    let can_cast_word = actions.iter().any(|action| {
+        matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *candidate == spell_id
+        )
+    });
+    assert!(
+        !can_cast_word,
+        "Word of Blasting should not be castable when no Wall is a legal target"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
     use crate::PriorityResponse;
     use crate::cost::TotalCost;

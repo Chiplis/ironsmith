@@ -347,7 +347,6 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
             || parse_target_phrase(&tokens[idx + 1..]).is_ok();
         if looks_like_target {
             target_to_idx = Some(idx);
-            break;
         }
     }
 
