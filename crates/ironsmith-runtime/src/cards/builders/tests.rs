@@ -19875,6 +19875,48 @@ fn render_powerstone_token_name() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_the_mana_rig_oracle_text_strictly() {
+    let oracle = "Whenever you cast a multicolored spell, create a tapped Powerstone token.\n{X}{X}{X}, {T}: Look at the top X cards of your library. Put up to two of them into your hand and the rest on the bottom of your library in a random order.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Mana Rig")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("The Mana Rig should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Put up to two of them into your hand and the rest on the bottom of your library in a random order"),
+        "expected looked-card split clause in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_the_mana_rig_tracks_trigger_and_xxx_tap_activation_shape() {
+    let oracle = "Whenever you cast a multicolored spell, create a tapped Powerstone token.\n{X}{X}{X}, {T}: Look at the top X cards of your library. Put up to two of them into your hand and the rest on the bottom of your library in a random order.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Mana Rig")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("The Mana Rig should parse strictly");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("multicolored") && abilities_debug.contains("powerstone"),
+        "expected multicolored-cast trigger creating Powerstone token, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("manapaymentcost")
+            && abilities_debug.contains("pips")
+            && abilities_debug.contains("tapeffect")
+            && abilities_debug.contains("choicecount")
+            && abilities_debug.contains("min: 0")
+            && abilities_debug.contains("max: some(")
+            && abilities_debug.contains("2"),
+        "expected XXX+tap activated ability with up-to-two looked-card choice, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_token_with_banding_keyword_modifier() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
         .parse_text("Create a 1/1 white Knight creature token with banding.");

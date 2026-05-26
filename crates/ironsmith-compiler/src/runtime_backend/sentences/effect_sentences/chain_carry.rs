@@ -767,9 +767,12 @@ mod tests {
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     subject,
-                    action: SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count: 1 },
+                    action: SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count },
                 }),
-            ] => assert_eq!(subject.player, PlayerAst::You),
+            ] => {
+                assert_eq!(subject.player, PlayerAst::You);
+                assert_eq!(*count, crate::effect::ChoiceCount::exactly(1));
+            }
             other => panic!("expected looked-cards split effects, got {other:?}"),
         }
     }
