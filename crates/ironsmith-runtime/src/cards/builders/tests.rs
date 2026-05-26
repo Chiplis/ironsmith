@@ -33318,6 +33318,109 @@ fn parse_rankle_master_of_pranks_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_wild_roads_strict_regression() {
+    assert_oracle_card_parses_strict("Wild Roads");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wild_roads_compiled_text_keeps_pilot_saddle_and_crew_clause() {
+    let def = parse_oracle_card_definition("Wild Roads");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("saddles mounts and crews vehicles as though its power were 2 greater"),
+        "expected Wild Roads compiled text to preserve Pilot token saddle/crew clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
+    let def = parse_oracle_card_definition("Wild Roads");
+    let pilot = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+                .map(|create| create.token.clone()),
+            _ => None,
+        })
+        .expect("Wild Roads should have an activated ability that creates a Pilot token");
+
+    let alice = PlayerId::from_index(0);
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let pilot_id = game.create_object_from_definition(&pilot, alice, Zone::Battlefield);
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let crew_cost = crate::effects::CrewCostEffect { required_power: 3 };
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
+        .expect("Wild Roads Pilot token should crew as though its power were 2 greater");
+
+    let mount_id = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    let saddle_cost = crate::effects::SaddleCostEffect::new(3);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&saddle_cost, &game, mount_id, alice)
+        .expect("Wild Roads Pilot token should saddle as though its power were 2 greater");
+
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla 1/1")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mut baseline_crew = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_crew.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_vehicle =
+        baseline_crew.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crew_cost,
+            &baseline_crew,
+            baseline_vehicle,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Wild Roads Pilot marker should not satisfy crew 3"
+    );
+
+    let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_mount = baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &saddle_cost,
+            &baseline_saddle,
+            baseline_mount,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Wild Roads Pilot marker should not satisfy saddle 3"
+    );
+
+    assert!(
+        game.object(pilot_id).is_some(),
+        "sanity check: Wild Roads Pilot token should exist on battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();

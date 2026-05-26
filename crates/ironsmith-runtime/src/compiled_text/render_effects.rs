@@ -12555,6 +12555,8 @@ fn describe_static_ability_with_subject(
     );
     line = line.replace("This creature creature ", "This creature ");
     line = line.replace("this creature creature ", "this creature ");
+    line = line.replace("This land land ", "This land ");
+    line = line.replace("this land land ", "this land ");
     line = line.replace(
         "number of other creature artifact you control",
         "number of other creatures and/or artifacts you control",

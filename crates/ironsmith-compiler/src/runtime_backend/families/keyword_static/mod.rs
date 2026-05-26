@@ -211,13 +211,19 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
+    let is_power_greater_marker = |prefix: &str| {
+        text.starts_with(prefix) && text.ends_with(" greater.")
+    };
     text.starts_with("prototype ")
         || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
         || is_ticket_power_toughness_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."
-        || (text.starts_with("this creature crews vehicles as though its power were ")
-            && text.ends_with(" greater."))
+        || is_power_greater_marker("this creature crews vehicles as though its power were ")
+        || is_power_greater_marker(
+            "this creature saddles mounts and crews vehicles as though its power were ",
+        )
+        || is_power_greater_marker("this token saddles mounts and crews vehicles as though its power were ")
         || (text.starts_with(
             "you may remove a loyalty counter from a planeswalker you control rather than pay ",
         ) && text.ends_with("'s crew cost."))

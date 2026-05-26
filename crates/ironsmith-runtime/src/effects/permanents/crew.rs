@@ -76,9 +76,17 @@ fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
 }
 
 fn crew_power_bonus_from_marker(marker: &str) -> Option<i32> {
-    let rest = marker.strip_prefix("this creature crews vehicles as though its power were ")?;
-    let amount = rest.strip_suffix(" greater.")?;
-    amount.parse::<i32>().ok()
+    let prefixes = [
+        "this creature crews vehicles as though its power were ",
+        "this creature saddles mounts and crews vehicles as though its power were ",
+        "this token saddles mounts and crews vehicles as though its power were ",
+    ];
+    prefixes.iter().find_map(|prefix| {
+        marker
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(" greater."))
+            .and_then(|amount| amount.parse::<i32>().ok())
+    })
 }
 
 fn crew_value(game: &GameState, object_id: ObjectId) -> i32 {
