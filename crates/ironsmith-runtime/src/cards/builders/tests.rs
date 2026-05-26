@@ -32999,6 +32999,12 @@ fn parse_raphael_tag_team_tough_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_rankle_master_of_pranks_strict_regression() {
+    assert_oracle_card_parses_strict("Rankle, Master of Pranks");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
@@ -33019,6 +33025,39 @@ fn raphael_tag_team_tough_compiled_text_keeps_additional_combat_phase_clause() {
         rendered.contains("there is an additional combat phase"),
         "expected Raphael, Tag Team Tough compiled text to preserve additional combat clause, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rankle_master_of_pranks_compiled_text_keeps_choose_any_number_modal_header() {
+    let def = parse_oracle_card_definition("Rankle, Master of Pranks");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("choose any number"),
+        "expected Rankle, Master of Pranks compiled text to preserve choose-any-number modal header, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rankle_master_of_pranks_models_zero_to_all_modal_selection_bounds() {
+    let def = parse_oracle_card_definition("Rankle, Master of Pranks");
+    let modal = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>()),
+            _ => None,
+        })
+        .expect("Rankle, Master of Pranks should include a triggered modal choice effect");
+
+    assert_eq!(modal.min_choose_count, Value::Fixed(0));
+    assert_eq!(modal.modes.len(), 3);
+    assert_eq!(modal.choose_count, Value::Fixed(3));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

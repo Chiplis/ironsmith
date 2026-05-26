@@ -27330,6 +27330,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let mut header = describe_mode_choice_header(
             &choose_mode.choose_count,
             Some(&choose_mode.min_choose_count),
+            Some(choose_mode.modes.len()),
         );
         if choose_mode.disallow_previously_chosen_modes {
             header = if choose_mode.disallow_previously_chosen_modes_this_turn {
