@@ -11691,6 +11691,9 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         .expect("parser should parse add-counter cost");
     let counter_remove = parse_activation_cost_rewrite("Remove a +1/+1 counter from this creature")
         .expect("parser should parse remove-counter cost");
+    let counter_remove_unspecified =
+        parse_activation_cost_rewrite("Remove a counter from this creature")
+            .expect("parser should parse unspecified remove-counter cost");
     let exile_hand = parse_activation_cost_rewrite("Exile a blue card from your hand")
         .expect("parser should parse exile-from-hand cost");
     let reveal_source = parse_activation_cost_rewrite("Reveal this card from your hand")
@@ -11719,6 +11722,16 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
             counter_type: CounterType::PlusOnePlusOne,
             count: 1
         }]
+    ));
+    assert!(matches!(
+        counter_remove_unspecified.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type: None,
+            count: 1,
+            filter_text,
+            display_x: false,
+            dynamic: false,
+        }] if filter_text == "this creature"
     ));
     assert!(matches!(
         exile_hand.segments.as_slice(),

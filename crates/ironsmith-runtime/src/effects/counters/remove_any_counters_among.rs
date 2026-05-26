@@ -367,6 +367,16 @@ fn counter_article(counter_name: &str) -> &'static str {
 }
 
 fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String {
+    if filter.source {
+        if plural {
+            return "this source".to_string();
+        }
+        if filter.card_types.len() == 1 {
+            return format!("this {}", filter.card_types[0].name().to_ascii_lowercase());
+        }
+        return "this source".to_string();
+    }
+
     if is_simple_permanent_you_control_filter(filter) {
         return if plural {
             "permanents you control".to_string()
