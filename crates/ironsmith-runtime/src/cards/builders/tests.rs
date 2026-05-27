@@ -39220,8 +39220,11 @@ fn parse_oracle_study_hall_commander_cast_scry_regression() {
         "expected Study Hall trigger to lower x as your commander cast count, got {debug}"
     );
     assert!(
-        debug.contains("SpendManaToCastCommander"),
-        "expected Study Hall trigger to stay scoped to spending this mana on your commander, got {debug}"
+        debug.contains("SpellCastTrigger")
+            && debug.contains("is_commander: true")
+            && debug.contains("owner: Some(You)")
+            && debug.contains("caster: You"),
+        "expected Study Hall trigger to stay scoped to casting your commander, got {debug}"
     );
 }
 

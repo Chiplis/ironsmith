@@ -333,7 +333,10 @@ pub(crate) fn parse_trigger_clause_lexed(
         tokens: &[OwnedLexToken],
         clause_words: &[&str],
     ) -> Result<Option<TriggerSpec>, CardTextError> {
-        if !slice_contains(&clause_words, &"spell") && !slice_contains(&clause_words, &"spells") {
+        let mentions_spell_noun =
+            slice_contains(&clause_words, &"spell") || slice_contains(&clause_words, &"spells");
+        let mentions_commander_object = slice_contains(&clause_words, &"commander");
+        if !mentions_spell_noun && !mentions_commander_object {
             return Ok(None);
         }
         if slice_contains(&clause_words, &"during")

@@ -1054,6 +1054,23 @@ fn parse_effect_sentence_with_where_x_lexed(
                     "number",
                     "of",
                     "times",
+                    "it's",
+                    "been",
+                    "cast",
+                    "from",
+                    "the",
+                    "command",
+                    "zone",
+                    "this",
+                    "game",
+                ],
+            )
+            | Some(
+                [
+                    "the",
+                    "number",
+                    "of",
+                    "times",
                     "its",
                     "been",
                     "cast",
