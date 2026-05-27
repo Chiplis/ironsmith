@@ -444,6 +444,9 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
+                    enters_with_counters_if_source_controlled: spec
+                        .enters_with_counters_if_source_controlled
+                        .clone(),
                 })
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
@@ -1166,6 +1169,9 @@ impl StaticAbilityModelInterpreter {
                         set_base_power_toughness: spec.set_base_power_toughness,
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
+                        enters_with_counters_if_source_controlled: spec
+                            .enters_with_counters_if_source_controlled
+                            .clone(),
                     },
                     display.clone(),
                 )

@@ -11317,6 +11317,7 @@ fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield."
                     .to_string(),
@@ -11375,6 +11376,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_object() {
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: true,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
                     .to_string(),
@@ -11426,6 +11428,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stack_object() 
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: true,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
                     .to_string(),
@@ -11471,6 +11474,7 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "Creatures you control enter as a copy of this creature.".to_string(),
             ),
@@ -11494,6 +11498,156 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
     assert_eq!(copied.name, "Essence Source");
     assert_eq!(copied.base_power, Some(crate::card::PtValue::Fixed(6)));
     assert_eq!(copied.base_toughness, Some(crate::card::PtValue::Fixed(6)));
+}
+
+#[test]
+fn undercover_operative_copy_choice_applies_shield_when_source_controlled() {
+    use crate::decision::DecisionMaker;
+
+    struct ChooseCopyDecisionMaker;
+    impl DecisionMaker for ChooseCopyDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.options.len() > 1 { vec![1] } else { vec![0] }
+        }
+    }
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Friendly Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
+        )
+        .expect("Undercover Operative text should parse");
+    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
+
+    let mut dm = ChooseCopyDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
+        .expect("operative should enter the battlefield");
+    let entered = game
+        .object(result.new_id)
+        .expect("entered operative should exist");
+
+    assert_eq!(entered.name, "Friendly Source");
+    assert_eq!(
+        entered
+            .counters
+            .get(&CounterType::Shield)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "operative should enter with a shield counter when copying a creature you control"
+    );
+}
+
+#[test]
+fn undercover_operative_copy_choice_skips_shield_when_source_not_controlled() {
+    use crate::decision::DecisionMaker;
+
+    struct ChooseCopyDecisionMaker;
+    impl DecisionMaker for ChooseCopyDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.options.len() > 1 { vec![1] } else { vec![0] }
+        }
+    }
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Opponent Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_definition(&source, bob, Zone::Battlefield);
+
+    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
+        )
+        .expect("Undercover Operative text should parse");
+    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
+
+    let mut dm = ChooseCopyDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
+        .expect("operative should enter the battlefield");
+    let entered = game
+        .object(result.new_id)
+        .expect("entered operative should exist");
+
+    assert_eq!(entered.name, "Opponent Source");
+    assert_eq!(
+        entered
+            .counters
+            .get(&CounterType::Shield)
+            .copied()
+            .unwrap_or(0),
+        0,
+        "operative should not gain shield when copying a creature you do not control"
+    );
+}
+
+#[test]
+fn undercover_operative_may_decline_copy_choice() {
+    use crate::decision::AutoPassDecisionMaker;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Friendly Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
+        )
+        .expect("Undercover Operative text should parse");
+    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
+
+    let mut dm = AutoPassDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
+        .expect("operative should enter the battlefield");
+    let entered = game
+        .object(result.new_id)
+        .expect("entered operative should exist");
+
+    assert_eq!(entered.name, "Undercover Operative");
+    assert_eq!(
+        entered
+            .counters
+            .get(&CounterType::Shield)
+            .copied()
+            .unwrap_or(0),
+        0,
+        "operative should not get shield when declining to copy"
+    );
 }
 
 #[test]

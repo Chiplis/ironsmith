@@ -165,6 +165,7 @@ pub(super) fn apply_trait_replacement(
             added_subtypes,
             added_abilities,
             set_base_power_toughness,
+            enters_with_counters,
         } => {
             let modified = apply_trait_enter_as_copy(
                 &event,
@@ -175,6 +176,7 @@ pub(super) fn apply_trait_replacement(
                 added_subtypes,
                 added_abilities,
                 *set_base_power_toughness,
+                enters_with_counters,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -734,6 +736,7 @@ fn apply_trait_enter_as_copy(
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
     set_base_power_toughness: Option<(i32, i32)>,
+    enters_with_counters: &[(crate::object::CounterType, u32)],
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
@@ -746,6 +749,9 @@ fn apply_trait_enter_as_copy(
             .with_added_abilities(added_abilities);
         if let Some((power, toughness)) = set_base_power_toughness {
             etb = etb.with_base_power_toughness(power, toughness);
+        }
+        for (counter_type, count) in enters_with_counters {
+            etb = etb.with_counters(*counter_type, *count);
         }
         if enters_tapped {
             etb = etb.with_tapped();

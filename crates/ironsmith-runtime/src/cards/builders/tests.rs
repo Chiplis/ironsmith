@@ -16285,6 +16285,37 @@ fn parse_omni_changeling_copy_exception_stays_localized() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_undercover_operative_strict_copy_exception_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
+        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
+        )
+        .expect("Undercover Operative rules text should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "except it enters with a shield counter on it if you control that creature"
+        ),
+        "expected Undercover Operative copy exception clause in render output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("enters_with_counters_if_source_controlled"),
+        "expected Undercover Operative copy exception lowering to record conditional counters, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected Undercover Operative parse to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_reveal_card_this_way_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
         .parse_text(

@@ -3074,6 +3074,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 clause_words.join(" "),
             )));
@@ -3160,6 +3161,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     let mut added_abilities = Vec::new();
     let mut set_base_power_toughness = None;
     let mut set_base_power_toughness_from_self = false;
+    let mut enters_with_counters_if_source_controlled = Vec::new();
     if let Some(except_idx) = except_idx {
         let tail = &clause_words[except_idx + 1..];
         if tail.is_empty() {
@@ -3186,6 +3188,30 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             // the copied object's functional abilities for current engine use.
         } else if slice_starts_with(tail, &["it", "has"]) {
             added_abilities = parse_added_copy_abilities(tokens, &clause_words, except_idx + 2)?;
+        } else if tail.get(0..4) == Some(&["it", "enters", "with", "a"])
+            || tail.get(0..4) == Some(&["it", "enters", "with", "an"])
+        {
+            let Some(counter_word) = tail.get(4).copied() else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            let Some(counter_type) = parse_counter_type_word(counter_word) else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            if tail.get(5..13)
+                != Some(&["counter", "on", "it", "if", "you", "control", "that", "creature"])
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            enters_with_counters_if_source_controlled.push((counter_type, 1));
         } else {
             let type_idx = if tail.first().copied() == Some("its")
                 && matches!(tail.get(1).copied(), Some("a" | "an"))
@@ -3310,6 +3336,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             added_abilities,
             set_base_power_toughness,
             set_base_power_toughness_from_self,
+            enters_with_counters_if_source_controlled,
         },
         clause_words.join(" "),
     )))
