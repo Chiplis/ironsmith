@@ -34110,6 +34110,48 @@ fn parse_wave_of_rats_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_davros_dalek_creator_strict_regression() {
+    assert_oracle_card_parses_strict("Davros, Dalek Creator");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn davros_dalek_creator_compiled_text_keeps_villainous_choice_clause() {
+    let def = parse_oracle_card_definition("Davros, Dalek Creator");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("each opponent draws a card unless each opponent discards a card"),
+        "expected Davros villainous choice clause in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn davros_dalek_creator_trigger_models_choice_branch_per_opponent() {
+    let def = parse_oracle_card_definition("Davros, Dalek Creator");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Davros should have a triggered ability");
+
+    let trigger_debug = format!("{:?}", triggered).to_ascii_lowercase();
+    assert!(
+        trigger_debug.contains("forplayerseffect")
+            && trigger_debug.contains("unlessactioneffect")
+            && trigger_debug.contains("drawcardseffect")
+            && trigger_debug.contains("discardeffect")
+            && trigger_debug.contains("iteratedplayer"),
+        "expected Davros trigger to model per-opponent choice between discard and draw, got {trigger_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn wave_of_rats_compiled_text_keeps_combat_damage_condition_clause() {
     let def = parse_oracle_card_definition("Wave of Rats");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
