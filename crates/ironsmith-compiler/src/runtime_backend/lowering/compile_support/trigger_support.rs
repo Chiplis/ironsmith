@@ -223,9 +223,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             during_turn,
         } => {
             let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
-                .from_any_of(from)
                 .to(crate::zone::Zone::Exile)
                 .filter(filter);
+            if !from.is_empty() {
+                trigger = trigger.from_any_of(from);
+            }
             if one_or_more {
                 trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
             }

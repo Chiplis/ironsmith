@@ -348,15 +348,27 @@ impl ZoneChangeTrigger {
         }
 
         fn is_nontoken_card_subject_from_card_zones(trigger: &ZoneChangeTrigger) -> bool {
-            trigger.to == ZonePattern::Specific(Zone::Exile)
-                && matches!(
-                    &trigger.from,
-                    ZonePattern::OneOf(zones)
-                        if zones.contains(&Zone::Graveyard)
-                            && zones.contains(&Zone::Battlefield)
-                            && zones.len() == 2
-                )
-                && trigger.object_filter == ObjectFilter::default().nontoken()
+            let card_subject_anywhere_filter =
+                trigger.object_filter == ObjectFilter::default()
+                    || trigger.object_filter == ObjectFilter::default().nontoken();
+            if trigger.to != ZonePattern::Specific(Zone::Exile) {
+                return false;
+            }
+            if matches!(&trigger.from, ZonePattern::Any) && card_subject_anywhere_filter {
+                return true;
+            }
+            if matches!(&trigger.from, ZonePattern::OneOf(zones) if zones.is_empty())
+                && card_subject_anywhere_filter
+            {
+                return true;
+            }
+            matches!(
+                &trigger.from,
+                ZonePattern::OneOf(zones)
+                    if zones.contains(&Zone::Graveyard)
+                        && zones.contains(&Zone::Battlefield)
+                        && zones.len() == 2
+            ) && trigger.object_filter == ObjectFilter::default().nontoken()
         }
 
         if self.this_object {
@@ -480,7 +492,7 @@ impl ZoneChangeTrigger {
                 if let Some(source_phrase) = source_zone_phrase(self) {
                     parts.push(format!("{verb} put into exile {source_phrase}"));
                 } else {
-                    parts.push(format!("{verb} exiled"));
+                    parts.push(format!("{verb} put into exile"));
                 }
             }
             _ => {
@@ -1084,6 +1096,25 @@ mod tests {
         assert_eq!(
             graveyard_or_battlefield_to_exile.display(),
             "Whenever one or more cards are put into exile from graveyards and/or the battlefield during your turn"
+        );
+
+        let anywhere_to_exile = ZoneChangeTrigger::new()
+            .to(Zone::Exile)
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        assert_eq!(
+            anywhere_to_exile.display(),
+            "Whenever one or more cards are put into exile during your turn"
+        );
+
+        let nontoken_anywhere_to_exile = ZoneChangeTrigger::new()
+            .to(Zone::Exile)
+            .filter(ObjectFilter::default().nontoken())
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        assert_eq!(
+            nontoken_anywhere_to_exile.display(),
+            "Whenever one or more cards are put into exile during your turn"
         );
     }
 

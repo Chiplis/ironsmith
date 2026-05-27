@@ -8934,6 +8934,26 @@ fn rewrite_lexed_triggered_line_parses_ketramose_exile_trigger() {
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_parses_stonebinders_familiar_trigger() {
+    let text = "Whenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify Stonebinder's Familiar triggered line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Stonebinder's Familiar triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("PutIntoExileFromZones"), "{debug}");
+    assert!(debug.contains("one_or_more: true"), "{debug}");
+    assert!(debug.contains("during_turn: Some"), "{debug}");
+    assert!(debug.contains("You"), "{debug}");
+    assert!(debug.contains("nontoken: true"), "{debug}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+    assert!(debug.contains("max_triggers_per_turn: Some"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_handles_punctuation_before_enter_verb() {
     let text = "Whenever one or more noncreature, nonland permanents you control enter, put a +1/+1 counter on target creature you control.";
     let tokens = lex_line(text, 0)
