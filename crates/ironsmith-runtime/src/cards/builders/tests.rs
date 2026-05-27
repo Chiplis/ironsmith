@@ -34124,7 +34124,7 @@ fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
     assert!(
         rendered.contains("whenever this creature attacks")
             && rendered.contains("draw a card for each equipped attacking creature you control")
-            && rendered.contains("if this has power 7 or greater")
+            && rendered.contains("then if this has power 7 or greater")
             && rendered.contains("create two treasure tokens"),
         "expected Cloud, Ex-SOLDIER attack trigger and power-threshold treasure clause, got {rendered}"
     );
