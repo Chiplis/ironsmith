@@ -9233,6 +9233,34 @@ fn describe_attached_object_color_condition(tag: &TagKey, filter: &ObjectFilter)
     Some(format!("{subject} is {color_text}"))
 }
 
+fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) -> Option<String> {
+    let subject = match tag.as_str() {
+        "enchanted" => "enchanted creature",
+        "equipped" => "equipped creature",
+        _ => return None,
+    };
+
+    if filter.subtypes.len() == 1 {
+        let subtype = format!("{:?}", filter.subtypes[0]).to_ascii_lowercase();
+        let mut bare = filter.clone();
+        bare.subtypes.clear();
+        if bare == ObjectFilter::default() {
+            return Some(format!("{subject} is {}", with_indefinite_article(&subtype)));
+        }
+    }
+
+    if filter.card_types.len() == 1 {
+        let card_type = filter.card_types[0].to_string().to_ascii_lowercase();
+        let mut bare = filter.clone();
+        bare.card_types.clear();
+        if bare == ObjectFilter::default() {
+            return Some(format!("{subject} is {}", with_indefinite_article(&card_type)));
+        }
+    }
+
+    None
+}
+
 pub(super) fn describe_until(until: &Until) -> String {
     match until {
         Until::Forever => "forever".to_string(),
@@ -10677,6 +10705,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if let Some(condition) = describe_attached_object_color_condition(tag, filter) {
                 return condition;
             }
+            if let Some(condition) = describe_attached_object_type_condition(tag, filter) {
+                return condition;
+            }
             if tag.as_str().starts_with("countered_")
                 && strip_leading_article(&desc)
                     .eq_ignore_ascii_case("permanent")
@@ -11536,6 +11567,16 @@ mod tests {
         );
 
         assert_eq!(describe_condition(&condition), "equipped creature is green");
+    }
+
+    #[test]
+    fn describe_condition_uses_attached_object_for_equipped_subtype_checks() {
+        let condition = Condition::TaggedObjectMatches(
+            TagKey::from("equipped"),
+            ObjectFilter::default().with_subtype(crate::types::Subtype::Human),
+        );
+
+        assert_eq!(describe_condition(&condition), "equipped creature is a human");
     }
 
     #[test]

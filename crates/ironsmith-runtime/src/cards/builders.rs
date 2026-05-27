@@ -12733,6 +12733,42 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn sharpened_pitchfork_parses_with_human_equipped_condition() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Sharpened Pitchfork")
+            .parse_text(
+                "Equipped creature has first strike.\nAs long as equipped creature is a Human, it gets +1/+1.\nEquip {1}",
+            )
+            .expect("Sharpened Pitchfork should parse");
+
+        let displays = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                AbilityKind::Activated(_) => crate::ability::ability_surface_text_for_tests(ability),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            displays
+                .iter()
+                .any(|display| display.to_ascii_lowercase().contains("equipped creature has first strike")),
+            "missing first-strike static grant in displays: {displays:?}"
+        );
+        assert!(
+            displays
+                .iter()
+                .any(|display| display.contains("as long as equipped creature is a human")),
+            "missing human equipped-creature condition in displays: {displays:?}"
+        );
+        assert!(
+            displays.iter().any(|display| display == "Equip {1}"),
+            "missing equip activation in displays: {displays:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_static_condition_its_attacking() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kitesail Corsair Variant")
             .parse_text("This creature has flying as long as it's attacking.")
