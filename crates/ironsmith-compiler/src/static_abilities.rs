@@ -11,6 +11,8 @@ pub use ironsmith_core::{
 
 pub const PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT: StaticAbilityId =
     StaticAbilityId::PreventAllDamageDealtByThisPermanent;
+pub const PREVENT_ALL_COMBAT_DAMAGE_DEALT_BY_THIS_PERMANENT: StaticAbilityId =
+    StaticAbilityId::PreventAllCombatDamageDealtByThisPermanent;
 
 pub type ThisSpellCastCondition = ironsmith_core::ThisSpellCostCondition;
 pub type ThisSpellCostCondition = ironsmith_core::ThisSpellCostCondition;

@@ -124,6 +124,12 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllDamageDealtToCreatures) => {
                 Self::prevent_all_damage_dealt_to_creatures()
             }
+            Some(StaticAbilityId::PreventAllDamageDealtByThisPermanent) => {
+                Self::prevent_all_damage_dealt_by_this_permanent()
+            }
+            Some(StaticAbilityId::PreventAllCombatDamageDealtByThisPermanent) => {
+                Self::prevent_all_combat_damage_dealt_by_this_permanent()
+            }
             Some(StaticAbilityId::PreventAllDamageToSelf) => Self::prevent_all_damage_to_self(),
             Some(StaticAbilityId::PreventAllCombatDamageToSelf) => {
                 Self::prevent_all_combat_damage_to_self()
