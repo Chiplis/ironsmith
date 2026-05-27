@@ -33885,6 +33885,60 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_xanthic_statue_strict_regression() {
+    assert_oracle_card_parses_strict("Xanthic Statue");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
+    let def = parse_oracle_card_definition("Xanthic Statue");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("until end of turn")
+            && rendered.contains("this artifact becomes 8/8 golem artifact creature with trample"),
+        "expected Xanthic Statue become-until-end clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn xanthic_statue_activation_sets_base_pt_and_trample_on_source_artifact() {
+    use crate::ability::AbilityKind;
+
+    let def = parse_oracle_card_definition("Xanthic Statue");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Xanthic Statue should have an activated ability");
+
+    assert_eq!(
+        activated.mana_cost.display(),
+        "{5}",
+        "expected Xanthic Statue activation cost to remain {{5}}"
+    );
+
+    let effects_debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+    assert!(
+        effects_debug.contains("until: endofturn")
+            && effects_debug.contains("creature")
+            && effects_debug.contains("artifact")
+            && effects_debug.contains("setpowertoughness")
+            && effects_debug.contains("power: fixed(8)")
+            && effects_debug.contains("toughness: fixed(8)")
+            && effects_debug.contains("addsubtypes([golem])")
+            && effects_debug.contains("label: \"trample\""),
+        "expected Xanthic Statue lowering to include until-end continuous become effect, got {effects_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oran_rief_the_vastwood_strict_regression() {
     assert_oracle_card_parses_strict("Oran-Rief, the Vastwood");
 }
@@ -33911,6 +33965,38 @@ fn parse_rankle_master_of_pranks_strict_regression() {
 #[test]
 fn parse_wild_roads_strict_regression() {
     assert_oracle_card_parses_strict("Wild Roads");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_demonic_torment_strict_regression() {
+    assert_oracle_card_parses_strict("Demonic Torment");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demonic_torment_compiled_text_keeps_combat_prevention_clause() {
+    let def = parse_oracle_card_definition("Demonic Torment");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all combat damage that would be dealt by enchanted creature"),
+        "expected Demonic Torment compiled text to keep combat-only prevention clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demonic_torment_grants_combat_only_damage_prevention_to_enchanted_creature() {
+    let def = parse_oracle_card_definition("Demonic Torment");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PreventAllCombatDamageDealtByThisPermanent"),
+        "expected Demonic Torment to grant combat-only prevention, got {debug}"
+    );
+    assert!(
+        !debug.contains("PreventAllDamageDealtByThisPermanent"),
+        "expected Demonic Torment to avoid all-damage prevention, got {debug}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -34842,6 +34928,88 @@ strict_parse_card_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
 strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Madara");
 strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn strict_parse_animate_land() {
+    assert_oracle_card_parses_strict("Animate Land");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn animate_land_compiled_text_keeps_animation_clause() {
+    let def = parse_oracle_card_definition("Animate Land");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target land becomes a 3/3 creature")
+            && rendered.contains("until end of turn")
+            && rendered.contains("still a land"),
+        "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn animate_land_runtime_animates_target_land_until_end_of_turn() {
+    let def = parse_oracle_card_definition("Animate Land");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Animate Land should produce spell effects")
+        .clone();
+    let apply = spell
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                        })
+                })
+        })
+        .expect("Animate Land should lower to an ApplyContinuousEffect");
+
+    let target_spec = apply
+        .target_spec
+        .as_ref()
+        .expect("Animate Land should carry an explicit target spec");
+    let ChooseSpec::Target(inner) = target_spec else {
+        panic!("expected Animate Land target to be target-only, got {target_spec:?}");
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("expected Animate Land target to be an object filter, got {inner:?}");
+    };
+    assert!(
+        filter.card_types == vec![CardType::Land] && !filter.card_types.contains(&CardType::Creature),
+        "expected Animate Land to target lands only, got {filter:?}"
+    );
+
+    assert_eq!(apply.until, crate::effect::Until::EndOfTurn);
+    assert!(
+        matches!(apply.modification, Some(crate::continuous::Modification::AddCardTypes(ref added)) if added == &vec![CardType::Creature]),
+        "expected Animate Land to add creature card type, got {apply:?}"
+    );
+    assert!(
+        apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::SetPowerToughness {
+                    power: Value::Fixed(3),
+                    toughness: Value::Fixed(3),
+                    ..
+                }
+            )
+        }),
+        "expected Animate Land to set base power/toughness to 3/3, got {apply:?}"
+    );
+}
 
 #[test]
 fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {

@@ -391,6 +391,48 @@ impl ReplacementMatcher for DamageFromSelfMatcher {
     }
 }
 
+/// Matches preventable combat damage events dealt by the source of the replacement effect.
+#[derive(Debug, Clone)]
+pub struct DamageFromSelfCombatMatcher;
+
+impl DamageFromSelfCombatMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DamageFromSelfCombatMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReplacementMatcher for DamageFromSelfCombatMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable || !damage.is_combat {
+            return false;
+        }
+
+        ctx.source == Some(damage.source)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When combat damage would be dealt by this permanent".to_string()
+    }
+}
+
 /// Constraint for matching damage sources.
 #[derive(Debug, Clone)]
 pub enum DamageSourceConstraint {
@@ -921,6 +963,28 @@ mod tests {
         // Unpreventable damage should not match (prevention can't apply).
         let unpreventable = unpreventable_damage(src, DamageTarget::Player(alice), 3, false);
         assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
+    fn test_damage_from_self_combat_matcher() {
+        let game = setup_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let src = ObjectId::from_raw(42);
+
+        let ctx = EventContext::for_replacement_effect(alice, src, &game);
+        let matcher = DamageFromSelfCombatMatcher::new();
+
+        let combat_from_src = damage(src, DamageTarget::Player(alice), 3, true);
+        assert!(matcher.matches_event(&combat_from_src, &ctx));
+
+        let noncombat_from_src = damage(src, DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&noncombat_from_src, &ctx));
+
+        let other_source = damage(ObjectId::from_raw(7), DamageTarget::Player(alice), 3, true);
+        assert!(!matcher.matches_event(&other_source, &ctx));
+
+        let unpreventable_from_src = unpreventable_damage(src, DamageTarget::Player(alice), 3, true);
+        assert!(!matcher.matches_event(&unpreventable_from_src, &ctx));
     }
 
     #[test]

@@ -8502,6 +8502,29 @@ fn is_up_to_land_subtype_target(spec: &ChooseSpec) -> bool {
         && filter.controller.is_none()
 }
 
+fn choose_spec_guarantees_artifact(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => {
+            hints.iter().any(|hint| {
+                matches!(
+                    hint,
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType(text)
+                    ) if text.eq_ignore_ascii_case("this artifact")
+                )
+            }) || choose_spec_guarantees_artifact(spec)
+        }
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => choose_spec_guarantees_artifact(inner),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.card_types.contains(&CardType::Artifact)
+                && !filter.excluded_card_types.contains(&CardType::Artifact)
+        }
+        _ => false,
+    }
+}
+
 fn plural_non_target_land_animation_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
@@ -8618,10 +8641,14 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .join(" ");
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
         let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
+        let pt_noun_phrase = format!("{pt} {noun_phrase}");
         if plural_target {
-            format!("{target_text} become {pt} {noun_phrase}")
+            format!("{target_text} become {pt_noun_phrase}")
         } else {
-            format!("{target_text} becomes a {pt} {noun_phrase}")
+            format!(
+                "{target_text} becomes {}",
+                with_indefinite_article(&pt_noun_phrase)
+            )
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {
@@ -8639,6 +8666,12 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
+    let adds_artifact_type = card_types.iter().any(|card_type| *card_type == CardType::Artifact);
+    let target_is_guaranteed_artifact = effect
+        .target_spec
+        .as_ref()
+        .is_some_and(choose_spec_guarantees_artifact);
+    let artifact_type_is_redundant = target_is_guaranteed_artifact && adds_artifact_type;
     let render_as_addition_to_other_types =
         (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
             || (preserves_land_types
@@ -8647,7 +8680,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
                     .target_spec
                     .as_ref()
                     .is_some_and(is_up_to_land_subtype_target));
-    if render_as_addition_to_other_types {
+    if render_as_addition_to_other_types && !artifact_type_is_redundant {
         if plural_target {
             text.push_str(" in addition to their other types");
         } else {
@@ -8655,14 +8688,25 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
     let tail = describe_apply_continuous_tail(effect);
-    if let Some(tail) = &tail {
-        text.push(' ');
-        text.push_str(tail);
-    }
-    if preserves_land_types && !render_as_addition_to_other_types {
-        if !plural_target && target_text == "target land" && tail.is_none() {
+    let inline_still_land =
+        preserves_land_types && !render_as_addition_to_other_types && !plural_target && target_text == "target land";
+    match &tail {
+        Some(tail) if inline_still_land => {
             text.push_str(" that's still a land");
-        } else if plural_target {
+            text.push(' ');
+            text.push_str(tail);
+        }
+        Some(tail) => {
+            text.push(' ');
+            text.push_str(tail);
+        }
+        None if inline_still_land => {
+            text.push_str(" that's still a land");
+        }
+        None => {}
+    }
+    if preserves_land_types && !render_as_addition_to_other_types && !inline_still_land {
+        if plural_target {
             text.push_str(". They're still lands");
         } else {
             text.push_str(". It's still a land");
