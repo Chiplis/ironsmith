@@ -60,6 +60,16 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_gains_or_loses_all_creature_types
     ),
     primitive!(
+        "pump-creature-type-of-choice-pre",
+        26,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("creatures"),
+            LexRuleHeadHint::Single("target"),
+        ],
+        parse_sentence_pump_creature_type_of_choice
+    ),
+    primitive!(
         "lose-draw-clash-repeat-process",
         27,
         PreDiagnostic,
@@ -229,7 +239,10 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         "pump-creature-type-of-choice",
         60,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("target")],
+        &[
+            LexRuleHeadHint::Single("creatures"),
+            LexRuleHeadHint::Single("target"),
+        ],
         parse_sentence_pump_creature_type_of_choice
     ),
     primitive!(

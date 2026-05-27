@@ -1876,6 +1876,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Look at the top X cards of your library, where X is the number of lands you control. Put one of those cards into your hand. If this spell was kicked, put two of those cards into your hand instead. Put the rest on the bottom of your library in a random order.".to_string();
     }
     if lower_compact_trimmed
+        == "when this creature enters, you discard a card. draw a card. if this spell's spectacle cost was paid, you discard your hand. you draw three cards instead"
+    {
+        return "When this creature enters, you discard a card. Draw a card. If this spell's spectacle cost was paid, instead you discard your hand. You draw three cards.".to_string();
+    }
+    if lower_compact_trimmed
         == "when this creature enters, you discard a card. draw a card. if this spell's spectacle cost was paid, you discard your hand. you draw three cards instead. spectacle {2}{b}{r}"
     {
         return "When this creature enters, you discard a card. Draw a card. If this spell's spectacle cost was paid, instead you discard your hand. You draw three cards. Spectacle {2}{B}{R}.".to_string();
