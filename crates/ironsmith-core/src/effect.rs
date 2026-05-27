@@ -3388,6 +3388,7 @@ impl RedirectNextDamageToTargetEffect {
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
+    pub all_this_turn: bool,
 }
 
 impl RedirectNextTimeDamageToSourceEffect {
@@ -3395,7 +3396,13 @@ impl RedirectNextTimeDamageToSourceEffect {
         Self {
             source,
             target: Some(target),
+            all_this_turn: false,
         }
+    }
+
+    pub fn all_this_turn(mut self) -> Self {
+        self.all_this_turn = true;
+        self
     }
 }
 

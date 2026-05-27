@@ -1566,7 +1566,11 @@ fn compile_subject_verb_effect(
                 ))
             })
         }
-        SubjectVerbActionAst::RedirectNextTimeDamageToSource { source, target } => {
+        SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+            source,
+            target,
+            all_this_turn,
+        } => {
             let source_spec = match source {
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::RedirectNextTimeDamageSource::Choice
@@ -1579,10 +1583,16 @@ fn compile_subject_verb_effect(
                 }
             };
             compile_effect_for_target(target, ctx, |spec| {
-                Effect::new(crate::effects::RedirectNextTimeDamageToSourceEffect::new(
+                let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
                     source_spec.clone(),
                     spec,
-                ))
+                );
+                let effect = if *all_this_turn {
+                    effect.all_this_turn()
+                } else {
+                    effect
+                };
+                Effect::new(effect)
             })
         }
         SubjectVerbActionAst::PutOrRemoveCounters {

@@ -988,9 +988,13 @@ where
                 "redirect next time damage to source without a protected target".to_string(),
             ));
         };
-        return Ok(Effect::new(
-            crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target),
-        ));
+        let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target);
+        let effect = if payload.all_this_turn {
+            effect.all_this_turn()
+        } else {
+            effect
+        };
+        return Ok(Effect::new(effect));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ExecuteWithSourceEffect<M::Effect>>(&effect)

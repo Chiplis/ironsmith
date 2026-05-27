@@ -28954,6 +28954,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
         };
+        if redirect_next_time.all_this_turn {
+            return format!(
+                "All damage that would be dealt to {} this turn by {source_text} is dealt to this creature instead",
+                describe_choose_spec(&redirect_next_time.target)
+            );
+        }
         return format!(
             "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
             describe_choose_spec(&redirect_next_time.target)
