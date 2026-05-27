@@ -2803,4 +2803,54 @@ mod tests {
             triggered[0].ability.choices
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn living_artifact_player_damage_trigger_matches_only_controller_damage() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Living Artifact Variant")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .parse_text(
+                "Whenever you're dealt damage, put that many vitality counters on this Aura.",
+            )
+            .expect("Living Artifact style trigger should parse");
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+        let to_controller = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source,
+                    DamageTarget::Player(alice),
+                    3,
+                    false,
+                    EventCause::from_game_rule(),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert_eq!(to_controller.len(), 1, "expected trigger on controller damage");
+
+        let to_opponent = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source,
+                    DamageTarget::Player(bob),
+                    3,
+                    false,
+                    EventCause::from_game_rule(),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert!(
+            to_opponent.is_empty(),
+            "trigger should not fire when a different player is dealt damage"
+        );
+    }
 }

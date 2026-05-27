@@ -2456,9 +2456,24 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
-    if (slice_ends_with(&words, &["is", "dealt", "damage"])
-        || slice_ends_with(&words, &["is", "dealt", "combat", "damage"]))
-        && words.len() >= 4
+    let dealt_auxiliary = |word: &str| {
+        matches!(
+            word,
+            "is" | "are" | "was" | "were" | "be" | "been" | "re" | "youre" | "you're"
+        )
+    };
+    let ends_with_dealt_damage = words.len() >= 3
+        && words[words.len() - 2] == "dealt"
+        && words[words.len() - 1] == "damage"
+        && dealt_auxiliary(words[words.len() - 3]);
+    let ends_with_dealt_combat_damage = words.len() >= 4
+        && words[words.len() - 3] == "dealt"
+        && words[words.len() - 2] == "combat"
+        && words[words.len() - 1] == "damage"
+        && dealt_auxiliary(words[words.len() - 4]);
+
+    if ((ends_with_dealt_damage && words.len() >= 3)
+        || (ends_with_dealt_combat_damage && words.len() >= 4))
         && !slice_starts_with(&words, &["this", "creature", "is", "dealt", "damage"])
         && !slice_starts_with(
             &words,
@@ -2467,7 +2482,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         && !slice_starts_with(&words, &["this", "is", "dealt", "damage"])
         && !slice_starts_with(&words, &["this", "is", "dealt", "combat", "damage"])
     {
-        let is_word_idx = if slice_ends_with(&words, &["is", "dealt", "combat", "damage"]) {
+        let is_word_idx = if ends_with_dealt_combat_damage {
             words.len().saturating_sub(4)
         } else {
             words.len().saturating_sub(3)
@@ -2475,6 +2490,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         let is_token_idx = ActivationRestrictionCompatWords::new(tokens)
             .token_index_for_word_index(is_word_idx)
             .unwrap_or(tokens.len());
+        if is_word_idx == 0
+            && words
+                .first()
+                .is_some_and(|word| *word == "youre" || *word == "you're")
+        {
+            return Ok(TriggerSpec::DealsDamageToPlayer {
+                source: ObjectFilter::default(),
+                player: PlayerFilter::You,
+            });
+        }
         let subject_tokens = &tokens[..is_token_idx];
         if let Some(player) = trigger_subject_player_selector_lexed(subject_tokens) {
             return Ok(TriggerSpec::DealsDamageToPlayer {
@@ -2483,7 +2508,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             });
         }
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
-            if slice_ends_with(&words, &["is", "dealt", "combat", "damage"]) {
+            if ends_with_dealt_combat_damage {
                 return Ok(TriggerSpec::IsDealtCombatDamage(filter));
             }
             return Ok(TriggerSpec::IsDealtDamage(filter));

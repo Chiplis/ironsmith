@@ -94,7 +94,11 @@ impl TriggerMatcher for DealsDamageTrigger {
             }
         } else if let Some(player) = &self.damaged_player {
             if self.filter == ObjectFilter::default() {
-                return format!("Whenever {} is dealt damage", player.description());
+                let player_description = player.description();
+                if player_description == "you" {
+                    return "Whenever you are dealt damage".to_string();
+                }
+                return format!("Whenever {} is dealt damage", player_description);
             }
             format!(
                 "Whenever {} deals damage to {}",
