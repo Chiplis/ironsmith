@@ -436,6 +436,79 @@ fn pre_rule_still_lands_followup(
     Ok(None)
 }
 
+fn pre_rule_theyre_become_characteristics_followup(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let sentence_words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    let starts_with_theyre = matches!(
+        sentence_words.as_slice(),
+        ["theyre", ..] | ["they", "re", ..]
+    ) || sentence_tokens
+        .first()
+        .is_some_and(|token| token.is_word("they're"));
+    if !starts_with_theyre {
+        return Ok(None);
+    }
+
+    let previous_moves_to_battlefield_effect = state.effects.iter().rev().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Battlefield,
+                    ..
+                },
+                ..
+            })
+        )
+    });
+    let previous_sentence_moves_to_battlefield = sentence_idx
+        .checked_sub(1)
+        .and_then(|idx| sentences.get(idx))
+        .is_some_and(|previous_sentence| {
+            let previous_words = crate::runtime_backend::token_word_refs(previous_sentence.lowered());
+            previous_words.iter().any(|word| *word == "onto")
+                && previous_words.iter().any(|word| *word == "battlefield")
+        });
+    if !previous_moves_to_battlefield_effect && !previous_sentence_moves_to_battlefield {
+        return Ok(None);
+    }
+
+    let is_characteristic_sentence = sentence_words
+        .iter()
+        .any(|word| *word == "creature" || *word == "creatures");
+    if !is_characteristic_sentence {
+        return Ok(None);
+    }
+
+    let mut rewritten = sentence_tokens.to_vec();
+    if rewritten
+        .first()
+        .is_some_and(|token| token.is_word("theyre") || token.is_word("they're"))
+    {
+        rewritten[0] = OwnedLexToken::synthetic_word("they");
+        rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
+    } else if rewritten.len() >= 2
+        && rewritten[0].is_word("they")
+        && rewritten[1].is_word("re")
+    {
+        rewritten.remove(1);
+        rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
+    } else {
+        return Ok(None);
+    }
+
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: rewritten,
+        wrap_if_result: None,
+        direct_effects: None,
+        consumed_sentences: 1,
+    })))
+}
+
 pub(super) fn is_still_lands_followup_sentence(sentence_tokens: &[OwnedLexToken]) -> bool {
     let sentence_words = TokenWordView::new(sentence_tokens).to_word_refs();
     matches!(
@@ -972,6 +1045,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 20,
         heads: &["theyre", "they", "its", "it"],
         run: pre_rule_still_lands_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "theyre-become-characteristics",
+        priority: 21,
+        heads: &["theyre", "they"],
+        run: pre_rule_theyre_become_characteristics_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "cant-be-regenerated",
