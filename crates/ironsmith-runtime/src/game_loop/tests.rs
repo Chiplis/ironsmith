@@ -178,6 +178,61 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let warmonger = CardDefinitionBuilder::new(CardId::from_raw(72_140), "Frontier Warmonger")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("Whenever one or more creatures attack one of your opponents or a planeswalker they control, those creatures gain menace until end of turn.")
+        .expect("Frontier Warmonger should parse");
+    game.create_object_from_definition(&warmonger, alice, Zone::Battlefield);
+
+    let attacker_id = create_creature(&mut game, "Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+    let home_creature_id = create_creature(&mut game, "Home Creature", alice, 2, 2);
+
+    assert!(
+        !game.object_has_ability(attacker_id, &StaticAbility::menace()),
+        "attacker should not start with menace"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attacker declaration should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue);
+    resolve_top_of_stack(&mut game);
+
+    assert!(
+        game.object_has_ability(attacker_id, &StaticAbility::menace()),
+        "attacking creature should gain menace"
+    );
+    assert!(
+        !game.object_has_ability(home_creature_id, &StaticAbility::menace()),
+        "nonattacking creature should not gain menace"
+    );
+
+    execute_cleanup_step(&mut game);
+    assert!(
+        !game.object_has_ability(attacker_id, &StaticAbility::menace()),
+        "temporary menace should end at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

@@ -3112,6 +3112,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             ["a", "player"]
                 | ["a", "planeswalker"]
                 | ["a", "battle"]
+                | ["one", "of", "your", "opponents", "or", "a", "planeswalker", "they", "control"]
                 | ["the", "defending", "player"]
                 | ["defending", "player"]
         ) {

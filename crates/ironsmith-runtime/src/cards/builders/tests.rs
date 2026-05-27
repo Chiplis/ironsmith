@@ -21048,6 +21048,32 @@ fn parse_wyrms_crossing_patrol_myriad_renders_you_as_token_creator() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_frontier_warmonger_trigger_and_menace_grant() {
+    let oracle = "Whenever one or more creatures attack one of your opponents or a planeswalker they control, those creatures gain menace until end of turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Frontier Warmonger")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Frontier Warmonger should parse strictly");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttacksOneOrMore")
+            && abilities_debug.contains("gain menace until end of turn"),
+        "expected attack trigger with menace grant, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("one or more creatures attack")
+            && rendered.contains("those creatures gain menace until end of turn"),
+        "expected compiled text to preserve Frontier Warmonger clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_named_vehicle_token_with_flying_and_crew() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lita Token Variant")
         .parse_text(
