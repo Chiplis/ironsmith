@@ -4,6 +4,7 @@ pub enum Comparison {
     GreaterThan(i32),
     GreaterThanOrEqual(i32),
     Equal(i32),
+    OneOf(&'static [i32]),
     LessThan(i32),
     LessThanOrEqual(i32),
     NotEqual(i32),
@@ -16,6 +17,7 @@ impl Comparison {
             Self::GreaterThan(n) => value > *n,
             Self::GreaterThanOrEqual(n) => value >= *n,
             Self::Equal(n) => value == *n,
+            Self::OneOf(values) => values.contains(&value),
             Self::LessThan(n) => value < *n,
             Self::LessThanOrEqual(n) => value <= *n,
             Self::NotEqual(n) => value != *n,
@@ -64,6 +66,7 @@ mod tests {
     fn comparison_evaluates_values() {
         assert!(Comparison::GreaterThan(2).evaluate(3));
         assert!(Comparison::BetweenInclusive(2, 4).evaluate(4));
+        assert!(Comparison::OneOf(&[1, 3, 5]).evaluate(3));
         assert!(!Comparison::LessThanOrEqual(1).evaluate(2));
     }
 

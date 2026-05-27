@@ -2488,6 +2488,12 @@ pub(crate) fn parse_static_condition_clause(
                         clause_words.join(" ")
                     )));
                 }
+                crate::effect::Comparison::OneOf(_) => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported graveyard card-count set condition (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
             };
             return Ok(crate::ConditionExpr::ValueComparison {
                 left: crate::effect::Value::CardsInGraveyard(PlayerFilter::You),

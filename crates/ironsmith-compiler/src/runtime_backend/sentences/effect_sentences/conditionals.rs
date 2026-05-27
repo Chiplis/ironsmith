@@ -110,6 +110,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "cat" => Some(Subtype::Cat),
         "centaur" => Some(Subtype::Centaur),
         "citizen" | "citizens" => Some(Subtype::Citizen),
+        "clown" | "clowns" => Some(Subtype::Clown),
         "coward" | "cowards" => Some(Subtype::Coward),
         "changeling" => Some(Subtype::Changeling),
         "cleric" => Some(Subtype::Cleric),

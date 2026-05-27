@@ -9761,6 +9761,14 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
         Comparison::LessThan(n) => format!("is less than {n}"),
         Comparison::LessThanOrEqual(n) => format!("is at most {n}"),
         Comparison::NotEqual(n) => format!("is not equal to {n}"),
+        Comparison::OneOf(values) => format!(
+            "is one of {}",
+            values
+                .iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Comparison::BetweenInclusive(min, max) => {
             format!("is between {min} and {max} inclusive")
         }

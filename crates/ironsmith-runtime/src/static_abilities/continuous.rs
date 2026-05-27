@@ -738,6 +738,11 @@ fn comparison_display(cmp: &Comparison) -> String {
         Comparison::LessThanOrEqual(0) => "no".to_string(),
         Comparison::LessThanOrEqual(n) => format!("{n} or less"),
         Comparison::NotEqual(n) => format!("not {n}"),
+        Comparison::OneOf(values) => values
+            .iter()
+            .map(i32::to_string)
+            .collect::<Vec<_>>()
+            .join(" or "),
         Comparison::BetweenInclusive(min, max) => format!("{min} to {max}"),
     }
 }
