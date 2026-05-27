@@ -164,6 +164,80 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
     assert_eq!(game.calculated_power(attacker_id), Some(2));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let pitchfork = CardDefinitionBuilder::new(CardId::from_raw(72_111), "Sharpened Pitchfork")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature has first strike.\nAs long as equipped creature is a Human, it gets +1/+1.\nEquip {1}",
+        )
+        .expect("Sharpened Pitchfork should parse");
+    let pitchfork_id = game.create_object_from_definition(&pitchfork, alice, Zone::Battlefield);
+
+    let human_id = CardBuilder::new(CardId::from_raw(72_112), "Human Bearer")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let human_id = game.create_object_from_card(&human_id, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(human_id);
+
+    let non_human_id = CardBuilder::new(CardId::from_raw(72_113), "Elf Bearer")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let non_human_id = game.create_object_from_card(&non_human_id, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(non_human_id);
+
+    if let Some(equipment) = game.object_mut(pitchfork_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(human_id));
+    }
+    if let Some(human) = game.object_mut(human_id) {
+        human.attachments.push(pitchfork_id);
+    }
+
+    assert_eq!(game.calculated_power(human_id), Some(3));
+    assert_eq!(game.calculated_toughness(human_id), Some(3));
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: human_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(human_id, Vec::new());
+
+    let first_strike_events = execute_combat_damage_step(&mut game, &combat, true);
+    assert_eq!(
+        first_strike_events.len(),
+        1,
+        "equipped Human should deal first-strike combat damage"
+    );
+    assert_eq!(game.player(bob).unwrap().life, 17);
+
+    let regular_events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(regular_events.len(), 0, "first strike should suppress regular damage");
+
+    if let Some(human) = game.object_mut(human_id) {
+        human.attachments.clear();
+    }
+    if let Some(equipment) = game.object_mut(pitchfork_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(non_human_id));
+    }
+    if let Some(non_human) = game.object_mut(non_human_id) {
+        non_human.attachments.push(pitchfork_id);
+    }
+
+    assert_eq!(game.calculated_power(non_human_id), Some(2));
+    assert_eq!(game.calculated_toughness(non_human_id), Some(2));
+}
+
 #[test]
 fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     let mut game = setup_game();

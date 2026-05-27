@@ -870,6 +870,14 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::EquippedCreatureAttacking => {
             "as long as equipped creature is attacking".to_string()
         }
+        crate::ConditionExpr::TaggedObjectMatches(tag, filter)
+            if tag.as_str() == "equipped"
+                && filter.subtypes.len() == 1
+                && filter == &ObjectFilter::default().with_subtype(filter.subtypes[0]) =>
+        {
+            let subtype = format!("{:?}", filter.subtypes[0]).to_ascii_lowercase();
+            format!("as long as equipped creature is a {subtype}")
+        }
         crate::ConditionExpr::SourceChosenOption(option) => {
             format!("as long as the chosen option is {}", option)
         }
@@ -4181,6 +4189,17 @@ mod tests {
                 right: Value::Fixed(10),
             }),
             "as long as an opponent has 10 or less life"
+        );
+    }
+
+    #[test]
+    fn describe_static_condition_displays_equipped_subtype_match() {
+        assert_eq!(
+            describe_static_condition(&crate::ConditionExpr::TaggedObjectMatches(
+                crate::TagKey::from("equipped"),
+                ObjectFilter::default().with_subtype(Subtype::Human),
+            )),
+            "as long as equipped creature is a human"
         );
     }
 
