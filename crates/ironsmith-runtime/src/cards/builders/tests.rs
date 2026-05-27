@@ -37883,6 +37883,30 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         Zone::Battlefield,
     );
 
+    assert_eq!(game.current_power(target), Some(2));
+    assert!(
+        !game.object_has_static_ability_id(target, StaticAbilityId::Infect),
+        "target should not start with infect"
+    );
+
+    let normal_damage = crate::rules::damage::apply_processed_damage_assignment(
+        &mut game,
+        target,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        crate::rules::damage::SourceDamageKeywords::default(),
+        crate::events::cause::EventCause::from_effect(target, alice),
+    );
+    assert!(
+        normal_damage.applied,
+        "baseline damage assignment to player should apply"
+    );
+    assert_eq!(game.players[1].life, 18, "non-infect damage should reduce life");
+    assert_eq!(
+        game.players[1].poison_counters, 0,
+        "non-infect damage should not add poison counters"
+    );
+
     let mut dm = crate::decision::AutoPassDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
         .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
@@ -37917,7 +37941,7 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         crate::events::cause::EventCause::from_effect(target, alice),
     );
     assert!(player_damage.applied, "damage assignment to player should apply");
-    assert_eq!(game.players[1].life, 20, "infect damage to player should not reduce life");
+    assert_eq!(game.players[1].life, 18, "infect damage to player should not reduce life");
     assert_eq!(game.players[1].poison_counters, 3, "infect damage should add poison counters");
 
     let blocker = game.create_object_from_definition(
