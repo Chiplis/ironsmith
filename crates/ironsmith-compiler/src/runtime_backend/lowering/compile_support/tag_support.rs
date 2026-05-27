@@ -565,6 +565,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ConniveIterated
         | SubjectVerbActionAst::OpenAttraction
         | SubjectVerbActionAst::ManifestTopCardOfLibrary
+        | SubjectVerbActionAst::ManifestCardFromHand
         | SubjectVerbActionAst::ManifestDread
         | SubjectVerbActionAst::Earthbend { .. }
         | SubjectVerbActionAst::Behold { .. }

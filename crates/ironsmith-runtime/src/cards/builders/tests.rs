@@ -2942,6 +2942,37 @@ fn test_parse_double_cant_clause_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn everybody_lives_parses_strictly_with_player_hexproof_clause() {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse strictly");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn everybody_lives_compiled_text_includes_player_hexproof_and_life_lock_clauses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Players have hexproof this turn")
+            && rendered.contains("Players can't lose life this turn")
+            && rendered.contains("Players can't lose the game this turn")
+            && rendered.contains("Players can't win the game this turn"),
+        "expected Everybody Lives! compiled text to keep player clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_characteristic_pt_constant_plus_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aysen Crusader")
         .parse_text(
@@ -7757,6 +7788,40 @@ fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "manifest trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scroll_of_fate_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scroll of Fate")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Manifest a card from your hand.")
+        .expect("Scroll of Fate should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "Scroll of Fate should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scroll_of_fate_compiled_text_keeps_manifest_from_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scroll of Fate")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Manifest a card from your hand.")
+        .expect("Scroll of Fate ability should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest a card from your hand"),
+        "expected Scroll of Fate compiled text to keep manifest-from-hand clause, got {rendered}"
     );
 }
 
@@ -22966,6 +23031,25 @@ fn parse_next_time_source_damage_redirect_to_this_creature() {
             "the next time a source of your choice would deal damage to target creature this turn, that damage is dealt to this creature instead"
         ),
         "expected next-time source redirect text in compiled output, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oracles_attendants_parses_and_renders_all_damage_source_redirect_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oracle's Attendants")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: All damage that would be dealt to target creature this turn by a source of your choice is dealt to this creature instead.",
+        )
+        .expect("Oracle's Attendants should parse");
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("all damage that would be dealt to target creature this turn by a source of your choice is dealt to this creature instead"),
+        "expected all-damage source redirect text in compiled output, got {joined}"
     );
 }
 

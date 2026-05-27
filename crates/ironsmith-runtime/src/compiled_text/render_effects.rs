@@ -12290,6 +12290,14 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
 fn rewrite_cost_bound_x_phrases(mut effects: String, costs: &[crate::costs::Cost]) -> String {
     if let Some(x_phrase) = removed_counters_this_way_x_phrase(costs) {
         effects = effects.replace("where X is X", &format!("where X is {x_phrase}"));
+        effects = effects.replace(
+            "deals X damage to",
+            &format!("deals damage equal to {x_phrase} to"),
+        );
+        effects = effects.replace(
+            "Deal X damage to",
+            &format!("Deal damage equal to {x_phrase} to"),
+        );
     }
     effects
 }
@@ -27840,6 +27848,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         return format!("Manifest the top card of {owner} library");
     }
+    if effect
+        .downcast_ref::<crate::effects::ManifestCardFromHandEffect>()
+        .is_some()
+    {
+        return "Manifest a card from your hand".to_string();
+    }
     if let Some(populate) = effect.downcast_ref::<crate::effects::PopulateEffect>() {
         let mut text = match &populate.count {
             Value::Fixed(1) => "Populate".to_string(),
@@ -28954,6 +28968,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
         };
+        if redirect_next_time.all_this_turn {
+            return format!(
+                "All damage that would be dealt to {} this turn by {source_text} is dealt to this creature instead",
+                describe_choose_spec(&redirect_next_time.target)
+            );
+        }
         return format!(
             "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
             describe_choose_spec(&redirect_next_time.target)

@@ -1062,6 +1062,10 @@ impl Effect {
         Self::new(crate::effects::ManifestTopCardOfLibraryEffect::new(player))
     }
 
+    pub fn manifest_card_from_hand() -> Self {
+        Self::new(crate::effects::ManifestCardFromHandEffect::new())
+    }
+
     pub fn manifest_dread() -> Self {
         Self::new(crate::effects::ManifestDreadEffect::new())
     }

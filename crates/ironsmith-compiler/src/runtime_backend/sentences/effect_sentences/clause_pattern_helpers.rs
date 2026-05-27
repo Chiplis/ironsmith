@@ -1253,6 +1253,77 @@ pub(crate) fn parse_redirect_next_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+    if word_slice_starts_with(&clause_words, &["all", "damage", "that", "would", "be", "dealt", "to"]) {
+        let idx = 7usize;
+        let this_turn_rel = find_word_sequence_index(&clause_words[idx..], &["this", "turn"])
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-all-damage duration (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let this_turn_idx = idx + this_turn_rel;
+        let target_words = &clause_words[idx..this_turn_idx];
+        if target_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-all-damage target (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let by_idx = this_turn_idx + 2;
+        if clause_words.get(by_idx) != Some(&"by") {
+            return Ok(None);
+        }
+        let is_dealt_rel = find_word_sequence_index(&clause_words[by_idx + 1..], &["is", "dealt", "to"])
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-all-damage destination (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let is_dealt_idx = by_idx + 1 + is_dealt_rel;
+
+        let source_words = &clause_words[by_idx + 1..is_dealt_idx];
+        if source_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-all-damage source (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let source = if word_slice_contains_sequence(source_words, &["of", "your", "choice"]) {
+            PreventNextTimeDamageSourceAst::Choice
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported redirected-all-damage source scope (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+
+        let redirect_words = &clause_words[is_dealt_idx + 3..];
+        let redirects_to_source = matches!(
+            redirect_words,
+            ["this", "creature", "instead"] | ["this", "permanent", "instead"] | ["this", "instead"] | ["it", "instead"]
+        );
+        if !redirects_to_source {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported redirected-all-damage protected destination (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let target_tokens = target_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let target = parse_target_phrase(&target_tokens)?;
+
+        return Ok(Some(vec![
+            EffectAst::subject_verb_redirect_all_damage_this_turn_to_source(source, target),
+        ]));
+    }
+
     if word_slice_starts_with(&clause_words, &["the", "next", "time"]) {
         let Some(would_idx) = find_word_index(&clause_words, |word| word == "would") else {
             return Ok(None);
@@ -1897,6 +1968,12 @@ pub(crate) fn parse_keyword_mechanic_clause(
 
     if clause_words == ["manifest", "the", "top", "card", "of", "your", "library"] {
         return Ok(Some(EffectAst::subject_verb_manifest_top_card(
+            PlayerAst::You,
+        )));
+    }
+
+    if clause_words == ["manifest", "a", "card", "from", "your", "hand"] {
+        return Ok(Some(EffectAst::subject_verb_manifest_from_hand(
             PlayerAst::You,
         )));
     }

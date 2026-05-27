@@ -1403,6 +1403,27 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_molten_hydra_oracle_text_and_render_removed_counter_damage_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Molten Hydra")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "{1}{R}{R}: Put a +1/+1 counter on this creature.\n{T}, Remove all +1/+1 counters from this creature: It deals damage to any target equal to the number of +1/+1 counters removed this way.",
+            )
+            .expect("Molten Hydra oracle text should parse strictly");
+
+        let compiled = crate::compiled_text::canonical_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains("deals damage")
+                && compiled.contains("equal to")
+                && compiled.contains("removed this way"),
+            "expected compiled text to preserve removed-counter damage scaling clause, got {compiled}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_enchanted_creature_cant_attack_or_block_static() {
         use crate::static_abilities::StaticAbilityId;
 

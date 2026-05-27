@@ -2331,6 +2331,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
             | SubjectVerbActionAst::Behold { .. }

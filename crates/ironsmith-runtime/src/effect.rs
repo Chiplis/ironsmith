@@ -940,6 +940,13 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::LoseLife(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_lose_life.insert(player.id);
+                    }
+                }
+            }
             Restriction::ChangeLifeTotal(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
@@ -1536,6 +1543,12 @@ impl Effect {
     pub fn manifest_top_card_of_library(player: crate::filter::PlayerFilter) -> Self {
         use crate::effects::ManifestTopCardOfLibraryEffect;
         Self::new(ManifestTopCardOfLibraryEffect::new(player))
+    }
+
+    /// Create a "manifest a card from your hand" effect.
+    pub fn manifest_card_from_hand() -> Self {
+        use crate::effects::ManifestCardFromHandEffect;
+        Self::new(ManifestCardFromHandEffect::new())
     }
 
     /// Create a "populate" effect.
