@@ -386,7 +386,7 @@ pub(super) fn describe_mana_ability_resolution_program(
     let replacement_text = describe_effect_list(&branch.replacement_effects);
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
     Some(format!(
-        "{default_text}. If {condition_text}, instead {}",
+        "{default_text}. If {condition_text}, {} instead",
         super::normalize_common::lowercase_first(&replacement_text)
     ))
 }
@@ -472,9 +472,19 @@ fn describe_single_self_replacement_segment(
         return Some(damage_text);
     }
     Some(format!(
-        "{default_text}. If {condition_text}, instead {}",
-        super::normalize_common::lowercase_first(&replacement_text)
+        "{default_text}. If {condition_text}, {} instead",
+        rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
     ))
+}
+
+fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text: &str) -> String {
+    let mut replacement = super::normalize_common::lowercase_first(replacement_text);
+    if default_text.to_ascii_lowercase().contains("target creature")
+        && replacement.starts_with("target creature ")
+    {
+        replacement = replacement.replacen("target creature", "that creature", 1);
+    }
+    replacement
 }
 
 fn describe_rendered_optional_zone_rewrite_self_replacement(

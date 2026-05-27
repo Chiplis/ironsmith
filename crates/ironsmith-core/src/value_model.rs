@@ -722,6 +722,7 @@ pub enum Condition {
     YouControlMoreCreaturesThanTargetSpellController,
     TargetHasGreatestPowerAmongCreatures,
     TargetManaValueLteColorsSpentToCastThisSpell,
+    ItIsNight,
     SourceIsTapped,
     SourceIsSaddled,
     SourceDevouredCreaturesOrMore(u32),

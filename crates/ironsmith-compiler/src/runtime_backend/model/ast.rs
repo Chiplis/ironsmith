@@ -350,6 +350,7 @@ pub(crate) enum TriggerSpec {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PredicateAst {
+    ItIsNight,
     ItIsLandCard,
     ItIsSoulbondPaired,
     SourceChosenOption(String),
