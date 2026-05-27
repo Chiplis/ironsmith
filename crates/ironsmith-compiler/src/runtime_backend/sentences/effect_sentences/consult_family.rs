@@ -519,11 +519,18 @@ pub(crate) fn parse_consult_mana_value_condition_tokens(
 pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
     let mut second_tokens = trim_commas(tokens);
     let mut timing = ConsultCastTiming::Immediate;
-    if let Some((super::super::token_primitives::TurnDurationPhrase::UntilEndOfTurn, remainder)) =
-        parse_turn_duration_prefix(&second_tokens)
-    {
-        second_tokens = trim_commas(remainder);
-        timing = ConsultCastTiming::UntilEndOfTurn;
+    if let Some((duration, remainder)) = parse_turn_duration_prefix(&second_tokens) {
+        match duration {
+            super::super::token_primitives::TurnDurationPhrase::UntilEndOfTurn => {
+                second_tokens = trim_commas(remainder);
+                timing = ConsultCastTiming::UntilEndOfTurn;
+            }
+            super::super::token_primitives::TurnDurationPhrase::UntilYourNextTurnEnd => {
+                second_tokens = trim_commas(remainder);
+                timing = ConsultCastTiming::UntilYourNextTurnEnd;
+            }
+            _ => {}
+        }
     }
 
     let may_idx = find_index(&second_tokens, |token: &OwnedLexToken| token.is_word("may"))?;
@@ -891,14 +898,29 @@ pub(crate) fn consult_cast_effects(
         ConsultCastCost::Normal | ConsultCastCost::WithoutPayingManaCost => {
             let without_paying_mana_cost =
                 matches!(clause.cost, ConsultCastCost::WithoutPayingManaCost);
-            if clause.allow_land || matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
-                vec![EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    match_tag.clone(),
-                    clause.caster,
-                    clause.allow_land,
-                    without_paying_mana_cost,
-                    false,
-                )]
+            if clause.allow_land
+                || matches!(
+                    clause.timing,
+                    ConsultCastTiming::UntilEndOfTurn | ConsultCastTiming::UntilYourNextTurnEnd
+                )
+            {
+                let grant = if matches!(clause.timing, ConsultCastTiming::UntilYourNextTurnEnd) {
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                        match_tag.clone(),
+                        clause.caster,
+                        clause.allow_land,
+                        false,
+                    )
+                } else {
+                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                        match_tag.clone(),
+                        clause.caster,
+                        clause.allow_land,
+                        without_paying_mana_cost,
+                        false,
+                    )
+                };
+                vec![grant]
             } else {
                 vec![EffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
