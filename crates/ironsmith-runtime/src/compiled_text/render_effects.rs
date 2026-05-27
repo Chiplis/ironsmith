@@ -23946,6 +23946,21 @@ pub(super) fn describe_conditional_replacement_instead(
     let true_branch = describe_effect_clause_list(&conditional.if_true)
         .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
     let true_branch = true_branch.trim().trim_end_matches('.');
+    let condition_lower = condition.to_ascii_lowercase();
+    if (condition_lower == "you would proliferate"
+        || condition_lower == "an opponent would proliferate"
+        || condition_lower == "a player would proliferate")
+        && true_branch.to_ascii_lowercase().starts_with("proliferate")
+        && !true_branch.to_ascii_lowercase().contains(" instead")
+    {
+        let branch = if let Some(rest) = true_branch.strip_prefix("Proliferate") {
+            format!("proliferate{rest}")
+        } else {
+            true_branch.to_string()
+        };
+        return Some(format!("If {condition}, {branch} instead"));
+    }
+
     if true_branch.is_empty()
         || !true_branch.to_ascii_lowercase().starts_with("exile ")
         || true_branch.to_ascii_lowercase().contains(" instead")

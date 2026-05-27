@@ -206,7 +206,7 @@ fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
     let bob = PlayerId::from_index(1);
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let _source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let memnite = CardDefinitionBuilder::new(CardId::from_raw(91_001), "Memnite")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
@@ -33365,6 +33365,89 @@ fn proud_pack_rhino_proliferate_mode_increases_selected_counters() {
     assert_eq!(
         game.players[1].poison_counters, 2,
         "selected player should get another poison counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_tekuthal_inquiry_dominus_compiles_strictly() {
+    let def = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
+    let rendered = canonical_compiled_lines(&def).join("\n").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you would proliferate, proliferate twice instead"),
+        "expected Tekuthal replacement clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("remove 3 counters from among other artifacts, creatures, and planeswalkers you control"),
+        "expected Tekuthal activated cost in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tekuthal_activation_cost_targets_other_countered_permanents_only() {
+    use crate::ability::AbilityKind;
+    let def = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(98_001), "Other Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Tekuthal should have an activated ability");
+    let cost_text = activated.mana_cost.display().to_ascii_lowercase();
+    assert!(
+        cost_text.contains("remove 3 counters from among other artifacts, creatures, and planeswalkers you control"),
+        "Tekuthal activation cost should preserve among-other list, got {cost_text}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tekuthal_activated_effect_puts_indestructible_counter_on_source() {
+    use crate::ability::AbilityKind;
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let def = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Tekuthal should have an activated ability");
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Tekuthal activated effect should resolve");
+    }
+
+    assert_eq!(
+        game.object(source).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::Indestructible)
+            .copied()),
+        Some(1),
+        "Tekuthal activated effect should put an indestructible counter on Tekuthal"
     );
 }
 

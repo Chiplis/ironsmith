@@ -179,7 +179,10 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
     let trailing_ok = trailing_words.is_empty()
         || trailing_words.as_slice() == ["time"]
-        || trailing_words.as_slice() == ["times"];
+        || trailing_words.as_slice() == ["times"]
+        || trailing_words.as_slice() == ["instead"]
+        || trailing_words.as_slice() == ["time", "instead"]
+        || trailing_words.as_slice() == ["times", "instead"];
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing proliferate clause (clause: '{}')",
