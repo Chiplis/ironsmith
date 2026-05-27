@@ -266,7 +266,6 @@ impl CostPayer for CostEffect {
         let removed_marker_total = outcome.total_marker_changes(|event| event.is_removed());
 
         if ctx.x_value.is_none()
-            && removed_marker_total > 0
             && (self
                 .effect
                 .downcast_ref::<crate::effects::RemoveCountersEffect>()
@@ -605,6 +604,32 @@ mod tests {
         assert_eq!(result, CostPaymentResult::Paid);
         assert_eq!(ctx.x_value, Some(2));
         assert_eq!(game.counter_count(source, CounterType::Charge), 1);
+    }
+
+    #[test]
+    fn remove_all_counters_cost_sets_x_to_zero_when_none_are_removed() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(11), "Empty Battery")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+        let cost = CostEffect::new(RemoveCountersEffect::new(
+            CounterType::Charge,
+            u32::MAX,
+            crate::target::ChooseSpec::Source,
+        ));
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+
+        let result = cost
+            .pay(&mut game, &mut ctx)
+            .expect("remove-all counters cost should be payable with zero counters");
+
+        assert_eq!(result, CostPaymentResult::Paid);
+        assert_eq!(ctx.x_value, Some(0));
     }
 
     #[test]

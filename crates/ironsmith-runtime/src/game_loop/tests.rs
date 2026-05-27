@@ -7317,6 +7317,89 @@ fn molten_hydra_activated_damage_can_target_creatures() {
 }
 
 #[test]
+fn molten_hydra_activated_damage_is_zero_when_no_counters_are_removed() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let hydra_def = CardDefinitionBuilder::new(CardId::from_raw(994_103), "Molten Hydra")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{1}{R}{R}: Put a +1/+1 counter on this creature.\n{T}, Remove all +1/+1 counters from this creature: It deals damage to any target equal to the number of +1/+1 counters removed this way.",
+        )
+        .expect("Molten Hydra oracle text should parse");
+    let hydra_id = game.create_object_from_definition(&hydra_def, alice, Zone::Battlefield);
+
+    let ability_index = game
+        .object(hydra_id)
+        .expect("Molten Hydra should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                let debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+                debug.contains("dealdamageeffect")
+            } else {
+                false
+            }
+        })
+        .expect("Molten Hydra should have a damage activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == hydra_id && *idx == ability_index
+            )
+        })
+        .expect("Molten Hydra activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Molten Hydra activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Molten Hydra activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing target player should complete Molten Hydra activation");
+
+    resolve_stack_entry(&mut game).expect("Molten Hydra ability should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        20,
+        "Molten Hydra should deal zero damage when zero counters are removed"
+    );
+}
+
+#[test]
 fn protected_stack_spell_still_resolves_after_failed_counterspell() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
