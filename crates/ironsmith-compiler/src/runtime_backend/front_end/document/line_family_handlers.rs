@@ -647,12 +647,87 @@ pub(super) fn run_surge_line_family(
     )))
 }
 
+pub(super) fn run_freerunning_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let Some(rest) = raw.strip_prefix("Freerunning ") else {
+        return Ok(None);
+    };
+    let cost_text = rest
+        .split_once('(')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    if cost_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "freerunning keyword missing cost: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let rewritten = format!(
+        "If you dealt combat damage to a player this turn with an Assassin or commander, you may pay {cost_text} rather than pay this spell's mana cost."
+    );
+    let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower freerunning keyword line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    keyword.text = ctx.line.info.raw_line.clone();
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Keyword(keyword),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     Ok(parse_keyword_line_cst(ctx.line)?.map(|keyword_line| {
         LineDispatchResult::single(RewriteLineCst::Keyword(keyword_line), ctx.idx + 1)
     }))
+}
+
+pub(super) fn run_additional_combat_after_this_phase_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let needle =
+        "there is an additional combat phase after this phase, followed by an additional main phase";
+    let raw = ctx.line.info.raw_line.trim();
+    if !raw.to_ascii_lowercase().contains(needle) {
+        return Ok(None);
+    }
+
+    let rewritten = raw
+        .replace(
+            "If it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase",
+            "After this main phase, there is an additional combat phase followed by an additional main phase",
+        )
+        .replace(
+            "if it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase",
+            "after this main phase, there is an additional combat phase followed by an additional main phase",
+        )
+        .replace(
+            "there is an additional combat phase after this phase, followed by an additional main phase",
+            "after this main phase, there is an additional combat phase followed by an additional main phase",
+        );
+    let rewritten_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let Some(statement_line) = parse_statement_line_cst(&rewritten_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower additional-combat-after-this-phase line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Statement(statement_line),
+        ctx.idx + 1,
+    )))
 }
 
 pub(super) fn run_ward_or_echo_static_prefix_line_family(

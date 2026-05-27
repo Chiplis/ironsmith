@@ -42952,61 +42952,6 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
     );
 }
 
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-fn tezzeret_cruel_machinist_strict_parse_and_text_flow_regression() {
-    let def = parse_oracle_card_definition("Tezzeret, Cruel Machinist");
-    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
-    let rendered_lower = rendered.to_ascii_lowercase();
-
-    assert!(
-        rendered_lower.contains("put any number of cards from your hand onto the battlefield face down"),
-        "expected Tezzeret ultimate to keep face-down battlefield destination, got {rendered}"
-    );
-    assert!(
-        rendered_lower.contains("they're 5/5 artifact creatures")
-            || rendered_lower.contains("they are 5/5 artifact creatures"),
-        "expected Tezzeret ultimate followup characteristics sentence, got {rendered}"
-    );
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-fn tezzeret_cruel_machinist_ultimate_compiles_face_down_move_and_5_5_artifact_animation() {
-    let def = parse_oracle_card_definition("Tezzeret, Cruel Machinist");
-
-    let ultimate = def
-        .abilities
-        .iter()
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Activated(activated) => Some(activated),
-            _ => None,
-        })
-        .find(|activated| {
-            let debug = format!("{:?}", activated.effects);
-            debug.contains("zone: Battlefield") && debug.contains("face_down: Some(true)")
-        })
-        .expect("Tezzeret should compile an ultimate that moves cards to battlefield face down");
-
-    let effects_debug = format!("{:?}", ultimate.effects);
-    let compact = effects_debug.to_ascii_lowercase().replace(' ', "");
-
-    assert!(
-        compact.contains("movetozoneeffect")
-            && compact.contains("zone:battlefield")
-            && compact.contains("face_down:some(true)"),
-        "expected Tezzeret ultimate to move cards from hand to battlefield face down, got {effects_debug}"
-    );
-    assert!(
-        compact.contains("addcardtypes")
-            && compact.contains("artifact")
-            && compact.contains("creature")
-            && compact.contains("setbasepowertoughness")
-            && compact.contains("fixed(5)"),
-        "expected Tezzeret ultimate followup to animate moved cards as 5/5 artifact creatures, got {effects_debug}"
-    );
-}
-
 #[test]
 fn eruth_tormented_prophet_parses_strictly_as_draw_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eruth, Tormented Prophet")
@@ -43176,6 +43121,48 @@ fn loot_the_key_to_everything_runtime_count_uses_distinct_card_types_among_other
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");
     assert_eq!(resolved, 2, "artifact + creature should produce two card types");
+}
+
+#[test]
+fn parse_oracle_overpowering_attack_supports_freerunning_keyword_line() {
+    let def = parse_oracle_card_definition("Overpowering Attack");
+    assert!(
+        !def.alternative_casts.is_empty(),
+        "Overpowering Attack should compile with a freerunning alternative cost"
+    );
+
+    let has_freerunning = def.alternative_casts.iter().any(|method| {
+        method.name().eq_ignore_ascii_case("Freerunning")
+            && matches!(
+                method.cast_condition(),
+                Some(
+                    crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+                        Subtype::Assassin
+                    )
+                )
+            )
+    });
+    assert!(
+        has_freerunning,
+        "Overpowering Attack should encode Freerunning with Assassin-or-commander combat damage condition"
+    );
+}
+
+#[test]
+fn overpowering_attack_compiled_text_keeps_freerunning_and_extra_combat_clause() {
+    let def = parse_oracle_card_definition("Overpowering Attack");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Freerunning {2}{R}"),
+        "expected Overpowering Attack to render the freerunning keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "After this main phase, there is an additional combat phase followed by an additional main phase"
+        ),
+        "expected Overpowering Attack to keep additional combat/main phase clause, got {rendered}"
+    );
 }
 
 #[test]

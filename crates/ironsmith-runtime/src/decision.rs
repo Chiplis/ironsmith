@@ -2134,6 +2134,121 @@ mod tests {
     }
 
     #[test]
+    fn overpowering_attack_freerunning_condition_accepts_assassin_or_commander_combat_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9510), "Overpowering Attack")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(3),
+                ManaSymbol::Red,
+                ManaSymbol::Red,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let freerunning_condition = crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype::Assassin);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            freerunning_condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("Overpowering Attack should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let initial_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            initial_cost.to_oracle(),
+            "{3}{R}{R}",
+            "freerunning condition should be false before combat damage"
+        );
+
+        let wizard = CardBuilder::new(CardId::from_raw(9511), "Wizard Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let wizard_id = game.create_object_from_card(&wizard, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, wizard_id, bob, 2);
+
+        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let wizard_only_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            wizard_only_cost.to_oracle(),
+            "{3}{R}{R}",
+            "freerunning should remain unavailable after non-Assassin non-commander combat damage"
+        );
+
+        let assassin = CardBuilder::new(CardId::from_raw(9512), "Assassin Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Assassin])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let assassin_id = game.create_object_from_card(&assassin, alice, Zone::Battlefield);
+        stage_combat_damage_to_player_for_test(&mut game, assassin_id, bob, 2);
+
+        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let assassin_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            assassin_cost.to_oracle(),
+            "{1}{R}{R}",
+            "freerunning should apply after Assassin combat damage"
+        );
+    }
+
+    #[test]
+    fn overpowering_attack_freerunning_condition_accepts_commander_combat_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = CardBuilder::new(CardId::from_raw(9513), "Overpowering Attack")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(3),
+                ManaSymbol::Red,
+                ManaSymbol::Red,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype::Assassin),
+        ));
+        game.object_mut(spell_id)
+            .expect("Overpowering Attack should exist")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let soldier = CardBuilder::new(CardId::from_raw(9514), "Commander Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Soldier])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let commander_id = game.create_object_from_card(&soldier, alice, Zone::Battlefield);
+        game.set_commander(commander_id);
+        game.player_mut(alice)
+            .expect("player exists")
+            .set_commanders(vec![commander_id]);
+        stage_combat_damage_to_player_for_test(&mut game, commander_id, bob, 3);
+
+        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let commander_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(
+            commander_cost.to_oracle(),
+            "{1}{R}{R}",
+            "freerunning should apply after commander combat damage"
+        );
+    }
+
+    #[test]
     fn this_spell_cost_reduction_supports_devotion_where_x_is_clause() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

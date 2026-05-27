@@ -710,6 +710,15 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             }
             let left_raw = left_rest.trim_end_matches('.').trim();
             let right_raw = right_rest.trim_end_matches('.').trim();
+            let has_conditional_tail = |text: &str| {
+                let lower = text.to_ascii_lowercase();
+                lower.contains(" as long as ") || lower.contains(" for as long as ")
+            };
+            if has_conditional_tail(left_raw) || has_conditional_tail(right_raw) {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
+            }
             let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
             if is_trait(left_verb) && is_trait(right_verb) {
                 let left_lower = left_raw.to_ascii_lowercase();

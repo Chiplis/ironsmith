@@ -1157,6 +1157,45 @@ fn compile_oracle_text_strictly_compiles_sakashimas_will_with_choose_both_instea
 }
 
 #[test]
+fn compile_oracle_text_sharpened_pitchfork_keeps_conditional_bonus_separate() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+    assert!(
+        cards_path.exists(),
+        "expected workspace cards.json at {cards_path:?}"
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Sharpened Pitchfork")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --name Sharpened Pitchfork --compare-text");
+
+    assert!(
+        output.status.success(),
+        "Sharpened Pitchfork should compile strictly, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(stdout.contains("Name: Sharpened Pitchfork"), "{stdout}");
+    assert!(
+        stdout.contains(
+            "Equipped creature has first strike.\nEquipped creature gets +1/+1 as long as equipped creature is a human.\nEquip {1}"
+        ),
+        "expected compiled text to preserve a separate Human-condition bonus line, got {stdout}"
+    );
+}
+
+#[test]
 fn compile_oracle_text_outputs_original_oracle_text() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");

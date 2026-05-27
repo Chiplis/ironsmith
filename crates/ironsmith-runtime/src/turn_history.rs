@@ -513,6 +513,34 @@ impl TurnHistory {
         })
     }
 
+    pub fn player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
+        &self,
+        dealer: PlayerId,
+        subtype: Subtype,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            let Some(event) = record.event.downcast::<DamageEvent>() else {
+                return false;
+            };
+            if !event.is_combat || event.amount == 0 {
+                return false;
+            }
+            if !matches!(event.target, crate::events::DamageTarget::Player(_)) {
+                return false;
+            }
+
+            record
+                .source_snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .is_some_and(|snapshot| {
+                    snapshot.controller == dealer
+                        && snapshot.card_types.contains(&CardType::Creature)
+                        && (snapshot.subtypes.contains(&subtype) || snapshot.is_commander)
+                })
+        })
+    }
+
     pub fn creature_was_damaged_by_source_this_turn(
         &self,
         creature: ObjectId,

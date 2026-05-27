@@ -1229,6 +1229,12 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
                 subtype.to_string().to_ascii_lowercase()
             ))
         }
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+            subtype,
+        ) => Some(format!(
+            "you dealt combat damage to a player this turn with a {} or commander",
+            subtype.to_string().to_ascii_lowercase()
+        )),
     }
 }
 
@@ -1621,6 +1627,15 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
             .turn_store
             .turn_history
             .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype),
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+            subtype,
+        ) => game
+            .turn_store
+            .turn_history
+            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
+                controller,
+                *subtype,
+            ),
     }
 }
 

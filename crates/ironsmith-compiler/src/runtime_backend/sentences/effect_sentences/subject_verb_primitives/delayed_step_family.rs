@@ -728,21 +728,6 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
         || grammar::words_match_prefix(
             tokens,
             &[
-                "there",
-                "is",
-                "an",
-                "additional",
-                "combat",
-                "phase",
-                "after",
-                "this",
-                "phase",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
                 "that",
                 "creature",
                 "attacks",

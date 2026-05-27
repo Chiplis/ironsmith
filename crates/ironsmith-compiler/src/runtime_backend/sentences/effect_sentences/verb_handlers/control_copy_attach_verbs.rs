@@ -1168,18 +1168,6 @@ pub(crate) fn parse_put_into_hand(
         destination_tail.retain(|token| !token.is_word("and"));
         destination_tail.retain(|token| !token.is_word("tapped"));
         destination_tail.retain(|token| !token.is_word("attacking"));
-        if destination_tail.len() >= 2
-            && destination_tail[0].is_word("face")
-            && destination_tail[1].is_word("down")
-        {
-            destination_tail.drain(0..2);
-        }
-        if destination_tail
-            .first()
-            .is_some_and(|token| token.is_word("face-down"))
-        {
-            destination_tail.remove(0);
-        }
         if battlefield_attacking {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",

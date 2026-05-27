@@ -260,6 +260,25 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
+    if line.text.trim_start().starts_with("Freerunning ") {
+        let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
+        let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
+        let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!("freerunning keyword missing cost '{}'", line.text))
+        })?;
+        return Ok(LineAst::AlternativeCastingMethod(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost_with_condition(
+                "Freerunning",
+                Some(cost),
+                Vec::new(),
+                crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+                    crate::types::Subtype::Assassin,
+                ),
+            )
+            .into(),
+        ));
+    }
+
     let line_text = line.text.to_ascii_lowercase();
     if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
         return Ok(LineAst::Abilities(vec![

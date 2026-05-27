@@ -2256,6 +2256,46 @@ pub(crate) fn parse_static_condition_clause(
     if clause_words == ["equipped", "creature", "is", "attacking"] {
         return Ok(crate::ConditionExpr::EquippedCreatureAttacking);
     }
+    if clause_words.len() >= 4
+        && clause_words[0] == "equipped"
+        && clause_words[1] == "creature"
+        && clause_words[2] == "is"
+    {
+        let mut descriptor_words = &clause_words[3..];
+        if descriptor_words.first().is_some_and(|word| is_article(word)) {
+            descriptor_words = &descriptor_words[1..];
+        }
+
+        if descriptor_words.len() == 1 {
+            let descriptor = descriptor_words[0];
+            let mut filter = ObjectFilter::creature()
+                .match_tagged(crate::TagKey::from("equipped"), crate::target::TaggedOpbjectRelation::IsTaggedObject);
+            if let Some(color) = parse_color(descriptor) {
+                filter.colors = Some(color);
+                return Ok(crate::ConditionExpr::CountComparison {
+                    count: AnthemCountExpression::MatchingFilter(filter),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    display: Some(clause_words.join(" ")),
+                });
+            }
+            if let Some(subtype) = parse_subtype_flexible(descriptor) {
+                filter = filter.with_subtype(subtype);
+                return Ok(crate::ConditionExpr::CountComparison {
+                    count: AnthemCountExpression::MatchingFilter(filter),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    display: Some(clause_words.join(" ")),
+                });
+            }
+            if let Some(card_type) = parse_card_type(descriptor) {
+                filter.card_types.push(card_type);
+                return Ok(crate::ConditionExpr::CountComparison {
+                    count: AnthemCountExpression::MatchingFilter(filter),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    display: Some(clause_words.join(" ")),
+                });
+            }
+        }
+    }
     if clause_words == ["it", "is", "attacking"]
         || clause_words == ["its", "attacking"]
         || clause_words == ["this", "creature", "is", "attacking"]
