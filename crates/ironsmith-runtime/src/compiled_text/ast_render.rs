@@ -1756,6 +1756,17 @@ pub(super) fn describe_alternative_cast_line(
                 })
                 .unwrap_or_else(|| "Surge".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Freerunning") => {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Freerunning {} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)",
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Freerunning".to_string())
+        }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Prowl") => {
             method
                 .mana_cost()

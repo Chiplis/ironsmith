@@ -4558,6 +4558,28 @@ pub(crate) fn parse_this_spell_cost_condition(
         }
     }
 
+    if slice_starts_with(
+        &w,
+        &[
+            "you",
+            "dealt",
+            "combat",
+            "damage",
+            "to",
+            "a",
+            "player",
+            "this",
+            "turn",
+            "with",
+            "an",
+            "assassin",
+            "or",
+            "commander",
+        ],
+    ) {
+        return Some(ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype::Assassin));
+    }
+
     if let Some(condition_expr) = parse_conjoined_this_spell_cost_condition(tokens) {
         return Some(ThisSpellCostCondition::ConditionExpr {
             condition: condition_expr,

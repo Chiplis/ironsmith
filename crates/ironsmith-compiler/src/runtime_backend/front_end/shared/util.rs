@@ -5530,6 +5530,29 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     } else {
         let condition_words_view = UtilWordView::new(&condition_tokens);
         let condition_words = condition_words_view.to_word_refs();
+        if words_have_prefix(
+            condition_words.as_slice(),
+            &[
+                "you",
+                "dealt",
+                "combat",
+                "damage",
+                "to",
+                "a",
+                "player",
+                "this",
+                "turn",
+                "with",
+                "an",
+                "assassin",
+                "or",
+                "commander",
+            ],
+        ) {
+            crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+                crate::types::Subtype::Assassin,
+            )
+        } else
         if (words_have_prefix(
             condition_words.as_slice(),
             &["youve", "been", "dealt", "damage", "by"],
