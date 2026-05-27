@@ -1237,6 +1237,14 @@ pub(crate) fn parse_trigger_clause_lexed(
 
     for (tail, from_zones) in [
         (
+            ["is", "put", "into", "exile"].as_slice(),
+            Vec::new(),
+        ),
+        (
+            ["are", "put", "into", "exile"].as_slice(),
+            Vec::new(),
+        ),
+        (
             [
                 "is",
                 "put",
@@ -1367,12 +1375,17 @@ pub(crate) fn parse_trigger_clause_lexed(
             let subject_words = subject_view.to_word_refs();
             let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
-            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported filter in put-into-exile-from-zones trigger clause (clause: '{}')",
-                    words.join(" ")
-                ))
-            })?;
+            let stripped_subject_words = ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
+            let mut filter = if matches!(stripped_subject_words.as_slice(), ["card"] | ["cards"]) {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported filter in put-into-exile-from-zones trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
             filter.zone = None;
             filter.controller = None;
             filter.owner = None;
@@ -1380,7 +1393,10 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .iter()
                 .any(|word| matches!(*word, "card" | "cards"))
             {
-                filter.nontoken = true;
+                filter.card_types.clear();
+                if !from_zones.is_empty() {
+                    filter.nontoken = true;
+                }
             }
             return Ok(TriggerSpec::PutIntoExileFromZones {
                 filter,

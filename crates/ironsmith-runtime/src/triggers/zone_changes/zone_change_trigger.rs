@@ -348,15 +348,21 @@ impl ZoneChangeTrigger {
         }
 
         fn is_nontoken_card_subject_from_card_zones(trigger: &ZoneChangeTrigger) -> bool {
-            trigger.to == ZonePattern::Specific(Zone::Exile)
-                && matches!(
-                    &trigger.from,
-                    ZonePattern::OneOf(zones)
-                        if zones.contains(&Zone::Graveyard)
-                            && zones.contains(&Zone::Battlefield)
-                            && zones.len() == 2
-                )
-                && trigger.object_filter == ObjectFilter::default().nontoken()
+            if trigger.to != ZonePattern::Specific(Zone::Exile) {
+                return false;
+            }
+            if matches!(&trigger.from, ZonePattern::OneOf(zones) if zones.is_empty())
+                && trigger.object_filter == ObjectFilter::default()
+            {
+                return true;
+            }
+            matches!(
+                &trigger.from,
+                ZonePattern::OneOf(zones)
+                    if zones.contains(&Zone::Graveyard)
+                        && zones.contains(&Zone::Battlefield)
+                        && zones.len() == 2
+            ) && trigger.object_filter == ObjectFilter::default().nontoken()
         }
 
         if self.this_object {
@@ -480,7 +486,7 @@ impl ZoneChangeTrigger {
                 if let Some(source_phrase) = source_zone_phrase(self) {
                     parts.push(format!("{verb} put into exile {source_phrase}"));
                 } else {
-                    parts.push(format!("{verb} exiled"));
+                    parts.push(format!("{verb} put into exile"));
                 }
             }
             _ => {

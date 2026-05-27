@@ -2810,6 +2810,23 @@ CardDefinition {
         }
     }
 
+    fn stonebinders_familiar_payload() -> CardPayload {
+        CardPayload {
+            name: "Stonebinder's Familiar".to_string(),
+            parse_name: None,
+            oracle_text: "Whenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.".to_string(),
+            raw_oracle_text: "Whenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {W}".to_string(),
+                "Type: Creature - Spirit Dog".to_string(),
+                "Power/Toughness: 1/1".to_string(),
+            ],
+            parse_input: "Mana cost: {W}\nType: Creature - Spirit Dog\nPower/Toughness: 1/1\nWhenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
     fn semantic_mismatch_payload() -> CardPayload {
         CardPayload {
             name: "Mismatch Fixture".to_string(),
@@ -2970,6 +2987,25 @@ CardDefinition {
         assert!(
             snapshot.compiled_text.is_some(),
             "semantic mismatch snapshots should keep their compiled text"
+        );
+    }
+
+    #[test]
+    fn snapshot_strictly_compiles_stonebinders_familiar() {
+        let snapshot = compile_snapshot_from_payload(&stonebinders_familiar_payload());
+
+        assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
+        let compiled = snapshot
+            .compiled_text
+            .as_deref()
+            .expect("Stonebinder's Familiar should produce compiled text");
+        assert!(
+            compiled.contains("put") && compiled.contains("+1/+1") && compiled.contains("counter"),
+            "compiled text should keep the counter-adding trigger effect, got: {compiled}"
+        );
+        assert!(
+            compiled.contains("This ability triggers only once each turn"),
+            "compiled text should preserve the once-each-turn limit, got: {compiled}"
         );
     }
 

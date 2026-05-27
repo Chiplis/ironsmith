@@ -2861,6 +2861,113 @@ fn vengeful_warchief_triggers_only_on_the_first_life_loss_each_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn stonebinders_familiar_triggers_once_each_turn_and_only_during_your_turn() {
+    use crate::events::zones::ZoneChangeEvent;
+    use crate::object::CounterType;
+    use crate::triggers::TriggerEvent;
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let familiar = CardDefinitionBuilder::new(CardId::from_raw(81_710), "Stonebinder's Familiar")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Spirit, crate::types::Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Whenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.",
+        )
+        .expect("Stonebinder's Familiar should parse");
+    let familiar_id =
+        game.create_object_from_definition(&familiar, alice, crate::zone::Zone::Battlefield);
+
+    let exiled_card = CardBuilder::new(CardId::from_raw(81_711), "Exiled Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let exiled_id = game.create_object_from_card(&exiled_card, alice, Zone::Graveyard);
+
+    game.turn.active_player = alice;
+    let first_exile = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            exiled_id,
+            Zone::Graveyard,
+            Zone::Exile,
+            crate::events::cause::EventCause::from_effect(familiar_id, alice),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, first_exile, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Stonebinder's Familiar should trigger when cards are exiled during your turn");
+    assert_eq!(game.stack.len(), 1, "first exile event should trigger once");
+    resolve_stack_entry(&mut game).expect("Stonebinder's Familiar trigger should resolve");
+    assert_eq!(
+        game.counter_count(familiar_id, CounterType::PlusOnePlusOne),
+        1,
+        "first trigger should add one +1/+1 counter"
+    );
+
+    let second_exiled_card = CardBuilder::new(CardId::from_raw(81_712), "Second Exiled Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let second_exiled_id = game.create_object_from_card(&second_exiled_card, alice, Zone::Hand);
+    let second_exile_same_turn = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            second_exiled_id,
+            Zone::Hand,
+            Zone::Exile,
+            crate::events::cause::EventCause::from_effect(familiar_id, alice),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, second_exile_same_turn, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second same-turn exile should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "Stonebinder's Familiar should not trigger a second time in the same turn"
+    );
+    assert_eq!(
+        game.counter_count(familiar_id, CounterType::PlusOnePlusOne),
+        1,
+        "second same-turn exile should not add another counter"
+    );
+
+    game.turn.active_player = bob;
+    let opponent_exiled_card = CardBuilder::new(CardId::from_raw(81_713), "Opponent Exiled Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let opponent_exiled_id = game.create_object_from_card(&opponent_exiled_card, bob, Zone::Graveyard);
+    let exile_on_opponents_turn = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            opponent_exiled_id,
+            Zone::Graveyard,
+            Zone::Exile,
+            crate::events::cause::EventCause::from_effect(familiar_id, bob),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, exile_on_opponents_turn, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("opponent-turn exile event should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "Stonebinder's Familiar should not trigger during an opponent's turn"
+    );
+    assert_eq!(
+        game.counter_count(familiar_id, CounterType::PlusOnePlusOne),
+        1,
+        "opponent-turn exile should not add a counter"
+    );
+}
+
 #[test]
 fn test_triggered_mana_ability_resolves_immediately_without_stack() {
     let mut game = setup_game();
