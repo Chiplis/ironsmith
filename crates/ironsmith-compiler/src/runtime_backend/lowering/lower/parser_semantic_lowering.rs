@@ -1216,6 +1216,23 @@ fn lower_rewrite_static_to_chunk_impl(
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
+    let raw = line.info.raw_line.trim();
+    let raw_lower = raw.to_ascii_lowercase();
+    if raw_lower.starts_with("partner") {
+        let rest = raw.get("Partner".len()..).unwrap_or("").trim_start();
+        if rest.starts_with('\u{2014}') || rest.starts_with('-') || rest.starts_with('\u{2013}') {
+            let visible_label = raw
+                .split_once('(')
+                .map(|(head, _)| head)
+                .unwrap_or(raw)
+                .trim()
+                .to_string();
+            return wrap_chosen_option_static_chunk(
+                LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
+                chosen_option_label,
+            );
+        }
+    }
     if matches!(
         line.text.as_str(),
         "for each {B} in a cost, you may pay 2 life rather than pay that mana."

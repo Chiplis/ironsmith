@@ -59,7 +59,13 @@ impl StaticAbility {
             Some(StaticAbilityId::DayNightStartsDayAsEnters) => {
                 Self::day_night_starts_day_as_enters()
             }
-            Some(StaticAbilityId::Partner) => Self::partner(),
+            Some(StaticAbilityId::Partner) => {
+                if label.trim().eq_ignore_ascii_case("partner") {
+                    Self::partner()
+                } else {
+                    Self::partner_variant(label)
+                }
+            }
             Some(StaticAbilityId::PartnerWith) => Self::partner_with(label),
             Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),

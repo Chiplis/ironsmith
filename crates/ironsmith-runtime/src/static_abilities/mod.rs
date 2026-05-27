@@ -1606,6 +1606,10 @@ impl StaticAbility {
         Self::new(Partner)
     }
 
+    pub fn partner_variant(display: impl AsRef<str>) -> Self {
+        Self::new(PartnerVariant::new(display))
+    }
+
     pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
         Self::new(PartnerWith::new(partner_name))
     }

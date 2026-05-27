@@ -30983,6 +30983,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "partner" {
         return Some("Partner".to_string());
     }
+    if text.starts_with("partner-") || text.starts_with("partner\u{2014}") {
+        return Some(raw_text.to_string());
+    }
     if text.starts_with("partner with ") {
         return Some(raw_text.to_string());
     }
