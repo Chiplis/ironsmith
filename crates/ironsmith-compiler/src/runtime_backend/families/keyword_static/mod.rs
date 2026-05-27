@@ -734,9 +734,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_combat_damage_dealt_by_attached_line
         ),
-        single_static_ability_ast_passthrough_rule!(
-            parse_attached_prevent_all_damage_dealt_to_attached_line
-        ),
         multi_static_ability_ast_passthrough_rule!(parse_attached_gets_and_cant_block_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_attached_has_keywords_and_triggered_ability_line),
@@ -3073,11 +3070,11 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     copy_source_enchanted,
                     name_override: None,
                     added_card_types: Vec::new(),
-                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
+                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 clause_words.join(" "),
             )));
@@ -3160,11 +3157,11 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
 
     let mut name_override = None;
     let mut added_card_types = Vec::new();
-    let mut removed_supertypes = Vec::new();
     let mut added_subtypes = Vec::new();
     let mut added_abilities = Vec::new();
     let mut set_base_power_toughness = None;
     let mut set_base_power_toughness_from_self = false;
+    let mut enters_with_counters_if_source_controlled = Vec::new();
     if let Some(except_idx) = except_idx {
         let tail = &clause_words[except_idx + 1..];
         if tail.is_empty() {
@@ -3191,26 +3188,32 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             // the copied object's functional abilities for current engine use.
         } else if slice_starts_with(tail, &["it", "has"]) {
             added_abilities = parse_added_copy_abilities(tokens, &clause_words, except_idx + 2)?;
-        } else {
-            let mut tail_idx = 0usize;
-            if slice_starts_with(tail, &["it", "isn't", "legendary"])
-                || slice_starts_with(tail, &["it", "is", "not", "legendary"])
+        } else if tail.get(0..4) == Some(&["it", "enters", "with", "a"])
+            || tail.get(0..4) == Some(&["it", "enters", "with", "an"])
+        {
+            let Some(counter_word) = tail.get(4).copied() else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            let Some(counter_type) = parse_counter_type_word(counter_word) else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            if tail.get(5..13)
+                != Some(&["counter", "on", "it", "if", "you", "control", "that", "creature"])
             {
-                removed_supertypes.push(crate::types::Supertype::Legendary);
-                tail_idx = if tail.get(1).copied() == Some("isn't") {
-                    3
-                } else {
-                    4
-                };
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
             }
-
-            let tail_word_offset = tail_idx;
-            let tail = &tail[tail_idx..];
+            enters_with_counters_if_source_controlled.push((counter_type, 1));
+        } else {
             let type_idx = if tail.first().copied() == Some("its")
-                && matches!(tail.get(1).copied(), Some("a" | "an"))
-            {
-                2usize
-            } else if tail.first().copied() == Some("is")
                 && matches!(tail.get(1).copied(), Some("a" | "an"))
             {
                 2usize
@@ -3304,22 +3307,15 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                 ) {
                     set_base_power_toughness_from_self = true;
                 } else if !slice_starts_with(&tail[remainder_start..], &["and", "it", "has"]) {
-                    if !slice_starts_with(&tail[remainder_start..], &["and", "has"]) {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported enters-as-copy exception clause (clause: '{}')",
-                            clause_words.join(" ")
-                        )));
-                    }
-                    added_abilities = parse_added_copy_abilities(
-                        tokens,
-                        &clause_words,
-                        except_idx + 1 + tail_word_offset + remainder_start + 1,
-                    )?;
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported enters-as-copy exception clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
                 } else {
                     added_abilities = parse_added_copy_abilities(
                         tokens,
                         &clause_words,
-                        except_idx + 1 + tail_word_offset + remainder_start + 2,
+                        except_idx + 1 + remainder_start + 2,
                     )?;
                 }
             }
@@ -3340,7 +3336,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             added_abilities,
             set_base_power_toughness,
             set_base_power_toughness_from_self,
-            removed_supertypes,
+            enters_with_counters_if_source_controlled,
         },
         clause_words.join(" "),
     )))
