@@ -162,6 +162,7 @@ pub(super) fn apply_trait_replacement(
             enters_tapped,
             name_override,
             added_card_types,
+            removed_supertypes,
             added_subtypes,
             added_abilities,
             set_base_power_toughness,
@@ -172,6 +173,7 @@ pub(super) fn apply_trait_replacement(
                 *enters_tapped,
                 name_override.clone(),
                 added_card_types,
+                removed_supertypes,
                 added_subtypes,
                 added_abilities,
                 *set_base_power_toughness,
@@ -731,6 +733,7 @@ fn apply_trait_enter_as_copy(
     enters_tapped: bool,
     name_override: Option<String>,
     added_card_types: &[crate::types::CardType],
+    removed_supertypes: &[crate::types::Supertype],
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
     set_base_power_toughness: Option<(i32, i32)>,
@@ -742,6 +745,7 @@ fn apply_trait_enter_as_copy(
             .with_copy_of(source_id)
             .with_copy_name_override(name_override.clone())
             .with_added_card_types(added_card_types)
+            .with_removed_supertypes(removed_supertypes)
             .with_added_subtypes(added_subtypes)
             .with_added_abilities(added_abilities);
         if let Some((power, toughness)) = set_base_power_toughness {

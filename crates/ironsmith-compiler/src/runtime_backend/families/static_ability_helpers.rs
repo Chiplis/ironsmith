@@ -308,6 +308,27 @@ pub(crate) fn exalted_triggered_ability() -> Ability {
     )
 }
 
+pub(crate) fn myriad_triggered_ability() -> Ability {
+    let opponent_other_than_defending =
+        PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
+    Ability::triggered(
+        Trigger::this_attacks(),
+        vec![Effect::for_players(
+            opponent_other_than_defending,
+            vec![Effect::may(vec![Effect::new(
+                crate::effects::CreateTokenCopyEffect::new(
+                    crate::target::ChooseSpec::Source,
+                    1,
+                    PlayerFilter::You,
+                )
+                .enters_tapped(true)
+                .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer)
+                .exile_at_eoc(true),
+            )])],
+        )],
+    )
+}
+
 fn graveyard_return_counter_ability(
     counter_type: crate::object::CounterType,
     trigger_tag: &'static str,
@@ -430,6 +451,9 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
             }
             GrantedAbilityAst::KeywordAction(KeywordAction::Exalted) => {
                 lowered.push(exalted_triggered_ability());
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Myriad) => {
+                lowered.push(myriad_triggered_ability());
             }
             _ => lowered.push(lower_granted_ability_ast_to_object_ability(ability)?),
         }

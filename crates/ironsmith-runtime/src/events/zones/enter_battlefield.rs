@@ -7,7 +7,7 @@ use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 /// An enter battlefield event with ETB-specific modifiers.
@@ -31,6 +31,8 @@ pub struct EnterBattlefieldEvent {
     pub copy_name_override: Option<String>,
     /// Additional card types granted by the copy-as-enters replacement.
     pub added_card_types: Vec<CardType>,
+    /// Supertypes removed by the copy-as-enters replacement.
+    pub removed_supertypes: Vec<Supertype>,
     /// Additional subtypes granted by the copy-as-enters replacement.
     pub added_subtypes: Vec<Subtype>,
     /// Additional abilities granted by the copy-as-enters replacement.
@@ -52,6 +54,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
+            removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
@@ -69,6 +72,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
+            removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
@@ -140,6 +144,20 @@ impl EnterBattlefieldEvent {
         }
         Self {
             added_subtypes,
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with supertypes removed as it enters.
+    pub fn with_removed_supertypes(&self, supertypes: &[Supertype]) -> Self {
+        let mut removed_supertypes = self.removed_supertypes.clone();
+        for supertype in supertypes {
+            if !removed_supertypes.contains(supertype) {
+                removed_supertypes.push(*supertype);
+            }
+        }
+        Self {
+            removed_supertypes,
             ..self.clone()
         }
     }

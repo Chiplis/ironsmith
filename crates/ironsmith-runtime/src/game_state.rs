@@ -4249,6 +4249,13 @@ impl GameState {
                 }
             }
         }
+        if !result.removed_supertypes.is_empty()
+            && let Some(new_obj) = self.object_mut(new_id)
+        {
+            new_obj
+                .supertypes
+                .retain(|supertype| !result.removed_supertypes.contains(supertype));
+        }
         if !result.added_subtypes.is_empty()
             && let Some(new_obj) = self.object_mut(new_id)
         {
