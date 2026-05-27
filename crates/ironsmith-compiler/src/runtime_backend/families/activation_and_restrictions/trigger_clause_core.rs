@@ -3064,25 +3064,38 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
-    let words = if let Some(attacks_word_idx) =
+    let (words, attacked_player_filter, attacked_target_must_be_player) = if let Some(attacks_word_idx) =
         find_index(&words, |word| matches!(*word, "attack" | "attacks"))
     {
         let tail = &words[attacks_word_idx + 1..];
-        if matches!(
+        if matches!(tail, ["a", "player"]) {
+            (
+                &words[..=attacks_word_idx],
+                Some(PlayerFilter::Any),
+                true,
+            )
+        } else if matches!(tail, ["the", "defending", "player"] | ["defending", "player"]) {
+            (
+                &words[..=attacks_word_idx],
+                Some(PlayerFilter::Any),
+                true,
+            )
+        } else if matches!(
             tail,
-            ["a", "player"]
-                | ["a", "planeswalker"]
-                | ["a", "battle"]
-                | ["one", "of", "your", "opponents", "or", "a", "planeswalker", "they", "control"]
-                | ["the", "defending", "player"]
-                | ["defending", "player"]
+            ["one", "of", "your", "opponents", "or", "a", "planeswalker", "they", "control"]
         ) {
-            &words[..=attacks_word_idx]
+            (
+                &words[..=attacks_word_idx],
+                Some(PlayerFilter::Opponent),
+                false,
+            )
+        } else if matches!(tail, ["a", "planeswalker"] | ["a", "battle"]) {
+            (&words[..=attacks_word_idx], None, false)
         } else {
-            &words
+            (&words[..], None, false)
         }
     } else {
-        &words
+        (&words[..], None, false)
     };
 
     let last = words
@@ -3103,7 +3116,14 @@ pub(crate) fn parse_trigger_clause_lexed(
                 || player_subject;
             Ok(
                 match parse_attack_trigger_subject_filter_lexed(subject_tokens)? {
-                    Some(filter) => {
+                    Some(mut filter) => {
+                        if let Some(player_filter) = attacked_player_filter.clone() {
+                            filter.attacking_player_or_planeswalker_controlled_by =
+                                Some(player_filter.clone());
+                            if attacked_target_must_be_player {
+                                filter.targets_only_player = Some(player_filter);
+                            }
+                        }
                         if one_or_more {
                             TriggerSpec::AttacksOneOrMore(filter)
                         } else {
