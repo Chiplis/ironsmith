@@ -33866,6 +33866,60 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_xanthic_statue_strict_regression() {
+    assert_oracle_card_parses_strict("Xanthic Statue");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
+    let def = parse_oracle_card_definition("Xanthic Statue");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("until end of turn")
+            && rendered.contains("this artifact becomes 8/8 golem artifact creature with trample"),
+        "expected Xanthic Statue become-until-end clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn xanthic_statue_activation_sets_base_pt_and_trample_on_source_artifact() {
+    use crate::ability::AbilityKind;
+
+    let def = parse_oracle_card_definition("Xanthic Statue");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Xanthic Statue should have an activated ability");
+
+    assert_eq!(
+        activated.mana_cost.display(),
+        "{5}",
+        "expected Xanthic Statue activation cost to remain {{5}}"
+    );
+
+    let effects_debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+    assert!(
+        effects_debug.contains("until: endofturn")
+            && effects_debug.contains("creature")
+            && effects_debug.contains("artifact")
+            && effects_debug.contains("setpowertoughness")
+            && effects_debug.contains("power: fixed(8)")
+            && effects_debug.contains("toughness: fixed(8)")
+            && effects_debug.contains("addsubtypes([golem])")
+            && effects_debug.contains("label: \"trample\""),
+        "expected Xanthic Statue lowering to include until-end continuous become effect, got {effects_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oran_rief_the_vastwood_strict_regression() {
     assert_oracle_card_parses_strict("Oran-Rief, the Vastwood");
 }
