@@ -24504,6 +24504,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled")
         {
             "For each object exiled this way".to_string()
+        } else if tag.starts_with("revealed_")
+            || tag.contains("revealed_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "revealed")
+        {
+            "For each card revealed this way".to_string()
+        } else if tag.starts_with("looked_")
+            || tag.contains("looked_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "looked")
+        {
+            "For each card looked at this way".to_string()
+        } else if tag.starts_with("chosen_")
+            || tag.contains("chosen_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "chosen")
+        {
+            "For each card chosen this way".to_string()
+        } else if tag.starts_with("searched_")
+            || tag.contains("searched_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "searched")
+        {
+            "For each card searched for this way".to_string()
         } else if tag.starts_with("sacrificed_")
             || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
