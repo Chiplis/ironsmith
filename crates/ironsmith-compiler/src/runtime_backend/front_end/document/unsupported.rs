@@ -340,10 +340,6 @@ pub(super) fn diagnose_known_unsupported_rewrite_line(
         } else {
             "unsupported lose-all-abilities static becomes clause"
         }
-    } else if ctx.contains_phrase(&["for", "each", "odd", "result"])
-        && ctx.contains_phrase(&["for", "each", "even", "result"])
-    {
-        "unsupported odd-or-even die-result clause"
     } else if ctx.contains_phrase(&[
         "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner", "may",
         "play", "it",

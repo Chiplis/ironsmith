@@ -13604,3 +13604,24 @@ fn parse_trigger_clause_supports_one_or_more_energy_player_gain() {
         "expected one-or-more energy player-counters trigger, got {parsed:?}"
     );
 }
+
+#[test]
+fn clown_car_parses_roll_x_six_sided_dice_with_odd_even_result_clauses() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Clown Car")
+        .parse_text(
+            "When this Vehicle enters, roll X six-sided dice. For each odd result, create a 1/1 white Clown Robot artifact creature token. For each even result, put a +1/+1 counter on this Vehicle.\nCrew 2",
+        )
+        .expect("Clown Car text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("RepeatEffects")
+            && debug.contains("RollDieEffect")
+            && debug.contains("OneOf([1, 3, 5])")
+            && debug.contains("OneOf([2, 4, 6])")
+            && debug.contains("CreateToken")
+            && debug.contains("PutCounter")
+            && debug.contains("Clown")
+            && debug.contains("Robot"),
+        "expected repeat roll plus odd/even result branches for Clown Car, got {debug}"
+    );
+}

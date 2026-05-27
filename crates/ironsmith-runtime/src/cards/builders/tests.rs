@@ -3646,6 +3646,45 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Clown Car")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Vehicle])
+        .parse_text(
+            "When this Vehicle enters, roll X six-sided dice. For each odd result, create a 1/1 white Clown Robot artifact creature token. For each even result, put a +1/+1 counter on this Vehicle.\nCrew 2",
+        )
+        .expect("Clown Car text should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(abilities_debug.contains("RepeatEffects"), "{abilities_debug}");
+    assert!(abilities_debug.contains("RollDieEffect"), "{abilities_debug}");
+    assert!(abilities_debug.contains("OneOf([1, 3, 5])"), "{abilities_debug}");
+    assert!(abilities_debug.contains("OneOf([2, 4, 6])"), "{abilities_debug}");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("roll") && rendered.contains("d6"),
+        "expected roll clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("1, 3, 5") && rendered.contains("2, 4, 6"),
+        "expected odd/even result branch conditions in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("1/1")
+            && rendered.contains("white")
+            && rendered.contains("robot")
+            && rendered.contains("artifact creature token"),
+        "expected Clown Robot token creation payload in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("+1/+1 counter") && rendered.contains("this vehicle"),
+        "expected even-result +1/+1 counter branch in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sevinne's Reclamation")
         .card_types(vec![CardType::Sorcery])

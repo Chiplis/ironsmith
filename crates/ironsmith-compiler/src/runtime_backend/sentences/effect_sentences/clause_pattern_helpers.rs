@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, OwnedLexToken, PlayerAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken, PlayerAst,
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
@@ -37,6 +37,9 @@ const ODD_EVEN_RESULT_PREFIXES: &[&[&str]] = &[
     &["for", "each", "odd", "result"],
     &["for", "each", "even", "result"],
 ];
+
+const ODD_RESULT_VALUES_D6: &[i32] = &[1, 3, 5];
+const EVEN_RESULT_VALUES_D6: &[i32] = &[2, 4, 6];
 const OPEN_ATTRACTION_PREFIXES: &[&[&str]] = &[
     &["open", "an", "attraction"],
     &["opens", "an", "attraction"],
@@ -1755,16 +1758,72 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if clause_words.first() == Some(&"roll") && word_slice_contains(&clause_words, "dice") {
+        if clause_words.last() == Some(&"dice")
+            && clause_words.len() >= 5
+            && clause_words[clause_words.len() - 3..clause_words.len() - 1] == ["six", "sided"]
+        {
+            let value_words = &clause_words[1..clause_words.len() - 3];
+            let value_tokens = value_words
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            let (count, used) = parse_value(&value_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing roll-dice count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            if used != value_tokens.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported roll-dice count tail (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            return Ok(Some(EffectAst::RepeatEffects {
+                count,
+                effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
+            }));
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported roll-dice clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
-    if grammar::words_match_any_prefix(clause_tokens, ODD_EVEN_RESULT_PREFIXES).is_some() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported odd/even-result clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
+    if let Some((prefix, _)) = grammar::words_match_any_prefix(clause_tokens, ODD_EVEN_RESULT_PREFIXES) {
+        let predicate = if prefix == ODD_EVEN_RESULT_PREFIXES[0] {
+            crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6)
+        } else {
+            crate::effect::Comparison::OneOf(EVEN_RESULT_VALUES_D6)
+        };
+        let mut tail_tokens = trim_commas(&clause_tokens[prefix.len()..]);
+        if tail_tokens
+            .first()
+            .is_some_and(|token| token.is_word("then") || token.is_word("you"))
+        {
+            while tail_tokens
+                .first()
+                .is_some_and(|token| token.is_word("then") || token.is_word("you"))
+            {
+                tail_tokens = trim_commas(&tail_tokens[1..]);
+            }
+        }
+        let Some((verb, verb_idx)) = find_verb(&tail_tokens) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing action after odd/even-result clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        if verb_idx != 0 {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported odd/even-result action prefix (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let effect = parse_effect_with_verb(verb, None, &tail_tokens[1..])?;
+        return Ok(Some(EffectAst::IfResult {
+            predicate: IfResultPredicate::Value(predicate),
+            effects: vec![effect],
+        }));
     }
 
     if clause_words.first() == Some(&"dredge")

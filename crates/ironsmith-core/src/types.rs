@@ -178,6 +178,7 @@ pub enum Subtype {
     Cat,
     Centaur,
     Citizen,
+    Clown,
     Coward,
     Changeling,
     Cleric,
@@ -457,6 +458,7 @@ impl Subtype {
             Subtype::Cat,
             Subtype::Centaur,
             Subtype::Citizen,
+            Subtype::Clown,
             Subtype::Coward,
             Subtype::Changeling,
             Subtype::Cleric,
@@ -773,6 +775,7 @@ impl Subtype {
                 | Subtype::Cat
                 | Subtype::Centaur
                 | Subtype::Citizen
+                | Subtype::Clown
                 | Subtype::Coward
                 | Subtype::Changeling
                 | Subtype::Cleric
