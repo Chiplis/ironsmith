@@ -34196,8 +34196,7 @@ fn cephalid_vandal_compiled_text_keeps_shred_counter_mill_clause() {
     assert!(
         rendered.contains("at the beginning of your upkeep")
             && rendered.contains("put a shred counter on this creature")
-            && (rendered.contains("mill a card for each shred counter on this creature")
-                || rendered.contains("mill a card for each shred counters on this creature")),
+            && rendered.contains("mill a card for each shred counter on this creature"),
         "expected Cephalid Vandal upkeep shred-counter mill clause, got {rendered}"
     );
 }

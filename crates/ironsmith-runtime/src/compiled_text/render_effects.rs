@@ -17776,6 +17776,13 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     }
 }
 
+fn singularize_for_each_basis(basis: &str) -> String {
+    if let Some((head, tail)) = basis.split_once(" counters on ") {
+        return format!("{head} counter on {tail}");
+    }
+    basis.to_string()
+}
+
 fn describe_tagged_creature_power_count_basis(spec: &ChooseSpec) -> Option<&'static str> {
     match spec.base() {
         ChooseSpec::Tagged(tag)
@@ -26424,7 +26431,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let count_text = describe_card_count(&mill.count);
         if let Some(rest) = count_text.strip_prefix("the number of ") {
-            let basis = rest.strip_suffix(" cards").unwrap_or(rest);
+            let basis = singularize_for_each_basis(rest.strip_suffix(" cards").unwrap_or(rest));
             return format!(
                 "{} {} a card for each {}",
                 player,
