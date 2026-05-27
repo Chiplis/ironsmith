@@ -358,8 +358,6 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
-    let rewritten_theyre = rewrite_theyre_characteristic_clause(tokens);
-    let tokens = rewritten_theyre.as_deref().unwrap_or(tokens);
 
     if let Some(spec) = parse_may_cast_it_sentence(tokens) {
         return Ok(build_may_cast_tagged_effect(&spec));
@@ -1443,31 +1441,6 @@ pub(crate) fn parse_effect_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
     parse_effect_clause(tokens)
-}
-
-fn rewrite_theyre_characteristic_clause(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let starts_with_theyre = matches!(words.as_slice(), ["theyre", ..] | ["they", "re", ..]);
-    if !starts_with_theyre {
-        return None;
-    }
-    let mentions_creature = words.iter().any(|word| *word == "creature" || *word == "creatures");
-    if !mentions_creature {
-        return None;
-    }
-
-    let mut rewritten = tokens.to_vec();
-    if rewritten.first().is_some_and(|token| token.is_word("theyre")) {
-        rewritten[0] = OwnedLexToken::synthetic_word("they");
-        rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
-        return Some(rewritten);
-    }
-    if rewritten.len() >= 2 && rewritten[0].is_word("they") && rewritten[1].is_word("re") {
-        rewritten.remove(1);
-        rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
-        return Some(rewritten);
-    }
-    None
 }
 
 #[cfg(test)]
