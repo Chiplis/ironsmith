@@ -729,6 +729,7 @@ pub enum Condition {
         count: u32,
     },
     SourcePowerAtLeast(u32),
+    SourceDealtCombatDamageToPlayerThisTurn,
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,
         symbol: Option<ManaSymbol>,

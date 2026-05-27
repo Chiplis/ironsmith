@@ -520,6 +520,7 @@ pub(crate) enum PredicateAst {
         display: String,
     },
     SourcePowerAtLeast(u32),
+    SourceDealtCombatDamageToPlayerThisTurn,
     SourceAttackedThisTurn,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,

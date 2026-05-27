@@ -7833,6 +7833,13 @@ impl GameState {
             .creature_was_damaged_this_turn(creature)
     }
 
+    pub fn source_dealt_combat_damage_to_player_this_turn(&self, source: ObjectId) -> bool {
+        let stable_id = self.object(source).map(|obj| obj.stable_id);
+        self.turn_store
+            .turn_history
+            .source_dealt_combat_damage_to_player_this_turn(source, stable_id)
+    }
+
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
         self.damage_marked.remove(&id);

@@ -24920,9 +24920,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
             Zone::Battlefield => {
-                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
-                {
-                    "that card".to_string()
+                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering") {
+                    "it".to_string()
                 } else {
                     target
                 };
@@ -24942,7 +24941,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     crate::effects::BattlefieldController::You => " under your control",
                 };
                 if let crate::target::ChooseSpec::Tagged(tag) = &move_to_zone.target
-                    && (tag.as_str().starts_with("exiled_")
+                    && (tag.as_str() == "triggering"
+                        || tag.as_str().starts_with("exiled_")
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
                     format!("Return {target} to the battlefield{tapped_suffix}{controller_suffix}")
