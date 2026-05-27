@@ -580,6 +580,9 @@ pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifestCardFromHandEffect;
+
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self { player }
@@ -587,6 +590,12 @@ impl ManifestTopCardOfLibraryEffect {
 }
 
 impl ManifestDreadEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl ManifestCardFromHandEffect {
     pub fn new() -> Self {
         Self
     }
@@ -659,6 +668,27 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
         let Some(&card_id) = game
             .player(library_owner)
             .and_then(|player| player.library.last())
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+
+        manifest_card(game, ctx, card_id, ctx.controller)
+    }
+}
+
+impl EffectExecutor for ManifestCardFromHandEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Some(&card_id) = game
+            .player(ctx.controller)
+            .and_then(|player| player.hand.last())
         else {
             return Ok(EffectOutcome::count(0));
         };
@@ -2025,6 +2055,46 @@ mod tests {
         assert_eq!(manifested.owner, bob);
         assert_eq!(game.controller_of(manifested), alice);
         assert!(game.is_face_down(manifested_id));
+    }
+
+    #[test]
+    fn scroll_of_fate_manifest_from_hand_moves_a_hand_card_face_down() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let hand_card = CardBuilder::new(CardId::new(), "Scroll Hidden Card")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let hand_id = game.create_object_from_card(&hand_card, alice, Zone::Hand);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = ManifestCardFromHandEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("manifest from hand should execute");
+
+        let manifested_id = outcome
+            .value
+            .objects()
+            .and_then(|ids| ids.first().copied())
+            .expect("manifest from hand should create one permanent");
+        assert_ne!(manifested_id, hand_id);
+        assert!(game.is_face_down(manifested_id));
+        assert!(game.is_manifested(manifested_id));
+    }
+
+    #[test]
+    fn scroll_of_fate_manifest_from_hand_with_empty_hand_does_nothing() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = ManifestCardFromHandEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("empty-hand manifest from hand should execute");
+
+        assert!(outcome.value.objects().is_none_or(|ids| ids.is_empty()));
     }
 
     #[test]

@@ -1538,6 +1538,12 @@ impl Effect {
         Self::new(ManifestTopCardOfLibraryEffect::new(player))
     }
 
+    /// Create a "manifest a card from your hand" effect.
+    pub fn manifest_card_from_hand() -> Self {
+        use crate::effects::ManifestCardFromHandEffect;
+        Self::new(ManifestCardFromHandEffect::new())
+    }
+
     /// Create a "populate" effect.
     pub fn populate(count: impl Into<Value>) -> Self {
         use crate::effects::PopulateEffect;

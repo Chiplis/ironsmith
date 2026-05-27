@@ -319,6 +319,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
             | SubjectVerbActionAst::Behold { .. }

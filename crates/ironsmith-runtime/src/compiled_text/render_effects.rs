@@ -27825,6 +27825,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         return format!("Manifest the top card of {owner} library");
     }
+    if effect
+        .downcast_ref::<crate::effects::ManifestCardFromHandEffect>()
+        .is_some()
+    {
+        return "Manifest a card from your hand".to_string();
+    }
     if let Some(populate) = effect.downcast_ref::<crate::effects::PopulateEffect>() {
         let mut text = match &populate.count {
             Value::Fixed(1) => "Populate".to_string(),

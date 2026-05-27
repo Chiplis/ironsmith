@@ -714,6 +714,7 @@ pub(crate) enum SubjectVerbActionAst {
     ConniveIterated,
     OpenAttraction,
     ManifestTopCardOfLibrary,
+    ManifestCardFromHand,
     ManifestDread,
     Earthbend {
         counters: u32,
@@ -1699,6 +1700,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ConniveIterated => f.write_str("ConniveIterated"),
             Self::OpenAttraction => f.write_str("OpenAttraction"),
             Self::ManifestTopCardOfLibrary => f.write_str("ManifestTopCardOfLibrary"),
+            Self::ManifestCardFromHand => f.write_str("ManifestCardFromHand"),
             Self::ManifestDread => f.write_str("ManifestDread"),
             Self::Earthbend { counters } => f.debug_tuple("Earthbend").field(counters).finish(),
             Self::Behold { subtype, count } => f
@@ -4860,6 +4862,14 @@ impl EffectAst {
             SubjectVerbRoleAst::LibraryOwner,
             player,
             SubjectVerbActionAst::ManifestTopCardOfLibrary,
+        )
+    }
+
+    pub(crate) fn subject_verb_manifest_from_hand(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ManifestCardFromHand,
         )
     }
 
