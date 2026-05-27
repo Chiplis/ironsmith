@@ -32805,12 +32805,11 @@ fn parse_oracle_warp_world_strict_parse_and_render_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("for each player")
-            && rendered.contains("that player owns")
-            && rendered.contains("reveals the top that many cards")
-            && rendered.contains("for each card revealed this way")
-            && rendered.contains("if it matches artifact, creature, land, or enchantment")
-            && rendered.contains("put that object on the bottom of its owner's library"),
+        rendered.contains("each player shuffles all permanents they own into their library")
+            && rendered.contains("reveals that many cards from the top of their library")
+            && rendered.contains("artifact, creature, and land cards revealed this way")
+            && rendered.contains("then does the same for enchantment cards")
+            && rendered.contains("weren't put onto the battlefield on the bottom of their library"),
         "expected Warp World to keep the owned-shuffle and staged reveal distribution wording, got {rendered}"
     );
     assert!(
