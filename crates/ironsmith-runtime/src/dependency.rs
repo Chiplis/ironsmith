@@ -960,10 +960,12 @@ fn object_matches_filter_with_chars(
         return false;
     }
 
-    if let Some(required_name) = &filter.name
-        && object.name != *required_name
-    {
-        return false;
+    if let Some(required_name) = &filter.name {
+        let object_name = object.name.trim().to_ascii_lowercase();
+        let required_name = required_name.trim().to_ascii_lowercase();
+        if object_name != required_name {
+            return false;
+        }
     }
 
     if filter.is_commander && !game.is_commander(object.id) {

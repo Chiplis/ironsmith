@@ -15116,9 +15116,6 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         return describe_dynamic_mana_cost(dynamic);
     }
     if let Some(effect) = cost.effect_ref() {
-        if let Some(cost_text) = effect.0.cost_description() {
-            return normalize_cost_phrase(&cost_text);
-        }
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
             && matches!(tap.target, ChooseSpec::Source)
         {
@@ -15133,6 +15130,9 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
             && let Some(text) = describe_simple_discard_cost(discard)
         {
             return text;
+        }
+        if let Some(cost_text) = effect.0.cost_description() {
+            return normalize_cost_phrase(&cost_text);
         }
         return normalize_cost_phrase(&describe_effect(effect));
     }
@@ -15264,21 +15264,50 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
         return None;
     };
     let count = count.max(0) as u32;
-    let card_type = match &discard.card_filter {
-        None => None,
+    let (card_type, name_filter, other_filter) = match &discard.card_filter {
+        None => (None, None, false),
         Some(filter) if filter.card_types.len() == 1 => {
             let expected = ObjectFilter {
                 zone: Some(Zone::Hand),
                 card_types: filter.card_types.clone(),
+                name: filter.name.clone(),
+                other: filter.other,
                 ..Default::default()
             };
             if filter != &expected {
                 return None;
             }
-            filter.card_types.first().copied()
+            (
+                filter.card_types.first().copied(),
+                filter.name.as_deref(),
+                filter.other,
+            )
+        }
+        Some(filter) if filter.card_types.is_empty() => {
+            let expected = ObjectFilter {
+                zone: Some(Zone::Hand),
+                name: filter.name.clone(),
+                other: filter.other,
+                ..Default::default()
+            };
+            if filter != &expected {
+                return None;
+            }
+            (None, filter.name.as_deref(), filter.other)
         }
         Some(_) => return None,
     };
+
+    if let Some(name) = name_filter {
+        if count != 1 {
+            return None;
+        }
+        return Some(if other_filter {
+            format!("Discard another card named {name}")
+        } else {
+            format!("Discard a card named {name}")
+        });
+    }
 
     let Some(card_type) = card_type else {
         return Some(if count == 1 {
