@@ -523,7 +523,7 @@ pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<Effect
     LexRuleDef {
         id: "redirect-next-damage",
         priority: 100,
-        heads: &["the"],
+        heads: &["the", "all"],
         shape_mask: 0,
         run: parse_redirect_next_damage_sentence_rule_lexed,
     },

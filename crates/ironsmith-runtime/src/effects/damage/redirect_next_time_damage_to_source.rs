@@ -64,11 +64,21 @@ pub enum RedirectNextTimeDamageSource {
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: ChooseSpec,
+    pub all_this_turn: bool,
 }
 
 impl RedirectNextTimeDamageToSourceEffect {
     pub fn new(source: RedirectNextTimeDamageSource, target: ChooseSpec) -> Self {
-        Self { source, target }
+        Self {
+            source,
+            target,
+            all_this_turn: false,
+        }
+    }
+
+    pub fn all_this_turn(mut self) -> Self {
+        self.all_this_turn = true;
+        self
     }
 }
 
@@ -136,9 +146,15 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
                 which: RedirectWhich::First,
             },
         );
-        game.effect_store
-            .replacement_effects
-            .add_one_shot_effect(replacement);
+        if self.all_this_turn {
+            game.effect_store
+                .replacement_effects
+                .add_until_end_of_turn_effect(replacement);
+        } else {
+            game.effect_store
+                .replacement_effects
+                .add_one_shot_effect(replacement);
+        }
         Ok(EffectOutcome::resolved())
     }
 
@@ -148,5 +164,95 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
 
     fn target_description(&self) -> &'static str {
         "target creature to protect and redirect from"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::effects::ExecutionContext;
+    use crate::ids::CardId;
+    use crate::effects::ResolvedTarget;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    #[test]
+    fn oracles_attendants_style_redirect_registers_until_end_of_turn_effect() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+
+        let attendants = CardBuilder::new(CardId::from_raw(80_001), "Oracle's Attendants")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&attendants, alice, Zone::Battlefield);
+
+        let bear = CardBuilder::new(CardId::from_raw(80_002), "Runeclaw Bear")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target = game.create_object_from_card(&bear, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+            .all_this_turn()
+            .execute(&mut game, &mut ctx)
+            .expect("Oracle's Attendants style replacement should register");
+
+        assert_eq!(
+            game.effect_store.replacement_effects.one_shot_effects_snapshot().len(),
+            0,
+            "all-damage redirect should not register as one-shot"
+        );
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .until_end_of_turn_effects_snapshot()
+                .len(),
+            1,
+            "all-damage redirect should register until end of turn"
+        );
+    }
+
+    #[test]
+    fn next_time_redirect_stays_one_shot() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+
+        let shaman = CardBuilder::new(CardId::from_raw(80_011), "Shaman en-Kor")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&shaman, alice, Zone::Battlefield);
+
+        let target_creature = CardBuilder::new(CardId::from_raw(80_012), "Target Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target = game.create_object_from_card(&target_creature, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+            .execute(&mut game, &mut ctx)
+            .expect("next-time replacement should register");
+
+        assert_eq!(
+            game.effect_store.replacement_effects.one_shot_effects_snapshot().len(),
+            1,
+            "next-time redirect should remain one-shot"
+        );
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .until_end_of_turn_effects_snapshot()
+                .len(),
+            0,
+            "next-time redirect should not register until end of turn"
+        );
     }
 }

@@ -22952,6 +22952,25 @@ fn parse_next_time_source_damage_redirect_to_this_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn oracles_attendants_parses_and_renders_all_damage_source_redirect_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oracle's Attendants")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: All damage that would be dealt to target creature this turn by a source of your choice is dealt to this creature instead.",
+        )
+        .expect("Oracle's Attendants should parse");
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("all damage that would be dealt to target creature this turn by a source of your choice is dealt to this creature instead"),
+        "expected all-damage source redirect text in compiled output, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])

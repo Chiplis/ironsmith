@@ -1311,6 +1311,7 @@ pub(crate) enum SubjectVerbActionAst {
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        all_this_turn: bool,
     },
     Meld {
         result_name: String,
@@ -2626,10 +2627,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("target", target)
                 .finish(),
-            Self::RedirectNextTimeDamageToSource { source, target } => f
+            Self::RedirectNextTimeDamageToSource {
+                source,
+                target,
+                all_this_turn,
+            } => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
                 .field("target", target)
+                .field("all_this_turn", all_this_turn)
                 .finish(),
             Self::Meld {
                 result_name,
@@ -4306,7 +4312,26 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::RedirectNextTimeDamageToSource { source, target },
+            SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+                source,
+                target,
+                all_this_turn: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_source(
+        source: PreventNextTimeDamageSourceAst,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+                source,
+                target,
+                all_this_turn: true,
+            },
         )
     }
 
