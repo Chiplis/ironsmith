@@ -11440,6 +11440,25 @@ fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_experiment_twelve_strict_parse_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Experiment Twelve")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Trample\nWhenever this creature or another creature you control is turned face up, put +1/+1 counters on that creature equal to its power.\nDisguise {4}{G}",
+        )
+        .expect("Experiment Twelve should parse");
+
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("put x +1/+1 counters on it, where x is its power"),
+        "expected dynamic power-based counter clause in compiled output, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Dragon Engine")
         .card_types(vec![CardType::Creature])
