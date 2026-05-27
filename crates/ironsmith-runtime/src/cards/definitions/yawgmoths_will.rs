@@ -233,4 +233,39 @@ mod tests {
             .unwrap_or(false);
         assert!(!bears_in_gy, "Grizzly Bears should NOT be in graveyard");
     }
+
+    /// Negative coverage for Yawgmoth's Will replacement timing boundary:
+    /// before Yawgmoth's Will resolves, normal destruction still uses graveyard.
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn test_replay_without_yawgmoths_will_uses_graveyard_normally() {
+        let game = run_replay_test(
+            vec![
+                "1", // Cast Lightning Bolt from hand
+                "2", // Target Grizzly Bears (0=P1, 1=P2, 2=Bears)
+                "0", // Tap Mountain for mana
+                "",  // Pass priority to resolve Bolt
+            ],
+            ReplayTestConfig::new()
+                .p1_hand(vec!["Lightning Bolt"])
+                .p1_battlefield(vec!["Mountain", "Grizzly Bears"]),
+        );
+
+        let alice = PlayerId::from_index(0);
+
+        let bears_in_graveyard = game
+            .player(alice)
+            .map(|p| {
+                p.graveyard.iter().any(|&id| {
+                    game.object(id)
+                        .map(|o| o.name == "Grizzly Bears")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        assert!(
+            bears_in_graveyard,
+            "Without Yawgmoth's Will, Grizzly Bears should be in graveyard"
+        );
+    }
 }

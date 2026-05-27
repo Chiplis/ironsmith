@@ -677,12 +677,19 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
             "enter-as-copy",
         ),
     ];
+
+    let compiled_implies_replacement_without_instead =
+        compiled.contains(" would be put into ") && compiled.contains(", exile ");
+
     for (oracle_markers, compiled_markers, label) in required_marker_groups {
         if oracle_markers.iter().any(|marker| oracle.contains(marker))
             && !compiled_markers
                 .iter()
                 .any(|marker| compiled.contains(marker))
         {
+            if label == "instead" && compiled_implies_replacement_without_instead {
+                continue;
+            }
             return Some(format!(
                 "compiled text dropped required semantic marker: {label}"
             ));
@@ -3325,6 +3332,16 @@ CardDefinition {
                 Some(payload.oracle_text.as_str())
             );
         }
+    }
+
+    #[test]
+    fn authoritative_marker_guard_accepts_replacement_clause_without_literal_instead() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.normalized_oracle_text =
+            "Exile that card instead of putting it into your graveyard.".to_string();
+        snapshot.compiled_text =
+            Some("If a card would be put into your graveyard from anywhere this turn, exile that card.".to_string());
+        assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
     }
 
     #[test]

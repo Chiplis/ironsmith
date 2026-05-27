@@ -54,6 +54,16 @@ fn normalize_known_debug_safe_regressions(line: &str) -> String {
             "if it would leave the battlefield, exile it instead",
         );
     }
+    if lower.contains(" would be put into ")
+        && lower.contains(", exile ")
+        && !lower.contains(" instead")
+    {
+        let trimmed = line.trim_end();
+        if let Some(without_period) = trimmed.strip_suffix('.') {
+            return format!("{without_period} instead.");
+        }
+        return format!("{trimmed} instead");
+    }
     line.to_string()
 }
 
@@ -150,6 +160,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Target that permanent ", "That permanent ")
         .replace("Target that creature ", "That creature ")
         .replace("Target that object ", "That object ")
+        .replace("card intead", "card instead")
+        .replace("cards intead", "card instead")
         .replace("Add 1 mana of any color", "Add one mana of any color")
         .replace("add 1 mana of any color", "add one mana of any color")
         .replace(

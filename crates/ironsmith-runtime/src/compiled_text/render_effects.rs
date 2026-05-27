@@ -23968,7 +23968,10 @@ pub(super) fn describe_conditional_replacement_instead(
         return None;
     }
 
-    if condition.contains(" would leave the battlefield") {
+    if condition.contains(" would leave the battlefield")
+        || condition.contains(" would be put into ")
+        || condition.contains(" would go ")
+    {
         return Some(format!("If {condition}, {true_branch} instead"));
     }
 
