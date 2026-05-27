@@ -6840,7 +6840,17 @@ pub(crate) fn parse_double_counters_replacement_line(
         ) || slice_ends_with(
             &line_words,
             &[
+                "twice", "that", "many", "are", "put", "on", "that", "creature", "instead",
+            ],
+        ) || slice_ends_with(
+            &line_words,
+            &[
                 "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "it", "instead",
+            ],
+        ) || slice_ends_with(
+            &line_words,
+            &[
+                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "that", "creature", "instead",
             ],
         ))
     {
