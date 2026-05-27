@@ -35646,6 +35646,7 @@ strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
 strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_profane_memento, "Profane Memento");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
+strict_parse_card_test!(strict_parse_inviolability, "Inviolability");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
 strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
@@ -35674,6 +35675,97 @@ fn animate_land_compiled_text_keeps_animation_clause() {
             && rendered.contains("until end of turn")
             && rendered.contains("still a land"),
         "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn inviolability_compiled_text_keeps_damage_prevention_clause() {
+    let def = parse_oracle_card_definition("Inviolability");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all damage that would be dealt to enchanted creature"),
+        "expected Inviolability compiled text to preserve enchanted-creature prevention semantics, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn inviolability_runtime_prevents_damage_to_enchanted_creature_only() {
+    let aura_def = parse_oracle_card_definition("Inviolability");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let protected_creature = CardBuilder::new(CardId::from_raw(98_001), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id =
+        game.create_object_from_card(&protected_creature, alice, crate::zone::Zone::Battlefield);
+
+    let other_creature = CardBuilder::new(CardId::from_raw(98_002), "Other Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_id = game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
+
+    let source_creature = CardBuilder::new(CardId::from_raw(98_003), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let source_id = game.create_object_from_card(&source_creature, bob, crate::zone::Zone::Battlefield);
+
+    let aura_id = game.create_object_from_definition(&aura_def, alice, crate::zone::Zone::Battlefield);
+    game.object_mut(aura_id)
+        .expect("Inviolability object should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(protected_id));
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .attachments
+        .push(aura_id);
+    assert_eq!(
+        game.object(aura_id).and_then(|obj| obj.attached_to),
+        Some(crate::object::AttachmentTarget::Object(protected_id)),
+        "Inviolability should attach to the selected creature"
+    );
+
+    let (damage_to_protected, protected_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(protected_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        damage_to_protected, 0,
+        "Inviolability should prevent all damage to enchanted creature"
+    );
+    assert!(
+        protected_prevented || damage_to_protected == 0,
+        "damage to enchanted creature should be prevented"
+    );
+
+    let (damage_to_other, other_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(other_id),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_other, 3,
+        "Inviolability should not prevent damage to unenchanted creatures"
+    );
+    assert!(
+        !other_prevented,
+        "damage to unenchanted creature should remain unprevented"
     );
 }
 

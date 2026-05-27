@@ -8228,6 +8228,30 @@ fn parse_prevent_all_damage_by_opponents_creatures_effect_clause() {
 }
 
 #[test]
+fn rewrite_grammar_attached_prevent_all_damage_to_enchanted_creature_line() {
+    let tokens = lex_line(
+        "Prevent all damage that would be dealt to enchanted creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify attached prevention static line");
+
+    let parsed = super::keyword_static::parse_attached_prevent_all_damage_dealt_to_attached_line(
+        &tokens,
+    )
+    .expect("attached prevention line should parse");
+
+    assert!(matches!(
+        parsed,
+        Some(crate::cards::builders::StaticAbilityAst::AttachedStaticAbilityGrant { ability, .. })
+            if matches!(
+                ability.as_ref(),
+                crate::cards::builders::StaticAbilityAst::Static(ability)
+                    if ability.id() == crate::static_abilities::StaticAbilityId::PreventAllDamageToSelf
+            )
+    ));
+}
+
+#[test]
 fn rewrite_grammar_skulk_rules_text_probe_matches_static_line() {
     let tokens = lex_line(
         "Creatures with power less than this creature's power can't block this creature.",
