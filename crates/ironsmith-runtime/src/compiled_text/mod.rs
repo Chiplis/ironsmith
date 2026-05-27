@@ -788,6 +788,23 @@ mod tests {
     }
 
     #[test]
+    fn equipped_keyword_and_conditional_pt_bonus_keep_separate_lines() {
+        let lines = merge_ast_surface_lines(vec![
+            "Equipped creature has first strike.".to_string(),
+            "Equipped creature gets +1/+1 as long as equipped creature is a human.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "Equipped creature has first strike.".to_string(),
+                "Equipped creature gets +1/+1 as long as equipped creature is a human."
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn each_creature_turn_pump_and_keyword_merge_to_plural_subject() {
         let lines = merge_ast_surface_lines(vec![
             "Each creature you control gets +1/+0 as long as it's your turn.".to_string(),
