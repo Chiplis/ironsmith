@@ -12543,6 +12543,57 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
 }
 
 #[test]
+fn rewrite_when_one_or_more_this_way_prefix_only_rewrites_when_this_way_is_in_clause_prefix() {
+    let tokens = lex_line(
+        "Whenever one or more cards are exiled this way, draw a card.",
+        0,
+    )
+    .expect("rewrite lexer should classify when-one-or-more this-way follow-up");
+    let rewritten =
+        super::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(&tokens);
+
+    let words = token_word_refs(&rewritten);
+    assert_eq!(words[..3], ["if", "you", "do"]);
+}
+
+#[test]
+fn rewrite_when_one_or_more_this_way_prefix_skips_tail_only_this_way_references() {
+    let tokens = lex_line(
+        "Whenever one or more Zombies you control deal combat damage to one or more of your opponents, you may draw cards equal to the number of opponents dealt damage this way.",
+        0,
+    )
+    .expect("rewrite lexer should classify Hordewing Skaab trigger sentence");
+    let rewritten =
+        super::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(&tokens);
+
+    let words = token_word_refs(&rewritten);
+    assert_eq!(words[0], "whenever");
+    assert_ne!(words[..3], ["if", "you", "do"]);
+}
+
+#[test]
+fn hordewing_skaab_parses_and_keeps_if_you_do_discard_followup() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Hordewing Skaab")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Horror])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3));
+    let text = "Flying\nOther Zombies you control have flying.\nWhenever one or more Zombies you control deal combat damage to one or more of your opponents, you may draw cards equal to the number of opponents dealt damage this way. If you do, discard that many cards.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let debug = format!("{definition:?}");
+    assert!(
+        debug.contains("IfThen"),
+        "expected lowered if-you-do followup in Hordewing Skaab trigger: {debug}"
+    );
+    assert!(
+        debug.contains("DiscardCards"),
+        "expected lowered discard clause for Hordewing Skaab: {debug}"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spec() -> Result<(), CardTextError>
 {
     let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Fight Variant")

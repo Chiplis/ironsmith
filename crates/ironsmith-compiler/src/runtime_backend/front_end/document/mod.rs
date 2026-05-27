@@ -2498,9 +2498,12 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
 
 fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
+    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
+        .unwrap_or(false);
     (words.starts_with(&["when", "one", "or", "more"])
         || words.starts_with(&["whenever", "one", "or", "more"]))
-        && grammar::contains_phrase(tokens, &["this", "way"])
+        && this_way_in_prefix
 }
 
 fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {

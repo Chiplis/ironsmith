@@ -84,7 +84,6 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
-        let player = self.player.description();
         if self.one_or_more {
             let mut subject = self.filter.description();
             if let Some(stripped) = subject.strip_prefix("a ") {
@@ -92,8 +91,14 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             } else if let Some(stripped) = subject.strip_prefix("an ") {
                 subject = stripped.to_string();
             }
+            let player = if matches!(self.player, PlayerFilter::Opponent) {
+                "one or more of your opponents".to_string()
+            } else {
+                self.player.description()
+            };
             return format!("Whenever one or more {subject} deal combat damage to {player}");
         }
+        let player = self.player.description();
         format!(
             "Whenever {} deals combat damage to {}",
             self.filter.description(),
@@ -138,6 +143,18 @@ mod tests {
         let trigger =
             DealsCombatDamageToPlayerTrigger::new(ObjectFilter::creature(), PlayerFilter::Any);
         assert!(trigger.display().contains("deals combat damage"));
+    }
+
+    #[test]
+    fn test_one_or_more_opponent_display_uses_plural_opponents_phrase() {
+        let trigger = DealsCombatDamageToPlayerTrigger::one_or_more(
+            ObjectFilter::creature(),
+            PlayerFilter::Opponent,
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more creature deal combat damage to one or more of your opponents"
+        );
     }
 
     #[test]
