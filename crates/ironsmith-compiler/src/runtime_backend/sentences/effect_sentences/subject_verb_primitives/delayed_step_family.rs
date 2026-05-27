@@ -603,7 +603,20 @@ mod tests {
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
+    if tokens.iter().filter_map(OwnedLexToken::as_word).any(|word| {
+        matches!(
+            word,
+            "may"
+                | "cast"
+                | "casts"
+                | "casting"
+                | "play"
+                | "plays"
+                | "playing"
+                | "played"
+        )
+    }) && parse_cast_or_play_tagged_clause(tokens)?.is_some()
+    {
         return Ok(None);
     }
 

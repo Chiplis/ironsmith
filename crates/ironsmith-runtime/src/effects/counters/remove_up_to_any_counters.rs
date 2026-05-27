@@ -73,6 +73,9 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
             spec,
             FallbackStrategy::Maximum,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         // Validate and apply the selections using centralized method
         let mut total_removed = 0u32;

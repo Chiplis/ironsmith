@@ -119,7 +119,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         chooser_id,
                         Some(ctx.source),
                         SearchSpec::new(ctx.source, matching_cards, self.reveal),
-                        FallbackStrategy::FirstOption,
+                        FallbackStrategy::Decline,
                     )
                 } else {
                     make_decision_with_fallback(

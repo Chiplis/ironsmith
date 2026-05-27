@@ -13,8 +13,25 @@ pub use ironsmith_core::CantEffect;
 fn collapse_tagged_filter_to_specific_objects(
     filter: &ObjectFilter,
     ctx: &ExecutionContext,
+    game: &GameState,
 ) -> ObjectFilter {
-    if filter.source || filter.tagged_constraints.is_empty() {
+    if filter.source {
+        let source = ctx
+            .source_snapshot
+            .as_ref()
+            .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+            .or_else(|| {
+                game.object(ctx.source)
+                    .filter(|object| object.zone == crate::zone::Zone::Battlefield)
+                    .map(|_| ctx.source)
+            })
+            .or_else(|| crate::effects::helpers::resolve_source_object_id(game, ctx));
+        if let Some(source) = source {
+            return ObjectFilter::specific(source);
+        }
+        return filter.clone();
+    }
+    if filter.tagged_constraints.is_empty() {
         return filter.clone();
     }
 
@@ -35,6 +52,21 @@ fn collapse_tagged_filter_to_specific_objects(
                 .then_some(snapshot.object_id)
         })
         .collect::<Vec<_>>();
+
+    if object_ids.is_empty() {
+        if let Some(source) = ctx
+            .source_snapshot
+            .as_ref()
+            .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+            .or_else(|| {
+                game.object(ctx.source)
+                    .filter(|object| object.zone == crate::zone::Zone::Battlefield)
+                    .map(|_| ctx.source)
+            })
+        {
+            object_ids.push(source);
+        }
+    }
 
     if object_ids.is_empty() {
         let mut fallback_seen = HashSet::new();
@@ -97,7 +129,7 @@ fn normalize_restriction_for_resolution(
 ) -> Restriction {
     match restriction {
         Restriction::BeBlocked(filter) => {
-            Restriction::be_blocked(collapse_tagged_filter_to_specific_objects(filter, ctx))
+            Restriction::be_blocked(collapse_tagged_filter_to_specific_objects(filter, ctx, game))
         }
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),

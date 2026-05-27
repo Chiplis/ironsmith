@@ -125,6 +125,9 @@ impl EffectExecutor for BeholdEffect {
             );
             make_decision(game, ctx.decision_maker, chooser, Some(ctx.source), spec)
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let chosen = normalize_object_selection(chosen, &pool, required);
 
         let revealed_from_hand: Vec<_> = chosen

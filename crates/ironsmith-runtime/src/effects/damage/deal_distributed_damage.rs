@@ -70,6 +70,9 @@ impl EffectExecutor for DealDistributedDamageEffect {
             DistributeSpec::damage(ctx.source, total, available_targets.clone()),
             FallbackStrategy::Maximum,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let mut allocations: HashMap<Target, u32> = HashMap::new();
         for (target, amount) in distribution {

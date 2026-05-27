@@ -161,26 +161,22 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             if max_count < self.min_count {
                 return Ok(EffectOutcome::impossible());
             }
-            ctx.x_value
-                .map_or_else(
-                    || {
-                        make_decision_with_fallback(
-                            game,
-                            &mut ctx.decision_maker,
-                            ctx.controller,
-                            Some(ctx.source),
-                            NumberSpec::range(
-                                ctx.source,
-                                self.min_count,
-                                max_count,
-                                "counters to remove",
-                            ),
-                            FallbackStrategy::Maximum,
-                        )
-                    },
-                    |x| x,
+            let chosen = if let Some(x) = ctx.x_value {
+                x
+            } else {
+                make_decision_with_fallback(
+                    game,
+                    &mut ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    NumberSpec::range(ctx.source, self.min_count, max_count, "counters to remove"),
+                    FallbackStrategy::Maximum,
                 )
-                .clamp(self.min_count, max_count)
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            chosen.clamp(self.min_count, max_count)
         } else {
             self.count
         };
@@ -197,6 +193,9 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
             FallbackStrategy::Maximum,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let mut allocations: HashMap<ObjectId, u32> = HashMap::new();
         for (target, amount) in distribution {
@@ -297,6 +296,9 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
                     ),
                     FallbackStrategy::Maximum,
                 );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
 
                 let mut removed_from_target = 0u32;
                 for (counter_type, requested) in selections {

@@ -93,8 +93,11 @@ impl EffectExecutor for RemoveUpToCountersEffect {
             Some(ctx.source),
             spec,
             FallbackStrategy::Maximum,
-        )
-        .min(actual_max);
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let chosen_count = chosen_count.min(actual_max);
 
         // Remove the chosen number of counters using centralized method
         match game.remove_counters(

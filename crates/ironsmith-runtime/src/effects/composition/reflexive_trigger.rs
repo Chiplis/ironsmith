@@ -87,6 +87,9 @@ fn choose_reflexive_targets(
             }],
         );
         let selected = ctx.decision_maker.decide_targets(game, &targets_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return None;
+        }
         let selected = normalize_targets_for_requirements(&targets_ctx.requirements, selected)?;
 
         chosen_targets.extend(selected);

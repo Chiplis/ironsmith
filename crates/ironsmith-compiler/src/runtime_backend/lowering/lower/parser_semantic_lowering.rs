@@ -614,6 +614,40 @@ fn lower_rewrite_triggered_to_chunk_impl(
         );
     }
 
+    let normalized_full_text = line.full_text.to_ascii_lowercase();
+    let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
+    if str_contains(normalized_full_text.as_str(), "if you have a full party")
+        && str_contains(normalized_full_text.as_str(), "until end of turn instead")
+        && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
+    {
+        let effect_text = if str_contains(normalized_effect_text.as_str(), "if you have a full party")
+        {
+            line.effect_text.as_str()
+        } else {
+            line.full_text
+                .split_once(',')
+                .map(|(_, rest)| rest.trim())
+                .unwrap_or(line.effect_text.as_str())
+        };
+        let effects = parse_effect_sentences_from_text(effect_text, line.info.line_index)?;
+        if !effects.is_empty() {
+            return apply_chosen_option_to_triggered_chunk(
+                apply_explicit_intervening_if_to_triggered_chunk(
+                    LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: inferred_max_triggers_per_turn,
+                    },
+                    line.intervening_if.clone(),
+                )?,
+                source_text,
+                inferred_max_triggers_per_turn,
+                chosen_option_label,
+                presentation_label,
+            );
+        }
+    }
+
     let full_sentences = split_lexed_sentences(full_parse_tokens);
     let has_token_creation_followup_after_first =
         sentences_have_token_creation_followup_after_first(&full_sentences);
@@ -711,8 +745,6 @@ fn lower_rewrite_triggered_to_chunk_impl(
         }
     }
 
-    let normalized_full_text = line.full_text.to_ascii_lowercase();
-    let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
     if !line.effect_text.trim().is_empty()
         && !full_text_has_triggered_intervening_if_clause(
             line.full_text.as_str(),

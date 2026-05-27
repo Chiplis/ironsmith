@@ -46,6 +46,28 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     normalized
 }
 
+pub(super) fn normalize_debug_safe_legacy_surface(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if lower.contains(
+        "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
+    ) {
+        return line.replace(
+            "choose it. activated abilities of that permanent can't be activated this turn",
+            "its activated abilities can't be activated this turn",
+        );
+    }
+    if lower.contains("that permanent's mana value") {
+        return line.replace("that permanent's mana value", "that card's mana value");
+    }
+    if lower.contains("if it's a permanent, exile it") {
+        return line.replace(
+            "if it's a permanent, exile it",
+            "if it would leave the battlefield, exile it instead",
+        );
+    }
+    line.to_string()
+}
+
 pub(super) fn capitalize_sentence_boundaries(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut capitalize_next = false;

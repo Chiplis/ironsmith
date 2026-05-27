@@ -29038,8 +29038,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     .strip_prefix("all damage from ")
                     .and_then(|rest| rest.strip_suffix(" sources"))
                 {
+                    if source_phrase.starts_with("non-") {
+                        return format!(
+                            "Prevent all damage that would be dealt this turn by {source_phrase} sources"
+                        );
+                    }
                     return format!(
-                        "Prevent all damage that would be dealt this turn by {source_phrase} sources"
+                        "Prevent all damage that would be dealt this turn by {source_phrase}"
                     );
                 }
                 return format!("Prevent {damage_type} that would be dealt this turn");

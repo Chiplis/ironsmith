@@ -5,6 +5,7 @@ use std::fmt;
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use csv::StringRecord;
 use reqwest::blocking::Client;
@@ -903,6 +904,7 @@ impl CardStatusDb {
             fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(path)?;
+        conn.busy_timeout(Duration::from_secs(60))?;
         let db = Self { conn };
         db.initialize()?;
         Ok(db)

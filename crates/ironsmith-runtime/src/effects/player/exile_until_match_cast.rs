@@ -90,6 +90,9 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                 prompt,
             );
             let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
             if should_cast {
                 let from_zone = candidate_obj.zone;

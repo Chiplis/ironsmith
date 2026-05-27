@@ -47,6 +47,9 @@ impl EffectExecutor for MoveOneCounterEffect {
             spec,
             FallbackStrategy::Maximum,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         for (counter_type, to_remove) in selections {
             if to_remove == 0 {

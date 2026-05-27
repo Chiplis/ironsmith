@@ -96,6 +96,9 @@ pub(crate) fn choose_mana_colors(
         Some(ctx.source),
         spec,
     );
+    if ctx.decision_maker.awaiting_choice() {
+        return Vec::new();
+    }
 
     if let Some(available) = effective_available.as_deref() {
         chosen.retain(|color| available.contains(color));
@@ -227,6 +230,9 @@ pub(crate) fn choose_mana_symbols(
             &choices,
         )
         .unwrap_or(default_symbol);
+        if ctx.decision_maker.awaiting_choice() {
+            return Vec::new();
+        }
         let fallback = if available_symbols.contains(&selected) {
             selected
         } else {
@@ -243,6 +249,9 @@ pub(crate) fn choose_mana_symbols(
                 &choices,
             )
             .unwrap_or(default_symbol);
+            if ctx.decision_maker.awaiting_choice() {
+                return Vec::new();
+            }
             chosen.push(if available_symbols.contains(&selected) {
                 selected
             } else {

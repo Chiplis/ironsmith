@@ -85,6 +85,9 @@ fn choose_objects_to_sacrifice(
         );
         make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec)
     };
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(Vec::new());
+    }
 
     Ok(normalize_object_selection(chosen, &matching, required))
 }

@@ -436,11 +436,29 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![unless_action]);
     }
 
-    if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+    if clause_may_contain_cast_or_play_permission_lexed(tokens)
+        && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
+    {
         return Ok(vec![effect]);
     }
 
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
+}
+
+fn clause_may_contain_cast_or_play_permission_lexed(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().filter_map(OwnedLexToken::as_word).any(|word| {
+        matches!(
+            word,
+            "may"
+                | "cast"
+                | "casts"
+                | "casting"
+                | "play"
+                | "plays"
+                | "playing"
+                | "played"
+        )
+    })
 }
 
 fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {

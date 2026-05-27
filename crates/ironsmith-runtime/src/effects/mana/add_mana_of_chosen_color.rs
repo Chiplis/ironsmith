@@ -44,6 +44,9 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
         } else {
             chosen
         };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let symbol = ManaSymbol::from_color(selected);
         credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);

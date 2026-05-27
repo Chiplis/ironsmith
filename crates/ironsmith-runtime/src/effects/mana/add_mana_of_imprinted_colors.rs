@@ -70,6 +70,9 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
                 .into_iter()
                 .next()
                 .unwrap_or(colors[0]);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let symbol = ManaSymbol::from_color(chosen_color);
         credit_mana_symbols_from_context(game, controller, [symbol], ctx);
 

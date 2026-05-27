@@ -180,6 +180,9 @@ pub(crate) fn parse_end(
     if clause_words.as_slice() == ["the", "turn"] || clause_words.as_slice() == ["turn"] {
         return Ok(EffectAst::subject_verb_end_turn(player));
     }
+    if clause_words.as_slice() == ["step", "you", "lose", "the", "game"] {
+        return Ok(EffectAst::subject_verb_lose_game(PlayerAst::You));
+    }
 
     Err(CardTextError::ParseError(format!(
         "unsupported end clause (clause: '{}')",

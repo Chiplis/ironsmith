@@ -107,7 +107,11 @@ impl EffectExecutor for SearchLibraryEffect {
                 chooser_id,
                 Some(ctx.source),
                 spec,
-                FallbackStrategy::FirstOption, // Auto-select first card when no decision maker
+                if may_fail_to_find {
+                    FallbackStrategy::Decline
+                } else {
+                    FallbackStrategy::FirstOption
+                },
             );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0).with_event(search_event));

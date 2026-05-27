@@ -351,6 +351,22 @@ impl<'a> CommonPlayerActionClause<'a> {
     }
 }
 
+fn clause_may_contain_cast_or_play_permission(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().filter_map(OwnedLexToken::as_word).any(|word| {
+        matches!(
+            word,
+            "may"
+                | "cast"
+                | "casts"
+                | "casting"
+                | "play"
+                | "plays"
+                | "playing"
+                | "played"
+        )
+    })
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -359,12 +375,14 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
 
-    if let Some(spec) = parse_may_cast_it_sentence(tokens) {
-        return Ok(build_may_cast_tagged_effect(&spec));
-    }
+    if clause_may_contain_cast_or_play_permission(tokens) {
+        if let Some(spec) = parse_may_cast_it_sentence(tokens) {
+            return Ok(build_may_cast_tagged_effect(&spec));
+        }
 
-    if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
-        return Ok(effect);
+        if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+            return Ok(effect);
+        }
     }
 
     if let Some(player) = parse_leading_player_may(tokens) {

@@ -51,6 +51,9 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
             .into_iter()
             .next()
             .unwrap_or(Color::Green);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let symbol = ManaSymbol::from_color(color);
         credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);

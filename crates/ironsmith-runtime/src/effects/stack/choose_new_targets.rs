@@ -141,6 +141,9 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                         format!("Choose new targets for {source_name}?"),
                     ),
                 );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 if !choose {
                     continue;
                 }
@@ -149,6 +152,9 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             let targets_ctx =
                 TargetsContext::new(chooser, object_id, "copy".to_string(), requirements.clone());
             let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let Some(new_targets) = normalize_targets_for_requirements(&requirements, proposed)
             else {
                 if self.may {

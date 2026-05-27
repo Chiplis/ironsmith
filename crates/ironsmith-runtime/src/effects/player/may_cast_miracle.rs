@@ -106,6 +106,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         .with_source_name(&card_name);
 
         let wants_to_cast = ctx.decision_maker.decide_boolean(game, &bool_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         if !wants_to_cast {
             // Player chose not to cast - card stays in hand

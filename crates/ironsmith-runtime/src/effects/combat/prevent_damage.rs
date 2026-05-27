@@ -74,7 +74,6 @@ impl PreventDamageEffect {
         self
     }
 
-
     /// Execute these effects using the amount this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
         self.follow_up_effects = effects;
@@ -131,8 +130,13 @@ impl EffectExecutor for PreventDamageEffect {
                 .decision_maker
                 .decide_objects(game, &select_ctx)
                 .into_iter()
-                .next()
-                .unwrap_or(candidates[0]);
+                .find(|id| candidates.contains(id));
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(chosen_source) = chosen_source else {
+                return Ok(EffectOutcome::count(0));
+            };
             damage_filter.from_specific_source = Some(chosen_source);
         }
 

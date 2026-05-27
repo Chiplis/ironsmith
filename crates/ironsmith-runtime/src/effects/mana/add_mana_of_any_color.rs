@@ -59,6 +59,9 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             self.available_colors.as_deref(),
             Color::Green,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let symbols = colors
             .into_iter()
             .map(ManaSymbol::from_color)

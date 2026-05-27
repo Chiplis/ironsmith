@@ -144,10 +144,11 @@ impl EffectExecutor for DiscardEffect {
         use crate::decisions::specs::ChooseObjectsSpec;
         use crate::events::processing::execute_discard;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = if self.any_number {
+        let resolved_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let count = if self.any_number && resolved_count == 0 {
             usize::MAX
         } else {
-            resolve_value(game, &self.count, ctx)?.max(0) as usize
+            resolved_count
         };
         let mut discarded = 0;
         let mut discarded_cards = Vec::new();
@@ -188,16 +189,32 @@ impl EffectExecutor for DiscardEffect {
             game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()
         } else if self.any_number {
+            let min_required = if resolved_count > 0 { required } else { 0 };
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose any number of cards to discard".to_string(),
                 hand_cards.clone(),
-                0,
+                min_required,
                 Some(required),
             );
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
-            normalize_object_selection(chosen, &hand_cards, required)
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if min_required > 0 {
+                normalize_object_selection(chosen, &hand_cards, min_required)
+            } else {
+                chosen
+                    .into_iter()
+                    .filter(|id| hand_cards.contains(id))
+                    .fold(Vec::new(), |mut chosen, id| {
+                        if !chosen.contains(&id) {
+                            chosen.push(id);
+                        }
+                        chosen
+                    })
+            }
         } else {
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
@@ -212,6 +229,9 @@ impl EffectExecutor for DiscardEffect {
             );
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             normalize_object_selection(chosen, &hand_cards, required)
         };
 

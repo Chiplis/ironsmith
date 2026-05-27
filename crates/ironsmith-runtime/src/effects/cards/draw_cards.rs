@@ -202,11 +202,15 @@ pub(crate) fn automatic_reveal_events_for_draw(
 
     for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before)
     {
-        if candidate.optional
-            && !decision_maker
-                .decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate))
-        {
-            continue;
+        if candidate.optional {
+            let reveal = decision_maker
+                .decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate));
+            if decision_maker.awaiting_choice() {
+                return reveal_events;
+            }
+            if !reveal {
+                continue;
+            }
         }
 
         reveal_events.push(emit_automatic_draw_reveal_event(

@@ -79,11 +79,17 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Boolean(ctx.clone()),
             );
             let result = dm.decide_boolean(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_bool(result, fallback)
         }
         DecisionContext::Number(ctx) => {
             publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Number(ctx.clone()));
             let result = dm.decide_number(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_number(result, fallback)
         }
         DecisionContext::TextInput(ctx) => {
@@ -140,6 +146,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
         DecisionContext::Order(ctx) => {
             publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Order(ctx.clone()));
             let result = dm.decide_order(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_order(result, fallback)
         }
         DecisionContext::Attackers(ctx) => {
@@ -149,6 +158,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Attackers(ctx.clone()),
             );
             let result = dm.decide_attackers(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_attackers(result, fallback)
         }
         DecisionContext::Blockers(ctx) => {
@@ -158,6 +170,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Blockers(ctx.clone()),
             );
             let result = dm.decide_blockers(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_blockers(result, fallback)
         }
         DecisionContext::Distribute(ctx) => {
@@ -167,11 +182,17 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Distribute(ctx.clone()),
             );
             let result = dm.decide_distribute(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_distribute(result, fallback)
         }
         DecisionContext::Colors(ctx) => {
             publish_hidden_card_views_for_decision(game, dm, &DecisionContext::Colors(ctx.clone()));
             let result = dm.decide_colors(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_colors(result, fallback)
         }
         DecisionContext::Counters(ctx) => {
@@ -181,6 +202,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Counters(ctx.clone()),
             );
             let result = dm.decide_counters(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_counters(result, fallback)
         }
         DecisionContext::Partition(ctx) => {
@@ -190,6 +214,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Partition(ctx.clone()),
             );
             let result = dm.decide_partition(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_partition(result, fallback)
         }
         DecisionContext::Proliferate(ctx) => {
@@ -199,6 +226,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Proliferate(ctx.clone()),
             );
             let result = dm.decide_proliferate(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_proliferate(result, fallback)
         }
         DecisionContext::Priority(ctx) => {
@@ -208,6 +238,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Priority(ctx.clone()),
             );
             let result = dm.decide_priority(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_priority(result, fallback)
         }
         DecisionContext::Targets(ctx) => {
@@ -217,6 +250,9 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 &DecisionContext::Targets(ctx.clone()),
             );
             let result = dm.decide_targets(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
             R::from_targets(result, fallback)
         }
         DecisionContext::Modes(ctx) => {
@@ -518,6 +554,10 @@ impl FromPrimitiveResponse for bool {
 
 // Implement for u32 (Number primitives)
 impl FromPrimitiveResponse for u32 {
+    fn pending_response(_fallback: Self) -> Self {
+        0
+    }
+
     fn from_number(result: u32, _fallback: Self) -> Self {
         result
     }
@@ -897,6 +937,41 @@ mod tests {
 
         let result: Vec<usize> = make_decision(&game, &mut dm, player, Some(source), spec);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_make_decision_returns_neutral_number_while_waiting() {
+        let game = setup_game();
+        let player = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1);
+
+        struct PromptingNumberDm;
+        impl DecisionMaker for PromptingNumberDm {
+            fn decide_number(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::NumberContext,
+            ) -> u32 {
+                ctx.max
+            }
+
+            fn awaiting_choice(&self) -> bool {
+                true
+            }
+        }
+
+        let spec = NumberSpec::up_to(source, 5, "choose a number");
+        let mut dm = PromptingNumberDm;
+
+        let result = make_decision_with_fallback(
+            &game,
+            &mut dm,
+            player,
+            Some(source),
+            spec,
+            FallbackStrategy::Maximum,
+        );
+        assert_eq!(result, 0);
     }
 
     #[test]

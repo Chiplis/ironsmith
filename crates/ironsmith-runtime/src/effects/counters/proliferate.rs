@@ -6,7 +6,9 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{TraitEventResult, process_trait_event_with_dm_and_applied_effects};
+use crate::events::processing::{
+    TraitEventResult, process_trait_event_with_dm_and_applied_effects,
+};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -26,7 +28,9 @@ fn execute_keyword_action_replacement_effects(
         .replacement_effects
         .get_effect(effect_id)
         .cloned();
-    let replacement_key = replacement_effect.as_ref().map(|effect| effect.application_key());
+    let replacement_key = replacement_effect
+        .as_ref()
+        .map(|effect| effect.application_key());
     let was_suppressed = !ctx
         .replacement
         .suppressed_replacement_effects
@@ -107,7 +111,12 @@ impl EffectExecutor for ProliferateEffect {
 
         for _ in 0..count {
             let would_event = Event::new_with_provenance(
-                KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1),
+                KeywordActionEvent::new(
+                    KeywordActionKind::Proliferate,
+                    ctx.controller,
+                    ctx.source,
+                    1,
+                ),
                 ctx.provenance,
             );
             let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
@@ -133,7 +142,8 @@ impl EffectExecutor for ProliferateEffect {
                     continue;
                 }
                 TraitEventResult::Prevented => continue,
-                TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                TraitEventResult::NeedsChoice { .. }
+                | TraitEventResult::NeedsInteraction { .. } => {
                     return Ok(outcome);
                 }
                 TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
@@ -178,6 +188,9 @@ impl EffectExecutor for ProliferateEffect {
                 ),
                 FallbackStrategy::Maximum,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
             let chosen_permanents: Vec<_> = selections
                 .permanents

@@ -1330,18 +1330,18 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
-    let comparison_tokens_start = from_idx + 6;
-    let comparison_tokens_end = from_idx + without_idx;
+    let Some(comparison_tokens_start) = token_index_for_word_index(rest_tokens, from_idx + 6)
+    else {
+        return Ok(None);
+    };
+    let Some(comparison_tokens_end) = token_index_for_word_index(rest_tokens, from_idx + without_idx)
+    else {
+        return Ok(None);
+    };
     let comparison_tokens = &rest_tokens[comparison_tokens_start..comparison_tokens_end];
     let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
         return Ok(None);
     };
-    let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
-        return Ok(None);
-    };
-    if used != rhs_tokens.len() {
-        return Ok(None);
-    }
 
     let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
         return Ok(None);
@@ -1353,24 +1353,6 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     };
     filter.owner = Some(crate::target::PlayerFilter::You);
-    filter.mana_value = Some(match operator {
-        ValueComparisonOperator::Equal => crate::filter::Comparison::EqualExpr(Box::new(rhs_value)),
-        ValueComparisonOperator::NotEqual => {
-            crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
-        }
-        ValueComparisonOperator::LessThan => {
-            crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
-        }
-        ValueComparisonOperator::LessThanOrEqual => {
-            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
-        }
-        ValueComparisonOperator::GreaterThan => {
-            crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
-        }
-        ValueComparisonOperator::GreaterThanOrEqual => {
-            crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
-        }
-    });
 
     let graveyard_uses_tagged_spell_mana_value = matches!(normalized_tail[2].as_str(), "graveyard")
         && (normalized_tail
@@ -1387,6 +1369,33 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 tag: TagKey::from(IT_TAG),
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
+    } else {
+        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+            return Ok(None);
+        };
+        if used != rhs_tokens.len() {
+            return Ok(None);
+        }
+        filter.mana_value = Some(match operator {
+            ValueComparisonOperator::Equal => {
+                crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
+            }
+            ValueComparisonOperator::NotEqual => {
+                crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
+            }
+            ValueComparisonOperator::LessThan => {
+                crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
+            }
+            ValueComparisonOperator::LessThanOrEqual => {
+                crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
+            }
+            ValueComparisonOperator::GreaterThan => {
+                crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
+            }
+            ValueComparisonOperator::GreaterThanOrEqual => {
+                crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
+            }
+        });
     }
 
     let zone = if normalized_tail[2] == "hand" {

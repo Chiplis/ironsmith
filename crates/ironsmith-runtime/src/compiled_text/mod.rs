@@ -115,6 +115,22 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     line = line
         .replace(
+            "When this token dies: You gain 1 life",
+            "When this token dies, you gain 1 life",
+        )
+        .replace(
+            "When this token dies: It deals 1 damage to any target",
+            "When this token dies, it deals 1 damage to any target",
+        );
+    if line.to_ascii_lowercase().trim_end_matches('.')
+        == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast that card. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
+        || line.to_ascii_lowercase().trim_end_matches('.')
+            == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
+    {
+        line = "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
+    }
+    line = line
+        .replace(
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
             "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
         );
@@ -295,6 +311,15 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_exact_during_your_turn_predicate_surface(&line);
     line = normalize_sacrifice_enchantment_counter_spell_trigger(&line);
     line = normalize_token_quoted_ability_surfaces(&line);
+    line = line
+        .replace(
+            "When this token dies: You gain 1 life",
+            "When this token dies, you gain 1 life",
+        )
+        .replace(
+            "When this token dies: It deals 1 damage to any target",
+            "When this token dies, it deals 1 damage to any target",
+        );
     line = line.replace(
         "Tap it. That permanent doesn't untap during its controller's next untap step",
         "Tap it. It doesn't untap during its controller's next untap step",

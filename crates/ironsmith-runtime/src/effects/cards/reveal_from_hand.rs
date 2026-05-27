@@ -114,6 +114,9 @@ impl EffectExecutor for RevealFromHandEffect {
                 spec,
                 FallbackStrategy::Maximum,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             normalize_object_selection(chosen, &valid_cards, required)
         };
 

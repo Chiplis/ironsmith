@@ -25,6 +25,7 @@ use super::super::util::{
 };
 use super::chain_carry::bind_implicit_player_context;
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
+use super::{Verb, find_verb};
 use super::conditionals::negated_action_word_index;
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
@@ -647,6 +648,13 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
     };
     let inner_words = token_words(&inner_tokens);
+    if find_verb(&inner_tokens).is_some_and(|(verb, idx)| {
+        idx == 0
+            && matches!(verb, Verb::Scry | Verb::Surveil)
+            && matches!(inner_words.as_slice(), ["scries" | "scry" | "surveils" | "surveil", amount] if *amount != "x")
+    }) {
+        return Ok(None);
+    }
     if inner_words.first().copied() == Some("choose")
         && let Some(then_return_idx) = find_word_sequence_index(&inner_words, &["then", "return"])
         && let Some(unless_idx) = find_word_sequence_index(&inner_words, &["unless"])

@@ -119,8 +119,11 @@ impl EffectExecutor for PayAnyEnergyEffect {
             Some(ctx.source),
             NumberSpec::up_to(ctx.source, available, "Choose how much {E} to pay"),
             FallbackStrategy::Maximum,
-        )
-        .min(available);
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let chosen = chosen.min(available);
 
         if chosen == 0 {
             return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));

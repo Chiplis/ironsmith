@@ -28610,7 +28610,7 @@ fn parse_trigger_with_and_or_subtype_list_keeps_effect_split_on_trigger_delimite
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("that player exiles the top card of that player's library")
+        rendered.contains("exile the top card of that player's library")
             && rendered.contains("you may cast it")
             && rendered.contains("create a treasure token"),
         "expected exile/create sequence to remain on the triggered effect, got {rendered}"
@@ -35664,7 +35664,7 @@ fn optional_continuous_effects_render_causative_have() {
         ),
         (
             "Vihaan, Goldwaker",
-            "you may have each treasure you control become a 3/3",
+            "you may have treasures you control become 3/3 construct assassin artifact creatures in addition to their other types until end of turn",
         ),
     ] {
         let def = parse_oracle_card_definition(name);

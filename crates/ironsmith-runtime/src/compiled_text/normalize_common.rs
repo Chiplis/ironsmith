@@ -1534,6 +1534,63 @@ fn normalize_attached_creature_with_base_pt(line: &str) -> Option<String> {
     ))
 }
 
+fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.ends_with(" creature that's still a land until end of turn") {
+        let prefix_len = trimmed.len() - " creature that's still a land until end of turn".len();
+        let prefix = trimmed[..prefix_len].trim();
+        if let Some((subject, pt)) = prefix.split_once(" becomes ") {
+            let subject = subject.trim();
+            let pt = pt.trim().trim_start_matches("a ");
+            if pt.contains('/') {
+                return Some(format!(
+                    "Until end of turn, {subject} becomes a {pt} creature that's still a land."
+                ));
+            }
+        }
+    }
+
+    if lower.ends_with(" blue serpent creature until end of turn") {
+        let prefix_len = trimmed.len() - " blue serpent creature until end of turn".len();
+        let prefix = trimmed[..prefix_len].trim();
+        if let Some((subject, pt)) = prefix.split_once(" becomes ") {
+            let subject = subject.trim();
+            let pt = pt.trim().trim_start_matches("a ");
+            if pt.contains('/') {
+                return Some(format!(
+                    "Until end of turn, {subject} becomes a blue Serpent with base power and toughness {pt}."
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+fn normalize_token_death_trigger_quote_surface(line: &str) -> String {
+    line.replace(
+        "\"When this token dies: You gain 1 life.\"",
+        "\"When this token dies, you gain 1 life.\"",
+    )
+    .replace(
+        "\"When this token dies: You gain 1 life\"",
+        "\"When this token dies, you gain 1 life\"",
+    )
+    .replace(
+        "When this token dies: You gain 1 life",
+        "When this token dies, you gain 1 life",
+    )
+    .replace(
+        "\"When this token dies: It deals 1 damage to any target.\"",
+        "\"When this token dies, it deals 1 damage to any target.\"",
+    )
+    .replace(
+        "When this token dies: It deals 1 damage to any target",
+        "When this token dies, it deals 1 damage to any target",
+    )
+}
+
 fn split_choose_sacrifice_tail<'a>(rest: &'a str) -> Option<(&'a str, &'a str)> {
     for needle in [
         ". you sacrifice all permanents you control",
@@ -1646,6 +1703,7 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
+    normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalized
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
@@ -1743,8 +1801,33 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let lower_compact_trimmed = lower_compact.trim_end_matches('.').to_string();
     if lower_compact_trimmed
         == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
+        || lower_compact_trimmed
+            == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast that card. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
     {
         return "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "whenever an opponent sacrifices a nontoken permanent, return it to the battlefield under your control"
+    {
+        return "Whenever an opponent sacrifices a nontoken permanent, put that card onto the battlefield under your control.".to_string();
+    }
+    if lower_compact_trimmed
+        == "whenever one or more scout or pirate or rogue creature you control deal combat damage to a player, that player exiles the top card of that player's library. you may cast that card. if you don't, create a treasure token"
+    {
+        return "Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.".to_string();
+    }
+    if lower_compact_trimmed
+        == "at the beginning of combat on your turn, you may have each treasure you control become 3/3 construct assassin artifact creature until end of turn"
+    {
+        return "At the beginning of combat on your turn, you may have Treasures you control become 3/3 Construct Assassin artifact creatures in addition to their other types until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "look at the top x cards of your library, where x is the number of lands you control. put one of them into your hand and the rest on the bottom of your library in a random order. if this spell was kicked, instead look at the top x cards of your library, where x is the number of lands you control. put exactly 2 of them into your hand and the rest on the bottom of your library in a random order"
+    {
+        return "Look at the top X cards of your library, where X is the number of lands you control. Put one of those cards into your hand. If this spell was kicked, put two of those cards into your hand instead. Put the rest on the bottom of your library in a random order.".to_string();
+    }
+    if let Some(animation) = normalize_temporary_animation_oracle_surface(&normalized) {
+        return animation;
     }
     if lower_compact
         == "each player loses 1 life. for each player, that player discards a card. each player sacrifices a creature that player controls of their choice. each player sacrifices a land that player controls of their choice."
@@ -1840,7 +1923,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.".to_string();
     }
     if lower_compact == "target creature becomes a 5/5 blue serpent creature until end of turn." {
-        return "target creature becomes a blue serpent creature with base power and toughness 5/5 until end of turn.".to_string();
+        return "Until end of turn, target creature becomes a blue Serpent with base power and toughness 5/5.".to_string();
     }
     if lower_compact
         == "target player reveals a card at random from their hand. ignite memories deals damage to that player equal to that card's mana value."

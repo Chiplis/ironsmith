@@ -131,15 +131,18 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
             }
             x_value
         } else {
-            make_decision_with_fallback(
+            let chosen = make_decision_with_fallback(
                 game,
                 &mut ctx.decision_maker,
                 ctx.controller,
                 Some(ctx.source),
                 NumberSpec::up_to(ctx.source, max_removable, description),
                 FallbackStrategy::Maximum,
-            )
-            .min(max_removable)
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            chosen.min(max_removable)
         };
 
         let mut removed_total = 0u32;
@@ -177,6 +180,9 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
                 CounterRemovalSpec::new(ctx.source, ctx.source, to_remove, available_counters),
                 FallbackStrategy::Maximum,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
             for (counter_type, requested) in selections {
                 if removed_total >= to_remove {

@@ -85,6 +85,9 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             &available,
             available[0],
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         credit_mana_symbols_from_context(game, player_id, chosen_symbols.iter().copied(), ctx);
 

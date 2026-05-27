@@ -200,6 +200,9 @@ fn resolve_retarget_objects(
                 .decide_objects(game, &select_ctx)
                 .into_iter()
                 .collect();
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(Vec::new());
+            }
             Ok(chosen)
         }
         ChooseSpec::Tagged(_) | ChooseSpec::SpecificObject(_) | ChooseSpec::Source => {
@@ -299,6 +302,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     let targets_ctx =
                         TargetsContext::new(chooser_id, object_id, source_name, adjusted.clone());
                     let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                     let Some(new_targets) = normalize_targets_for_requirements(&adjusted, proposed)
                     else {
                         continue;

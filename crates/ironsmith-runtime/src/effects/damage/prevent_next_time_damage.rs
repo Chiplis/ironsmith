@@ -111,8 +111,13 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     .decision_maker
                     .decide_objects(game, &select_ctx)
                     .into_iter()
-                    .next()
-                    .unwrap_or(candidates[0]);
+                    .find(|id| candidates.contains(id));
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                let Some(chosen) = chosen else {
+                    return Ok(EffectOutcome::count(0));
+                };
                 chosen_source = Some(chosen);
                 DamageSourceConstraint::Specific(chosen)
             }

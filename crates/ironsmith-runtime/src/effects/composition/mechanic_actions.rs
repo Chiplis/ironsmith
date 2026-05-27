@@ -479,7 +479,12 @@ impl EffectExecutor for ExploreEffect {
                             Some(ctx.source),
                             "Put the explored card into your graveyard?".to_string(),
                         );
-                        if ctx.decision_maker.decide_boolean(game, &choice_ctx) {
+                        let put_into_graveyard =
+                            ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        if put_into_graveyard {
                             let _ = apply_zone_change(
                                 game,
                                 card_id,
@@ -565,10 +570,17 @@ impl EffectExecutor for OpenAttractionEffect {
             return Ok(EffectOutcome::resolved());
         };
         let controller = game.controller_of(source);
-        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::OpenAttraction, controller, ctx.source, 1),
-            ctx.provenance,
-        )))
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::OpenAttraction,
+                    controller,
+                    ctx.source,
+                    1,
+                ),
+                ctx.provenance,
+            )),
+        )
     }
 }
 
@@ -881,7 +893,11 @@ impl EffectExecutor for CipherEffect {
                 source_obj.name
             ),
         );
-        if !ctx.decision_maker.decide_boolean(game, &choice_ctx) {
+        let encode = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if !encode {
             return Ok(EffectOutcome::declined());
         }
 
@@ -899,6 +915,9 @@ impl EffectExecutor for CipherEffect {
             Some(ctx.source),
             spec,
         );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let normalized = normalize_object_selection(selection, &candidates, 1);
         let Some(chosen_creature) = normalized.first().copied() else {
             return Ok(EffectOutcome::declined());
@@ -988,7 +1007,11 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
                 encoded_obj.name
             ),
         );
-        if !ctx.decision_maker.decide_boolean(game, &choice_ctx) {
+        let cast_copy = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if !cast_copy {
             return Ok(EffectOutcome::declined());
         }
 
@@ -1056,6 +1079,9 @@ impl EffectExecutor for DevourEffect {
                 Some(ctx.source),
                 spec,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             selection
                 .into_iter()
                 .filter(|id| candidates.contains(id))
@@ -1226,6 +1252,9 @@ impl EffectExecutor for AmplifyEffect {
                 Some(ctx.source),
                 spec,
             );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             selection
                 .into_iter()
                 .filter(|id| candidates.contains(id))
