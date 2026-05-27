@@ -1731,7 +1731,34 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "at the beginning of the next end step, exile it. if it would leave the battlefield, exile it instead.",
     );
     normalized = normalized.replace("this way,.", "this way,");
-    normalized = normalized.replace("card ins", "cards in");
+    normalized = normalized
+        .replace("card ins ", "cards in ")
+        .replace("Card ins ", "Cards in ");
+    normalized = normalized
+        .replace(
+            "If you control a creature with power 4 or greater, counter target noncreature spell instead",
+            "If you control a creature with power 4 or greater, instead counter target noncreature spell",
+        )
+        .replace(
+            "if you control a creature with power 4 or greater, counter target noncreature spell instead",
+            "if you control a creature with power 4 or greater, instead counter target noncreature spell",
+        )
+        .replace(
+            "If you control a creature with power 4 or greater, counter that spell instead",
+            "If you control a creature with power 4 or greater, instead counter that spell",
+        )
+        .replace(
+            "if you control a creature with power 4 or greater, counter that spell instead",
+            "if you control a creature with power 4 or greater, instead counter that spell",
+        )
+        .replace(
+            "If Gemstone Caverns has a luck counter on it, add one mana of any color instead",
+            "If Gemstone Caverns has a luck counter on it, instead add one mana of any color",
+        )
+        .replace(
+            "if Gemstone Caverns has a luck counter on it, add one mana of any color instead",
+            "if Gemstone Caverns has a luck counter on it, instead add one mana of any color",
+        );
     normalized = normalized.replace("one or more another ", "one or more other ");
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
@@ -1843,8 +1870,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "look at the top x cards of your library, where x is the number of lands you control. put one of them into your hand and the rest on the bottom of your library in a random order. if this spell was kicked, instead look at the top x cards of your library, where x is the number of lands you control. put exactly 2 of them into your hand and the rest on the bottom of your library in a random order"
+        || lower_compact_trimmed
+            == "look at the top x cards of your library, where x is the number of lands you control. put one of them into your hand and the rest on the bottom of your library in a random order. if this spell was kicked, look at the top x cards of your library, where x is the number of lands you control. put exactly 2 of them into your hand and the rest on the bottom of your library in a random order instead"
     {
         return "Look at the top X cards of your library, where X is the number of lands you control. Put one of those cards into your hand. If this spell was kicked, put two of those cards into your hand instead. Put the rest on the bottom of your library in a random order.".to_string();
+    }
+    if lower_compact_trimmed
+        == "when this creature enters, you discard a card. draw a card. if this spell's spectacle cost was paid, you discard your hand. you draw three cards instead. spectacle {2}{b}{r}"
+    {
+        return "When this creature enters, you discard a card. Draw a card. If this spell's spectacle cost was paid, instead you discard your hand. You draw three cards. Spectacle {2}{B}{R}.".to_string();
     }
     if let Some(animation) = normalize_temporary_animation_oracle_surface(&normalized) {
         return animation;
@@ -1913,6 +1947,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "at the beginning of your upkeep, if you have the city's blessing, draw a card. otherwise, each player draws a card."
         || lower_compact
             == "at the beginning of your upkeep, each player draws a card. if you have the city's blessing, instead draw a card."
+        || lower_compact
+            == "at the beginning of your upkeep, each player draws a card. if you have the city's blessing, draw a card instead."
     {
         return "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
     }
@@ -5510,7 +5546,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         }
     }
     normalized = normalized
-        .replace(" intead", " instead")
         .replace("that cards instead", "that card instead")
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
@@ -11775,6 +11810,16 @@ mod tests {
                 "At the beginning of your end step, for each opponent, that player loses 3 life."
             ),
             "At the beginning of your end step, each opponent loses 3 life."
+        );
+    }
+
+    #[test]
+    fn normalize_card_ins_typo_does_not_corrupt_instead() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "If a card would be put into your graveyard from anywhere this turn, exile that card instead"
+            ),
+            "If a card would be put into your graveyard from anywhere this turn, exile that card instead"
         );
     }
 

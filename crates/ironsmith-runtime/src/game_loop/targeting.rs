@@ -1452,6 +1452,9 @@ fn cast_time_selected_effects_from_effect(
     let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() else {
         return vec![effect.clone()];
     };
+    if condition_depends_on_chosen_target(&conditional.condition) {
+        return vec![effect.clone()];
+    }
 
     let condition_result = crate::condition_eval::evaluate_condition_cast_time(
         game,
@@ -1471,6 +1474,24 @@ fn cast_time_selected_effects_from_effect(
             cast_time_selected_effects_from_effect(game, inner, caster, Some(source_id))
         })
         .collect()
+}
+
+fn condition_depends_on_chosen_target(condition: &crate::effect::Condition) -> bool {
+    use crate::effect::Condition;
+
+    matches!(
+        condition,
+        Condition::TargetIsTapped
+            | Condition::TargetIsAttacking
+            | Condition::TargetIsBlocked
+            | Condition::TargetWasKicked
+            | Condition::TargetSpellCastOrderThisTurn(_)
+            | Condition::TargetSpellControllerIsPoisoned
+            | Condition::TargetSpellManaSpentToCastAtLeast { .. }
+            | Condition::YouControlMoreCreaturesThanTargetSpellController
+            | Condition::TargetHasGreatestPowerAmongCreatures
+            | Condition::TargetManaValueLteColorsSpentToCastThisSpell
+    )
 }
 
 fn effects_have_cast_time_target_selection(effects: &[Effect]) -> bool {
