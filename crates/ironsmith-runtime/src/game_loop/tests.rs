@@ -16092,6 +16092,97 @@ fn test_thorn_elemental_combat_decision() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_indomitable_might_grants_power_and_assign_as_unblocked_static_ability() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::object::AttachmentTarget;
+    use crate::types::{CardType, Subtype};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let enchanted_id = create_creature(&mut game, "Grizzly Probe", alice, 2, 2);
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Indomitable Might")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Flash\nEnchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("Indomitable Might text should parse into an Aura card definition");
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+
+    {
+        let aura_obj = game
+            .object_mut(aura_id)
+            .expect("aura should exist on battlefield");
+        aura_obj.attached_to = Some(AttachmentTarget::Object(enchanted_id));
+    }
+    {
+        let enchanted_obj = game
+            .object_mut(enchanted_id)
+            .expect("enchanted creature should exist");
+        enchanted_obj.attachments.push(aura_id);
+    }
+    let characteristics = game
+        .calculated_characteristics(enchanted_id)
+        .expect("enchanted creature should have calculated characteristics");
+    assert_eq!(characteristics.power, Some(5));
+    assert_eq!(characteristics.toughness, Some(5));
+    assert!(characteristics.static_abilities.iter().any(|ability| {
+        ability.id() == crate::static_abilities::StaticAbilityId::MayAssignDamageAsUnblocked
+    }));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_indomitable_might_blocked_combat_defaults_to_blocker_damage_assignment() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::object::AttachmentTarget;
+    use crate::types::{CardType, Subtype};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let enchanted_id = create_creature(&mut game, "Enchanted Attacker", alice, 2, 2);
+    let blocker_id = create_creature(&mut game, "Blocking Bear", bob, 2, 2);
+
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Indomitable Might")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Flash\nEnchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("Indomitable Might text should parse into an Aura card definition");
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    {
+        let aura_obj = game
+            .object_mut(aura_id)
+            .expect("aura should exist on battlefield");
+        aura_obj.attached_to = Some(AttachmentTarget::Object(enchanted_id));
+    }
+    {
+        let enchanted_obj = game
+            .object_mut(enchanted_id)
+            .expect("enchanted creature should exist");
+        enchanted_obj.attachments.push(aura_id);
+    }
+    game.remove_summoning_sickness(enchanted_id);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: enchanted_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(enchanted_id, vec![blocker_id]);
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert!(!events.is_empty());
+    assert_eq!(game.damage_on(blocker_id), 2);
+    assert_eq!(game.player(bob).expect("defender should exist").life, 20);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_stormbreath_dragon_has_abilities() {
     use crate::ability::AbilityKind;
     use crate::cards::definitions::stormbreath_dragon;
