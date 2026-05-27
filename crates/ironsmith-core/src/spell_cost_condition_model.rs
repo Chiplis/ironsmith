@@ -50,4 +50,5 @@ pub enum ThisSpellCostCondition {
     CreatureCardPutIntoYourGraveyardThisTurn,
     CreatureIsAttackingYou,
     YouDealtCombatDamageToPlayerWithSubtypeThisTurn(Subtype),
+    YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype),
 }

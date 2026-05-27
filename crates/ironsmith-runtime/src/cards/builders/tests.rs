@@ -42915,6 +42915,48 @@ fn loot_the_key_to_everything_runtime_count_uses_distinct_card_types_among_other
 }
 
 #[test]
+fn parse_oracle_overpowering_attack_supports_freerunning_keyword_line() {
+    let def = parse_oracle_card_definition("Overpowering Attack");
+    assert!(
+        !def.alternative_casts.is_empty(),
+        "Overpowering Attack should compile with a freerunning alternative cost"
+    );
+
+    let has_freerunning = def.alternative_casts.iter().any(|method| {
+        method.name().eq_ignore_ascii_case("Freerunning")
+            && matches!(
+                method.cast_condition(),
+                Some(
+                    crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+                        Subtype::Assassin
+                    )
+                )
+            )
+    });
+    assert!(
+        has_freerunning,
+        "Overpowering Attack should encode Freerunning with Assassin-or-commander combat damage condition"
+    );
+}
+
+#[test]
+fn overpowering_attack_compiled_text_keeps_freerunning_and_extra_combat_clause() {
+    let def = parse_oracle_card_definition("Overpowering Attack");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Freerunning {2}{R}"),
+        "expected Overpowering Attack to render the freerunning keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "After this main phase, there is an additional combat phase followed by an additional main phase"
+        ),
+        "expected Overpowering Attack to keep additional combat/main phase clause, got {rendered}"
+    );
+}
+
+#[test]
 fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlands() {
     let def = parse_oracle_card_definition("Loot, the Key to Everything");
     let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

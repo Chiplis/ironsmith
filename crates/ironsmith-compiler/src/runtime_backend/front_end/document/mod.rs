@@ -1654,6 +1654,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_cst_rewrites_freerunning_keyword_line_to_alternative_cost()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Freerunning Parse Test")
+                .card_types(vec![CardType::Sorcery]),
+            "Freerunning {2}{R} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)\nUntap all creatures you control that attacked this turn.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [
+                super::RewriteLineCst::Keyword(keyword),
+                super::RewriteLineCst::Statement(_),
+            ] => {
+                assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
+                assert_eq!(
+                    render_token_slice(&keyword.parse_tokens),
+                    "If you dealt combat damage to a player this turn with an Assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost."
+                );
+            }
+            other => panic!("expected freerunning keyword plus statement line, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn static_line_cst_recognizes_compound_unblockable_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Enchanted creature gets +2/+2 and can't be blocked.");
 
