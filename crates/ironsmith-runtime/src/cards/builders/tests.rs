@@ -12905,6 +12905,25 @@ fn parse_war_elemental_strictly_parses_etb_sacrifice_unless_opponent_damage_clau
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn living_artifact_oracle_parses_with_player_damage_trigger_and_upkeep_branch() {
+    let def = parse_oracle_card_definition("Living Artifact");
+    let joined = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        joined.contains("whenever you are dealt damage")
+            && joined.contains("vitality counters on this aura"),
+        "expected Living Artifact player-damage trigger text, got {joined}"
+    );
+    assert!(
+        joined.contains("at the beginning of your upkeep")
+            && joined.contains("you may remove a vitality counter from this aura")
+            && joined.contains("if you do, you gain 1 life"),
+        "expected Living Artifact upkeep branch text, got {joined}"
+    );
+}
+
 #[test]
 fn war_elemental_runtime_condition_matches_when_opponent_lost_life_this_turn() {
     let mut game =

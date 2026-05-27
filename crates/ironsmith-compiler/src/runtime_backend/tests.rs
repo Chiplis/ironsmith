@@ -8915,6 +8915,24 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_parses_player_contraction_dealt_damage_trigger() {
+    let text =
+        "Whenever you're dealt damage, put that many vitality counters on this Aura.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify player dealt-damage trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("player contraction dealt-damage triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsDamageToPlayer"), "{debug}");
+    assert!(debug.contains("You"), "{debug}");
+    assert!(debug.contains("PutCounter"), "{debug}");
+    assert!(debug.contains("Vitality"), "{debug}");
+    assert!(debug.contains("EventAmount"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_parses_ketramose_exile_trigger() {
     let text = "Whenever one or more cards are put into exile from graveyards and/or the battlefield during your turn, you draw a card and lose 1 life.";
     let tokens =
