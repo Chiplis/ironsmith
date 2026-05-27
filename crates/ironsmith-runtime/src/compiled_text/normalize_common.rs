@@ -1673,7 +1673,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "at the beginning of the next end step, exile it. if it would leave the battlefield, exile it instead.",
     );
     normalized = normalized.replace("this way,.", "this way,");
-    normalized = normalized.replace("card ins", "cards in");
+    normalized = normalized.replace("card ins ", "cards in ");
+    normalized = normalized.replace("card ins,", "cards in,");
+    normalized = normalized.replace("card ins.", "cards in.");
     normalized = normalized.replace("one or more another ", "one or more other ");
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
@@ -5405,8 +5407,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         }
     }
     normalized = normalized
-        .replace(" intead", " instead")
-        .replace("that cards instead", "that card instead")
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
         .replace("Return a Aura", "Return an Aura")

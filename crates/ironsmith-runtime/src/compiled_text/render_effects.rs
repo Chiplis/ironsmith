@@ -23937,7 +23937,7 @@ pub(super) fn describe_conditional_choose_both_instead(
 pub(super) fn describe_conditional_replacement_instead(
     conditional: &crate::effects::ConditionalEffect,
 ) -> Option<String> {
-    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+    if !conditional.if_false.is_empty() || conditional.if_true.is_empty() {
         return None;
     }
 
