@@ -2491,7 +2491,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::RedirectNextTimeDamageToSource { source, target } => {
+            SubjectVerbActionAst::RedirectNextTimeDamageToSource { source, target, .. } => {
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
