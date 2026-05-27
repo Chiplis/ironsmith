@@ -189,6 +189,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
             effects,
         )));
     }
+    if let Some(effects) = parse_target_gets_then_gains_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Get subject=target recognizer=shared-subject-get-gain",
+            effects,
+        )));
+    }
 
     let program = if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::Meld { effect })
@@ -332,6 +338,31 @@ fn parse_target_gains_then_gets_subject_verb(
         .windows(2)
         .any(|window| matches!(window, ["and", "get"] | ["and", "gets"]));
     if !has_get_tail {
+        return Ok(None);
+    }
+    if words
+        .windows(3)
+        .any(|window| matches!(window, ["where", "x", "is"]))
+    {
+        return Ok(None);
+    }
+    super::gain_ability::parse_gain_ability_sentence(tokens)
+}
+
+fn parse_target_gets_then_gains_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(get_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "get" | "gets"))
+    else {
+        return Ok(None);
+    };
+    let has_gain_tail = words[get_idx + 1..]
+        .windows(2)
+        .any(|window| matches!(window, ["and", "gain"] | ["and", "gains"]));
+    if !has_gain_tail {
         return Ok(None);
     }
     if words

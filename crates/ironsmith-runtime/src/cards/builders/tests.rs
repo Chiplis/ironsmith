@@ -37848,6 +37848,106 @@ fn parse_oracle_garruk_unleashed_compacts_pump_and_trample() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_tainted_strike_compiles_strictly() {
+    let def = parse_oracle_card_definition("Tainted Strike");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Target creature gets +1/+0 and gains infect until end of turn"),
+        "expected Tainted Strike to keep shared pump/infect clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
+    let def = parse_oracle_card_definition("Tainted Strike");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Tainted Strike should produce spell effects")
+        .clone();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(93_001), "Test Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_creature(),
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Tainted Strike should resolve");
+
+    assert_eq!(game.current_power(target), Some(3));
+    assert!(game.object_has_static_ability_id(target, StaticAbilityId::Infect));
+
+    let keywords = crate::rules::damage::SourceDamageKeywords {
+        has_infect: true,
+        ..crate::rules::damage::SourceDamageKeywords::default()
+    };
+    let player_damage = crate::rules::damage::apply_processed_damage_assignment(
+        &mut game,
+        target,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        keywords,
+        crate::events::cause::EventCause::from_effect(target, alice),
+    );
+    assert!(player_damage.applied, "damage assignment to player should apply");
+    assert_eq!(game.players[1].life, 20, "infect damage to player should not reduce life");
+    assert_eq!(game.players[1].poison_counters, 3, "infect damage should add poison counters");
+
+    let blocker = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(93_002), "Test Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let creature_damage = crate::rules::damage::apply_processed_damage_assignment(
+        &mut game,
+        target,
+        crate::events::DamageTarget::Object(blocker),
+        3,
+        keywords,
+        crate::events::cause::EventCause::from_effect(target, alice),
+    );
+    assert!(creature_damage.applied, "damage assignment to creature should apply");
+    assert_eq!(
+        game.object(blocker).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::MinusOneMinusOne)
+            .copied()),
+        Some(3),
+        "infect damage to creature should use -1/-1 counters"
+    );
+
+}
+
 #[test]
 fn parse_oracle_maskwood_nexus_uses_generic_subtype_family_effects() {
     let def = parse_oracle_card_definition("Maskwood Nexus");

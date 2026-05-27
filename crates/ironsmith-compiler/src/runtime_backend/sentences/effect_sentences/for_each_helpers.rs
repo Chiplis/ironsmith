@@ -499,9 +499,9 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             tail_words.get(1).copied(),
             Some("gain" | "gains" | "has" | "have")
         )
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike"))
+        && tail_words.iter().any(|word| {
+            matches!(*word, "trample" | "haste" | "first" | "strike" | "infect")
+        })
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));
@@ -510,9 +510,9 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         && tail_words
             .iter()
             .any(|word| matches!(*word, "gain" | "gains" | "has" | "have"))
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike"))
+        && tail_words.iter().any(|word| {
+            matches!(*word, "trample" | "haste" | "first" | "strike" | "infect")
+        })
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));
