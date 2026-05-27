@@ -142,7 +142,7 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             ctx.controller,
             DamageSourceToSpecificObjectMatcher::new(source_constraint, protected_target),
             ReplacementAction::Redirect {
-                target: RedirectTarget::ToSource,
+                target: RedirectTarget::ToObject(ctx.source),
                 which: RedirectWhich::First,
             },
         );
@@ -171,11 +171,52 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::events::DamageTarget;
+    use crate::events::cause::EventCause;
     use crate::effects::ExecutionContext;
     use crate::ids::CardId;
+    use crate::ids::PlayerId;
     use crate::effects::ResolvedTarget;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    struct ChooseNamedSourceDecisionMaker {
+        source_name: &'static str,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseNamedSourceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<crate::ids::ObjectId> {
+            if let Some(chosen) = ctx.candidates.iter().find_map(|candidate| {
+                if !candidate.legal {
+                    return None;
+                }
+                let matches = game
+                    .object(candidate.id)
+                    .is_some_and(|object| object.name == self.source_name);
+                if matches { Some(candidate.id) } else { None }
+            }) {
+                vec![chosen]
+            } else {
+                crate::decision::AutoPassDecisionMaker.decide_objects(game, ctx)
+            }
+        }
+    }
+
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+        card_id: u32,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(card_id), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
 
     #[test]
     fn oracles_attendants_style_redirect_registers_until_end_of_turn_effect() {
@@ -254,5 +295,147 @@ mod tests {
             0,
             "next-time redirect should not register until end of turn"
         );
+    }
+
+    #[test]
+    fn oracles_attendants_redirects_chosen_source_damage_for_rest_of_turn() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_100);
+        let attendants = create_creature(&mut game, "Oracle's Attendants", alice, 80_101);
+        let protected = create_creature(&mut game, "Protected Creature", alice, 80_102);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(attendants, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("oracle attendants replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        let protected_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(protected))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let redirected_to_attendants: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(attendants))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(protected_damage, 0, "chosen-source damage should not stay on protected creature");
+        assert!(
+            !processed.replacement_prevented,
+            "redirect should not count as prevention"
+        );
+        assert_eq!(redirected_to_attendants, 3, "chosen-source damage should be redirected to this creature");
+    }
+
+    #[test]
+    fn oracles_attendants_does_not_redirect_other_sources() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let _chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_110);
+        let attendants = create_creature(&mut game, "Oracle's Attendants", alice, 80_111);
+        let protected = create_creature(&mut game, "Protected Creature", alice, 80_112);
+        let other_source = create_creature(&mut game, "Other Source", alice, 80_113);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(attendants, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("oracle attendants replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            other_source,
+            DamageTarget::Object(protected),
+            2,
+            false,
+            EventCause::effect(),
+        );
+        let protected_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(protected))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let redirected_to_attendants: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(attendants))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(protected_damage, 2, "non-chosen source should still damage the protected creature");
+        assert!(
+            !processed.replacement_prevented,
+            "unredirected damage should not be prevented"
+        );
+        assert_eq!(redirected_to_attendants, 0, "non-chosen source should not be redirected to this creature");
+    }
+
+    #[test]
+    fn oracles_attendants_redirect_expires_at_end_of_turn() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_120);
+        let attendants = create_creature(&mut game, "Oracle's Attendants", alice, 80_121);
+        let protected = create_creature(&mut game, "Protected Creature", alice, 80_122);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(attendants, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("oracle attendants replacement should register");
+
+        game.effect_store
+            .replacement_effects
+            .clear_until_end_of_turn_effects();
+
+        let (protected_damage, replacement_prevented) = crate::events::processing::process_damage_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            4,
+            false,
+            EventCause::effect(),
+        );
+
+        assert_eq!(protected_damage, 4, "chosen-source damage should stop redirecting after end of turn");
+        assert!(!replacement_prevented, "expired redirect should not prevent damage");
     }
 }
