@@ -18,7 +18,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 /// A replacement effect that modifies events.
@@ -153,6 +153,7 @@ pub enum ReplacementAction {
         enters_tapped: bool,
         name_override: Option<String>,
         added_card_types: Vec<CardType>,
+        removed_supertypes: Vec<Supertype>,
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,
         set_base_power_toughness: Option<(i32, i32)>,

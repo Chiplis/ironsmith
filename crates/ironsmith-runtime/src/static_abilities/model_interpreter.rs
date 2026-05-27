@@ -436,6 +436,7 @@ impl StaticAbilityModelInterpreter {
                     copy_source_enchanted: spec.copy_source_enchanted,
                     name_override: spec.name_override.clone(),
                     added_card_types: spec.added_card_types.clone(),
+                    removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: spec
                         .added_abilities
@@ -1157,6 +1158,7 @@ impl StaticAbilityModelInterpreter {
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override.clone(),
                         added_card_types: spec.added_card_types.clone(),
+                        removed_supertypes: spec.removed_supertypes.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
                         added_abilities: spec
                             .added_abilities

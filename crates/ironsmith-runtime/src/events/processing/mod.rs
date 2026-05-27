@@ -131,6 +131,7 @@ fn push_enter_as_copy_effects_for_spec(
                     enters_tapped: spec.enters_tapped_if_chosen,
                     name_override: spec.name_override.clone(),
                     added_card_types: spec.added_card_types.clone(),
+                    removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: spec.added_abilities.clone(),
                     set_base_power_toughness,
@@ -1993,6 +1994,8 @@ pub struct EtbEventResult {
     pub copy_name_override: Option<String>,
     /// Additional card types granted by an ETB copy choice.
     pub added_card_types: Vec<crate::types::CardType>,
+    /// Supertypes removed by an ETB copy choice.
+    pub removed_supertypes: Vec<crate::types::Supertype>,
     /// Additional subtypes granted by an ETB copy choice.
     pub added_subtypes: Vec<crate::types::Subtype>,
     /// Additional abilities granted by an ETB copy choice.
@@ -2703,6 +2706,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
+            removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
@@ -2778,6 +2782,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         enters_as_copy_of: etb.enters_as_copy_of,
                         copy_name_override: etb.copy_name_override.clone(),
                         added_card_types: etb.added_card_types.clone(),
+                        removed_supertypes: etb.removed_supertypes.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
                         added_abilities: etb.added_abilities.clone(),
                         set_base_power_toughness: etb.set_base_power_toughness,

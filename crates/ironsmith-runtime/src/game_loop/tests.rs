@@ -11313,6 +11313,7 @@ fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
@@ -11371,6 +11372,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_object() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
@@ -11422,6 +11424,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stack_object() 
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
@@ -11467,6 +11470,7 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
@@ -11494,6 +11498,161 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
     assert_eq!(copied.name, "Essence Source");
     assert_eq!(copied.base_power, Some(crate::card::PtValue::Fixed(6)));
     assert_eq!(copied.base_toughness, Some(crate::card::PtValue::Fixed(6)));
+}
+
+#[test]
+fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myriad() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+    use crate::types::Supertype;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let legendary_source = CardDefinitionBuilder::new(CardId::new(), "Legendary Copy Source")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_definition(&legendary_source, alice, Zone::Battlefield);
+
+    let auton_like = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: vec![CardType::Artifact],
+                    removed_supertypes: vec![Supertype::Legendary],
+                    added_subtypes: Vec::new(),
+                    added_abilities: vec![Ability::triggered(
+                        Trigger::this_attacks(),
+                        vec![Effect::for_players(
+                            PlayerFilter::excluding(
+                                PlayerFilter::Opponent,
+                                PlayerFilter::Defending,
+                            ),
+                            vec![Effect::may(vec![Effect::new(
+                                crate::effects::CreateTokenCopyEffect::new(
+                                    ChooseSpec::Source,
+                                    1,
+                                    PlayerFilter::You,
+                                )
+                                .enters_tapped(true)
+                                .attacking_player_or_planeswalker_controlled_by(
+                                    PlayerFilter::IteratedPlayer,
+                                )
+                                .exile_at_eoc(true),
+                            )])],
+                        )],
+                    )],
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."
+                    .to_string(),
+            ),
+        ))
+        .build();
+    let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
+
+    let result = game
+        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
+        .expect("auton-like permanent should enter the battlefield");
+    let copied = game
+        .object(result.new_id)
+        .expect("copied permanent should exist");
+
+    assert_eq!(copied.name, "Legendary Copy Source");
+    assert!(
+        !copied.supertypes.contains(&Supertype::Legendary),
+        "copied permanent should lose legendary"
+    );
+    assert!(
+        copied.card_types.contains(&CardType::Artifact),
+        "copied permanent should be an artifact in addition to copied types"
+    );
+    let abilities_debug = format!("{:?}", copied.abilities);
+    assert!(
+        abilities_debug.contains("CreateTokenCopyEffect")
+            && abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("MayEffect")
+            && !abilities_debug.contains("StaticAbilityId::KeywordMarker"),
+        "copied permanent should gain functional myriad trigger, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+    use crate::types::Supertype;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let auton_like = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: vec![CardType::Artifact],
+                    removed_supertypes: vec![Supertype::Legendary],
+                    added_subtypes: Vec::new(),
+                    added_abilities: vec![Ability::triggered(
+                        Trigger::this_attacks(),
+                        vec![Effect::for_players(
+                            PlayerFilter::excluding(
+                                PlayerFilter::Opponent,
+                                PlayerFilter::Defending,
+                            ),
+                            vec![Effect::may(vec![Effect::new(
+                                crate::effects::CreateTokenCopyEffect::new(
+                                    ChooseSpec::Source,
+                                    1,
+                                    PlayerFilter::You,
+                                )
+                                .enters_tapped(true)
+                                .attacking_player_or_planeswalker_controlled_by(
+                                    PlayerFilter::IteratedPlayer,
+                                )
+                                .exile_at_eoc(true),
+                            )])],
+                        )],
+                    )],
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."
+                    .to_string(),
+            ),
+        ))
+        .build();
+    let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
+
+    let result = game
+        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
+        .expect("auton-like permanent should enter the battlefield");
+    let entered = game
+        .object(result.new_id)
+        .expect("entered permanent should exist");
+
+    assert_eq!(entered.name, "Auton Soldier");
+    assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(4)));
+    assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(4)));
 }
 
 #[test]

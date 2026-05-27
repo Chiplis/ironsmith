@@ -16285,6 +16285,49 @@ fn parse_omni_changeling_copy_exception_stays_localized() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_auton_soldier_copy_exception_with_nonlegendary_artifact_and_myriad() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Soldier])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+        .parse_text(
+            "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad.",
+        )
+        .expect("Auton Soldier copy exception should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("isn't legendary")
+            && rendered.contains("is an artifact in addition to its other types")
+            && rendered.contains("has myriad"),
+        "expected Auton Soldier copy exception details in render output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("removed_supertypes") && debug.contains("Legendary"),
+        "expected copy-as-enters lowering to remove legendary, got {debug}"
+    );
+    assert!(
+        debug.contains("added_card_types") && debug.contains("Artifact"),
+        "expected copy-as-enters lowering to add artifact type, got {debug}"
+    );
+    assert!(
+        debug.contains("added_abilities") && debug.to_ascii_lowercase().contains("myriad"),
+        "expected copy-as-enters lowering to add myriad, got {debug}"
+    );
+    assert!(
+        !debug.contains("StaticAbilityId::KeywordMarker") || !debug.to_ascii_lowercase().contains("myriad"),
+        "expected myriad to lower as functional triggered ability, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected Auton Soldier parse to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_reveal_card_this_way_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
         .parse_text(

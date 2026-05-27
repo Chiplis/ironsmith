@@ -3070,6 +3070,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     copy_source_enchanted,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
@@ -3156,6 +3157,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
 
     let mut name_override = None;
     let mut added_card_types = Vec::new();
+    let mut removed_supertypes = Vec::new();
     let mut added_subtypes = Vec::new();
     let mut added_abilities = Vec::new();
     let mut set_base_power_toughness = None;
@@ -3187,7 +3189,25 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
         } else if slice_starts_with(tail, &["it", "has"]) {
             added_abilities = parse_added_copy_abilities(tokens, &clause_words, except_idx + 2)?;
         } else {
+            let mut tail_idx = 0usize;
+            if slice_starts_with(tail, &["it", "isn't", "legendary"])
+                || slice_starts_with(tail, &["it", "is", "not", "legendary"])
+            {
+                removed_supertypes.push(crate::types::Supertype::Legendary);
+                tail_idx = if tail.get(1).copied() == Some("isn't") {
+                    3
+                } else {
+                    4
+                };
+            }
+
+            let tail_word_offset = tail_idx;
+            let tail = &tail[tail_idx..];
             let type_idx = if tail.first().copied() == Some("its")
+                && matches!(tail.get(1).copied(), Some("a" | "an"))
+            {
+                2usize
+            } else if tail.first().copied() == Some("is")
                 && matches!(tail.get(1).copied(), Some("a" | "an"))
             {
                 2usize
@@ -3281,15 +3301,22 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                 ) {
                     set_base_power_toughness_from_self = true;
                 } else if !slice_starts_with(&tail[remainder_start..], &["and", "it", "has"]) {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported enters-as-copy exception clause (clause: '{}')",
-                        clause_words.join(" ")
-                    )));
+                    if !slice_starts_with(&tail[remainder_start..], &["and", "has"]) {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported enters-as-copy exception clause (clause: '{}')",
+                            clause_words.join(" ")
+                        )));
+                    }
+                    added_abilities = parse_added_copy_abilities(
+                        tokens,
+                        &clause_words,
+                        except_idx + 1 + tail_word_offset + remainder_start + 1,
+                    )?;
                 } else {
                     added_abilities = parse_added_copy_abilities(
                         tokens,
                         &clause_words,
-                        except_idx + 1 + remainder_start + 2,
+                        except_idx + 1 + tail_word_offset + remainder_start + 2,
                     )?;
                 }
             }
@@ -3310,6 +3337,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             added_abilities,
             set_base_power_toughness,
             set_base_power_toughness_from_self,
+            removed_supertypes,
         },
         clause_words.join(" "),
     )))

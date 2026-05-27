@@ -949,6 +949,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
     pub added_card_types: Vec<crate::types::CardType>,
+    pub removed_supertypes: Vec<crate::types::Supertype>,
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
