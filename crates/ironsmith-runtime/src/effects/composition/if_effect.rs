@@ -1,6 +1,6 @@
 //! If effect implementation.
 
-use crate::effect::{EffectOutcome, EffectPredicateRuntimeExt};
+use crate::effect::{EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
@@ -55,15 +55,45 @@ impl EffectExecutor for IfEffect {
             .get_outcome(self.condition)
             .ok_or(ExecutionError::EffectNotFound(self.condition))?;
 
-        let branch = if self.predicate.evaluate_outcome(outcome) {
-            &self.then
+        let match_repetitions = if let EffectPredicate::Value(cmp) = &self.predicate {
+            let chosen_numbers = outcome
+                .execution_facts
+                .iter()
+                .filter_map(|fact| match fact {
+                    ExecutionFact::ChosenNumber(n) => Some(*n as i32),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if chosen_numbers.is_empty() {
+                None
+            } else {
+                let matches = chosen_numbers
+                    .into_iter()
+                    .filter(|value| cmp.evaluate(*value))
+                    .count();
+                Some(matches)
+            }
         } else {
-            &self.else_
+            None
+        };
+
+        let (branch, repetitions) = if let Some(matches) = match_repetitions {
+            if matches > 0 {
+                (&self.then, matches)
+            } else {
+                (&self.else_, 1)
+            }
+        } else if self.predicate.evaluate_outcome(outcome) {
+            (&self.then, 1)
+        } else {
+            (&self.else_, 1)
         };
 
         let mut outcomes = Vec::new();
-        for eff in branch {
-            outcomes.push(execute_effect(game, eff, ctx)?);
+        for _ in 0..repetitions {
+            for eff in branch {
+                outcomes.push(execute_effect(game, eff, ctx)?);
+            }
         }
         Ok(EffectOutcome::aggregate(outcomes))
     }

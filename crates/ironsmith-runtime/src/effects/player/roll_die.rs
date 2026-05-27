@@ -1,4 +1,4 @@
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -29,12 +29,18 @@ impl EffectExecutor for RollDieEffect {
         }
         if let Some(forced) = game.take_forced_die_roll() {
             let clamped = forced.clamp(1, self.sides);
-            return Ok(EffectOutcome::count(clamped as i32));
+            return Ok(
+                EffectOutcome::count(clamped as i32)
+                    .with_execution_fact(ExecutionFact::ChosenNumber(clamped)),
+            );
         }
 
         let mut faces: Vec<u32> = (1..=self.sides).collect();
         game.shuffle_slice(&mut faces);
-        Ok(EffectOutcome::count(faces[0] as i32))
+        Ok(
+            EffectOutcome::count(faces[0] as i32)
+                .with_execution_fact(ExecutionFact::ChosenNumber(faces[0])),
+        )
     }
 }
 

@@ -3667,8 +3667,12 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
         "expected roll clause in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("1, 3, 5") && rendered.contains("2, 4, 6"),
+        rendered.contains("if you roll 1, 3, or 5") && rendered.contains("if you roll 2, 4, or 6"),
         "expected odd/even result branch conditions in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("its count is one of"),
+        "expected die-result branch wording, not generic count wording, got {rendered}"
     );
     assert!(
         rendered.contains("1/1")

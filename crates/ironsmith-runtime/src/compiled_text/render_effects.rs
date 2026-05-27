@@ -22226,6 +22226,28 @@ fn describe_with_id_if_clause(
         } else {
             format!("If {}", describe_effect_predicate(&if_effect.predicate))
         }
+    } else if let Some(repeat) = with_id
+        .effect
+        .downcast_ref::<crate::effects::RepeatEffectsEffect>()
+    {
+        if let EffectPredicate::Value(cmp) = &if_effect.predicate {
+            if repeat.effects.len() == 1
+                && let Some(roll_die) = repeat.effects[0].downcast_ref::<crate::effects::RollDieEffect>()
+            {
+                let player = describe_player_filter(&roll_die.player);
+                let result_text = describe_roll_result_comparison(cmp)?;
+                let verb = player_verb(&player, "roll", "rolls");
+                if player == "you" {
+                    format!("If you roll {result_text}")
+                } else {
+                    format!("If {player} {verb} {result_text}")
+                }
+            } else {
+                format!("If {}", describe_effect_predicate(&if_effect.predicate))
+            }
+        } else {
+            format!("If {}", describe_effect_predicate(&if_effect.predicate))
+        }
     } else if with_id
         .effect
         .downcast_ref::<crate::effects::FlipCoinEffect>()
@@ -22353,6 +22375,16 @@ fn describe_roll_result_comparison(cmp: &Comparison) -> Option<String> {
     match cmp {
         Comparison::Equal(n) => Some(n.to_string()),
         Comparison::BetweenInclusive(min, max) => Some(format!("{min}-{max}")),
+        Comparison::OneOf(values) if !values.is_empty() => {
+            let nums = values.iter().map(i32::to_string).collect::<Vec<_>>();
+            let list = match nums.len() {
+                0 => return None,
+                1 => nums[0].clone(),
+                2 => format!("{} or {}", nums[0], nums[1]),
+                _ => format!("{}, or {}", nums[..nums.len() - 1].join(", "), nums[nums.len() - 1]),
+            };
+            Some(list)
+        }
         _ => None,
     }
 }

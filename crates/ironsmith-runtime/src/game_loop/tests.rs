@@ -15214,6 +15214,80 @@ fn ancient_bronze_dragon_trigger_allows_zero_targets() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.force_next_die_roll(1);
+    game.force_next_die_roll(2);
+    game.force_next_die_roll(5);
+
+    let clown_car = CardDefinitionBuilder::new(CardId::new(), "Clown Car")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "When this Vehicle enters, roll X six-sided dice. For each odd result, create a 1/1 white Clown Robot artifact creature token. For each even result, put a +1/+1 counter on this Vehicle.\nCrew 2",
+        )
+        .expect("Clown Car should parse");
+
+    let clown_car_id = game.create_object_from_definition(&clown_car, alice, Zone::Battlefield);
+    game.object_mut(clown_car_id)
+        .expect("Clown Car permanent should exist")
+        .x_value = Some(3);
+    let mut source_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object(
+            game.object(clown_car_id)
+                .expect("Clown Car permanent should exist"),
+            &game,
+        );
+    source_snapshot.x_value = Some(3);
+
+    let etb_event = TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            clown_car_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(source_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, etb_event, false);
+    assert_eq!(trigger_queue.entries.len(), 1, "Clown Car should trigger once");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Clown Car ETB trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Clown Car ETB trigger should resolve");
+
+    let clown_tokens = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Clown"
+                    && game.controller_of(obj) == alice
+                    && obj.card_types.contains(&CardType::Artifact)
+                    && obj.card_types.contains(&CardType::Creature)
+            })
+        })
+        .count();
+    assert_eq!(
+        clown_tokens, 2,
+        "odd die results (1 and 5) should create one Clown token each"
+    );
+
+    assert_eq!(
+        game.counter_count(clown_car_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "even die result (2) should add one +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
     use crate::decision::compute_legal_actions;
 
