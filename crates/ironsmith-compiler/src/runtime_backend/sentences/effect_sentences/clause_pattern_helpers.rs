@@ -1972,6 +1972,12 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
+    if clause_words == ["manifest", "a", "card", "from", "your", "hand"] {
+        return Ok(Some(EffectAst::subject_verb_manifest_from_hand(
+            PlayerAst::You,
+        )));
+    }
+
     if clause_words
         == [
             "manifest", "the", "top", "card", "of", "that", "player's", "library",

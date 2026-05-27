@@ -37,7 +37,7 @@ pub use ironsmith_core::{
     InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode,
     LocalRewriteEffect as CoreLocalRewriteEffect, LookAtHandEffect, LookAtTopCardsEffect,
     LoseLifeEffect, LoseTheGameEffect, ManaRestrictedEffect as CoreManaRestrictedEffect,
-    ManifestDreadEffect, ManifestTopCardOfLibraryEffect,
+    ManifestCardFromHandEffect, ManifestDreadEffect, ManifestTopCardOfLibraryEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,

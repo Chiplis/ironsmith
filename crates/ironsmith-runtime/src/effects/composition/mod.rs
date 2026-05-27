@@ -76,8 +76,9 @@ pub use mana_restricted::ManaRestrictedEffect;
 pub use may::MayEffect;
 pub use mechanic_actions::{
     AdaptEffect, AmplifyEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect,
-    CipherEffect, CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestDreadEffect,
-    ManifestTopCardOfLibraryEffect, OpenAttractionEffect, PopulateEffect, SupportEffect,
+    CipherEffect, CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestCardFromHandEffect,
+    ManifestDreadEffect, ManifestTopCardOfLibraryEffect, OpenAttractionEffect, PopulateEffect,
+    SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub use repeat_effects::RepeatEffectsEffect;

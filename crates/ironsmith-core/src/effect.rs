@@ -1921,6 +1921,15 @@ impl ManifestTopCardOfLibraryEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ManifestCardFromHandEffect;
+
+impl ManifestCardFromHandEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SupportEffect {
     pub amount: u32,
 }

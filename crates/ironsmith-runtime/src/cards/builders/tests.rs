@@ -7762,6 +7762,40 @@ fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn scroll_of_fate_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scroll of Fate")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Manifest a card from your hand.")
+        .expect("Scroll of Fate should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "Scroll of Fate should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scroll_of_fate_compiled_text_keeps_manifest_from_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scroll of Fate")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Manifest a card from your hand.")
+        .expect("Scroll of Fate ability should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest a card from your hand"),
+        "expected Scroll of Fate compiled text to keep manifest-from-hand clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_vault_101_birthday_party_parses_strictly() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vault 101: Birthday Party")
         .card_types(vec![CardType::Enchantment])

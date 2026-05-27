@@ -506,6 +506,9 @@ fn compile_subject_verb_effect(
                 Effect::manifest_top_card_of_library(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::ManifestCardFromHand => {
+            Ok((vec![Effect::manifest_card_from_hand()], Vec::new()))
+        }
         SubjectVerbActionAst::ManifestDread => Ok((vec![Effect::manifest_dread()], Vec::new())),
         SubjectVerbActionAst::Earthbend { counters } => {
             let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
