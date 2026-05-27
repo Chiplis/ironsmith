@@ -5510,6 +5510,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         }
     }
     normalized = normalized
+        .replace(" intead", " instead")
+        .replace("that cards instead", "that card instead")
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
         .replace("Return a Aura", "Return an Aura")

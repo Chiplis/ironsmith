@@ -130,6 +130,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Target that permanent ", "That permanent ")
         .replace("Target that creature ", "That creature ")
         .replace("Target that object ", "That object ")
+        .replace("card intead", "card instead")
+        .replace("cards intead", "card instead")
         .replace("Add 1 mana of any color", "Add one mana of any color")
         .replace("add 1 mana of any color", "add one mana of any color")
         .replace(
