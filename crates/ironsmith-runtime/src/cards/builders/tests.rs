@@ -2942,6 +2942,37 @@ fn test_parse_double_cant_clause_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn everybody_lives_parses_strictly_with_player_hexproof_clause() {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse strictly");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn everybody_lives_compiled_text_includes_player_hexproof_and_life_lock_clauses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Players have hexproof")
+            && rendered.contains("Players can't have life total changed this turn")
+            && rendered.contains("Players can't lose the game this turn")
+            && rendered.contains("Players can't win the game this turn"),
+        "expected Everybody Lives! compiled text to keep player clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_characteristic_pt_constant_plus_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aysen Crusader")
         .parse_text(

@@ -306,9 +306,9 @@ fn player_gain_effects_for_abilities(
     abilities: &[GrantedAbilityAst],
     duration: &Until,
     subject_tokens: &[OwnedLexToken],
+    player_filter: PlayerFilter,
 ) -> Option<Vec<EffectAst>> {
-    let player_target =
-        TargetAst::Player(PlayerFilter::You, span_from_lexed_tokens(subject_tokens));
+    let player_target = TargetAst::Player(player_filter.clone(), span_from_lexed_tokens(subject_tokens));
     let mut effects = Vec::new();
 
     for ability in abilities {
@@ -316,7 +316,7 @@ fn player_gain_effects_for_abilities(
             GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof) => {
                 effects.push(EffectAst::subject_verb_cant(
                     crate::effect::Restriction::be_targeted_player_from(
-                        PlayerFilter::You,
+                        player_filter.clone(),
                         ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
                     ),
                     duration.clone(),
@@ -326,7 +326,7 @@ fn player_gain_effects_for_abilities(
             GrantedAbilityAst::KeywordAction(KeywordAction::HexproofFrom(filter)) => {
                 effects.push(EffectAst::subject_verb_cant(
                     crate::effect::Restriction::be_targeted_player_from(
-                        PlayerFilter::You,
+                        player_filter.clone(),
                         filter.clone().controlled_by(PlayerFilter::Opponent),
                     ),
                     duration.clone(),
@@ -335,7 +335,7 @@ fn player_gain_effects_for_abilities(
             }
             GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything) => {
                 effects.push(EffectAst::subject_verb_cant(
-                    crate::effect::Restriction::be_targeted_player(PlayerFilter::You),
+                    crate::effect::Restriction::be_targeted_player(player_filter.clone()),
                     duration.clone(),
                     None,
                 ));
@@ -842,6 +842,21 @@ fn parse_simple_ability_modifier_clause_lexed(
         )));
     }
 
+    if !losing
+        && (subject_word_refs.as_slice() == ["players"]
+            || subject_word_refs.as_slice() == ["all", "players"])
+    {
+        let Some(mut player_effects) =
+            player_gain_effects_for_abilities(&abilities, &duration, subject_tokens, PlayerFilter::Any)
+        else {
+            return Ok(None);
+        };
+        if player_effects.len() == 1 {
+            return Ok(player_effects.pop());
+        }
+        return Ok(None);
+    }
+
     let filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported subject in {}-ability clause (clause: '{}')",
@@ -1026,6 +1041,24 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target, abilities, duration,
         )));
+    }
+
+    if !losing
+        && (subject_word_refs.as_slice() == ["players"]
+            || subject_word_refs.as_slice() == ["all", "players"])
+    {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            &subject_tokens,
+            PlayerFilter::Any,
+        ) else {
+            return Ok(None);
+        };
+        if player_effects.len() == 1 {
+            return Ok(player_effects.pop());
+        }
+        return Ok(None);
     }
 
     let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
@@ -1653,7 +1686,12 @@ pub(crate) fn parse_gain_ability_sentence(
     if !losing && real_subject_words.as_slice() == ["you", "and", "permanents", "you", "control"] {
         let permanent_filter = crate::target::ObjectFilter::permanent().you_control();
         let Some(mut player_effects) =
-            player_gain_effects_for_abilities(&abilities, &duration, &real_subject_tokens)
+            player_gain_effects_for_abilities(
+                &abilities,
+                &duration,
+                &real_subject_tokens,
+                PlayerFilter::You,
+            )
         else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed player/permanent gain-ability clause (clause: '{}')",
@@ -1666,6 +1704,23 @@ pub(crate) fn parse_gain_ability_sentence(
             abilities,
             duration,
         ));
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
+    if !losing && (real_subject_words.as_slice() == ["players"] || real_subject_words.as_slice() == ["all", "players"]) {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            &real_subject_tokens,
+            PlayerFilter::Any,
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported player gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -2550,6 +2605,22 @@ mod tests {
                 && string_contains(&compact_rendered, "isdealtdamage")
                 && string_contains(&compact_rendered, "putcounterseffect"),
             "grant should stay targeted in the lowered structure: {rendered}"
+        );
+    }
+
+    #[test]
+    fn players_gain_hexproof_clause_parses_as_player_wide_targeting_restriction() {
+        let tokens = tokenize_line("Players gain hexproof until end of turn.", 0);
+        let effect = parse_simple_gain_ability_clause(&tokens)
+            .expect("players gain clause should parse")
+            .expect("players gain clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "Cant")
+                && string_contains(&debug, "BeTargetedPlayerFrom(Any")
+                && string_contains(&debug, "EndOfTurn"),
+            "expected a player-wide temporary targeting restriction, got {debug}"
         );
     }
 }

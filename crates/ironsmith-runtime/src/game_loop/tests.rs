@@ -329,6 +329,83 @@ fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn everybody_lives_prevents_life_loss_and_game_win_loss_for_all_players_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let everybody_lives = CardDefinitionBuilder::new(CardId::from_raw(72_301), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse");
+
+    let spell_id = game.create_object_from_definition(&everybody_lives, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_source_info(
+            game.object(spell_id)
+                .expect("Everybody Lives! spell should exist")
+                .stable_id,
+            "Everybody Lives!".to_string(),
+        ),
+    );
+    resolve_stack_entry(&mut game).expect("Everybody Lives! should resolve");
+
+    assert!(!game.can_lose_life(alice));
+    assert!(!game.can_lose_life(bob));
+    assert!(!game.can_lose_game(alice));
+    assert!(!game.can_lose_game(bob));
+    assert!(!game.can_win_game(alice));
+    assert!(!game.can_win_game(bob));
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    assert_eq!(game.lose_life(bob, 3), 0, "life loss should be prevented this turn");
+    assert_eq!(game.player(bob).expect("bob exists").life, bob_life_before);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn everybody_lives_switches_player_restrictions_on_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let everybody_lives = CardDefinitionBuilder::new(CardId::from_raw(72_302), "Everybody Lives!")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        )
+        .expect("Everybody Lives! should parse");
+
+    let spell_id = game.create_object_from_definition(&everybody_lives, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_source_info(
+            game.object(spell_id)
+                .expect("Everybody Lives! spell should exist")
+                .stable_id,
+            "Everybody Lives!".to_string(),
+        ),
+    );
+    assert!(game.can_lose_life(alice));
+    assert!(game.can_lose_life(bob));
+    assert!(game.can_lose_game(alice));
+    assert!(game.can_lose_game(bob));
+    assert!(game.can_win_game(alice));
+    assert!(game.can_win_game(bob));
+
+    resolve_stack_entry(&mut game).expect("Everybody Lives! should resolve");
+
+    assert!(!game.can_lose_life(alice));
+    assert!(!game.can_lose_life(bob));
+    assert!(!game.can_lose_game(alice));
+    assert!(!game.can_lose_game(bob));
+    assert!(!game.can_win_game(alice));
+    assert!(!game.can_win_game(bob));
+}
+
 fn resolve_triggered_ability_from_spell_cast(
     game: &mut GameState,
     triggered: &crate::ability::TriggeredAbility,
