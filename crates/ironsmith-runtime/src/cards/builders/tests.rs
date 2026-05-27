@@ -30629,6 +30629,41 @@ fn parse_this_creature_cant_be_blocked_except_by_black_creatures() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_elven_riders_strict_regression() {
+    assert_oracle_card_parses_strict("Elven Riders");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn elven_riders_compiled_text_keeps_walls_and_flying_blocker_clause() {
+    let def = parse_oracle_card_definition("Elven Riders");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("blockspecificattacker"),
+        "expected blocker restriction, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("excluded_subtypes")
+            && abilities_debug.contains("wall")
+            && abilities_debug.contains("excluded_static_abilities")
+            && abilities_debug.contains("flying"),
+        "expected restriction to disallow non-Wall nonflying blockers, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("can't be blocked except by")
+            && rendered.contains("wall")
+            && rendered.contains("flying"),
+        "expected rendered walls/flying blocker clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_phyrexian_colossus_strict_and_render_three_or_more_blockers_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Colossus")
         .card_types(vec![CardType::Artifact, CardType::Creature])
