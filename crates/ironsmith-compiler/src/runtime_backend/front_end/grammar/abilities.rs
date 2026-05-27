@@ -522,6 +522,10 @@ const ACTIVATE_ONLY_RESTRICTION_PREFIXES: &[&[&str]] =
 const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only"],
     &["spend", "that", "mana", "only"],
+    &["this", "mana", "cant", "be", "spent", "to", "cast"],
+    &["this", "mana", "can't", "be", "spent", "to", "cast"],
+    &["that", "mana", "cant", "be", "spent", "to", "cast"],
+    &["that", "mana", "can't", "be", "spent", "to", "cast"],
 ];
 const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
@@ -600,7 +604,43 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
 ) -> Option<ManaUsageRestriction> {
     parse_legacy_mana_usage_restriction_sentence_lexed(tokens)
         .or_else(|| parse_activate_ability_mana_usage_restriction_sentence_lexed(tokens))
+        .or_else(|| parse_cant_be_spent_to_cast_sentence_lexed(tokens))
         .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
+}
+
+fn parse_cant_be_spent_to_cast_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let start_idx = if words.starts_with(&["this", "mana", "cant", "be", "spent", "to", "cast"])
+        || words.starts_with(&["this", "mana", "can't", "be", "spent", "to", "cast"])
+        || words.starts_with(&["that", "mana", "cant", "be", "spent", "to", "cast"])
+        || words.starts_with(&["that", "mana", "can't", "be", "spent", "to", "cast"])
+    {
+        7
+    } else {
+        return None;
+    };
+
+    let spec_words = &words[start_idx..];
+    if spec_words.is_empty() {
+        return None;
+    }
+
+    let filter = match spec_words {
+        ["nonartifact", "spell"] | ["nonartifact", "spells"] => {
+            ObjectFilter::default().with_type(crate::types::CardType::Artifact)
+        }
+        _ => return None,
+    };
+
+    Some(ManaUsageRestriction::CastSpellMatching {
+        filter,
+        restrict_to_matching_spell: true,
+        grant_uncounterable: false,
+        enters_with_counters: vec![],
+        granted_abilities: vec![],
+    })
 }
 
 fn parse_activate_ability_mana_usage_restriction_sentence_lexed(

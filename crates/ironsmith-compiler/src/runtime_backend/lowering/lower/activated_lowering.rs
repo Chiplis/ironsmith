@@ -148,7 +148,13 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
             SubjectVerbActionAst::DealDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::Mill { count: amount }
-            | SubjectVerbActionAst::Draw { count: amount } => {
+            | SubjectVerbActionAst::Draw { count: amount }
+            | SubjectVerbActionAst::AddManaScaled { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
                 bind_event_amount_to_cost_x(amount);
             }
             _ => {}

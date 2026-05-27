@@ -2549,6 +2549,49 @@ fn rewrite_activate_ability_mana_restriction_parses() {
 }
 
 #[test]
+fn rewrite_cant_be_spent_mana_restriction_parses_as_positive_filter() {
+    let tokens = lex_line("This mana can't be spent to cast nonartifact spells.", 0)
+        .expect("rewrite lexer should classify negative mana restriction");
+
+    match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+        Some(crate::ability::ManaUsageRestriction::CastSpellMatching {
+            filter,
+            restrict_to_matching_spell,
+            grant_uncounterable,
+            enters_with_counters,
+            granted_abilities,
+        }) => {
+            assert_eq!(filter.card_types, vec![CardType::Artifact]);
+            assert!(restrict_to_matching_spell);
+            assert!(!grant_uncounterable);
+            assert!(enters_with_counters.is_empty());
+            assert!(granted_abilities.is_empty());
+        }
+        other => panic!("expected cast-spell-matching restriction, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_counter_removal_cost_binds_that_much_for_mana_addition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Jetfire-style ability")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "Remove one or more +1/+1 counters from among artifacts you control: Target player adds that much {C}. This mana can't be spent to cast nonartifact spells.",
+        )
+        .expect("counter-removal mana ability should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("AddManaScaled") || debug.contains("AddManaAnyColor"),
+        "expected parsed mana ability to retain scaled mana amount, got {debug}"
+    );
+    assert!(
+        debug.contains("mana_usage_restrictions") && debug.contains("Artifact"),
+        "expected parsed mana ability to carry artifact-only usage restriction, got {debug}"
+    );
+}
+
+#[test]
 fn learn_keyword_line_lowers_to_real_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Learn Variant")
         .card_types(vec![CardType::Sorcery])
