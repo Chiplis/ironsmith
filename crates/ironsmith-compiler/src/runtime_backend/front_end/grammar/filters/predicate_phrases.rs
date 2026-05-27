@@ -1395,6 +1395,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourcePowerAtLeast(count));
     }
 
+    if filtered.len() == 6
+        && filtered[0] == "this"
+        && filtered[1] == "has"
+        && filtered[2] == "power"
+        && filtered[4] == "or"
+        && matches!(filtered[5], "greater" | "more")
+        && let Some(count_word) = filtered.get(3).copied()
+        && let Some(count) = count_word
+            .parse::<u32>()
+            .ok()
+            .or_else(|| parse_named_number(count_word))
+    {
+        return Ok(PredicateAst::SourcePowerAtLeast(count));
+    }
+
     if filtered.len() >= 10 && filtered[0] == "there" && filtered[1] == "are" {
         let mut idx = 2usize;
         if let Some(count) = parse_named_number(filtered[idx]) {
@@ -3673,6 +3688,21 @@ mod tests {
                 }),
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_this_has_power_or_greater() -> Result<(), CardTextError> {
+        let tokens = lex_line("If this has power 7 or greater", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::SourcePowerAtLeast(7));
         Ok(())
     }
 }
