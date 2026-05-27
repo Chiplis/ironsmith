@@ -21057,8 +21057,9 @@ fn parse_frontier_warmonger_trigger_and_menace_grant() {
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("AttacksOneOrMore")
-            && abilities_debug.contains("gain menace until end of turn"),
+        abilities_debug.contains("one_or_more: true")
+            && abilities_debug.contains("attacking_player_or_planeswalker_controlled_by: Some(Opponent)")
+            && abilities_debug.contains("Some(Menace)"),
         "expected attack trigger with menace grant, got {abilities_debug}"
     );
 
@@ -21066,8 +21067,9 @@ fn parse_frontier_warmonger_trigger_and_menace_grant() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("one or more creatures attack")
-            && rendered.contains("those creatures gain menace until end of turn"),
+        rendered.contains("one or more creature attacking")
+            && rendered.contains("attacking an opponent or a planeswalker controlled by an opponent")
+            && rendered.contains("gains menace until end of turn"),
         "expected compiled text to preserve Frontier Warmonger clause, got {rendered}"
     );
 }

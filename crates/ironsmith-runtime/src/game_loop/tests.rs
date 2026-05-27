@@ -26,6 +26,13 @@ fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
 }
 
+fn setup_three_player_game() -> GameState {
+    GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    )
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();
@@ -179,9 +186,10 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup() {
-    let mut game = setup_game();
+    let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
 
     let warmonger = CardDefinitionBuilder::new(CardId::from_raw(72_140), "Frontier Warmonger")
         .card_types(vec![CardType::Creature])
@@ -190,34 +198,58 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
         .expect("Frontier Warmonger should parse");
     game.create_object_from_definition(&warmonger, alice, Zone::Battlefield);
 
-    let attacker_id = create_creature(&mut game, "Attacker", alice, 2, 2);
-    game.remove_summoning_sickness(attacker_id);
+    let legal_attacker_id = create_creature(&mut game, "Legal Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(legal_attacker_id);
+    let illegal_attacker_id = create_creature(&mut game, "Illegal Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(illegal_attacker_id);
     let home_creature_id = create_creature(&mut game, "Home Creature", alice, 2, 2);
 
     assert!(
-        !game.object_has_ability(attacker_id, &StaticAbility::menace()),
+        !game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
         "attacker should not start with menace"
     );
 
-    game.turn.active_player = alice;
+    game.turn.active_player = bob;
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
 
     let mut combat = CombatState::default();
     let mut trigger_queue = TriggerQueue::new();
     let declarations = vec![AttackerDeclaration {
-        creature: attacker_id,
-        target: AttackTarget::Player(bob),
+        creature: illegal_attacker_id,
+        target: AttackTarget::Player(alice),
     }];
 
     apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
         .expect("attacker declaration should be legal");
-    put_triggers_on_stack(&mut game, &mut trigger_queue);
-    resolve_top_of_stack(&mut game);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should go on stack");
+    assert!(
+        game.stack.is_empty(),
+        "attacking you should not create a Frontier Warmonger trigger"
+    );
 
     assert!(
-        game.object_has_ability(attacker_id, &StaticAbility::menace()),
-        "attacking creature should gain menace"
+        !game.object_has_ability(illegal_attacker_id, &StaticAbility::menace()),
+        "attacker that attacked you should not gain menace"
+    );
+
+    game.turn.active_player = alice;
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: legal_attacker_id,
+        target: AttackTarget::Player(charlie),
+    }];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attacker declaration should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("trigger should resolve");
+
+    assert!(
+        game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
+        "attacking one of your opponents should grant menace"
     );
     assert!(
         !game.object_has_ability(home_creature_id, &StaticAbility::menace()),
@@ -226,7 +258,7 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
 
     execute_cleanup_step(&mut game);
     assert!(
-        !game.object_has_ability(attacker_id, &StaticAbility::menace()),
+        !game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
         "temporary menace should end at cleanup"
     );
 }
