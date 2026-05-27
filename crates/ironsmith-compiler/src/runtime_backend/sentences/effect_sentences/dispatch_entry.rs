@@ -2606,7 +2606,8 @@ pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAs
 
 pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
     fn should_replace_self_replacement_target(effect_target: &TargetAst) -> bool {
-        target_references_it(effect_target) || matches!(effect_target, TargetAst::Tagged(_, _))
+        target_references_it(effect_target)
+            || matches!(effect_target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
     }
 
     match effect {
@@ -2719,6 +2720,34 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 target: effect_target,
             }
             | SubjectVerbActionAst::Connive {
+                target: effect_target,
+                ..
+            } => {
+                if should_replace_self_replacement_target(effect_target) {
+                    *effect_target = target.clone();
+                }
+            }
+            SubjectVerbActionAst::Pump {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::SetBasePowerToughness {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::BecomeBasePtCreature {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::SetBasePower {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PumpForEach {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PumpByLastEffect {
                 target: effect_target,
                 ..
             } => {

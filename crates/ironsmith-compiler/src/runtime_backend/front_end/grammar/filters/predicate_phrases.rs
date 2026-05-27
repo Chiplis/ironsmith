@@ -3333,6 +3333,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if filtered.as_slice() == ["its", "night"]
+        || filtered.as_slice() == ["it", "is", "night"]
+        || filtered.as_slice() == ["it", "night"]
+    {
+        return Ok(PredicateAst::ItIsNight);
+    }
+
     if filtered.as_slice() == ["it", "dealt", "combat", "damage", "to", "player", "this", "turn"]
         || filtered.as_slice()
             == [
@@ -3489,6 +3496,21 @@ mod tests {
                 }),
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_its_night() -> Result<(), CardTextError> {
+        let tokens = lex_line("If it's night", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::ItIsNight);
         Ok(())
     }
 

@@ -35684,6 +35684,86 @@ fn strict_parse_nighthawk_scavenger_regression() {
 }
 
 #[test]
+fn strict_parse_olivias_midnight_ambush_regression() {
+    assert_oracle_card_parses_strict("Olivia's Midnight Ambush");
+}
+
+#[test]
+fn olivias_midnight_ambush_compiled_text_preserves_night_branch() {
+    let def = parse_oracle_card_definition("Olivia's Midnight Ambush");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("target creature gets -2/-2 until end of turn")
+            && rendered.contains("if it's night, that creature gets -13/-13 until end of turn instead"),
+        "expected Olivia's Midnight Ambush to preserve both base and night conditional branches, got {rendered}"
+    );
+}
+
+#[test]
+fn olivias_midnight_ambush_runtime_applies_correct_day_night_branch() {
+    use crate::effects::ResolvedTarget;
+
+    let def = parse_oracle_card_definition("Olivia's Midnight Ambush");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Olivia's Midnight Ambush should produce spell effects")
+        .clone();
+
+    let resolve_with_night = |is_night: bool| {
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        game.is_night = is_night;
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+        let target = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(91_301), "Ambush Target")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(20, 20))
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+        crate::game_loop::execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            spell_source,
+            &spell,
+            None,
+            &[],
+        )
+        .expect("Olivia's Midnight Ambush should resolve");
+
+        let power = game.current_power(target).unwrap_or(0);
+        let toughness = game.current_toughness(target).unwrap_or(0);
+        (power, toughness)
+    };
+
+    let (day_power, day_toughness) = resolve_with_night(false);
+    assert_eq!(
+        (day_power, day_toughness),
+        (18, 18),
+        "day branch should apply the default -2/-2 effect"
+    );
+
+    let (night_power, night_toughness) = resolve_with_night(true);
+    assert_eq!(
+        (night_power, night_toughness),
+        (7, 7),
+        "night branch should replace the default effect with -13/-13"
+    );
+}
+
+#[test]
 fn nighthawk_scavenger_compiled_text_preserves_card_types_among_clause() {
     let def = parse_oracle_card_definition("Nighthawk Scavenger");
     let rendered = unprocessed_compiled_lines(&def)
