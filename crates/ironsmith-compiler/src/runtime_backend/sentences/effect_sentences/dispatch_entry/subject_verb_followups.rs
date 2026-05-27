@@ -446,9 +446,7 @@ fn pre_rule_theyre_become_characteristics_followup(
     let starts_with_theyre = matches!(
         sentence_words.as_slice(),
         ["theyre", ..] | ["they", "re", ..]
-    ) || sentence_tokens
-        .first()
-        .is_some_and(|token| token.is_word("they're"));
+    );
     if !starts_with_theyre {
         return Ok(None);
     }
@@ -485,10 +483,7 @@ fn pre_rule_theyre_become_characteristics_followup(
     }
 
     let mut rewritten = sentence_tokens.to_vec();
-    if rewritten
-        .first()
-        .is_some_and(|token| token.is_word("theyre") || token.is_word("they're"))
-    {
+    if rewritten.first().is_some_and(|token| token.is_word("theyre")) {
         rewritten[0] = OwnedLexToken::synthetic_word("they");
         rewritten.insert(1, OwnedLexToken::synthetic_word("become"));
     } else if rewritten.len() >= 2
