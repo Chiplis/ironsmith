@@ -10408,6 +10408,34 @@ fn test_parse_assign_damage_as_unblocked_with_this_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_assign_damage_as_unblocked_with_enchanted_creature_controller() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Indomitable Might Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("assign-as-unblocked wording with enchanted creature's controller should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted creature gets +3/+3"),
+        "expected aura buff to be preserved, got {rendered}"
+    );
+    assert!(
+        rendered.contains("assign its combat damage as though it weren't blocked"),
+        "expected enchanted creature grant to include assign-as-unblocked text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("MayAssignDamageAsUnblocked"),
+        "expected lowered aura effect to include MayAssignDamageAsUnblocked, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_first_spell_cost_modifier_marker_errors() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "First Spell Cost Probe")
         .card_types(vec![CardType::Enchantment])
