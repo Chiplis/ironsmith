@@ -14,7 +14,6 @@ use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
-use crate::game_state::CantEffectTracker;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
@@ -9415,7 +9414,13 @@ fn elven_riders_only_walls_or_fliers_can_block() {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let attacker = create_creature(&mut game, "Elven Riders", alice, 3, 3);
+        let elven_riders_def = CardDefinitionBuilder::new(CardId::new(), "Elven Riders")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("This creature can't be blocked except by Walls and/or creatures with flying.")
+            .expect("Elven Riders should parse for combat test");
+        let attacker = game.create_object_from_definition(&elven_riders_def, alice, Zone::Battlefield);
 
         let blocker = match blocker_kind {
             "wall" => {
@@ -9442,16 +9447,7 @@ fn elven_riders_only_walls_or_fliers_can_block() {
             creature: attacker,
             target: AttackTarget::Player(bob),
         });
-
-        let mut cant_tracker = CantEffectTracker::default();
-        crate::effect::Restriction::block_specific_attacker(
-            ObjectFilter::creature()
-                .without_subtype(Subtype::Wall)
-                .without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
-            ObjectFilter::specific(attacker),
-        )
-        .apply(&mut game, &mut cant_tracker, bob, None, None);
-        game.effect_store.cant_effects.merge(cant_tracker);
+        game.update_cant_effects();
 
         apply_blocker_declarations(
             &mut game,
