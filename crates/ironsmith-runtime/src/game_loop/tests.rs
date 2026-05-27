@@ -4027,6 +4027,219 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloud_ex_soldier_etb_allows_skipping_optional_equipment_target() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let cloud = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Cloud, Ex-SOLDIER")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Haste\nWhen Cloud enters, attach up to one target Equipment you control to it.\nWhenever Cloud attacks, draw a card for each equipped attacking creature you control. Then if Cloud has power 7 or greater, create two Treasure tokens.",
+        )
+        .expect("Cloud, Ex-SOLDIER should parse");
+
+    let equipment = CardBuilder::new(CardId::from_raw(91_102), "Bronze Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    game.create_object_from_card(&equipment, alice, Zone::Battlefield);
+
+    let cloud_id = game.create_object_from_definition(&cloud, alice, Zone::Hand);
+    assert!(
+        game.move_object_by_effect(cloud_id, Zone::Battlefield).is_some(),
+        "Cloud should enter the battlefield"
+    );
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    let mut dm = DeclineOptionalTriggerTargetsDecisionMaker {
+        seen_min_targets: None,
+        seen_max_targets: None,
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Cloud ETB trigger should go on stack");
+
+    assert_eq!(dm.seen_min_targets, Some(0));
+    assert_eq!(dm.seen_max_targets, Some(Some(1)));
+    assert_eq!(game.stack.len(), 1, "Cloud ETB trigger should be queued");
+    assert!(
+        game.stack
+            .last()
+            .expect("Cloud ETB trigger should exist")
+            .targets
+            .is_empty(),
+        "declining optional target should leave Cloud ETB untargeted"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloud_ex_soldier_attack_trigger_draws_for_equipped_attackers_and_makes_treasures_at_power_7() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let cloud = CardDefinitionBuilder::new(CardId::from_raw(91_111), "Cloud, Ex-SOLDIER")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Haste\nWhen Cloud enters, attach up to one target Equipment you control to it.\nWhenever Cloud attacks, draw a card for each equipped attacking creature you control. Then if Cloud has power 7 or greater, create two Treasure tokens.",
+        )
+        .expect("Cloud, Ex-SOLDIER should parse");
+    let cloud_id = game.create_object_from_definition(&cloud, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(cloud_id);
+    game.object_mut(cloud_id)
+        .expect("Cloud should exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 3);
+
+    let wingman_id = create_creature(&mut game, "Attacking Wingman", alice, 2, 2);
+    game.remove_summoning_sickness(wingman_id);
+
+    let cloud_equipment = CardBuilder::new(CardId::from_raw(91_112), "Cloud Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let cloud_equipment_id = game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
+    let wingman_equipment = CardBuilder::new(CardId::from_raw(91_113), "Wingman Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let wingman_equipment_id = game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
+
+    if let Some(equipment) = game.object_mut(cloud_equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(cloud_id));
+    }
+    game.object_mut(cloud_id)
+        .expect("Cloud should exist")
+        .attachments
+        .push(cloud_equipment_id);
+
+    if let Some(equipment) = game.object_mut(wingman_equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(wingman_id));
+    }
+    game.object_mut(wingman_id)
+        .expect("wingman should exist")
+        .attachments
+        .push(wingman_equipment_id);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: cloud_id,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: wingman_id,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attackers should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Cloud attack trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "Cloud should create one attack trigger");
+    resolve_stack_entry(&mut game).expect("Cloud attack trigger should resolve");
+
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .count();
+    assert_eq!(treasure_count, 2, "Cloud should create two Treasures at power 7 or greater");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let cloud = CardDefinitionBuilder::new(CardId::from_raw(91_121), "Cloud, Ex-SOLDIER")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Haste\nWhen Cloud enters, attach up to one target Equipment you control to it.\nWhenever Cloud attacks, draw a card for each equipped attacking creature you control. Then if Cloud has power 7 or greater, create two Treasure tokens.",
+        )
+        .expect("Cloud, Ex-SOLDIER should parse");
+    let cloud_id = game.create_object_from_definition(&cloud, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(cloud_id);
+    game.object_mut(cloud_id)
+        .expect("Cloud should exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 2);
+
+    let wingman_id = create_creature(&mut game, "Attacking Wingman", alice, 2, 2);
+    game.remove_summoning_sickness(wingman_id);
+
+    let cloud_equipment = CardBuilder::new(CardId::from_raw(91_122), "Cloud Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let cloud_equipment_id = game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
+    let wingman_equipment = CardBuilder::new(CardId::from_raw(91_123), "Wingman Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let wingman_equipment_id = game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
+
+    if let Some(equipment) = game.object_mut(cloud_equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(cloud_id));
+    }
+    game.object_mut(cloud_id)
+        .expect("Cloud should exist")
+        .attachments
+        .push(cloud_equipment_id);
+
+    if let Some(equipment) = game.object_mut(wingman_equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(wingman_id));
+    }
+    game.object_mut(wingman_id)
+        .expect("wingman should exist")
+        .attachments
+        .push(wingman_equipment_id);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: cloud_id,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: wingman_id,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attackers should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Cloud attack trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "Cloud should create one attack trigger");
+    resolve_stack_entry(&mut game).expect("Cloud attack trigger should resolve");
+
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .count();
+    assert_eq!(treasure_count, 0, "Cloud should not create Treasures below power 7");
+}
+
 fn bridge_from_below_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(472), "Bridge from Below")
         .card_types(vec![CardType::Enchantment])

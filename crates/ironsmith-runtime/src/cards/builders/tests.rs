@@ -22909,7 +22909,8 @@ fn parse_lesser_werewolf_activated_ability() {
         .to_ascii_lowercase();
     assert!(
         joined.contains("this creature's power is 1 or more")
-            || joined.contains("this creatures power is 1 or more"),
+            || joined.contains("this creatures power is 1 or more")
+            || joined.contains("this has power 1 or greater"),
         "expected source-power condition in compiled text, got {joined}"
     );
     assert!(
@@ -34125,6 +34126,27 @@ fn parse_xanthic_statue_strict_regression() {
 #[test]
 fn parse_wave_of_rats_strict_regression() {
     assert_oracle_card_parses_strict("Wave of Rats");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_cloud_ex_soldier_strict_regression() {
+    assert_oracle_card_parses_strict("Cloud, Ex-SOLDIER");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
+    let def = parse_oracle_card_definition("Cloud, Ex-SOLDIER");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("whenever this creature attacks")
+            && rendered.contains("draw a card for each equipped attacking creature you control")
+            && rendered.contains("then if this has power 7 or greater")
+            && rendered.contains("create two treasure tokens"),
+        "expected Cloud, Ex-SOLDIER attack trigger and power-threshold treasure clause, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
