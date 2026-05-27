@@ -1388,6 +1388,42 @@ fn test_parse_partner_with_attack_value_renders_oracle_surface() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_leonardo_the_balance_strictly_parses_character_select_partner_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Leonardo, the Balance")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mutant, Subtype::Ninja, Subtype::Turtle])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Whenever a token you control enters, you may put a +1/+1 counter on each creature you control. Do this only once each turn.\n{W}{U}{B}{R}{G}: Creatures you control gain menace, trample, and lifelink until end of turn.\nPartner—Character select (You can have two commanders if both have this ability.)",
+        )
+        .expect("Leonardo, the Balance should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Partner") && rendered.contains("Do this only once each turn"),
+        "expected Leonardo output to include partner and once-per-turn limiter, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_partner_variant_does_not_override_partner_with() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Variant Guard")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Partner with Proud Mentor (When this creature enters, target player may put Proud Mentor into their hand from their library, then shuffle.)",
+        )
+        .expect("partner-with should still parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Partner with Proud Mentor"),
+        "expected partner-with line to remain intact, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Speed Parse Test")
         .card_types(vec![CardType::Enchantment])

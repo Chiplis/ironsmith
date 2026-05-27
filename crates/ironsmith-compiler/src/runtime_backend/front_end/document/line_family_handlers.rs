@@ -595,6 +595,42 @@ pub(super) fn run_partner_with_keyword_line_family(
     )))
 }
 
+pub(super) fn run_partner_variant_keyword_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+    if !lower.starts_with("partner") {
+        return Ok(None);
+    }
+
+    let Some(rest) = raw.get("Partner".len()..) else {
+        return Ok(None);
+    };
+    let rest = rest.trim_start();
+    if !(rest.starts_with('\u{2014}') || rest.starts_with("-") || rest.starts_with('\u{2013}')) {
+        return Ok(None);
+    }
+
+    let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
+    if let Some(keyword_line) = parse_keyword_line_cst(&partner_line)? {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Keyword(keyword_line),
+            ctx.idx + 1,
+        )));
+    }
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(StaticLineCst {
+            info: partner_line.info.clone(),
+            text: partner_line.info.normalized.normalized.clone(),
+            parse_tokens: partner_line.tokens.clone(),
+            chosen_option_label: None,
+        }),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_escape_enters_with_counter_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
