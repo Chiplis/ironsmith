@@ -497,6 +497,9 @@ pub(crate) enum PredicateAst {
     PlayerWouldDrawCard {
         player: PlayerAst,
     },
+    PlayerWouldProliferate {
+        player: PlayerAst,
+    },
     PlayerWouldBeginExtraTurn {
         player: PlayerAst,
     },

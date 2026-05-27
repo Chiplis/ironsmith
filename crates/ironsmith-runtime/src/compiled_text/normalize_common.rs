@@ -11233,6 +11233,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::XValueAtLeast(min) => format!("X is {min} or more"),
         Condition::Custom(id) => match *id {
+            "you_would_proliferate" => "you would proliferate".to_string(),
+            "opponent_would_proliferate" => "an opponent would proliferate".to_string(),
+            "player_would_proliferate" => "a player would proliferate".to_string(),
             "opponent_would_begin_extra_turn" => {
                 "an opponent would begin an extra turn".to_string()
             }

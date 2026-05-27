@@ -496,6 +496,14 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 _ => "player_would_draw_card",
             })
         }
+        PredicateAst::PlayerWouldProliferate { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::Custom(match player {
+                PlayerFilter::You => "you_would_proliferate",
+                PlayerFilter::Opponent => "opponent_would_proliferate",
+                _ => "player_would_proliferate",
+            })
+        }
         PredicateAst::PlayerWouldBeginExtraTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {

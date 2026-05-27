@@ -1868,6 +1868,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        ["you", "would", "proliferate"]
+            | ["an", "opponent", "would", "proliferate"]
+            | ["opponent", "would", "proliferate"]
+    ) {
+        let player = if filtered[0] == "you" {
+            PlayerAst::You
+        } else {
+            PlayerAst::Opponent
+        };
+        return Ok(PredicateAst::PlayerWouldProliferate { player });
+    }
+
+    if matches!(
+        filtered.as_slice(),
         ["opponent", "would", "begin", "extra", "turn"]
             | ["an", "opponent", "would", "begin", "an", "extra", "turn"]
             | ["opponents", "would", "begin", "extra", "turn"]
@@ -3568,6 +3582,25 @@ mod tests {
 
         let parsed = parse_predicate(&predicate_tokens)?;
         assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_would_proliferate() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you would proliferate", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerWouldProliferate {
+                player: PlayerAst::You
+            }
+        );
         Ok(())
     }
 
