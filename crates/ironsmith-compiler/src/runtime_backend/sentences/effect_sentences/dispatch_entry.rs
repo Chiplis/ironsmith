@@ -359,6 +359,7 @@ pub(super) struct ConsultCastClause {
 pub(super) enum ConsultCastTiming {
     Immediate,
     UntilEndOfTurn,
+    UntilYourNextTurnEnd,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

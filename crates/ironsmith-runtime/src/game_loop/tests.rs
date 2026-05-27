@@ -15362,6 +15362,263 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_ties() {
+    struct ChooseSacrificeFromGreatestTie {
+        desired: ObjectId,
+        seen_candidates: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseSacrificeFromGreatestTie {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.seen_candidates = ctx.candidates.iter().map(|candidate| candidate.id).collect();
+            vec![self.desired]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let riveteers_charm = CardDefinitionBuilder::new(CardId::new(), "Riveteers Charm")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose one —\n\
+• Target opponent sacrifices a creature or planeswalker they control with the greatest mana value among creatures and planeswalkers they control.\n\
+• Exile the top three cards of your library. Until your next end step, you may play those cards.\n\
+• Exile target player's graveyard.",
+        )
+        .expect("Riveteers Charm should parse");
+
+    let low_creature = CardBuilder::new(CardId::new(), "Low Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let tie_creature = CardBuilder::new(CardId::new(), "Tie Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let tie_planeswalker = CardBuilder::new(CardId::new(), "Tie Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .build();
+
+    let low_id = game.create_object_from_card(&low_creature, bob, Zone::Battlefield);
+    let tie_creature_id = game.create_object_from_card(&tie_creature, bob, Zone::Battlefield);
+    let tie_planeswalker_id = game.create_object_from_card(&tie_planeswalker, bob, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&riveteers_charm, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Riveteers Charm should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Riveteers Charm, got {other:?}"),
+    }
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing Riveteers Charm sacrifice mode should request targets");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {}
+        other => panic!("expected opponent target selection for Riveteers Charm, got {other:?}"),
+    }
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+    )
+    .expect("choosing target opponent should finish casting Riveteers Charm");
+
+    let mut dm = ChooseSacrificeFromGreatestTie {
+        desired: tie_planeswalker_id,
+        seen_candidates: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Riveteers Charm sacrifice mode should resolve cleanly");
+
+    let tie_survivors = [tie_creature_id, tie_planeswalker_id]
+        .iter()
+        .filter(|id| game.battlefield.contains(id))
+        .count();
+
+    assert!(
+        game.battlefield.contains(&low_id),
+        "lower-mana-value permanents should not be sacrificed"
+    );
+    assert!(
+        tie_survivors == 1,
+        "exactly one greatest-mana-value permanent should be sacrificed from the tie; candidates seen: {:?}",
+        dm.seen_candidates
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let riveteers_charm = CardDefinitionBuilder::new(CardId::new(), "Riveteers Charm")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose one —\n\
+• Target opponent sacrifices a creature or planeswalker they control with the greatest mana value among creatures and planeswalkers they control.\n\
+• Exile the top three cards of your library. Until your next end step, you may play those cards.\n\
+• Exile target player's graveyard.",
+        )
+        .expect("Riveteers Charm should parse");
+
+    let top_land = CardBuilder::new(CardId::new(), "Charm Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let top_spell = CardBuilder::new(CardId::new(), "Charm Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .build();
+    let third_card = CardBuilder::new(CardId::new(), "Charm Third")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .build();
+
+    let _top_land_id = game.create_object_from_card(&top_land, alice, Zone::Library);
+    let _top_spell_id = game.create_object_from_card(&top_spell, alice, Zone::Library);
+    let _third_card_id = game.create_object_from_card(&third_card, alice, Zone::Library);
+
+    let spell_id = game.create_object_from_definition(&riveteers_charm, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Riveteers Charm should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Riveteers Charm, got {other:?}"),
+    }
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![1]),
+    )
+    .expect("choosing Riveteers Charm exile mode should finish casting");
+
+    resolve_stack_entry_with(&mut game, &mut AutoPassDecisionMaker)
+        .expect("Riveteers Charm exile mode should resolve cleanly");
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let exiled_ids = game.exile.clone();
+    let exiled_names: Vec<_> = exiled_ids
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .collect();
+    let exiled_land_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Charm Land").then_some(*id))
+        .expect("Riveteers Charm should exile the top land card");
+    let exiled_spell_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Charm Spell").then_some(*id))
+        .expect("Riveteers Charm should exile the top spell card");
+
+    assert_eq!(game.exile.len(), 3, "Riveteers Charm should exile three cards");
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_land_id, Zone::Exile, alice),
+        "Riveteers Charm should let you play exiled lands during the window"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        "Riveteers Charm should let you cast exiled spells during the window"
+    );
+
+    let actions_now = compute_legal_actions(&game, alice);
+    assert!(
+        actions_now.iter().any(|action| matches!(
+            action,
+            LegalAction::PlayLand { land_id } if *land_id == exiled_land_id
+        )),
+        "Riveteers Charm should expose a land play action from exile"
+    );
+    assert!(
+        actions_now.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled_spell_id
+        )),
+        "Riveteers Charm should expose a cast action from exile"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+    game.turn.active_player = PlayerId::from_index(1);
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        "Riveteers Charm play window should still exist before your next end step"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(2);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice
+        ),
+        "Riveteers Charm play window should expire after your next end step"
+    );
+}
+
 // === Full Game Flow Integration Test ===
 
 #[cfg(ironsmith_runtime_parser_tests)]

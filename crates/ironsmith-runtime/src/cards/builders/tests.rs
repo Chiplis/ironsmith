@@ -39257,6 +39257,36 @@ fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
     );
 }
 
+#[test]
+fn parse_oracle_riveteers_charm_strict_regression() {
+    let def = parse_oracle_card_definition("Riveteers Charm");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("greatest mana value among creatures and planeswalkers they control"),
+        "expected greatest-mana-value sacrifice clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("until your next end step, you may play those cards"),
+        "expected next-end-step play duration in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("exile target player's graveyard"),
+        "expected graveyard-exile mode in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("SacrificePlayerEffect") && debug.contains("GreatestManaValue"),
+        "expected sacrifice effect constrained by greatest mana value, got {debug}"
+    );
+    assert!(
+        debug.contains("UntilYourNextTurnEnd"),
+        "expected timing branch for 'until your next end step', got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn planar_genesis_fallback_with_extra_tail_still_fails_loudly() {

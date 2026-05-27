@@ -61,6 +61,20 @@ fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option
     })
 }
 
+fn split_greatest_mana_value_among_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let marker = ["with", "the", "greatest", "mana", "value", "among"];
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let marker_start = words
+        .windows(marker.len())
+        .position(|window| window == marker)?;
+    let marker_end = marker_start + marker.len();
+    let before_idx = token_index_for_word_index(tokens, marker_start)?;
+    let after_idx = token_index_for_word_index(tokens, marker_end)?;
+    Some((&tokens[..before_idx], &tokens[after_idx..]))
+}
+
 pub(crate) fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -116,15 +130,6 @@ pub(crate) fn parse_sacrifice(
                 clause_words.join(" ")
             )));
         }
-    }
-    let has_greatest_mana_value = grammar::contains_word(tokens, "greatest")
-        && grammar::contains_word(tokens, "mana")
-        && grammar::contains_word(tokens, "value");
-    if has_greatest_mana_value {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported greatest-mana-value sacrifice clause (clause: '{}')",
-            normalized_words.join(" ")
-        )));
     }
     let has_for_each_graveyard_history = grammar::contains_word(tokens, "for")
         && grammar::contains_word(tokens, "each")
@@ -185,15 +190,40 @@ pub(crate) fn parse_sacrifice(
 
     // Split off a trailing "for each ..." suffix before parsing the filter.
     let remaining_tokens = &tokens[idx..];
-    let for_each_idx = grammar::find_prefix(remaining_tokens, || grammar::phrase(&["for", "each"]))
-        .map(|(idx, _, _)| idx);
+    let mut greatest_mana_value_reference_filter = None;
+    let object_clause_tokens = if let Some((base_object_tokens, among_tokens)) =
+        split_greatest_mana_value_among_clause(remaining_tokens)
+    {
+        if among_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing object set after greatest mana value among (clause: '{}')",
+                normalized_words.join(" ")
+            )));
+        }
+        let among_filter = parse_object_filter_lexed(among_tokens, false)?;
+        greatest_mana_value_reference_filter = Some(among_filter);
+        base_object_tokens
+    } else {
+        remaining_tokens
+    };
+
+    if object_clause_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing sacrifice object in clause (clause: '{}')",
+            normalized_words.join(" ")
+        )));
+    }
+    let for_each_idx = grammar::find_prefix(object_clause_tokens, || {
+        grammar::phrase(&["for", "each"])
+    })
+    .map(|(idx, _, _)| idx);
 
     let (object_tokens, for_each_filter) = if let Some(fe_idx) = for_each_idx {
-        let fe_count_tokens = &remaining_tokens[fe_idx..];
+        let fe_count_tokens = &object_clause_tokens[fe_idx..];
         let fe_value = parse_get_for_each_count_value(fe_count_tokens)?;
-        (&remaining_tokens[..fe_idx], fe_value)
+        (&object_clause_tokens[..fe_idx], fe_value)
     } else {
-        (remaining_tokens, None)
+        (object_clause_tokens, None)
     };
 
     let filter_words = ZoneHandlerNormalizedWords::new(object_tokens);
@@ -236,6 +266,12 @@ pub(crate) fn parse_sacrifice(
     };
     if other {
         filter.other = true;
+    }
+    if let Some(among_filter) = greatest_mana_value_reference_filter {
+        filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
+            Value::GreatestManaValue(
+            among_filter,
+        ))));
     }
     if filter.source && count != 1 {
         return Err(CardTextError::ParseError(format!(
