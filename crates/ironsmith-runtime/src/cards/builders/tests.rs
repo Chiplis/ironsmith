@@ -31750,6 +31750,47 @@ fn parse_oracle_encroaching_mycosynth_type_addition_regression() {
 }
 
 #[test]
+fn parse_oracle_roshan_hidden_magister_regression() {
+    let def = parse_oracle_card_definition("Roshan, Hidden Magister");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.matches("addsubtypes").count() >= 3 && raw.contains("assassin"),
+        "expected Roshan to add Assassin subtype on battlefield, stack, and off-battlefield zones, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "other creatures you control are assassins in addition to their other types"
+        ),
+        "expected Roshan battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("creature spells you control are assassins in addition to their other types")
+            || rendered.contains("the same is true for creature spells you control"),
+        "expected Roshan stack clause to render, got {rendered}"
+    );
+    assert!(
+        (rendered.contains("creature cards in your hand")
+            && rendered.contains("creature cards in your library")
+            && rendered.contains("creature cards in your graveyard")
+            && rendered.contains("creature cards in your exile")
+            && rendered.contains("creature cards in your command zone")
+            && rendered.contains("are assassins in addition to their other types"))
+            || (rendered.contains("creature cards you own that aren't on the battlefield")
+                && rendered.contains("are assassins in addition to their other types")),
+        "expected Roshan off-battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Roshan to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_leyline_of_the_guildpact_static_characteristics_regression() {
     let def = parse_oracle_card_definition("Leyline of the Guildpact");
 

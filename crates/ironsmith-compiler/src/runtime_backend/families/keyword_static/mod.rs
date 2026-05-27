@@ -668,7 +668,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
-        single_static_ability_ast_rule!(
+        multi_static_ability_ast_rule!(
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
@@ -5919,7 +5919,7 @@ pub(crate) fn parse_all_permanents_colorless_line(
 
 pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 8 {
         return Ok(None);
@@ -5950,24 +5950,28 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     }
 
     let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
     for descriptor in &tail[..addition_idx] {
         if is_article(descriptor) || matches!(*descriptor, "and" | "or" | "and/or") {
             continue;
         }
-        if parse_subtype_word(descriptor)
-            .or_else(|| str_strip_suffix(descriptor, "s").and_then(parse_subtype_word))
-            .is_some_and(is_land_subtype)
-        {
+        if let Some(card_type) = parse_card_type(descriptor) {
+            if !slice_contains(&card_types, &card_type) {
+                card_types.push(card_type);
+            }
             continue;
         }
-        let Some(card_type) = parse_card_type(descriptor) else {
+
+        let Some(subtype) = parse_subtype_word(descriptor)
+            .or_else(|| str_strip_suffix(descriptor, "s").and_then(parse_subtype_word))
+        else {
             return Ok(None);
         };
-        if !slice_contains(&card_types, &card_type) {
-            card_types.push(card_type);
+        if !slice_contains(&subtypes, &subtype) {
+            subtypes.push(subtype);
         }
     }
-    if card_types.is_empty() {
+    if card_types.is_empty() && subtypes.is_empty() {
         return Ok(None);
     }
 
@@ -5977,7 +5981,14 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     }
     let filter = parse_object_filter(subject_tokens, false)?;
 
-    Ok(Some(StaticAbility::add_card_types(filter, card_types)))
+    let mut abilities = Vec::new();
+    if !card_types.is_empty() {
+        abilities.push(StaticAbility::add_card_types(filter.clone(), card_types));
+    }
+    if !subtypes.is_empty() {
+        abilities.push(StaticAbility::add_subtypes(filter, subtypes));
+    }
+    Ok(Some(abilities))
 }
 
 pub(crate) fn parse_all_cards_spells_permanents_colorless_line(
