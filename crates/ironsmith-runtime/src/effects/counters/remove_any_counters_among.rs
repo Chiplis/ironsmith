@@ -367,6 +367,20 @@ fn counter_article(counter_name: &str) -> &'static str {
 }
 
 fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String {
+    fn join_type_names(names: &[String]) -> String {
+        match names.len() {
+            0 => String::new(),
+            1 => names[0].clone(),
+            2 => format!("{} and {}", names[0], names[1]),
+            _ => {
+                let mut out = names[..names.len() - 1].join(", ");
+                out.push_str(", and ");
+                out.push_str(&names[names.len() - 1]);
+                out
+            }
+        }
+    }
+
     if filter.source {
         if plural {
             return "this source".to_string();
@@ -399,8 +413,9 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
         } else {
             card_type.name()
         };
+        let other_prefix = if filter.other && plural { "other " } else { "" };
         return if plural {
-            format!("{noun} you control")
+            format!("{other_prefix}{noun} you control")
         } else {
             format!("a {noun} you control")
         };
@@ -413,14 +428,24 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
             "a permanent".to_string()
         }
     } else {
-        let joined = filter
+        let type_names = filter
             .card_types
             .iter()
-            .map(|card_type| card_type.name().to_ascii_lowercase())
-            .collect::<Vec<_>>()
-            .join(" or ");
+            .map(|card_type| {
+                if plural {
+                    card_type.plural_name().to_ascii_lowercase()
+                } else {
+                    card_type.name().to_ascii_lowercase()
+                }
+            })
+            .collect::<Vec<_>>();
+        let joined = join_type_names(&type_names);
         if plural {
-            format!("{joined}s")
+            if filter.other {
+                format!("other {joined}")
+            } else {
+                joined
+            }
         } else {
             format!("a {joined}")
         }

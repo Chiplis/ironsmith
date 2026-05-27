@@ -23946,6 +23946,21 @@ pub(super) fn describe_conditional_replacement_instead(
     let true_branch = describe_effect_clause_list(&conditional.if_true)
         .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
     let true_branch = true_branch.trim().trim_end_matches('.');
+    let condition_lower = condition.to_ascii_lowercase();
+    if (condition_lower == "you would proliferate"
+        || condition_lower == "an opponent would proliferate"
+        || condition_lower == "a player would proliferate")
+        && true_branch.to_ascii_lowercase().starts_with("proliferate")
+        && !true_branch.to_ascii_lowercase().contains(" instead")
+    {
+        let branch = if let Some(rest) = true_branch.strip_prefix("Proliferate") {
+            format!("proliferate{rest}")
+        } else {
+            true_branch.to_string()
+        };
+        return Some(format!("If {condition}, {branch} instead"));
+    }
+
     if true_branch.is_empty()
         || !true_branch.to_ascii_lowercase().starts_with("exile ")
         || true_branch.to_ascii_lowercase().contains(" instead")
@@ -24920,9 +24935,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
             Zone::Battlefield => {
-                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
-                {
-                    "that card".to_string()
+                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering") {
+                    "it".to_string()
                 } else {
                     target
                 };
@@ -24942,7 +24956,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     crate::effects::BattlefieldController::You => " under your control",
                 };
                 if let crate::target::ChooseSpec::Tagged(tag) = &move_to_zone.target
-                    && (tag.as_str().starts_with("exiled_")
+                    && (tag.as_str() == "triggering"
+                        || tag.as_str().starts_with("exiled_")
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
                     format!("Return {target} to the battlefield{tapped_suffix}{controller_suffix}")

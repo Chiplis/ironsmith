@@ -463,6 +463,28 @@ impl TurnHistory {
         self.total_creature_damage_to_player(player) > 0
     }
 
+    pub fn source_dealt_combat_damage_to_player_this_turn(
+        &self,
+        source: ObjectId,
+        source_stable_id: Option<StableId>,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<DamageEvent>().is_some_and(|event| {
+                event.is_combat
+                    && event.amount > 0
+                    && matches!(event.target, crate::events::DamageTarget::Player(_))
+                    && (event.source == source
+                        || source_stable_id.is_some_and(|stable_id| {
+                            record
+                                .source_snapshot
+                                .as_ref()
+                                .or(record.object_snapshot.as_ref())
+                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                        }))
+            })
+        })
+    }
+
     pub fn player_dealt_combat_damage_to_player_with_subtype_this_turn(
         &self,
         dealer: PlayerId,

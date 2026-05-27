@@ -1868,6 +1868,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        ["you", "would", "proliferate"]
+            | ["an", "opponent", "would", "proliferate"]
+            | ["opponent", "would", "proliferate"]
+    ) {
+        let player = if filtered[0] == "you" {
+            PlayerAst::You
+        } else {
+            PlayerAst::Opponent
+        };
+        return Ok(PredicateAst::PlayerWouldProliferate { player });
+    }
+
+    if matches!(
+        filtered.as_slice(),
         ["opponent", "would", "begin", "extra", "turn"]
             | ["an", "opponent", "would", "begin", "an", "extra", "turn"]
             | ["opponents", "would", "begin", "extra", "turn"]
@@ -3296,6 +3310,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if filtered.as_slice() == ["it", "dealt", "combat", "damage", "to", "player", "this", "turn"]
+        || filtered.as_slice()
+            == [
+                "it",
+                "dealt",
+                "combat",
+                "damage",
+                "to",
+                "a",
+                "player",
+                "this",
+                "turn",
+            ]
+    {
+        return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    }
+
     let spell_cast_prefix = if slice_starts_with(&filtered, &["opponent", "has", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
     } else if slice_starts_with(&filtered, &["opponents", "have", "cast"]) {
@@ -3461,6 +3492,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("if it dealt combat damage to a player this turn", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_if_you_dont_put_it_into_your_hand() -> Result<(), CardTextError> {
         let tokens = lex_line("If you don't put it into your hand", 0)?;
         let predicate_tokens = tokens
@@ -3535,6 +3582,25 @@ mod tests {
 
         let parsed = parse_predicate(&predicate_tokens)?;
         assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_would_proliferate() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you would proliferate", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerWouldProliferate {
+                player: PlayerAst::You
+            }
+        );
         Ok(())
     }
 

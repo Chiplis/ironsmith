@@ -497,6 +497,9 @@ pub(crate) enum PredicateAst {
     PlayerWouldDrawCard {
         player: PlayerAst,
     },
+    PlayerWouldProliferate {
+        player: PlayerAst,
+    },
     PlayerWouldBeginExtraTurn {
         player: PlayerAst,
     },
@@ -520,6 +523,7 @@ pub(crate) enum PredicateAst {
         display: String,
     },
     SourcePowerAtLeast(u32),
+    SourceDealtCombatDamageToPlayerThisTurn,
     SourceAttackedThisTurn,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,

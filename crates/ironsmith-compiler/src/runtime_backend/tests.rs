@@ -12157,6 +12157,32 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
 }
 
 #[test]
+fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one_segment() {
+    let tokens = lex_line(
+        "Remove three counters from among other artifacts, creatures, and planeswalkers you control",
+        0,
+    )
+    .expect("lexer should classify Tekuthal remove-counter activation cost");
+    let cst = parse_activation_cost_tokens_rewrite(&tokens)
+        .expect("activation-cost parser should keep among-list as one segment");
+    let [super::ActivationCostSegmentCst::RemoveCountersAmong {
+        counter_type: None,
+        count: 3,
+        filter_text,
+        display_x: false,
+        dynamic: false,
+    }] = cst.segments.as_slice()
+    else {
+        panic!("unexpected segments: {:?}", cst.segments);
+    };
+    assert!(
+        filter_text == "other artifacts, creatures, and planeswalkers you control"
+            || filter_text == "other artifacts creatures and planeswalkers you control",
+        "unexpected filter text: {filter_text}"
+    );
+}
+
+#[test]
 fn rewrite_activation_cost_shared_parser_supports_behold_costs() {
     let cst = parse_activation_cost_rewrite("Behold an Elemental")
         .expect("shared activation-cost parser should support behold costs");

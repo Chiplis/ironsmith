@@ -6,11 +6,79 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
+use crate::events::processing::{TraitEventResult, process_trait_event_with_dm_and_applied_effects};
+use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
+use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::ProliferateEffect;
+
+fn execute_keyword_action_replacement_effects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: Vec<crate::effect::Effect>,
+    effect_id: crate::replacement::ReplacementEffectId,
+    action_snapshot: Option<ObjectSnapshot>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let replacement_effect = game
+        .effect_store
+        .replacement_effects
+        .get_effect(effect_id)
+        .cloned();
+    let replacement_key = replacement_effect.as_ref().map(|effect| effect.application_key());
+    let was_suppressed = !ctx
+        .replacement
+        .suppressed_replacement_effects
+        .insert(effect_id);
+    let key_was_suppressed = if let Some(key) = replacement_key.as_ref() {
+        !ctx.replacement
+            .suppressed_replacement_effect_keys
+            .insert(key.clone())
+    } else {
+        true
+    };
+
+    let original_it = ctx.clear_object_tag("__it__");
+    let original_plain_it = ctx.clear_object_tag("it");
+    if let Some(snapshot) = action_snapshot {
+        ctx.set_tagged_objects("__it__", vec![snapshot.clone()]);
+        ctx.set_tagged_objects("it", vec![snapshot]);
+    }
+
+    let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        let mut outcomes = Vec::new();
+        for effect in effects {
+            outcomes.push(crate::effects::execute_effect(game, &effect, ctx)?);
+        }
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+    })();
+
+    if !was_suppressed {
+        ctx.replacement
+            .suppressed_replacement_effects
+            .remove(&effect_id);
+    }
+    if !key_was_suppressed && let Some(key) = replacement_key {
+        ctx.replacement
+            .suppressed_replacement_effect_keys
+            .remove(&key);
+    }
+    match original_it {
+        Some(snapshots) => ctx.set_tagged_objects("__it__", snapshots),
+        None => {
+            ctx.clear_object_tag("__it__");
+        }
+    }
+    match original_plain_it {
+        Some(snapshots) => ctx.set_tagged_objects("it", snapshots),
+        None => {
+            ctx.clear_object_tag("it");
+        }
+    }
+
+    result
+}
 
 /// Effect that proliferates (adds counters to permanents/players with counters).
 ///
@@ -38,6 +106,39 @@ impl EffectExecutor for ProliferateEffect {
         let mut action_events = Vec::with_capacity(count);
 
         for _ in 0..count {
+            let would_event = Event::new_with_provenance(
+                KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1),
+                ctx.provenance,
+            );
+            let applied_effects = ctx.replacement.suppressed_replacement_effects.clone();
+            let applied_effect_keys = ctx.replacement.suppressed_replacement_effect_keys.clone();
+            if applied_effects.is_empty() && applied_effect_keys.is_empty() {
+                game.update_replacement_effects();
+            }
+            match process_trait_event_with_dm_and_applied_effects(
+                game,
+                would_event,
+                ctx.decision_maker,
+                &applied_effects,
+                &applied_effect_keys,
+            ) {
+                TraitEventResult::Replaced { effects, effect_id } => {
+                    let snapshot = game
+                        .object(ctx.source)
+                        .map(|object| ObjectSnapshot::from_object(object, game));
+                    let replacement_outcome = execute_keyword_action_replacement_effects(
+                        game, ctx, effects, effect_id, snapshot,
+                    )?;
+                    outcome = outcome.with_events(replacement_outcome.events);
+                    continue;
+                }
+                TraitEventResult::Prevented => continue,
+                TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+                    return Ok(outcome);
+                }
+                TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
+            }
+
             let mut proliferated_count = 0;
             let mut proliferated_permanents = Vec::new();
 
