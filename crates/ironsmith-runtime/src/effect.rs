@@ -940,6 +940,13 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::LoseLife(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_lose_life.insert(player.id);
+                    }
+                }
+            }
             Restriction::ChangeLifeTotal(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

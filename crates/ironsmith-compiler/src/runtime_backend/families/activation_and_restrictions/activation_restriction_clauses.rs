@@ -38,6 +38,26 @@ pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> St
 pub(crate) fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
+    let normalized_storage = normalize_cant_words(tokens);
+    let normalized = normalized_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if normalized.starts_with(&[
+        "players", "cant", "lose", "the", "game", "or", "win", "the", "game",
+    ]) {
+        return Ok(Some(vec![
+            ParsedCantRestriction {
+                restriction: crate::effect::Restriction::lose_game(PlayerFilter::Any),
+                target: None,
+            },
+            ParsedCantRestriction {
+                restriction: crate::effect::Restriction::win_game(PlayerFilter::Any),
+                target: None,
+            },
+        ]));
+    }
+
     let words = crate::runtime_backend::token_word_refs(tokens);
     if is_mana_retention_negated_clause(&words) {
         return Ok(None);
@@ -83,6 +103,24 @@ pub(crate) fn parse_cant_restrictions(
                     crate::runtime_backend::token_word_refs(segment).join(" ")
                 )));
             };
+            let segment_words = normalize_cant_words(segment)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let has_or_win_tail = segment_words
+                .windows(5)
+                .any(|window| window == ["or", "win", "the", "game", "this"])
+                || segment_words
+                    .windows(4)
+                    .any(|window| window == ["or", "win", "the", "game"]);
+            if has_or_win_tail
+                && let crate::effect::Restriction::LoseGame(player_filter) =
+                    restriction.restriction.clone()
+            {
+                restrictions.push(ParsedCantRestriction {
+                    restriction: crate::effect::Restriction::win_game(player_filter),
+                    target: None,
+                });
+            }
             restrictions.push(restriction);
         }
 
@@ -1088,6 +1126,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             }
             words if slice_starts_with(words, &["lose", "the", "game"]) => {
                 Restriction::lose_game(player)
+            }
+            words if slice_starts_with(words, &["lose", "life"]) => {
+                Restriction::lose_life(player)
             }
             words if slice_starts_with(words, &["win", "the", "game"]) => {
                 Restriction::win_game(player)

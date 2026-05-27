@@ -428,6 +428,9 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::DrawExtraCards(player) => {
             Restriction::DrawExtraCards(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::LoseLife(player) => {
+            Restriction::LoseLife(resolve_contextual_player_filter(player, refs)?)
+        }
         Restriction::ChangeLifeTotal(player) => {
             Restriction::ChangeLifeTotal(resolve_contextual_player_filter(player, refs)?)
         }

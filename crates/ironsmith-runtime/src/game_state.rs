@@ -619,6 +619,9 @@ pub struct CantEffectTracker {
     /// Example: Platinum Emperion
     pub life_total_cant_change: HashSet<PlayerId>,
 
+    /// Players who can't lose life.
+    pub cant_lose_life: HashSet<PlayerId>,
+
     /// Players who can't lose the game.
     /// Example: Platinum Angel
     pub cant_lose_game: HashSet<PlayerId>,
@@ -855,6 +858,7 @@ impl CantEffectTracker {
         self.damage_cant_be_prevented |= other.damage_cant_be_prevented;
         self.life_total_cant_change
             .extend(other.life_total_cant_change);
+        self.cant_lose_life.extend(other.cant_lose_life);
         self.cant_lose_game.extend(other.cant_lose_game);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
@@ -897,6 +901,7 @@ impl CantEffectTracker {
         self.cant_have_counters_placed.clear();
         self.damage_cant_be_prevented = false;
         self.life_total_cant_change.clear();
+        self.cant_lose_life.clear();
         self.cant_lose_game.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
@@ -915,7 +920,7 @@ impl CantEffectTracker {
 
     /// Check if a player can lose life (not from damage).
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
-        !self.life_total_cant_change.contains(&player)
+        !self.cant_lose_life.contains(&player) && !self.life_total_cant_change.contains(&player)
     }
 
     /// Check if a player's life total can change (Platinum Emperion, etc.).
@@ -2927,7 +2932,7 @@ impl GameState {
         if amount == 0 {
             return self.player(player).is_some();
         }
-        self.can_change_life_total(player)
+        self.can_lose_life(player)
             && self.player(player).is_some_and(|p| p.life >= amount as i32)
     }
 
@@ -2951,7 +2956,7 @@ impl GameState {
     ///
     /// Returns the amount of life actually lost.
     pub fn lose_life(&mut self, player: PlayerId, amount: u32) -> u32 {
-        if amount == 0 || !self.can_change_life_total(player) {
+        if amount == 0 || !self.can_lose_life(player) {
             return 0;
         }
         if let Some(p) = self.player_mut(player) {

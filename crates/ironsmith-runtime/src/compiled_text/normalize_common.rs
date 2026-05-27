@@ -9468,6 +9468,9 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::LoseLife(filter) => {
+            format!("{} can't lose life", describe_player_set_filter(filter))
+        }
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",
@@ -9546,10 +9549,14 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
+            let source_description = describe_hexproof_from_filter(source_filter);
+            if source_description == "an opponent's" {
+                return format!("{} have hexproof", describe_player_set_filter(player));
+            }
             format!(
                 "{} have hexproof from {}",
                 describe_player_set_filter(player),
-                describe_hexproof_from_filter(source_filter)
+                source_description
             )
         }
         crate::effect::Restriction::BeCountered(filter) => {
