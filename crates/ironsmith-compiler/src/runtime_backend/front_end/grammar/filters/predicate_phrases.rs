@@ -3357,6 +3357,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
     }
 
+    if filtered.as_slice()
+        == [
+            "you", "cast", "this", "spell", "during", "your", "main", "phase",
+        ]
+    {
+        return Ok(PredicateAst::ThisSpellPaidLabel(
+            "CastDuringYourMainPhase".to_string(),
+        ));
+    }
+
     let spell_cast_prefix = if slice_starts_with(&filtered, &["opponent", "has", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
     } else if slice_starts_with(&filtered, &["opponents", "have", "cast"]) {
@@ -3549,6 +3559,25 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_cast_this_spell_during_your_main_phase(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("If you cast this spell during your main phase", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string())
+        );
         Ok(())
     }
 
