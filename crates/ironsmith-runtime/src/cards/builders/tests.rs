@@ -15370,6 +15370,93 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_fi
     );
 }
 
+#[test]
+fn take_the_fall_strict_parse_regression() {
+    let def = parse_oracle_card_definition("Take the Fall");
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("target creature gets -1/-0 until end of turn")
+            && rendered.contains("it gets -4/-0 until end of turn instead if you control an outlaw")
+            && rendered.contains("draw a card"),
+        "expected Take the Fall to keep its instead-if outlaw clause in compiled text, got {rendered}"
+    );
+}
+
+#[test]
+fn take_the_fall_condition_fails_without_controlled_outlaw() {
+    let def = parse_oracle_card_definition("Take the Fall");
+    let condition = def
+        .spell_effect
+        .as_ref()
+        .and_then(|program| {
+            program
+                .segments
+                .iter()
+                .find_map(|segment| segment.self_replacements.first().map(|branch| branch.condition.clone()))
+        })
+        .expect("Take the Fall should lower an outlaw self-replacement clause");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, crate::zone::Zone::Stack);
+
+    let non_outlaw = CardDefinitionBuilder::new(CardId::from_raw(778001), "Calm Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .build();
+    game.create_object_from_definition(&non_outlaw, alice, crate::zone::Zone::Battlefield);
+
+    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
+        &game,
+        &condition,
+        alice,
+        source,
+    );
+
+    assert!(
+        !condition_matches,
+        "Take the Fall outlaw condition should fail when only non-outlaw creatures are controlled"
+    );
+}
+
+#[test]
+fn take_the_fall_condition_matches_with_controlled_outlaw() {
+    let def = parse_oracle_card_definition("Take the Fall");
+    let condition = def
+        .spell_effect
+        .as_ref()
+        .and_then(|program| {
+            program
+                .segments
+                .iter()
+                .find_map(|segment| segment.self_replacements.first().map(|branch| branch.condition.clone()))
+        })
+        .expect("Take the Fall should lower an outlaw self-replacement clause");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, crate::zone::Zone::Stack);
+
+    let outlaw = CardDefinitionBuilder::new(CardId::from_raw(778002), "Sneaky Rogue")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rogue])
+        .build();
+    game.create_object_from_definition(&outlaw, alice, crate::zone::Zone::Battlefield);
+
+    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
+        &game,
+        &condition,
+        alice,
+        source,
+    );
+
+    assert!(
+        condition_matches,
+        "Take the Fall outlaw condition should pass when an outlaw creature is controlled"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_spell_line_instead_followup_merges_into_prior_spell_effect() {
