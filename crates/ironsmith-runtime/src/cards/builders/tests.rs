@@ -2964,7 +2964,7 @@ fn everybody_lives_compiled_text_includes_player_hexproof_and_life_lock_clauses(
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Players have hexproof this turn")
-            && rendered.contains("Players can't have life total changed this turn")
+            && rendered.contains("Players can't lose life this turn")
             && rendered.contains("Players can't lose the game this turn")
             && rendered.contains("Players can't win the game this turn"),
         "expected Everybody Lives! compiled text to keep player clauses, got {rendered}"

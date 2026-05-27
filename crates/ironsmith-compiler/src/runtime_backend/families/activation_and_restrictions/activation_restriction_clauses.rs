@@ -1128,7 +1128,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 Restriction::lose_game(player)
             }
             words if slice_starts_with(words, &["lose", "life"]) => {
-                Restriction::change_life_total(player)
+                Restriction::lose_life(player)
             }
             words if slice_starts_with(words, &["win", "the", "game"]) => {
                 Restriction::win_game(player)

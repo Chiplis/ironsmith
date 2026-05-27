@@ -9468,6 +9468,9 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::LoseLife(filter) => {
+            format!("{} can't lose life", describe_player_set_filter(filter))
+        }
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",

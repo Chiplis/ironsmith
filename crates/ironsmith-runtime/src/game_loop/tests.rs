@@ -364,6 +364,16 @@ fn everybody_lives_prevents_life_loss_and_game_win_loss_for_all_players_this_tur
     let bob_life_before = game.player(bob).expect("bob exists").life;
     assert_eq!(game.lose_life(bob, 3), 0, "life loss should be prevented this turn");
     assert_eq!(game.player(bob).expect("bob exists").life, bob_life_before);
+
+    let alice_life_before = game.player(alice).expect("alice exists").life;
+    let mut gain_ctx = crate::effects::ExecutionContext::new_default(spell_id, alice);
+    crate::effects::execute_effect(&mut game, &crate::effect::Effect::gain_life(3), &mut gain_ctx)
+        .expect("life gain effect should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        alice_life_before + 3,
+        "life gain should still be allowed"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

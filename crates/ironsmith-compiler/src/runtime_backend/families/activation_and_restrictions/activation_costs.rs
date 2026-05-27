@@ -1453,6 +1453,7 @@ pub(crate) fn parse_cant_clause(
                 | crate::effect::Restriction::CastMoreThanOneSpellEachTurn(_, _)
                 | crate::effect::Restriction::DrawCards(_)
                 | crate::effect::Restriction::DrawExtraCards(_)
+                | crate::effect::Restriction::LoseLife(_)
                 | crate::effect::Restriction::ChangeLifeTotal(_)
                 | crate::effect::Restriction::LoseGame(_)
                 | crate::effect::Restriction::WinGame(_)
