@@ -7846,7 +7846,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("the total amount of noncombat damage {source} dealt this turn")
         }
         Value::MaxCardsDrawnThisTurn(filter) => match filter {
-            PlayerFilter::You => "the greatest number of cards you've drawn this turn".to_string(),
+            PlayerFilter::You => "the number of cards you've drawn this turn".to_string(),
             PlayerFilter::Opponent => {
                 "the greatest number of cards an opponent has drawn this turn".to_string()
             }

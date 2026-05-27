@@ -5564,6 +5564,25 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let words_all = crate::runtime_backend::token_word_refs(tokens);
+    let has_cards_drawn_this_turn_anywhere = (slice_contains(&words_all, &"card")
+        || slice_contains(&words_all, &"cards"))
+        && slice_contains(&words_all, &"drawn")
+        && slice_contains(&words_all, &"this")
+        && slice_contains(&words_all, &"turn");
+    if has_cards_drawn_this_turn_anywhere
+        && (slice_contains(&words_all, &"you")
+            || slice_contains(&words_all, &"your")
+            || slice_contains(&words_all, &"youve")
+            || slice_contains(&words_all, &"you've"))
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::You)));
+    }
+    if has_cards_drawn_this_turn_anywhere
+        && (slice_contains(&words_all, &"opponent") || slice_contains(&words_all, &"opponents"))
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent)));
+    }
+
     let Some(each_idx) = find_index(&words_all, |word| *word == "each") else {
         return Ok(None);
     };
@@ -5687,6 +5706,74 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         if simple {
             return Ok(Some(Value::SpellsCastThisTurn(player)));
         }
+    }
+
+    if slice_starts_with(
+        &filter_words,
+        &["card", "youve", "drawn", "this", "turn"],
+    )
+        || slice_starts_with(
+            &filter_words,
+            &["cards", "youve", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["card", "you", "have", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["cards", "you", "have", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["card", "you", "ve", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["cards", "you", "ve", "drawn", "this", "turn"],
+        )
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::You)));
+    }
+
+    let has_cards_drawn_this_turn = (slice_contains(&filter_words, &"card")
+        || slice_contains(&filter_words, &"cards"))
+        && slice_contains(&filter_words, &"drawn")
+        && slice_contains(&filter_words, &"this")
+        && slice_contains(&filter_words, &"turn");
+    if has_cards_drawn_this_turn
+        && (slice_contains(&filter_words, &"you")
+            || slice_contains(&filter_words, &"your")
+            || slice_contains(&filter_words, &"youve")
+            || slice_contains(&filter_words, &"you've"))
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::You)));
+    }
+
+    if slice_starts_with(
+        &filter_words,
+        &["card", "an", "opponent", "has", "drawn", "this", "turn"],
+    )
+        || slice_starts_with(
+            &filter_words,
+            &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["card", "opponents", "have", "drawn", "this", "turn"],
+        )
+        || slice_starts_with(
+            &filter_words,
+            &["cards", "opponents", "have", "drawn", "this", "turn"],
+        )
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent)));
+    }
+    if has_cards_drawn_this_turn
+        && (slice_contains(&filter_words, &"opponent")
+            || slice_contains(&filter_words, &"opponents"))
+    {
+        return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent)));
     }
 
     if contains_any_keyword_static_phrase(&filter_words, &[&["card", "type"], &["card", "types"]])

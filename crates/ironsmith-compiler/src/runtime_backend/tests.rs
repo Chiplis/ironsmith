@@ -11244,6 +11244,22 @@ fn rewrite_lexed_effect_sentence_supports_gain_then_get_for_each_cards_drawn() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_kydele_mana_scaling_clause() {
+    let text = "Add {C} for each card you've drawn this turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify Kydele mana-scaling sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should support cards-drawn mana scaling");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("AddMana") && debug.contains("MaxCardsDrawnThisTurn"),
+        "expected add-mana effect scaled by cards drawn this turn, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_compound_damage_to_you_and_your_objects() {
     let text = "This deals 2 damage to you and each creature you control.";
     let lexed = lex_line(text, 0)

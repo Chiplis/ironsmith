@@ -26326,6 +26326,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
+        if let Value::MaxCardsDrawnThisTurn(player) = &add_scaled.amount {
+            let drawn_text = match player {
+                PlayerFilter::You => "for each card you've drawn this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "for each card the opponent who drew the most cards has drawn this turn"
+                        .to_string()
+                }
+                _ => format!("equal to {}", describe_value(&add_scaled.amount)),
+            };
+            return format!(
+                "Add {} {}{}",
+                mana_text,
+                drawn_text,
+                describe_add_mana_destination_suffix(&add_scaled.player)
+            );
+        }
         if let Value::PowerOf(spec) = &add_scaled.amount {
             return format!(
                 "Add an amount of {} equal to the power of {}{}",
