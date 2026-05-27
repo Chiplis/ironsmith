@@ -12290,6 +12290,14 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
 fn rewrite_cost_bound_x_phrases(mut effects: String, costs: &[crate::costs::Cost]) -> String {
     if let Some(x_phrase) = removed_counters_this_way_x_phrase(costs) {
         effects = effects.replace("where X is X", &format!("where X is {x_phrase}"));
+        effects = effects.replace(
+            "deals X damage to",
+            &format!("deals damage equal to {x_phrase} to"),
+        );
+        effects = effects.replace(
+            "Deal X damage to",
+            &format!("Deal damage equal to {x_phrase} to"),
+        );
     }
     effects
 }
