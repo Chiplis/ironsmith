@@ -12465,6 +12465,12 @@ pub(super) fn describe_inline_ability_with_self_subject(
                 }
                 line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
             }
+            for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
+                if !line.is_empty() {
+                    line.push_str(". ");
+                }
+                line.push_str(&clause);
+            }
             if line.is_empty() {
                 "an activated ability".to_string()
             } else {
@@ -33791,6 +33797,10 @@ pub(super) fn describe_ability(
             if !restriction_clauses.is_empty() {
                 line.push_str(". ");
                 line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+            }
+            for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
+                line.push_str(". ");
+                line.push_str(&clause);
             }
             if is_grandeur_activation_cost(activated) {
                 line = format!("Grandeur — {line}");

@@ -35179,6 +35179,74 @@ fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn jetfire_ingenious_scientist_card_parses_strictly() {
+    let def = parse_oracle_card_definition("Jetfire, Ingenious Scientist // Jetfire, Air Guardian");
+    assert!(
+        !def.abilities.is_empty(),
+        "Jetfire should compile to a card definition with abilities"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn jetfire_ingenious_scientist_compiled_text_keeps_nonartifact_mana_spend_restriction() {
+    let def = parse_oracle_card_definition("Jetfire, Ingenious Scientist // Jetfire, Air Guardian");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("add an amount of {c} equal to x"),
+        "expected Jetfire compiled text to preserve scaled mana output from removed counters, got {rendered}"
+    );
+    assert!(
+        rendered.contains("spend this mana only to cast artifact spells")
+            || rendered.contains("spend this mana only to cast an artifact spell"),
+        "expected Jetfire compiled text to preserve nonartifact spend restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn jetfire_ingenious_scientist_mana_ability_restricts_nonartifact_spells() {
+    let def = parse_oracle_card_definition("Jetfire, Ingenious Scientist // Jetfire, Air Guardian");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.mana_output.is_some() && !activated.mana_usage_restrictions.is_empty() =>
+            {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Jetfire should have a restricted mana ability");
+
+    let has_artifact_only_restriction = activated.mana_usage_restrictions.iter().any(|restriction| {
+        matches!(
+            restriction,
+            crate::ability::ManaUsageRestriction::CastSpellMatching {
+                filter,
+                restrict_to_matching_spell: true,
+                ..
+            } if filter.card_types == vec![CardType::Artifact]
+        )
+    });
+    assert!(
+        has_artifact_only_restriction,
+        "expected Jetfire mana ability to allow only artifact spell casting"
+    );
+
+    assert_eq!(
+        activated.mana_usage_restrictions.len(),
+        1,
+        "Jetfire mana ability should carry a single cast restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
     let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
     let rendered = canonical_compiled_lines(&def)
