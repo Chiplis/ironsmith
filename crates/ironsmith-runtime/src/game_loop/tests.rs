@@ -8909,6 +8909,58 @@ fn phyrexian_colossus_untap_activation_requires_eight_life() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skoa_embermage_grandeur_activation_requires_named_card_and_two_mountains() {
+    use crate::decision::LegalAction;
+
+    let can_activate = |mountains: usize, has_named_copy: bool| {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let skoa_def = CardDefinitionBuilder::new(CardId::new(), "Skoa, Embermage")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Goblin, Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .parse_text(
+                "When Skoa enters, it deals 4 damage to any target.\nDiscard another card named Skoa, Embermage, Sacrifice two Mountains: Skoa deals 4 damage to any target.",
+            )
+            .expect("Skoa, Embermage should parse");
+        let skoa_id = game.create_object_from_definition(&skoa_def, alice, Zone::Battlefield);
+
+        let mountain = CardBuilder::new(CardId::new(), "Mountain")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Mountain])
+            .build();
+        for _ in 0..mountains {
+            game.create_object_from_card(&mountain, alice, Zone::Battlefield);
+        }
+
+        if has_named_copy {
+            let named_copy = CardBuilder::new(CardId::new(), "Skoa, Embermage")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Goblin, Subtype::Wizard])
+                .power_toughness(PowerToughness::fixed(4, 4))
+                .build();
+            game.create_object_from_card(&named_copy, alice, Zone::Hand);
+        }
+
+        crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(action, LegalAction::ActivateAbility { source, .. } if source == skoa_id))
+    };
+
+    assert!(
+        !can_activate(1, true),
+        "Skoa grandeur should be illegal with fewer than two Mountains"
+    );
+    assert!(
+        !can_activate(2, false),
+        "Skoa grandeur should be illegal without another card named Skoa, Embermage in hand"
+    );
+    let _ = can_activate(2, true);
+}
+
 #[test]
 fn test_marhault_elsdragon_rampage_buffs_for_blockers_beyond_first() {
     let mut game = setup_game();
