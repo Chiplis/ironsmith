@@ -130,6 +130,8 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ExecutionContext;
+    use crate::events::cause::EventCause;
+    use crate::events::{DamageEvent, DamageTarget, RawEvent};
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
@@ -371,6 +373,57 @@ mod tests {
         assert!(
             evaluate_condition_external(&game, &condition, &ctx),
             "trigger-time target condition should compare the LKI creature to the source's power"
+        );
+    }
+
+    #[test]
+    fn wave_of_rats_condition_true_when_source_dealt_combat_damage_to_player_this_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let rat = CardBuilder::new(CardId::from_raw(13), "Wave of Rats")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 2))
+            .build();
+        let rat_id = game.create_object_from_card(&rat, alice, Zone::Battlefield);
+        let source_snapshot = {
+            let object = game.object(rat_id).expect("Wave of Rats exists");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        };
+        let damage = RawEvent::new(
+            DamageEvent::with_cause(rat_id, DamageTarget::Player(bob), 4, true, EventCause::effect()),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&damage, None, Some(source_snapshot));
+
+        let ctx = ExecutionContext::new_default(rat_id, alice);
+        assert!(
+            evaluate_condition(
+                &game,
+                &Condition::SourceDealtCombatDamageToPlayerThisTurn,
+                &ctx
+            )
+            .expect("source combat-damage condition should evaluate"),
+            "expected Wave of Rats condition to pass after combat damage to a player"
+        );
+    }
+
+    #[test]
+    fn wave_of_rats_condition_false_without_combat_damage_to_player_this_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            !evaluate_condition(
+                &game,
+                &Condition::SourceDealtCombatDamageToPlayerThisTurn,
+                &ctx
+            )
+            .expect("source combat-damage condition should evaluate"),
+            "expected Wave of Rats condition to fail without combat damage"
         );
     }
 }
@@ -792,6 +845,9 @@ fn evaluate_condition_shared_core(
                 .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
                 .is_some_and(|power| power >= *min_power as i32),
         ),
+        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
+            Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
+        }
         Condition::SourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
             Some(
@@ -905,6 +961,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourcePowerAtLeast(..) => {}
+        Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
@@ -1640,6 +1697,9 @@ pub fn evaluate_condition_external(
         }),
 
         Condition::SourceAttackedThisTurn => game.creature_attacked_this_turn(ctx.source),
+        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
+            game.source_dealt_combat_damage_to_player_this_turn(ctx.source)
+        }
         Condition::SourceCameUnderYourControlThisTurn => {
             game.object(ctx.source).is_some_and(|obj| {
                 game.turn_store
@@ -2379,6 +2439,7 @@ fn evaluate_condition_simple(
         | Condition::CountComparison { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
+        | Condition::SourceDealtCombatDamageToPlayerThisTurn
         | Condition::SourceCameUnderYourControlThisTurn
         | Condition::SourceAttackedOrBlockedThisTurn
         | Condition::SourceIsUntapped
@@ -3440,6 +3501,9 @@ fn evaluate_condition(
             })
         })),
         Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
+        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
+            Ok(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
+        }
         Condition::SourceCameUnderYourControlThisTurn => {
             Ok(game.object(ctx.source).is_some_and(|obj| {
                 game.turn_store

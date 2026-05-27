@@ -33872,6 +33872,48 @@ fn parse_xanthic_statue_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_wave_of_rats_strict_regression() {
+    assert_oracle_card_parses_strict("Wave of Rats");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wave_of_rats_compiled_text_keeps_combat_damage_condition_clause() {
+    let def = parse_oracle_card_definition("Wave of Rats");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("when this creature dies")
+            && rendered.contains("if it dealt combat damage to a player this turn")
+            && rendered.contains("return it to the battlefield under its owner's control"),
+        "expected Wave of Rats dies condition and return clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wave_of_rats_dies_trigger_uses_source_combat_damage_condition() {
+    let def = parse_oracle_card_definition("Wave of Rats");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Wave of Rats should have a dies triggered ability");
+
+    let trigger_debug = format!("{:?}", triggered).to_ascii_lowercase();
+    assert!(
+        trigger_debug.contains("sourcedealtcombatdamagetoplayerthisturn")
+            && trigger_debug.contains("movetozoneeffect")
+            && trigger_debug.contains("battlefield"),
+        "expected Wave of Rats dies trigger to gate return on source combat damage, got {trigger_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
     let def = parse_oracle_card_definition("Xanthic Statue");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();

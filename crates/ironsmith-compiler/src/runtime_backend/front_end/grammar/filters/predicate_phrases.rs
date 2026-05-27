@@ -3296,6 +3296,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if filtered.as_slice() == ["it", "dealt", "combat", "damage", "to", "player", "this", "turn"]
+        || filtered.as_slice()
+            == [
+                "it",
+                "dealt",
+                "combat",
+                "damage",
+                "to",
+                "a",
+                "player",
+                "this",
+                "turn",
+            ]
+    {
+        return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    }
+
     let spell_cast_prefix = if slice_starts_with(&filtered, &["opponent", "has", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
     } else if slice_starts_with(&filtered, &["opponents", "have", "cast"]) {
@@ -3457,6 +3474,22 @@ mod tests {
                 filter: ObjectFilter::default().in_zone(Zone::Hand),
             }))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn(
+    ) -> Result<(), CardTextError> {
+        let tokens = lex_line("if it dealt combat damage to a player this turn", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
         Ok(())
     }
 
