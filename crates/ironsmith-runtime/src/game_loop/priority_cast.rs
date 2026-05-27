@@ -1286,6 +1286,16 @@ pub(super) fn finalize_pending_spell_cast(
             .optional_costs_paid
             .mark_label_paid("CompleatedLifePaid");
     }
+    if pending.caster == game.turn.active_player
+        && matches!(
+            game.turn.phase,
+            crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
+        )
+    {
+        pending
+            .optional_costs_paid
+            .mark_label_paid("CastDuringYourMainPhase");
+    }
     let spell_cast_provenance =
         game.alloc_child_event_provenance(pending.provenance, crate::events::EventKind::SpellCast);
     let result = finalize_spell_cast(

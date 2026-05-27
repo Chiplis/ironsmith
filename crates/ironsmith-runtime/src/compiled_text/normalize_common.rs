@@ -10637,6 +10637,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
             }
+            if label.eq_ignore_ascii_case("CastDuringYourMainPhase") {
+                return "you cast this spell during your main phase".to_string();
+            }
             format!("this spell's {} cost was paid", label.to_ascii_lowercase())
         }
         Condition::YouHaveFullParty => "you have a full party".to_string(),

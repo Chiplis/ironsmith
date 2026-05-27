@@ -36081,6 +36081,64 @@ fn parse_oracle_undercellar_sweep_strictly_parses_and_renders_initiative_gate() 
     );
 }
 
+#[test]
+fn parse_oracle_return_to_dust_strictly_parses_and_renders_main_phase_clause() {
+    let def = parse_oracle_card_definition("Return to Dust");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("unsupported predicate") && !lower.contains("unsupported effect"),
+        "expected Return to Dust to parse without unsupported placeholders, got {rendered}"
+    );
+    assert!(
+        lower.contains("you cast this spell during your main phase"),
+        "expected Return to Dust to render the main-phase cast clause, got {rendered}"
+    );
+
+    let raw = format!("{:#?}", def.spell_effect);
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("CastDuringYourMainPhase"),
+        "expected Return to Dust to lower the branch predicate, got {raw}"
+    );
+}
+
+#[test]
+fn return_to_dust_main_phase_paid_label_condition_branches() {
+    struct NoChoices;
+    impl crate::decision::DecisionMaker for NoChoices {}
+
+    let def = parse_oracle_card_definition("Return to Dust");
+    let raw = format!("{:#?}", def.spell_effect);
+    assert!(
+        raw.contains("CastDuringYourMainPhase"),
+        "expected Return to Dust to include CastDuringYourMainPhase condition, got {raw}"
+    );
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut decision_maker = NoChoices;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
+
+    let cond = crate::effect::Condition::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string());
+    let without_label = crate::condition_eval::evaluate_condition_resolution(&game, &cond, &ctx)
+        .expect("condition evaluation should succeed");
+    assert!(
+        !without_label,
+        "expected Return to Dust branch condition to be false when spell was not marked as cast in your main phase"
+    );
+
+    ctx.optional_costs_paid
+        .mark_label_paid("CastDuringYourMainPhase");
+    let with_label = crate::condition_eval::evaluate_condition_resolution(&game, &cond, &ctx)
+        .expect("condition evaluation should succeed");
+    assert!(
+        with_label,
+        "expected Return to Dust branch condition to be true when spell is marked as cast in your main phase"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {
