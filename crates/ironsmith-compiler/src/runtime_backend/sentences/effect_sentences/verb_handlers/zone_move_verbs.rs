@@ -416,15 +416,6 @@ pub(crate) fn parse_draw_trailing_clause(
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tail_words = crate::runtime_backend::token_word_refs(tokens);
-
-    if let Some(discard_effect) = parse_draw_or_that_player_discards_clause(tokens) {
-        return Ok(Some(EffectAst::UnlessAction {
-            effects: vec![draw_effect],
-            alternative: vec![discard_effect],
-            player: PlayerAst::That,
-        }));
-    }
-
     if tail_words.as_slice() == ["instead"] {
         return Ok(Some(draw_effect));
     }
@@ -452,28 +443,6 @@ pub(crate) fn parse_draw_trailing_clause(
     }
 
     Ok(None)
-}
-
-fn parse_draw_or_that_player_discards_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let trimmed = trim_commas(tokens);
-    let words = crate::runtime_backend::token_word_refs(&trimmed);
-    if !words.starts_with(&["or", "that", "player", "discards"]) {
-        return None;
-    }
-
-    let discard_tail = words.get(4..)?;
-    if !matches!(discard_tail, ["a", "card"] | ["one", "card"]) {
-        return None;
-    }
-
-    Some(EffectAst::subject_verb_discard(
-        PlayerAst::That,
-        Value::Fixed(1),
-        false,
-        false,
-        None,
-        None,
-    ))
 }
 
 pub(crate) fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
