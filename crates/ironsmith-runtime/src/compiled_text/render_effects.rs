@@ -26422,11 +26422,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 player_verb(&player, "mill", "mills")
             );
         }
+        let count_text = describe_card_count(&mill.count);
+        if let Some(rest) = count_text.strip_prefix("the number of ") {
+            let basis = rest.strip_suffix(" cards").unwrap_or(rest);
+            return format!(
+                "{} {} a card for each {}",
+                player,
+                player_verb(&player, "mill", "mills"),
+                basis
+            );
+        }
         return format!(
             "{} {} {}",
             player,
             player_verb(&player, "mill", "mills"),
-            describe_card_count(&mill.count)
+            count_text
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
