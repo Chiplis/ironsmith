@@ -686,10 +686,38 @@ impl EffectExecutor for ManifestCardFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(&card_id) = game
+        let hand = game
             .player(ctx.controller)
-            .and_then(|player| player.hand.last())
-        else {
+            .map(|player| player.hand.clone())
+            .unwrap_or_default();
+        if hand.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let chosen = make_decision(
+            game,
+            ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose a card from your hand to manifest",
+                hand,
+                1,
+                Some(1),
+            )
+            .require_explicit_choice()
+            .with_hidden_card_visibility(
+                crate::decisions::context::DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+            ),
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let Some(card_id) = chosen.into_iter().find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.zone == Zone::Hand && object.owner == ctx.controller)
+        }) else {
             return Ok(EffectOutcome::count(0));
         };
 
@@ -2058,16 +2086,23 @@ mod tests {
     }
 
     #[test]
-    fn scroll_of_fate_manifest_from_hand_moves_a_hand_card_face_down() {
+    fn scroll_of_fate_manifest_from_hand_uses_chosen_hand_card() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
 
-        let hand_card = CardBuilder::new(CardId::new(), "Scroll Hidden Card")
+        let first_card = CardBuilder::new(CardId::new(), "Chosen Manifest Card")
             .card_types(vec![CardType::Creature])
             .build();
-        let hand_id = game.create_object_from_card(&hand_card, alice, Zone::Hand);
-        let mut ctx = ExecutionContext::new_default(source, alice);
+        let first_id = game.create_object_from_card(&first_card, alice, Zone::Hand);
+        let second_card = CardBuilder::new(CardId::new(), "Unchosen Hand Card")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let second_id = game.create_object_from_card(&second_card, alice, Zone::Hand);
+        let mut dm = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![first_id]]),
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
 
         let outcome = ManifestCardFromHandEffect::new()
             .execute(&mut game, &mut ctx)
@@ -2078,9 +2113,18 @@ mod tests {
             .objects()
             .and_then(|ids| ids.first().copied())
             .expect("manifest from hand should create one permanent");
-        assert_ne!(manifested_id, hand_id);
         assert!(game.is_face_down(manifested_id));
         assert!(game.is_manifested(manifested_id));
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.hand.contains(&second_id)),
+            "unchosen card should remain in hand"
+        );
+        assert!(
+            game.player(alice)
+                .is_none_or(|player| !player.hand.contains(&first_id)),
+            "chosen card should leave hand"
+        );
     }
 
     #[test]
