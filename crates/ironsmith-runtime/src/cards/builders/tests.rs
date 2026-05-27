@@ -25914,6 +25914,46 @@ fn parse_earthbend_then_earthbend_chain_keeps_both_and_life_gain() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn strict_parse_dai_li_indoctrination_regression() {
+    assert_oracle_card_parses_strict("Dai Li Indoctrination");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dai_li_indoctrination_compiled_text_keeps_earthbend_mode() {
+    let def = parse_oracle_card_definition("Dai Li Indoctrination");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose one"),
+        "expected modal text in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("earthbend 2"),
+        "expected earthbend mode to keep count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dai_li_indoctrination_compiled_text_keeps_discard_mode_targets() {
+    let def = parse_oracle_card_definition("Dai Li Indoctrination");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("target opponent reveals their hand"),
+        "expected reveal-hand mode text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("nonland permanent card") && rendered.contains("discards"),
+        "expected nonland-permanent discard clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_search_basic_triple_and_gain_life_keeps_all_components() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brokers Hideout Variant")
         .parse_text(

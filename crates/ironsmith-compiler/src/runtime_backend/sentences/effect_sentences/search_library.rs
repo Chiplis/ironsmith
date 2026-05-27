@@ -1293,8 +1293,11 @@ pub(crate) fn parse_earthbend_sentence(
         return Ok(None);
     }
 
-    let count_tokens = &tokens[1..];
-    let (count, _) = parse_number(count_tokens).ok_or_else(|| {
+    let parsed_count = words
+        .get(1)
+        .and_then(|word| word.parse::<u32>().ok())
+        .or_else(|| ironsmith_core::parse_cardinal_words(&words[1..]).map(|(value, _)| value));
+    let count = parsed_count.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing earthbend count (clause: '{}')",
             words.join(" ")
