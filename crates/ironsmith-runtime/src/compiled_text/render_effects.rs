@@ -15116,9 +15116,6 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         return describe_dynamic_mana_cost(dynamic);
     }
     if let Some(effect) = cost.effect_ref() {
-        if let Some(cost_text) = effect.0.cost_description() {
-            return normalize_cost_phrase(&cost_text);
-        }
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
             && matches!(tap.target, ChooseSpec::Source)
         {
@@ -15133,6 +15130,9 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
             && let Some(text) = describe_simple_discard_cost(discard)
         {
             return text;
+        }
+        if let Some(cost_text) = effect.0.cost_description() {
+            return normalize_cost_phrase(&cost_text);
         }
         return normalize_cost_phrase(&describe_effect(effect));
     }
@@ -15264,21 +15264,51 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
         return None;
     };
     let count = count.max(0) as u32;
-    let card_type = match &discard.card_filter {
-        None => None,
+    let (card_type, name_filter, other_filter) = match &discard.card_filter {
+        None => (None, None, false),
         Some(filter) if filter.card_types.len() == 1 => {
             let expected = ObjectFilter {
                 zone: Some(Zone::Hand),
                 card_types: filter.card_types.clone(),
+                name: filter.name.clone(),
+                other: filter.other,
                 ..Default::default()
             };
             if filter != &expected {
                 return None;
             }
-            filter.card_types.first().copied()
+            (
+                filter.card_types.first().copied(),
+                filter.name.as_deref(),
+                filter.other,
+            )
+        }
+        Some(filter) if filter.card_types.is_empty() => {
+            let expected = ObjectFilter {
+                zone: Some(Zone::Hand),
+                name: filter.name.clone(),
+                other: filter.other,
+                ..Default::default()
+            };
+            if filter != &expected {
+                return None;
+            }
+            (None, filter.name.as_deref(), filter.other)
         }
         Some(_) => return None,
     };
+
+    if let Some(name) = name_filter {
+        if count != 1 {
+            return None;
+        }
+        let name = normalize_card_name_for_surface(name);
+        return Some(if other_filter {
+            format!("Discard another card named {name}")
+        } else {
+            format!("Discard a card named {name}")
+        });
+    }
 
     let Some(card_type) = card_type else {
         return Some(if count == 1 {
@@ -15296,6 +15326,47 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
     } else {
         format!("Discard {count} {type_text}")
     })
+}
+
+fn is_grandeur_activation_cost(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.mana_cost.costs().iter().any(|cost| {
+        cost.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+            .is_some_and(|discard| {
+                discard.player == PlayerFilter::You
+                    && discard.count == Value::Fixed(1)
+                    && discard
+                        .card_filter
+                        .as_ref()
+                        .is_some_and(|filter| filter.other && filter.name.is_some())
+            })
+    })
+}
+
+fn normalize_card_name_for_surface(name: &str) -> String {
+    fn titlecase_token(token: &str) -> String {
+        let mut out = String::with_capacity(token.len());
+        let mut capitalize_next = true;
+        for ch in token.chars() {
+            if ch.is_ascii_alphabetic() {
+                if capitalize_next {
+                    out.push(ch.to_ascii_uppercase());
+                    capitalize_next = false;
+                } else {
+                    out.push(ch.to_ascii_lowercase());
+                }
+            } else {
+                out.push(ch);
+                capitalize_next = matches!(ch, '-' | '\'' | '`');
+            }
+        }
+        out
+    }
+
+    name.split_whitespace()
+        .map(titlecase_token)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn describe_dynamic_mana_cost(dynamic: &ironsmith_core::DynamicManaCost) -> String {
@@ -33498,7 +33569,12 @@ pub(super) fn describe_ability(
                 }
                 return vec![line];
             }
-            let mut line = format!("Activated ability {index}");
+            let is_grandeur = is_grandeur_activation_cost(activated);
+            let mut line = if is_grandeur {
+                String::new()
+            } else {
+                format!("Activated ability {index}")
+            };
             let mut pre = Vec::new();
             if !activated.mana_cost.costs().is_empty() {
                 if let Some(cost_text) = normalize_zone_bound_self_exile_cost(
@@ -33523,11 +33599,17 @@ pub(super) fn describe_ability(
                 ));
             }
             if !pre.is_empty() {
-                line.push_str(": ");
-                line.push_str(&pre.join(", "));
+                if line.is_empty() {
+                    line.push_str(&pre.join(", "));
+                } else {
+                    line.push_str(": ");
+                    line.push_str(&pre.join(", "));
+                }
             }
             if !activated.effects.is_empty() {
-                line.push_str(": ");
+                if !line.is_empty() {
+                    line.push_str(": ");
+                }
                 let effects = super::ast_render::describe_resolution_program(&activated.effects);
                 let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
@@ -33549,6 +33631,9 @@ pub(super) fn describe_ability(
             if !restriction_clauses.is_empty() {
                 line.push_str(". ");
                 line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+            }
+            if is_grandeur_activation_cost(activated) {
+                line = format!("Grandeur — {line}");
             }
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);

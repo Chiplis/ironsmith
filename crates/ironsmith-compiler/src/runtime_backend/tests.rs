@@ -12013,6 +12013,35 @@ fn rewrite_activation_cost_string_entrypoint_matches_named_card_token_path() {
 }
 
 #[test]
+fn rewrite_activation_cost_preserves_named_card_and_followup_segments() {
+    let cost = parse_activation_cost_rewrite(
+        "Discard another card named Skoa, Embermage, Sacrifice two Mountains",
+    )
+    .expect("activation-cost parser should split named discard from follow-up sacrifice");
+
+    match cost.segments.as_slice() {
+        [
+            super::ActivationCostSegmentCst::DiscardFiltered {
+                name: Some(name),
+                other,
+                ..
+            },
+            super::ActivationCostSegmentCst::SacrificeChosen {
+                count,
+                filter_text,
+                ..
+            },
+        ] => {
+            assert_eq!(name, "skoa, embermage");
+            assert!(*other, "expected 'another' modifier to be preserved");
+            assert_eq!(*count, 2);
+            assert_eq!(filter_text, "mountains");
+        }
+        other => panic!("unexpected activation cost segments: {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_activation_cost_parser_handles_exile_self_and_named_artifacts() {
     let cost = parse_activation_cost_rewrite(
         "Exile The Book of Vile Darkness and artifacts you control named Eye of Vecna and Hand of Vecna",

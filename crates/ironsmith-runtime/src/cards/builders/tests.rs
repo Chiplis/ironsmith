@@ -11526,7 +11526,7 @@ fn test_parse_quagmire_landwalk_as_though_clause() {
             "Creatures with swampwalk can be blocked as though they didn't have swampwalk.",
         )
         .expect("quagmire landwalk as-though clause should parse");
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("as though they didn't have swampwalk"),
         "expected rendered as-though swampwalk override clause, got {rendered}"
@@ -39589,6 +39589,53 @@ fn parse_oriss_grandeur_named_discard_cost() {
         debug.contains("DiscardEffect") && debug.contains("oriss, samite guardian"),
         "expected named-card discard cost, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_skoa_embermage_grandeur_keeps_named_discard_and_sacrifice_costs() {
+    let oracle = "When Skoa enters, it deals 4 damage to any target.\nGrandeur — Discard another card named Skoa, Embermage, Sacrifice two Mountains: Skoa deals 4 damage to any target.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Skoa, Embermage")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When Skoa enters, it deals 4 damage to any target.\nDiscard another card named Skoa, Embermage, Sacrifice two Mountains: Skoa deals 4 damage to any target.",
+        )
+        .expect("Skoa, Embermage should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("grandeur") && rendered.contains("discard another card named skoa, embermage"),
+        "expected named-card grandeur cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("sacrifice two mountains"),
+        "expected mountain-sacrifice grandeur cost, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("skoa, embermage") && debug.contains("sacrificeeffect"),
+        "expected named discard plus sacrifice cost structure, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        similarity >= 0.88,
+        "expected Skoa, Embermage wording similarity to improve after preserving named grandeur costs, got score={similarity}, lines={compiled:?}"
+    );
+    let _ = mismatch;
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
