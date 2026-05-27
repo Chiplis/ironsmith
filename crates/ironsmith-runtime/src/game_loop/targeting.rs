@@ -1459,7 +1459,7 @@ fn cast_time_selected_effects_from_effect(
         caster,
         source_id,
     );
-    let selected_branch = if condition_result || conditional.if_false.is_empty() {
+    let selected_branch = if condition_result {
         &conditional.if_true
     } else {
         &conditional.if_false

@@ -31154,6 +31154,198 @@ fn test_compute_legal_actions_respects_valley_floodcaller_flash_grant_on_opponen
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn return_to_dust_allows_second_target_on_your_main_phase() {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 4);
+
+    let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_910), "Return to Dust")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target artifact or enchantment. If you cast this spell during your main phase, you may exile up to one other target artifact or enchantment.",
+        )
+        .expect("Return to Dust should parse");
+
+    let spell_id = game.create_object_from_definition(&return_to_dust, alice, Zone::Hand);
+    let target_a = CardBuilder::new(CardId::from_raw(100_911), "Target A")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let target_b = CardBuilder::new(CardId::from_raw(100_912), "Target B")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    game.create_object_from_card(&target_a, bob, Zone::Battlefield);
+    game.create_object_from_card(&target_b, bob, Zone::Battlefield);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Return to Dust cast should start");
+
+    let targets = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
+    };
+
+    assert_eq!(targets.requirements.len(), 2, "main phase cast should expose both target branches");
+    assert_eq!(targets.requirements[0].min_targets, 1);
+    assert_eq!(targets.requirements[0].max_targets, Some(1));
+    assert_eq!(targets.requirements[1].min_targets, 0);
+    assert_eq!(targets.requirements[1].max_targets, Some(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn return_to_dust_does_not_allow_second_target_outside_main_phase() {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareAttackers);
+    game.turn.priority_player = Some(alice);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 4);
+
+    let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_913), "Return to Dust")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target artifact or enchantment. If you cast this spell during your main phase, you may exile up to one other target artifact or enchantment.",
+        )
+        .expect("Return to Dust should parse");
+
+    let spell_id = game.create_object_from_definition(&return_to_dust, alice, Zone::Hand);
+    let target_a = CardBuilder::new(CardId::from_raw(100_914), "Target A")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&target_a, bob, Zone::Battlefield);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Return to Dust cast should start");
+
+    let targets = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
+    };
+
+    assert_eq!(targets.requirements.len(), 1, "non-main-phase cast should not expose second target branch");
+    assert_eq!(targets.requirements[0].min_targets, 1);
+    assert_eq!(targets.requirements[0].max_targets, Some(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn return_to_dust_does_not_allow_second_target_on_opponents_turn() {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 4);
+
+    let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_915), "Return to Dust")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target artifact or enchantment. If you cast this spell during your main phase, you may exile up to one other target artifact or enchantment.",
+        )
+        .expect("Return to Dust should parse");
+
+    let spell_id = game.create_object_from_definition(&return_to_dust, alice, Zone::Hand);
+    let target_a = CardBuilder::new(CardId::from_raw(100_916), "Target A")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&target_a, bob, Zone::Battlefield);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Return to Dust cast should start");
+
+    let targets = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
+    };
+
+    assert_eq!(targets.requirements.len(), 1, "opponent-turn cast should not expose second target branch");
+    assert_eq!(targets.requirements[0].min_targets, 1);
+    assert_eq!(targets.requirements[0].max_targets, Some(1));
+}
+
 #[test]
 fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
     let mut game = setup_game();
