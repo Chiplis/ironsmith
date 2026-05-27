@@ -1014,22 +1014,36 @@ pub(crate) fn parse_card_type_list_filter(
     Some(disjunction)
 }
 
-fn parse_and_or_disjunction_filter(tokens: &[OwnedLexToken]) -> Result<Option<ObjectFilter>, CardTextError> {
-    let has_and_or = tokens.iter().any(|token| token.is_word("and/or"));
-    if !has_and_or {
+fn parse_and_or_disjunction_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let mut separator_indices = Vec::new();
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if tokens[idx].is_word("and/or") {
+            separator_indices.push((idx, idx + 1));
+            idx += 1;
+            continue;
+        }
+        if idx + 1 < tokens.len() && tokens[idx].is_word("and") && tokens[idx + 1].is_word("or") {
+            separator_indices.push((idx, idx + 2));
+            idx += 2;
+            continue;
+        }
+        idx += 1;
+    }
+    if separator_indices.is_empty() {
         return Ok(None);
     }
 
     let mut segments: Vec<Vec<OwnedLexToken>> = Vec::new();
     let mut start = 0usize;
-    for (idx, token) in tokens.iter().enumerate() {
-        if token.is_word("and/or") {
-            let segment = trim_commas(&tokens[start..idx]);
-            if !segment.is_empty() {
-                segments.push(segment.to_vec());
-            }
-            start = idx + 1;
+    for (separator_start, separator_end) in separator_indices {
+        let segment = trim_commas(&tokens[start..separator_start]);
+        if !segment.is_empty() {
+            segments.push(segment.to_vec());
         }
+        start = separator_end;
     }
     let tail = trim_commas(&tokens[start..]);
     if !tail.is_empty() {
@@ -1053,6 +1067,43 @@ fn parse_and_or_disjunction_filter(tokens: &[OwnedLexToken]) -> Result<Option<Ob
     let mut disjunction = ObjectFilter::default();
     disjunction.any_of = filters;
     Ok(Some(disjunction))
+}
+
+fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilter> {
+    let clauses: Vec<&ObjectFilter> = if allowed.any_of.is_empty() {
+        vec![allowed]
+    } else {
+        allowed.any_of.iter().collect()
+    };
+    if clauses.is_empty() {
+        return None;
+    }
+
+    let mut disallowed = ObjectFilter::creature();
+    for clause in clauses {
+        if !clause.any_of.is_empty() {
+            return None;
+        }
+
+        if !clause.card_types.is_empty()
+            && !clause.card_types.contains(&CardType::Creature)
+            && clause.card_types.len() == 1
+        {
+            disallowed = disallowed.without_type(clause.card_types[0]);
+        }
+
+        for subtype in &clause.subtypes {
+            disallowed = disallowed.without_subtype(*subtype);
+        }
+        for ability in &clause.static_abilities {
+            disallowed = disallowed.without_static_ability(*ability);
+        }
+        if let Some(colors) = clause.colors {
+            disallowed = disallowed.without_colors(colors);
+        }
+    }
+
+    Some(disallowed)
 }
 
 pub(crate) fn restriction_from_cast_limit_filter(
@@ -1241,53 +1292,26 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["block", "alone", "this", "turn"] => Restriction::block_alone(filter),
         ["be", "blocked"] => Restriction::be_blocked(filter),
         ["be", "blocked", "this", "turn"] => Restriction::be_blocked(filter),
-        ["be", "blocked", "except", "by", "walls", "and/or", "creatures", "with", "flying"]
-        | ["be", "blocked", "except", "by", "walls", "and", "or", "creatures", "with", "flying"]
-        | ["be", "blocked", "except", "by", "wall", "and/or", "creatures", "with", "flying"] => {
-            Restriction::block_specific_attacker(
-                ObjectFilter::creature()
-                    .without_subtype(Subtype::Wall)
-                    .without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
-                filter,
-            )
-        }
-        ["be", "blocked", "except", "by", "wall", "and", "or", "creatures", "with", "flying"] => {
-            Restriction::block_specific_attacker(
-                ObjectFilter::creature()
-                    .without_subtype(Subtype::Wall)
-                    .without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
-                filter,
-            )
-        }
         _ if slice_starts_with(&remainder_words, &["be", "blocked", "except", "by"])
             && remainder_words.len() > 4 =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[4..]);
-            let blocker_filter = {
-                let parser_words =
-                    crate::runtime_backend::front_end::lexer::parser_token_word_refs(
-                        &blocker_tokens,
-                    );
-                if parser_words
-                    == ["walls", "and", "or", "creatures", "with", "flying"]
-                    || parser_words
-                        == ["wall", "and", "or", "creatures", "with", "flying"]
-                {
-                    ObjectFilter::creature()
-                        .without_subtype(Subtype::Wall)
-                        .without_static_ability(crate::static_abilities::StaticAbilityId::Flying)
-                } else {
-                    parse_subject_object_filter(&blocker_tokens)?
-                        .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
-                        .or(parse_and_or_disjunction_filter(&blocker_tokens)?)
-                        .ok_or_else(|| {
-                            CardTextError::ParseError(format!(
-                                "unsupported negated restriction tail (clause: '{}')",
-                                crate::runtime_backend::token_word_refs(tokens).join(" ")
-                            ))
-                        })?
-                }
-            };
+            let allowed_blocker_filter = parse_subject_object_filter(&blocker_tokens)?
+                .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
+                .or(parse_and_or_disjunction_filter(&blocker_tokens)?)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported negated restriction tail (clause: '{}')",
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    ))
+                })?;
+            let blocker_filter = invert_except_by_blocker_filter(&allowed_blocker_filter)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported except-by blocker filter (clause: '{}')",
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    ))
+                })?;
             Restriction::block_specific_attacker(blocker_filter, filter)
         }
         _ if slice_starts_with(&remainder_words, &["be", "blocked", "by"])

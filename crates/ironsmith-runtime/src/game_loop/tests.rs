@@ -7,12 +7,14 @@ use crate::cards::definitions::emrakul_the_promised_end;
 use crate::combat_state::AttackTarget;
 use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionMaker};
 use crate::effect::{Effect, EventValueSpec, Until, Value};
+use crate::effect::RestrictionExt as _;
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
+use crate::game_state::CantEffectTracker;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
@@ -9401,6 +9403,82 @@ fn phyrexian_colossus_untap_activation_requires_eight_life() {
     assert!(
         !can_activate_with_seven,
         "Phyrexian Colossus untap ability should be illegal below 8 life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn elven_riders_only_walls_or_fliers_can_block() {
+    let can_block = |blocker_kind: &str| {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = create_creature(&mut game, "Elven Riders", alice, 3, 3);
+
+        let blocker = match blocker_kind {
+            "wall" => {
+                let wall_def = CardDefinitionBuilder::new(CardId::new(), "Wall Blocker")
+                    .card_types(vec![CardType::Creature])
+                    .subtypes(vec![Subtype::Wall])
+                    .power_toughness(PowerToughness::fixed(0, 4))
+                    .build();
+                game.create_object_from_definition(&wall_def, bob, Zone::Battlefield)
+            }
+            "flying" => {
+                let flying_def = CardDefinitionBuilder::new(CardId::new(), "Flying Blocker")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(1, 1))
+                    .parse_text("Flying")
+                    .expect("flying blocker definition should parse");
+                game.create_object_from_definition(&flying_def, bob, Zone::Battlefield)
+            }
+            _ => create_creature(&mut game, "Ground Blocker", bob, 2, 2),
+        };
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+
+        let mut cant_tracker = CantEffectTracker::default();
+        crate::effect::Restriction::block_specific_attacker(
+            ObjectFilter::creature()
+                .without_subtype(Subtype::Wall)
+                .without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
+            ObjectFilter::specific(attacker),
+        )
+        .apply(&mut game, &mut cant_tracker, bob, None, None);
+        game.effect_store.cant_effects.merge(cant_tracker);
+
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut tq,
+            &[BlockerDeclaration {
+                blocker,
+                blocking: attacker,
+            }],
+            bob,
+        )
+        .is_ok()
+    };
+
+    let legal_with_wall = can_block("wall");
+    assert!(legal_with_wall, "Wall blocker should be legal against Elven Riders");
+
+    let legal_with_flying = can_block("flying");
+    assert!(
+        legal_with_flying,
+        "Flying blocker should be legal against Elven Riders"
+    );
+
+    let illegal_with_ground = !can_block("ground");
+    assert!(
+        illegal_with_ground,
+        "Non-Wall nonflying blocker should be illegal against Elven Riders"
     );
 }
 
