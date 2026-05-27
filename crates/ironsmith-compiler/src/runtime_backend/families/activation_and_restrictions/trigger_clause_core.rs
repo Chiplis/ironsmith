@@ -1394,9 +1394,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .any(|word| matches!(*word, "card" | "cards"))
             {
                 filter.card_types.clear();
-                if !from_zones.is_empty() {
-                    filter.nontoken = true;
-                }
+                filter.nontoken = true;
             }
             return Ok(TriggerSpec::PutIntoExileFromZones {
                 filter,

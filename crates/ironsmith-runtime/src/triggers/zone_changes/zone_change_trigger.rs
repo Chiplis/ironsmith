@@ -348,16 +348,17 @@ impl ZoneChangeTrigger {
         }
 
         fn is_nontoken_card_subject_from_card_zones(trigger: &ZoneChangeTrigger) -> bool {
+            let card_subject_anywhere_filter =
+                trigger.object_filter == ObjectFilter::default()
+                    || trigger.object_filter == ObjectFilter::default().nontoken();
             if trigger.to != ZonePattern::Specific(Zone::Exile) {
                 return false;
             }
-            if matches!(&trigger.from, ZonePattern::Any)
-                && trigger.object_filter == ObjectFilter::default()
-            {
+            if matches!(&trigger.from, ZonePattern::Any) && card_subject_anywhere_filter {
                 return true;
             }
             if matches!(&trigger.from, ZonePattern::OneOf(zones) if zones.is_empty())
-                && trigger.object_filter == ObjectFilter::default()
+                && card_subject_anywhere_filter
             {
                 return true;
             }
@@ -1103,6 +1104,16 @@ mod tests {
             .during_turn(PlayerFilter::You);
         assert_eq!(
             anywhere_to_exile.display(),
+            "Whenever one or more cards are put into exile during your turn"
+        );
+
+        let nontoken_anywhere_to_exile = ZoneChangeTrigger::new()
+            .to(Zone::Exile)
+            .filter(ObjectFilter::default().nontoken())
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        assert_eq!(
+            nontoken_anywhere_to_exile.display(),
             "Whenever one or more cards are put into exile during your turn"
         );
     }

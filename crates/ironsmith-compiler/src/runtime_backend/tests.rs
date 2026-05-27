@@ -8947,6 +8947,7 @@ fn rewrite_lexed_triggered_line_parses_stonebinders_familiar_trigger() {
     assert!(debug.contains("one_or_more: true"), "{debug}");
     assert!(debug.contains("during_turn: Some"), "{debug}");
     assert!(debug.contains("You"), "{debug}");
+    assert!(debug.contains("nontoken: true"), "{debug}");
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(debug.contains("PlusOnePlusOne"), "{debug}");
     assert!(debug.contains("max_triggers_per_turn: Some"), "{debug}");

@@ -983,7 +983,7 @@ fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader
 
 #[test]
 fn attack_trigger_with_countered_attacker_taps_defending_creature() {
-    use crate::object::CounterType;
+    use crate::object::{CounterType, ObjectKind};
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -2885,12 +2885,43 @@ fn stonebinders_familiar_triggers_once_each_turn_and_only_during_your_turn() {
     let familiar_id =
         game.create_object_from_definition(&familiar, alice, crate::zone::Zone::Battlefield);
 
+    let exiled_token_card = CardBuilder::new(CardId::from_raw(81_714), "Exiled Token")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let exiled_token_id = game.create_object_from_card(&exiled_token_card, alice, Zone::Battlefield);
+    if let Some(token) = game.object_mut(exiled_token_id) {
+        token.kind = ObjectKind::Token;
+    }
+
     let exiled_card = CardBuilder::new(CardId::from_raw(81_711), "Exiled Card")
         .card_types(vec![CardType::Creature])
         .build();
     let exiled_id = game.create_object_from_card(&exiled_card, alice, Zone::Graveyard);
 
     game.turn.active_player = alice;
+    let token_exile = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            exiled_token_id,
+            Zone::Battlefield,
+            Zone::Exile,
+            crate::events::cause::EventCause::from_effect(familiar_id, alice),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, token_exile, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("token exile event should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "Stonebinder's Familiar should not trigger when a token is exiled"
+    );
+    assert_eq!(
+        game.counter_count(familiar_id, CounterType::PlusOnePlusOne),
+        0,
+        "token exile should not add a +1/+1 counter"
+    );
+
     let first_exile = TriggerEvent::new_with_provenance(
         ZoneChangeEvent::with_cause(
             exiled_id,
