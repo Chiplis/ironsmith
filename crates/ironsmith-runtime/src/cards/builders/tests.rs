@@ -39201,6 +39201,31 @@ fn parse_oracle_commanders_insignia_commander_cast_count_regression() {
 }
 
 #[test]
+fn parse_oracle_study_hall_commander_cast_scry_regression() {
+    let def = parse_oracle_card_definition("Study Hall");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("scry x")
+            && rendered.contains(
+                "where x is the number of times you've cast your commander from the command zone this game"
+            ),
+        "expected Study Hall to render commander-cast-count scry text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CommanderCastCount(You)"),
+        "expected Study Hall trigger to lower x as your commander cast count, got {debug}"
+    );
+    assert!(
+        debug.contains("SpendManaToCastCommander"),
+        "expected Study Hall trigger to stay scoped to spending this mana on your commander, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_emissary_escort_greatest_mana_value_anthem_regression() {
     let def = parse_oracle_card_definition("Emissary Escort");
     let rendered = unprocessed_compiled_lines(&def)

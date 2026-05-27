@@ -3746,6 +3746,63 @@ mod tests {
     }
 
     #[test]
+    fn resolve_commander_cast_count_tracks_only_command_zone_casts_for_controller() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+
+        let commander_card = CardBuilder::new(crate::ids::CardId::from_raw(9901), "Commander")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let alice_commander = game.create_object_from_card(&commander_card, alice, Zone::Command);
+        game.set_as_commander(alice_commander, alice);
+        let bob_commander = game.create_object_from_card(&commander_card, bob, Zone::Command);
+        game.set_as_commander(bob_commander, bob);
+
+        let alice_ctx = ExecutionContext::new_default(source_id, alice);
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::CommanderCastCount(PlayerFilter::You),
+                &alice_ctx
+            )
+            .unwrap(),
+            0,
+            "players should start with zero command-zone commander casts"
+        );
+
+        game.record_commander_cast_from_command_zone(alice_commander);
+        game.record_commander_cast_from_command_zone(alice_commander);
+        game.record_commander_cast_from_command_zone(bob_commander);
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::CommanderCastCount(PlayerFilter::You),
+                &alice_ctx
+            )
+            .unwrap(),
+            2,
+            "your commander-cast count should include only your command-zone casts"
+        );
+
+        let bob_ctx = ExecutionContext::new_default(source_id, bob);
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::CommanderCastCount(PlayerFilter::You),
+                &bob_ctx
+            )
+            .unwrap(),
+            1,
+            "the value should branch by controller and not leak another player's cast count"
+        );
+    }
+
+    #[test]
     fn test_resolve_lands_entered_battlefield_this_turn_counts_historical_entries() {
         use crate::events::EnterBattlefieldEvent;
         use crate::filter::ObjectFilter;

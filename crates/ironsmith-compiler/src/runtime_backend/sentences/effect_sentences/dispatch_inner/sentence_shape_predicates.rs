@@ -1048,6 +1048,41 @@ fn parse_effect_sentence_with_where_x_lexed(
                     crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
                 }))
             }
+            Some(
+                [
+                    "the",
+                    "number",
+                    "of",
+                    "times",
+                    "its",
+                    "been",
+                    "cast",
+                    "from",
+                    "the",
+                    "command",
+                    "zone",
+                    "this",
+                    "game",
+                ],
+            )
+            | Some(
+                [
+                    "the",
+                    "number",
+                    "of",
+                    "times",
+                    "it",
+                    "has",
+                    "been",
+                    "cast",
+                    "from",
+                    "the",
+                    "command",
+                    "zone",
+                    "this",
+                    "game",
+                ],
+            ) => Value::CommanderCastCount(PlayerFilter::You),
             Some(["the", "power", "of", "the", "creature", "tapped", "this", "way"])
             | Some(["power", "of", "the", "creature", "tapped", "this", "way"]) => {
                 Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(

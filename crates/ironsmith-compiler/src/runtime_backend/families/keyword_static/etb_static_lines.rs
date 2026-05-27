@@ -1910,6 +1910,18 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
     if matches!(
         filter_words.as_slice(),
+        ["times", "its", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+            | ["times", "it", "has", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+            | ["times", "this", "commander", "has", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+            | ["times", "your", "commander", "has", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+    ) {
+        return Some(scale_where_x_number_value(
+            Value::CommanderCastCount(PlayerFilter::You),
+            multiplier,
+        ));
+    }
+    if matches!(
+        filter_words.as_slice(),
         ["creature", "those", "players", "control"] | ["creatures", "those", "players", "control"]
     ) {
         let mut filter = ObjectFilter::creature();
