@@ -2,6 +2,8 @@ use super::*;
 use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
+use crate::runtime_backend::parse_counter_type_from_tokens;
+use crate::TextSpan;
 
 fn subject_verb_player_effect(
     role: SubjectVerbRoleAst,
@@ -272,13 +274,62 @@ pub(crate) fn parse_mill(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+        let mut words = crate::runtime_backend::token_word_refs(tokens);
+        if words.first().copied() == Some("card") || words.first().copied() == Some("cards") {
+            words = words[1..].to_vec();
+        }
+        if !(words.starts_with(&["for", "each"]) || words.starts_with(&["each"])) {
+            return None;
+        }
+
+        let after_each = if words.starts_with(&["for", "each"]) {
+            &words[2..]
+        } else {
+            &words[1..]
+        };
+        if let Some(on_idx) = after_each
+            .iter()
+            .position(|word| *word == "on")
+            .filter(|on_idx| *on_idx > 0)
+        {
+            let counter_words = &after_each[..on_idx];
+            let reference = &after_each[on_idx + 1..];
+            if matches!(counter_words.last().copied(), Some("counter" | "counters"))
+                && matches!(reference, ["it"] | ["this"] | ["this", ..])
+            {
+                let counter_tokens = counter_words
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                if let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) {
+                    return Some(Value::CountersOnSource(counter_type));
+                }
+            }
+        }
+
+        let mut number_of_words = vec!["the", "number", "of"];
+        number_of_words.extend_from_slice(after_each);
+        let number_of_tokens = number_of_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        if let Some((value, used)) = parse_value(&number_of_tokens)
+            && used == number_of_tokens.len()
+        {
+            return Some(value);
+        }
+
+        parse_get_for_each_count_value(tokens).ok().flatten()
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let starts_with_card_keyword = tokens
         .first()
         .and_then(OwnedLexToken::as_word)
         .is_some_and(|word| word == "card" || word == "cards");
 
-    let (count, used) =
+    let (mut count, used) =
         if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, THAT_MANY_PREFIXES) {
             (Value::EventValue(EventValueSpec::Amount), prefix.len())
         } else if starts_with_card_keyword {
@@ -304,12 +355,30 @@ pub(crate) fn parse_mill(
 
     let rest = &tokens[used..];
     if starts_with_card_keyword {
-        let trailing_words: Vec<&str> = rest.iter().filter_map(OwnedLexToken::as_word).collect();
+        let trailing_count_tokens = if rest
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| word == "card" || word == "cards")
+        {
+            &rest[1..]
+        } else {
+            rest
+        };
+        let trailing_words: Vec<&str> = trailing_count_tokens
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect();
         if !trailing_words.is_empty() {
+            if matches!(count, Value::Fixed(1))
+                && let Some(for_each_count) = parse_trailing_for_each_count(trailing_count_tokens)
+            {
+                count = for_each_count;
+            } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing mill clause (clause: '{}')",
                 clause_words.join(" ")
             )));
+            }
         }
     } else {
         if rest
@@ -321,16 +390,22 @@ pub(crate) fn parse_mill(
                 "missing card keyword".to_string(),
             ));
         }
-        let trailing_words: Vec<&str> = rest
+        let trailing_count_tokens = &rest[1..];
+        let trailing_words: Vec<&str> = trailing_count_tokens
             .iter()
-            .skip(1)
             .filter_map(OwnedLexToken::as_word)
             .collect();
         if !trailing_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mill clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+            if matches!(count, Value::Fixed(1))
+                && let Some(for_each_count) = parse_trailing_for_each_count(trailing_count_tokens)
+            {
+                count = for_each_count;
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mill clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
         }
     }
 

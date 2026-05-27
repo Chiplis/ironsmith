@@ -34224,6 +34224,122 @@ fn parse_cloud_ex_soldier_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_cephalid_vandal_strict_regression() {
+    assert_oracle_card_parses_strict("Cephalid Vandal");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_compiled_text_keeps_shred_counter_mill_clause() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("at the beginning of your upkeep")
+            && rendered.contains("put a shred counter on this creature")
+            && rendered.contains("mill a card for each shred counter on this creature"),
+        "expected Cephalid Vandal upkeep shred-counter mill clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_upkeep_trigger_adds_shred_counter_then_mills_one() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Cephalid Vandal should have an upkeep triggered ability");
+
+    let effects = &triggered.effects.segments[0].default_effects;
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    for _ in 0..3 {
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+    let library_before = game.player(alice).expect("alice should exist").library.len();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cephalid Vandal upkeep effects should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source_id, crate::object::CounterType::Named("shred")),
+        1,
+        "Cephalid Vandal should gain one shred counter during upkeep"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice should exist").library.len(),
+        library_before - 1,
+        "Cephalid Vandal should mill one card after the first shred counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_upkeep_trigger_mill_count_scales_with_existing_shred_counters() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Cephalid Vandal should have an upkeep triggered ability");
+
+    let effects = &triggered.effects.segments[0].default_effects;
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    for _ in 0..5 {
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+
+    game.add_counters_with_source(
+        source_id,
+        crate::object::CounterType::Named("shred"),
+        1,
+        None,
+        None,
+    );
+    let library_before = game.player(alice).expect("alice should exist").library.len();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cephalid Vandal upkeep effects should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source_id, crate::object::CounterType::Named("shred")),
+        2,
+        "Cephalid Vandal should add a second shred counter during upkeep"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice should exist").library.len(),
+        library_before - 2,
+        "Cephalid Vandal should mill two cards when it has two shred counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
     let def = parse_oracle_card_definition("Cloud, Ex-SOLDIER");
     let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
