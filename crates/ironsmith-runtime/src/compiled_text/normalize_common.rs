@@ -10683,7 +10683,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::SourcePowerAtLeast(min_power) => {
-            format!("this creature's power is {min_power} or more")
+            format!("this has power {min_power} or greater")
         }
         Condition::TargetIsAttacking => "the target is attacking".to_string(),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {

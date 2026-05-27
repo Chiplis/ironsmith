@@ -11676,8 +11676,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 continue;
             }
         }
-        let rendered = describe_effect(filtered[idx]);
+        let mut rendered = describe_effect(filtered[idx]);
         if !rendered.is_empty() {
+            if !parts.is_empty() && rendered.starts_with("If ") {
+                rendered = format!("Then {}", lowercase_first(&rendered));
+                if let Some(comma_idx) = rendered.find(", ") {
+                    let tail = lowercase_first(&rendered[comma_idx + 2..]);
+                    rendered = format!("{}, {tail}", &rendered[..comma_idx]);
+                }
+            }
             parts.push(rendered);
         }
         idx += 1;
