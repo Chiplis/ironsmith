@@ -351,6 +351,11 @@ impl ZoneChangeTrigger {
             if trigger.to != ZonePattern::Specific(Zone::Exile) {
                 return false;
             }
+            if matches!(&trigger.from, ZonePattern::Any)
+                && trigger.object_filter == ObjectFilter::default()
+            {
+                return true;
+            }
             if matches!(&trigger.from, ZonePattern::OneOf(zones) if zones.is_empty())
                 && trigger.object_filter == ObjectFilter::default()
             {
@@ -1090,6 +1095,15 @@ mod tests {
         assert_eq!(
             graveyard_or_battlefield_to_exile.display(),
             "Whenever one or more cards are put into exile from graveyards and/or the battlefield during your turn"
+        );
+
+        let anywhere_to_exile = ZoneChangeTrigger::new()
+            .to(Zone::Exile)
+            .count(CountMode::OneOrMore)
+            .during_turn(PlayerFilter::You);
+        assert_eq!(
+            anywhere_to_exile.display(),
+            "Whenever one or more cards are put into exile during your turn"
         );
     }
 

@@ -3004,6 +3004,10 @@ CardDefinition {
             "compiled text should keep the counter-adding trigger effect, got: {compiled}"
         );
         assert!(
+            compiled.contains("Whenever one or more cards are put into exile during your turn"),
+            "compiled text should keep the exile trigger card subject, got: {compiled}"
+        );
+        assert!(
             compiled.contains("This ability triggers only once each turn"),
             "compiled text should preserve the once-each-turn limit, got: {compiled}"
         );
