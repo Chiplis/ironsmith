@@ -10408,6 +10408,34 @@ fn test_parse_assign_damage_as_unblocked_with_this_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_assign_damage_as_unblocked_with_enchanted_creature_controller() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Indomitable Might Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("assign-as-unblocked wording with enchanted creature's controller should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted creature gets +3/+3"),
+        "expected aura buff to be preserved, got {rendered}"
+    );
+    assert!(
+        rendered.contains("assign its combat damage as though it weren't blocked"),
+        "expected enchanted creature grant to include assign-as-unblocked text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("MayAssignDamageAsUnblocked"),
+        "expected lowered aura effect to include MayAssignDamageAsUnblocked, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_first_spell_cost_modifier_marker_errors() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "First Spell Cost Probe")
         .card_types(vec![CardType::Enchantment])
@@ -12902,6 +12930,25 @@ fn parse_war_elemental_strictly_parses_etb_sacrifice_unless_opponent_damage_clau
             "whenever an opponent is dealt damage, put that many +1/+1 counters on this creature"
         ),
         "expected damage-counter trigger to remain intact, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn living_artifact_oracle_parses_with_player_damage_trigger_and_upkeep_branch() {
+    let def = parse_oracle_card_definition("Living Artifact");
+    let joined = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        joined.contains("whenever you are dealt damage")
+            && joined.contains("vitality counters on this aura"),
+        "expected Living Artifact player-damage trigger text, got {joined}"
+    );
+    assert!(
+        joined.contains("at the beginning of your upkeep")
+            && joined.contains("you may remove a vitality counter from this aura")
+            && joined.contains("if you do, you gain 1 life"),
+        "expected Living Artifact upkeep branch text, got {joined}"
     );
 }
 
@@ -16372,32 +16419,44 @@ fn parse_omni_changeling_copy_exception_stays_localized() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_undercover_operative_strict_copy_exception_clause() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
-        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+fn parse_auton_soldier_copy_exception_with_nonlegendary_artifact_and_myriad() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Soldier])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 4))
         .parse_text(
-            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
+            "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad.",
         )
-        .expect("Undercover Operative rules text should parse strictly");
+        .expect("Auton Soldier copy exception should parse");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains(
-            "except it enters with a shield counter on it if you control that creature"
-        ),
-        "expected Undercover Operative copy exception clause in render output, got {rendered}"
+        rendered.contains("isn't legendary")
+            && rendered.contains("is an artifact in addition to its other types")
+            && rendered.contains("has myriad"),
+        "expected Auton Soldier copy exception details in render output, got {rendered}"
     );
 
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("enters_with_counters_if_source_controlled"),
-        "expected Undercover Operative copy exception lowering to record conditional counters, got {debug}"
+        debug.contains("removed_supertypes") && debug.contains("Legendary"),
+        "expected copy-as-enters lowering to remove legendary, got {debug}"
+    );
+    assert!(
+        debug.contains("added_card_types") && debug.contains("Artifact"),
+        "expected copy-as-enters lowering to add artifact type, got {debug}"
+    );
+    assert!(
+        debug.contains("added_abilities") && debug.to_ascii_lowercase().contains("myriad"),
+        "expected copy-as-enters lowering to add myriad, got {debug}"
+    );
+    assert!(
+        !debug.contains("StaticAbilityId::KeywordMarker") || !debug.to_ascii_lowercase().contains("myriad"),
+        "expected myriad to lower as functional triggered ability, got {debug}"
     );
     assert!(
         !debug.to_ascii_lowercase().contains("unsupported"),
-        "expected Undercover Operative parse to avoid unsupported placeholders, got {debug}"
+        "expected Auton Soldier parse to avoid unsupported placeholders, got {debug}"
     );
 }
 
@@ -21071,6 +21130,34 @@ fn parse_wyrms_crossing_patrol_myriad_renders_you_as_token_creator() {
     assert!(
         !rendered.contains("that player may create a token"),
         "myriad render must not flip the token creator to the iterated player, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_frontier_warmonger_trigger_and_menace_grant() {
+    let oracle = "Whenever one or more creatures attack one of your opponents or a planeswalker they control, those creatures gain menace until end of turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Frontier Warmonger")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Frontier Warmonger should parse strictly");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("one_or_more: true")
+            && abilities_debug.contains("attacking_player_or_planeswalker_controlled_by: Some(Opponent)")
+            && abilities_debug.contains("Some(Menace)"),
+        "expected attack trigger with menace grant, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("one or more creature attacking")
+            && rendered.contains("attacking an opponent or a planeswalker controlled by an opponent")
+            && rendered.contains("gains menace until end of turn"),
+        "expected compiled text to preserve Frontier Warmonger clause, got {rendered}"
     );
 }
 
@@ -26027,6 +26114,46 @@ fn parse_earthbend_then_earthbend_chain_keeps_both_and_life_gain() {
     assert!(
         rendered.contains("gain 3 life"),
         "expected trailing life gain clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn strict_parse_dai_li_indoctrination_regression() {
+    assert_oracle_card_parses_strict("Dai Li Indoctrination");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dai_li_indoctrination_compiled_text_keeps_earthbend_mode() {
+    let def = parse_oracle_card_definition("Dai Li Indoctrination");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose one"),
+        "expected modal text in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("earthbend 2"),
+        "expected earthbend mode to keep count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dai_li_indoctrination_compiled_text_keeps_discard_mode_targets() {
+    let def = parse_oracle_card_definition("Dai Li Indoctrination");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("target opponent reveals their hand"),
+        "expected reveal-hand mode text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("nonland permanent card") && rendered.contains("discards"),
+        "expected nonland-permanent discard clause, got {rendered}"
     );
 }
 
@@ -35799,6 +35926,7 @@ strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
 strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_profane_memento, "Profane Memento");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
+strict_parse_card_test!(strict_parse_inviolability, "Inviolability");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
 strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
@@ -35827,6 +35955,97 @@ fn animate_land_compiled_text_keeps_animation_clause() {
             && rendered.contains("until end of turn")
             && rendered.contains("still a land"),
         "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn inviolability_compiled_text_keeps_damage_prevention_clause() {
+    let def = parse_oracle_card_definition("Inviolability");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all damage that would be dealt to enchanted creature"),
+        "expected Inviolability compiled text to preserve enchanted-creature prevention semantics, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn inviolability_runtime_prevents_damage_to_enchanted_creature_only() {
+    let aura_def = parse_oracle_card_definition("Inviolability");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let protected_creature = CardBuilder::new(CardId::from_raw(98_001), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id =
+        game.create_object_from_card(&protected_creature, alice, crate::zone::Zone::Battlefield);
+
+    let other_creature = CardBuilder::new(CardId::from_raw(98_002), "Other Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_id = game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
+
+    let source_creature = CardBuilder::new(CardId::from_raw(98_003), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let source_id = game.create_object_from_card(&source_creature, bob, crate::zone::Zone::Battlefield);
+
+    let aura_id = game.create_object_from_definition(&aura_def, alice, crate::zone::Zone::Battlefield);
+    game.object_mut(aura_id)
+        .expect("Inviolability object should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(protected_id));
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .attachments
+        .push(aura_id);
+    assert_eq!(
+        game.object(aura_id).and_then(|obj| obj.attached_to),
+        Some(crate::object::AttachmentTarget::Object(protected_id)),
+        "Inviolability should attach to the selected creature"
+    );
+
+    let (damage_to_protected, protected_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(protected_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        damage_to_protected, 0,
+        "Inviolability should prevent all damage to enchanted creature"
+    );
+    assert!(
+        protected_prevented || damage_to_protected == 0,
+        "damage to enchanted creature should be prevented"
+    );
+
+    let (damage_to_other, other_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(other_id),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_other, 3,
+        "Inviolability should not prevent damage to unenchanted creatures"
+    );
+    assert!(
+        !other_prevented,
+        "damage to unenchanted creature should remain unprevented"
     );
 }
 
@@ -39352,6 +39571,36 @@ fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
     assert!(
         debug.contains("ForEachTaggedEffect") && debug.contains("SameNameAsTagged"),
         "expected same-name search to iterate once per chosen permanent, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_riveteers_charm_strict_regression() {
+    let def = parse_oracle_card_definition("Riveteers Charm");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("greatest mana value among creatures and planeswalkers they control"),
+        "expected greatest-mana-value sacrifice clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("until your next end step, you may play those cards"),
+        "expected next-end-step play duration in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("exile target player's graveyard"),
+        "expected graveyard-exile mode in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("SacrificePlayerEffect") && debug.contains("GreatestManaValue"),
+        "expected sacrifice effect constrained by greatest mana value, got {debug}"
+    );
+    assert!(
+        debug.contains("UntilYourNextTurnEnd"),
+        "expected timing branch for 'until your next end step', got {debug}"
     );
 }
 

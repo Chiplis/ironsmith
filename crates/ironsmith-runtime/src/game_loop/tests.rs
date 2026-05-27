@@ -27,6 +27,13 @@ fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
 }
 
+fn setup_three_player_game() -> GameState {
+    GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    )
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();
@@ -175,6 +182,86 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
     }
 
     assert_eq!(game.calculated_power(attacker_id), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let warmonger = CardDefinitionBuilder::new(CardId::from_raw(72_140), "Frontier Warmonger")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("Whenever one or more creatures attack one of your opponents or a planeswalker they control, those creatures gain menace until end of turn.")
+        .expect("Frontier Warmonger should parse");
+    game.create_object_from_definition(&warmonger, alice, Zone::Battlefield);
+
+    let legal_attacker_id = create_creature(&mut game, "Legal Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(legal_attacker_id);
+    let illegal_attacker_id = create_creature(&mut game, "Illegal Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(illegal_attacker_id);
+    let home_creature_id = create_creature(&mut game, "Home Creature", alice, 2, 2);
+
+    assert!(
+        !game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
+        "attacker should not start with menace"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: illegal_attacker_id,
+        target: AttackTarget::Player(alice),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attacker declaration should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should go on stack");
+    assert!(
+        game.stack.is_empty(),
+        "attacking you should not create a Frontier Warmonger trigger"
+    );
+
+    assert!(
+        !game.object_has_ability(illegal_attacker_id, &StaticAbility::menace()),
+        "attacker that attacked you should not gain menace"
+    );
+
+    game.turn.active_player = alice;
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: legal_attacker_id,
+        target: AttackTarget::Player(charlie),
+    }];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attacker declaration should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("trigger should resolve");
+
+    assert!(
+        game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
+        "attacking one of your opponents should grant menace"
+    );
+    assert!(
+        !game.object_has_ability(home_creature_id, &StaticAbility::menace()),
+        "nonattacking creature should not gain menace"
+    );
+
+    execute_cleanup_step(&mut game);
+    assert!(
+        !game.object_has_ability(legal_attacker_id, &StaticAbility::menace()),
+        "temporary menace should end at cleanup"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -11387,11 +11474,11 @@ fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
-                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield."
                     .to_string(),
@@ -11446,11 +11533,11 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_object() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: true,
-                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
                     .to_string(),
@@ -11498,11 +11585,11 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stack_object() 
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: true,
-                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
                     .to_string(),
@@ -11544,11 +11631,11 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
                     copy_source_enchanted: false,
                     name_override: None,
                     added_card_types: Vec::new(),
+                    removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     set_base_power_toughness_from_self: false,
-                    enters_with_counters_if_source_controlled: Vec::new(),
                 },
                 "Creatures you control enter as a copy of this creature.".to_string(),
             ),
@@ -11575,153 +11662,158 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
 }
 
 #[test]
-fn undercover_operative_copy_choice_applies_shield_when_source_controlled() {
-    use crate::decision::DecisionMaker;
+fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myriad() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+    use crate::types::Supertype;
 
-    struct ChooseCopyDecisionMaker;
-    impl DecisionMaker for ChooseCopyDecisionMaker {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            if ctx.options.len() > 1 { vec![1] } else { vec![0] }
-        }
-    }
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
 
-    let source = CardDefinitionBuilder::new(CardId::new(), "Friendly Source")
+    let legendary_source = CardDefinitionBuilder::new(CardId::new(), "Legendary Copy Source")
         .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
-    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    game.create_object_from_definition(&legendary_source, alice, Zone::Battlefield);
 
-    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
-        .power_toughness(PowerToughness::fixed(0, 0))
-        .parse_text(
-            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
-        )
-        .expect("Undercover Operative text should parse");
-    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
-
-    let mut dm = ChooseCopyDecisionMaker;
-    let result = game
-        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
-        .expect("operative should enter the battlefield");
-    let entered = game
-        .object(result.new_id)
-        .expect("entered operative should exist");
-
-    assert_eq!(entered.name, "Friendly Source");
-    assert_eq!(
-        entered
-            .counters
-            .get(&CounterType::Shield)
-            .copied()
-            .unwrap_or(0),
-        1,
-        "operative should enter with a shield counter when copying a creature you control"
-    );
-}
-
-#[test]
-fn undercover_operative_copy_choice_skips_shield_when_source_not_controlled() {
-    use crate::decision::DecisionMaker;
-
-    struct ChooseCopyDecisionMaker;
-    impl DecisionMaker for ChooseCopyDecisionMaker {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            if ctx.options.len() > 1 { vec![1] } else { vec![0] }
-        }
-    }
-    let mut game = setup_game();
-    let alice = PlayerId::from_index(0);
-    let bob = PlayerId::from_index(1);
-
-    let source = CardDefinitionBuilder::new(CardId::new(), "Opponent Source")
-        .card_types(vec![CardType::Creature])
+    let auton_like = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: vec![CardType::Artifact],
+                    removed_supertypes: vec![Supertype::Legendary],
+                    added_subtypes: Vec::new(),
+                    added_abilities: vec![Ability::triggered(
+                        Trigger::this_attacks(),
+                        vec![Effect::for_players(
+                            PlayerFilter::excluding(
+                                PlayerFilter::Opponent,
+                                PlayerFilter::Defending,
+                            ),
+                            vec![Effect::may(vec![Effect::new(
+                                crate::effects::CreateTokenCopyEffect::new(
+                                    ChooseSpec::Source,
+                                    1,
+                                    PlayerFilter::You,
+                                )
+                                .enters_tapped(true)
+                                .attacking_player_or_planeswalker_controlled_by(
+                                    PlayerFilter::IteratedPlayer,
+                                )
+                                .exile_at_eoc(true),
+                            )])],
+                        )],
+                    )],
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."
+                    .to_string(),
+            ),
+        ))
         .build();
-    game.create_object_from_definition(&source, bob, Zone::Battlefield);
+    let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
 
-    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
-        .power_toughness(PowerToughness::fixed(0, 0))
-        .parse_text(
-            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
-        )
-        .expect("Undercover Operative text should parse");
-    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
-
-    let mut dm = ChooseCopyDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
-        .expect("operative should enter the battlefield");
-    let entered = game
+        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
+        .expect("auton-like permanent should enter the battlefield");
+    let copied = game
         .object(result.new_id)
-        .expect("entered operative should exist");
+        .expect("copied permanent should exist");
 
-    assert_eq!(entered.name, "Opponent Source");
-    assert_eq!(
-        entered
-            .counters
-            .get(&CounterType::Shield)
-            .copied()
-            .unwrap_or(0),
-        0,
-        "operative should not gain shield when copying a creature you do not control"
+    assert_eq!(copied.name, "Legendary Copy Source");
+    assert!(
+        !copied.supertypes.contains(&Supertype::Legendary),
+        "copied permanent should lose legendary"
+    );
+    assert!(
+        copied.card_types.contains(&CardType::Artifact),
+        "copied permanent should be an artifact in addition to copied types"
+    );
+    let abilities_debug = format!("{:?}", copied.abilities);
+    assert!(
+        abilities_debug.contains("CreateTokenCopyEffect")
+            && abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("MayEffect")
+            && !abilities_debug.contains("StaticAbilityId::KeywordMarker"),
+        "copied permanent should gain functional myriad trigger, got {abilities_debug}"
     );
 }
 
 #[test]
-fn undercover_operative_may_decline_copy_choice() {
-    use crate::decision::AutoPassDecisionMaker;
+fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
+    use crate::static_abilities::EnterAsCopyAsEntersSpec;
+    use crate::types::Supertype;
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
 
-    let source = CardDefinitionBuilder::new(CardId::new(), "Friendly Source")
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(3, 3))
+    let auton_like = CardDefinitionBuilder::new(CardId::new(), "Auton Soldier")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_enter_as_copy_as_enters(
+                EnterAsCopyAsEntersSpec {
+                    filter: crate::target::ObjectFilter::creature(),
+                    affected_filter: None,
+                    may: false,
+                    enters_tapped_if_chosen: false,
+                    copy_source_self: false,
+                    copy_source_enchanted: false,
+                    name_override: None,
+                    added_card_types: vec![CardType::Artifact],
+                    removed_supertypes: vec![Supertype::Legendary],
+                    added_subtypes: Vec::new(),
+                    added_abilities: vec![Ability::triggered(
+                        Trigger::this_attacks(),
+                        vec![Effect::for_players(
+                            PlayerFilter::excluding(
+                                PlayerFilter::Opponent,
+                                PlayerFilter::Defending,
+                            ),
+                            vec![Effect::may(vec![Effect::new(
+                                crate::effects::CreateTokenCopyEffect::new(
+                                    ChooseSpec::Source,
+                                    1,
+                                    PlayerFilter::You,
+                                )
+                                .enters_tapped(true)
+                                .attacking_player_or_planeswalker_controlled_by(
+                                    PlayerFilter::IteratedPlayer,
+                                )
+                                .exile_at_eoc(true),
+                            )])],
+                        )],
+                    )],
+                    set_base_power_toughness: None,
+                    set_base_power_toughness_from_self: false,
+                },
+                "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."
+                    .to_string(),
+            ),
+        ))
         .build();
-    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let auton_like_id = game.create_object_from_definition(&auton_like, alice, Zone::Hand);
 
-    let operative = CardDefinitionBuilder::new(CardId::new(), "Undercover Operative")
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Shapeshifter, Subtype::Rogue])
-        .power_toughness(PowerToughness::fixed(0, 0))
-        .parse_text(
-            "Flash\nYou may have this creature enter as a copy of any creature on the battlefield except it enters with a shield counter on it if you control that creature.",
-        )
-        .expect("Undercover Operative text should parse");
-    let operative_id = game.create_object_from_definition(&operative, alice, Zone::Hand);
-
-    let mut dm = AutoPassDecisionMaker;
     let result = game
-        .move_object_with_etb_processing_with_dm(operative_id, Zone::Battlefield, &mut dm)
-        .expect("operative should enter the battlefield");
+        .move_object_with_etb_processing(auton_like_id, Zone::Battlefield)
+        .expect("auton-like permanent should enter the battlefield");
     let entered = game
         .object(result.new_id)
-        .expect("entered operative should exist");
+        .expect("entered permanent should exist");
 
-    assert_eq!(entered.name, "Undercover Operative");
-    assert_eq!(
-        entered
-            .counters
-            .get(&CounterType::Shield)
-            .copied()
-            .unwrap_or(0),
-        0,
-        "operative should not get shield when declining to copy"
-    );
+    assert_eq!(entered.name, "Auton Soldier");
+    assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(4)));
+    assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(4)));
 }
 
 #[test]
@@ -15431,6 +15523,263 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_ties() {
+    struct ChooseSacrificeFromGreatestTie {
+        desired: ObjectId,
+        seen_candidates: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseSacrificeFromGreatestTie {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.seen_candidates = ctx.candidates.iter().map(|candidate| candidate.id).collect();
+            vec![self.desired]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let riveteers_charm = CardDefinitionBuilder::new(CardId::new(), "Riveteers Charm")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose one —\n\
+• Target opponent sacrifices a creature or planeswalker they control with the greatest mana value among creatures and planeswalkers they control.\n\
+• Exile the top three cards of your library. Until your next end step, you may play those cards.\n\
+• Exile target player's graveyard.",
+        )
+        .expect("Riveteers Charm should parse");
+
+    let low_creature = CardBuilder::new(CardId::new(), "Low Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let tie_creature = CardBuilder::new(CardId::new(), "Tie Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let tie_planeswalker = CardBuilder::new(CardId::new(), "Tie Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .build();
+
+    let low_id = game.create_object_from_card(&low_creature, bob, Zone::Battlefield);
+    let tie_creature_id = game.create_object_from_card(&tie_creature, bob, Zone::Battlefield);
+    let tie_planeswalker_id = game.create_object_from_card(&tie_planeswalker, bob, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&riveteers_charm, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Riveteers Charm should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Riveteers Charm, got {other:?}"),
+    }
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing Riveteers Charm sacrifice mode should request targets");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {}
+        other => panic!("expected opponent target selection for Riveteers Charm, got {other:?}"),
+    }
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+    )
+    .expect("choosing target opponent should finish casting Riveteers Charm");
+
+    let mut dm = ChooseSacrificeFromGreatestTie {
+        desired: tie_planeswalker_id,
+        seen_candidates: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Riveteers Charm sacrifice mode should resolve cleanly");
+
+    let tie_survivors = [tie_creature_id, tie_planeswalker_id]
+        .iter()
+        .filter(|id| game.battlefield.contains(id))
+        .count();
+
+    assert!(
+        game.battlefield.contains(&low_id),
+        "lower-mana-value permanents should not be sacrificed"
+    );
+    assert!(
+        tie_survivors == 1,
+        "exactly one greatest-mana-value permanent should be sacrificed from the tie; candidates seen: {:?}",
+        dm.seen_candidates
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let riveteers_charm = CardDefinitionBuilder::new(CardId::new(), "Riveteers Charm")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose one —\n\
+• Target opponent sacrifices a creature or planeswalker they control with the greatest mana value among creatures and planeswalkers they control.\n\
+• Exile the top three cards of your library. Until your next end step, you may play those cards.\n\
+• Exile target player's graveyard.",
+        )
+        .expect("Riveteers Charm should parse");
+
+    let top_land = CardBuilder::new(CardId::new(), "Charm Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let top_spell = CardBuilder::new(CardId::new(), "Charm Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .build();
+    let third_card = CardBuilder::new(CardId::new(), "Charm Third")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .build();
+
+    let _top_land_id = game.create_object_from_card(&top_land, alice, Zone::Library);
+    let _top_spell_id = game.create_object_from_card(&top_spell, alice, Zone::Library);
+    let _third_card_id = game.create_object_from_card(&third_card, alice, Zone::Library);
+
+    let spell_id = game.create_object_from_definition(&riveteers_charm, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Riveteers Charm should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_)) => {}
+        other => panic!("expected mode selection for Riveteers Charm, got {other:?}"),
+    }
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![1]),
+    )
+    .expect("choosing Riveteers Charm exile mode should finish casting");
+
+    resolve_stack_entry_with(&mut game, &mut AutoPassDecisionMaker)
+        .expect("Riveteers Charm exile mode should resolve cleanly");
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let exiled_ids = game.exile.clone();
+    let exiled_names: Vec<_> = exiled_ids
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .collect();
+    let exiled_land_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Charm Land").then_some(*id))
+        .expect("Riveteers Charm should exile the top land card");
+    let exiled_spell_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Charm Spell").then_some(*id))
+        .expect("Riveteers Charm should exile the top spell card");
+
+    assert_eq!(game.exile.len(), 3, "Riveteers Charm should exile three cards");
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_land_id, Zone::Exile, alice),
+        "Riveteers Charm should let you play exiled lands during the window"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        "Riveteers Charm should let you cast exiled spells during the window"
+    );
+
+    let actions_now = compute_legal_actions(&game, alice);
+    assert!(
+        actions_now.iter().any(|action| matches!(
+            action,
+            LegalAction::PlayLand { land_id } if *land_id == exiled_land_id
+        )),
+        "Riveteers Charm should expose a land play action from exile"
+    );
+    assert!(
+        actions_now.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. } if *spell_id == exiled_spell_id
+        )),
+        "Riveteers Charm should expose a cast action from exile"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+    game.turn.active_player = PlayerId::from_index(1);
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        "Riveteers Charm play window should still exist before your next end step"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(2);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice
+        ),
+        "Riveteers Charm play window should expire after your next end step"
+    );
+}
+
 // === Full Game Flow Integration Test ===
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -15900,6 +16249,97 @@ fn test_thorn_elemental_combat_decision() {
     assert_eq!(game.damage_on(blocker_id), 2);
     // Bob takes trample damage (7 - 2 = 5)
     assert_eq!(game.player(bob).unwrap().life, 15);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_indomitable_might_grants_power_and_assign_as_unblocked_static_ability() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::object::AttachmentTarget;
+    use crate::types::{CardType, Subtype};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let enchanted_id = create_creature(&mut game, "Grizzly Probe", alice, 2, 2);
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Indomitable Might")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Flash\nEnchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("Indomitable Might text should parse into an Aura card definition");
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+
+    {
+        let aura_obj = game
+            .object_mut(aura_id)
+            .expect("aura should exist on battlefield");
+        aura_obj.attached_to = Some(AttachmentTarget::Object(enchanted_id));
+    }
+    {
+        let enchanted_obj = game
+            .object_mut(enchanted_id)
+            .expect("enchanted creature should exist");
+        enchanted_obj.attachments.push(aura_id);
+    }
+    let characteristics = game
+        .calculated_characteristics(enchanted_id)
+        .expect("enchanted creature should have calculated characteristics");
+    assert_eq!(characteristics.power, Some(5));
+    assert_eq!(characteristics.toughness, Some(5));
+    assert!(characteristics.static_abilities.iter().any(|ability| {
+        ability.id() == crate::static_abilities::StaticAbilityId::MayAssignDamageAsUnblocked
+    }));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_indomitable_might_blocked_combat_defaults_to_blocker_damage_assignment() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::object::AttachmentTarget;
+    use crate::types::{CardType, Subtype};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let enchanted_id = create_creature(&mut game, "Enchanted Attacker", alice, 2, 2);
+    let blocker_id = create_creature(&mut game, "Blocking Bear", bob, 2, 2);
+
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Indomitable Might")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Flash\nEnchant creature\nEnchanted creature gets +3/+3.\nEnchanted creature's controller may have it assign its combat damage as though it weren't blocked.",
+        )
+        .expect("Indomitable Might text should parse into an Aura card definition");
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    {
+        let aura_obj = game
+            .object_mut(aura_id)
+            .expect("aura should exist on battlefield");
+        aura_obj.attached_to = Some(AttachmentTarget::Object(enchanted_id));
+    }
+    {
+        let enchanted_obj = game
+            .object_mut(enchanted_id)
+            .expect("enchanted creature should exist");
+        enchanted_obj.attachments.push(aura_id);
+    }
+    game.remove_summoning_sickness(enchanted_id);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: enchanted_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(enchanted_id, vec![blocker_id]);
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert!(!events.is_empty());
+    assert_eq!(game.damage_on(blocker_id), 2);
+    assert_eq!(game.player(bob).expect("defender should exist").life, 20);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

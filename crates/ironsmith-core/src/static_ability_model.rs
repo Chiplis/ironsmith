@@ -1112,8 +1112,6 @@ where
                         set_base_power_toughness: spec.set_base_power_toughness,
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
-                        enters_with_counters_if_source_controlled: spec
-                            .enters_with_counters_if_source_controlled,
                     },
                     display,
                 }
@@ -4003,7 +4001,6 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
-    pub enters_with_counters_if_source_controlled: Vec<(CounterType, u32)>,
 }
 
 impl<T, E, C, Cond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond>

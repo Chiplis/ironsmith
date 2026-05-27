@@ -135,15 +135,6 @@ fn push_enter_as_copy_effects_for_spec(
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: spec.added_abilities.clone(),
                     set_base_power_toughness,
-                    enters_with_counters: if game
-                        .object(candidate)
-                        .map(|obj| game.controller_of(obj) == controller)
-                        .unwrap_or(false)
-                    {
-                        spec.enters_with_counters_if_source_controlled.clone()
-                    } else {
-                        Vec::new()
-                    },
                 },
             )
             .with_priority_override(crate::events::ReplacementPriority::CopyEffect),

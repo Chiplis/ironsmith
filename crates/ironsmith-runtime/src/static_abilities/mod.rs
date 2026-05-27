@@ -954,7 +954,6 @@ pub struct EnterAsCopyAsEntersSpec {
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
-    pub enters_with_counters_if_source_controlled: Vec<(crate::object::CounterType, u32)>,
 }
 
 /// Spec for static abilities that duplicate matching triggered abilities.

@@ -157,7 +157,6 @@ pub enum ReplacementAction {
         added_subtypes: Vec<Subtype>,
         added_abilities: Vec<Ability>,
         set_base_power_toughness: Option<(i32, i32)>,
-        enters_with_counters: Vec<(CounterType, u32)>,
     },
 
     /// Enter with permanent characteristic changes.
