@@ -206,7 +206,7 @@ fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
     let bob = PlayerId::from_index(1);
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-    let _source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let memnite = CardDefinitionBuilder::new(CardId::from_raw(91_001), "Memnite")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
@@ -33392,7 +33392,7 @@ fn tekuthal_activation_cost_targets_other_countered_permanents_only() {
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
-    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let _source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(98_001), "Other Artifact")
             .card_types(vec![CardType::Artifact])
@@ -33448,6 +33448,71 @@ fn tekuthal_activated_effect_puts_indestructible_counter_on_source() {
             .copied()),
         Some(1),
         "Tekuthal activated effect should put an indestructible counter on Tekuthal"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tekuthal_replacement_makes_single_proliferate_happen_twice() {
+    struct SelectSameTargetsTwice {
+        permanent: ObjectId,
+        player: PlayerId,
+    }
+
+    impl crate::decision::DecisionMaker for SelectSameTargetsTwice {
+        fn decide_proliferate(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::ProliferateContext,
+        ) -> crate::decisions::specs::ProliferateResponse {
+            crate::decisions::specs::ProliferateResponse {
+                permanents: vec![self.permanent],
+                players: vec![self.player],
+            }
+        }
+    }
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tekuthal = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
+    let proliferate_source = game.create_object_from_definition(&tekuthal, alice, Zone::Battlefield);
+    let countered_creature = CardDefinitionBuilder::new(CardId::from_raw(98_101), "Countered Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let countered_id = game.create_object_from_definition(&countered_creature, alice, Zone::Battlefield);
+    assert!(
+        game.add_counters(countered_id, crate::object::CounterType::PlusOnePlusOne, 1)
+            .is_some(),
+        "countered creature should be on the battlefield"
+    );
+    game.players[1].poison_counters = 1;
+
+    let mut dm = SelectSameTargetsTwice {
+        permanent: countered_id,
+        player: bob,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(proliferate_source, alice, &mut dm);
+    crate::effects::execute_effect(
+        &mut game,
+        &crate::effect::Effect::proliferate(1),
+        &mut ctx,
+    )
+    .expect("proliferate should resolve");
+
+    assert_eq!(
+        game.object(countered_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        Some(3),
+        "Tekuthal replacement should apply proliferate twice"
+    );
+    assert_eq!(
+        game.players[1].poison_counters, 3,
+        "Tekuthal replacement should apply proliferate to players twice"
     );
 }
 

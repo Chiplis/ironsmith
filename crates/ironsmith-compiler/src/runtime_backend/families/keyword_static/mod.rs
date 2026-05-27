@@ -8036,6 +8036,43 @@ pub(crate) fn parse_keyword_action_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = parser_token_word_refs(tokens);
+    let proliferate_display = render_token_slice(tokens);
+    if line_words == [
+        "if",
+        "you",
+        "would",
+        "proliferate",
+        "proliferate",
+        "twice",
+        "instead",
+    ] {
+        return Ok(Some(StaticAbility::keyword_action_replacement(
+            crate::events::KeywordActionKind::Proliferate,
+            ObjectFilter::default().controlled_by(PlayerFilter::You),
+            vec![Effect::proliferate(2)],
+            proliferate_display,
+        )));
+    }
+    if line_words == [
+        "if",
+        "an",
+        "opponent",
+        "would",
+        "proliferate",
+        "that",
+        "player",
+        "proliferates",
+        "twice",
+        "instead",
+    ] {
+        return Ok(Some(StaticAbility::keyword_action_replacement(
+            crate::events::KeywordActionKind::Proliferate,
+            ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+            vec![Effect::proliferate(2)],
+            proliferate_display,
+        )));
+    }
+
     let prefix = [
         "if", "a", "creature", "you", "control", "would", "explore", "instead",
     ];
