@@ -36453,6 +36453,90 @@ fn strict_parse_olivias_midnight_ambush_regression() {
 }
 
 #[test]
+fn strict_parse_branching_evolution_regression() {
+    assert_oracle_card_parses_strict("Branching Evolution");
+}
+
+#[test]
+fn branching_evolution_compiled_text_preserves_counter_doubling_clause() {
+    let def = parse_oracle_card_definition("Branching Evolution");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("+1/+1 counters")
+            && rendered.contains("you control")
+            && rendered.contains("twice that many"),
+        "expected Branching Evolution compiled text to preserve +1/+1 counter doubling clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn branching_evolution_runtime_doubles_only_your_plus_one_counters() {
+    let branching = parse_oracle_card_definition("Branching Evolution");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source = game.create_object_from_definition(&branching, alice, Zone::Battlefield);
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Counter Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let alice_creature = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+
+    game.update_replacement_effects();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    ctx.targets = vec![crate::effects::ResolvedTarget::Object(alice_creature)];
+    let plus_one = crate::effects::PutCountersEffect {
+        counter_type: crate::object::CounterType::PlusOnePlusOne,
+        amount: crate::effect::Value::Fixed(1),
+        target: crate::target::ChooseSpec::target_creature(),
+        target_count: Some(crate::effect::ChoiceCount::exactly(1)),
+        distributed: false,
+    };
+    plus_one
+        .execute(&mut game, &mut ctx)
+        .expect("putting +1/+1 counter on your creature should resolve");
+    assert_eq!(
+        game.counter_count(alice_creature, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "Branching Evolution should double +1/+1 counters put on creatures you control"
+    );
+
+    ctx.targets = vec![crate::effects::ResolvedTarget::Object(bob_creature)];
+    plus_one
+        .execute(&mut game, &mut ctx)
+        .expect("putting +1/+1 counter on opponent creature should resolve");
+    assert_eq!(
+        game.counter_count(bob_creature, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Branching Evolution should not double +1/+1 counters on creatures you do not control"
+    );
+
+    ctx.targets = vec![crate::effects::ResolvedTarget::Object(alice_creature)];
+    let deathtouch_counter = crate::effects::PutCountersEffect {
+        counter_type: crate::object::CounterType::Deathtouch,
+        amount: crate::effect::Value::Fixed(1),
+        target: crate::target::ChooseSpec::target_creature(),
+        target_count: Some(crate::effect::ChoiceCount::exactly(1)),
+        distributed: false,
+    };
+    deathtouch_counter
+        .execute(&mut game, &mut ctx)
+        .expect("putting deathtouch counter on your creature should resolve");
+    assert_eq!(
+        game.counter_count(alice_creature, crate::object::CounterType::Deathtouch),
+        1,
+        "Branching Evolution should not double non-+1/+1 counters"
+    );
+}
+
+#[test]
 fn olivias_midnight_ambush_compiled_text_preserves_night_branch() {
     let def = parse_oracle_card_definition("Olivia's Midnight Ambush");
     let rendered = unprocessed_compiled_lines(&def)
