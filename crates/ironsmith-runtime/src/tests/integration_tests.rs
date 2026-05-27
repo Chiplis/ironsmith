@@ -1830,6 +1830,93 @@ mod tests {
         );
     }
 
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn test_kydele_chosen_of_kruphix_mana_scales_with_cards_drawn_this_turn() {
+        use crate::effect::Effect;
+        use crate::effects::{ExecutionContext, execute_effect};
+
+        let kydele = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Kydele, Chosen of Kruphix",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Elf, crate::types::Subtype::Wizard])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 3))
+        .parse_text("{T}: Add {C} for each card you've drawn this turn.")
+        .expect("Kydele mana ability should parse");
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let kydele_id = game.create_object_from_definition(&kydele, alice, Zone::Battlefield);
+        let mut dm = ChooseLastReplacementDecisionMaker;
+
+        let filler = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Filler")
+            .card_types(vec![crate::types::CardType::Land])
+            .build();
+        for _ in 0..3 {
+            game.create_object_from_definition(&filler, alice, Zone::Library);
+        }
+
+        let mut draw_ctx = ExecutionContext::new(kydele_id, alice, &mut dm);
+        execute_effect(&mut game, &Effect::draw(3), &mut draw_ctx)
+            .expect("draw effect should resolve");
+
+        let mut mana_ctx = ExecutionContext::new(kydele_id, alice, &mut dm);
+        execute_effect(
+            &mut game,
+            &Effect::add_colorless_mana(crate::effect::Value::MaxCardsDrawnThisTurn(
+                crate::target::PlayerFilter::You,
+            )),
+            &mut mana_ctx,
+        )
+        .expect("Kydele mana effect should resolve");
+
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").mana_pool.colorless,
+            3,
+            "Kydele should add one colorless for each card drawn this turn"
+        );
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn test_kydele_chosen_of_kruphix_adds_no_mana_when_no_cards_drawn_this_turn() {
+        use crate::effect::Effect;
+        use crate::effects::{ExecutionContext, execute_effect};
+
+        let kydele = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Kydele, Chosen of Kruphix",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Elf, crate::types::Subtype::Wizard])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 3))
+        .parse_text("{T}: Add {C} for each card you've drawn this turn.")
+        .expect("Kydele mana ability should parse");
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let kydele_id = game.create_object_from_definition(&kydele, alice, Zone::Battlefield);
+        let mut dm = ChooseLastReplacementDecisionMaker;
+
+        let mut mana_ctx = ExecutionContext::new(kydele_id, alice, &mut dm);
+        execute_effect(
+            &mut game,
+            &Effect::add_colorless_mana(crate::effect::Value::MaxCardsDrawnThisTurn(
+                crate::target::PlayerFilter::You,
+            )),
+            &mut mana_ctx,
+        )
+        .expect("Kydele mana effect should resolve");
+
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").mana_pool.colorless,
+            0,
+            "Kydele should add no colorless when no cards were drawn this turn"
+        );
+    }
+
     // Card-specific replay tests have been moved to their respective card definition files.
     // See each card's tests module (e.g., src/cards/definitions/ancient_tomb.rs) for the tests.
     //
