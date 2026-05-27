@@ -17678,6 +17678,90 @@ fn describe_for_players_collision_of_realms(
     Some("Each player shuffles all creatures they own into their library. Each player who shuffled a nontoken creature into their library this way reveals cards from the top of their library until they reveal a creature card, then puts that card onto the battlefield and the rest on the bottom of their library in a random order.".to_string())
 }
 
+fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 3 {
+        return None;
+    }
+
+    let tagged_shuffle = for_players.effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let moved_tag = tagged_shuffle.tag.clone();
+    let with_id = tagged_shuffle
+        .effect
+        .downcast_ref::<crate::effects::WithIdEffect>()?;
+    let shuffle = with_id
+        .effect
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if shuffle.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+    let ChooseSpec::Object(shuffled_filter) = shuffle.target.base() else {
+        return None;
+    };
+    if shuffled_filter.zone != Some(Zone::Battlefield)
+        || shuffled_filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || !shuffled_filter.card_types.contains(&CardType::Artifact)
+        || !shuffled_filter.card_types.contains(&CardType::Creature)
+        || !shuffled_filter.card_types.contains(&CardType::Enchantment)
+        || !shuffled_filter.card_types.contains(&CardType::Land)
+    {
+        return None;
+    }
+
+    let look = for_players.effects[1].downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.player != PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(moved_tag.clone())) {
+        return None;
+    }
+    if !matches!(
+        &look.count,
+        Value::EffectMetric {
+            effect_id,
+            metric: crate::effect::EffectMetric::Count,
+            ..
+        } if *effect_id == with_id.id
+    ) {
+        return None;
+    }
+
+    let for_each = for_players.effects[2].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.effects.len() != 1 {
+        return None;
+    }
+    let conditional = for_each.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+        return None;
+    };
+    if tag.as_str() != "__it__"
+        || !filter.card_types.contains(&CardType::Artifact)
+        || !filter.card_types.contains(&CardType::Creature)
+        || !filter.card_types.contains(&CardType::Land)
+        || !filter.card_types.contains(&CardType::Enchantment)
+    {
+        return None;
+    }
+    let [move_if_true] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let move_to_battlefield = move_if_true.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_battlefield.zone != Zone::Battlefield
+        || move_to_battlefield.to_top
+        || move_to_battlefield.battlefield_controller
+            != crate::effects::BattlefieldController::Owner
+    {
+        return None;
+    }
+    let [move_if_false] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let move_to_library = move_if_false.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_library.zone != Zone::Library || move_to_library.to_top {
+        return None;
+    }
+
+    Some("Each player shuffles all permanents they own into their library, then reveals that many cards from the top of their library. Each player puts all artifact, creature, and land cards revealed this way onto the battlefield, then does the same for enchantment cards, then puts all cards revealed this way that weren't put onto the battlefield on the bottom of their library".to_string())
+}
+
 pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<String> {
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
@@ -17774,6 +17858,13 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
         )),
         _ => None,
     }
+}
+
+fn singularize_for_each_basis(basis: &str) -> String {
+    if let Some((head, tail)) = basis.split_once(" counters on ") {
+        return format!("{head} counter on {tail}");
+    }
+    basis.to_string()
 }
 
 fn describe_tagged_creature_power_count_basis(spec: &ChooseSpec) -> Option<&'static str> {
@@ -24512,6 +24603,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled")
         {
             "For each object exiled this way".to_string()
+        } else if tag.starts_with("revealed_")
+            || tag.contains("revealed_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "revealed")
+        {
+            "For each card revealed this way".to_string()
+        } else if tag.starts_with("looked_")
+            || tag.contains("looked_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "looked")
+        {
+            "For each card looked at this way".to_string()
+        } else if tag.starts_with("chosen_")
+            || tag.contains("chosen_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "chosen")
+        {
+            "For each card chosen this way".to_string()
+        } else if tag.starts_with("searched_")
+            || tag.contains("searched_this_way")
+            || crate::cards::is_sentence_helper_tag(tag, "searched")
+        {
+            "For each card searched for this way".to_string()
         } else if tag.starts_with("sacrificed_")
             || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
@@ -24539,6 +24650,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_collision_of_realms(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_shuffle_reveal_permanents_put_rest_bottom(for_players)
+        {
             return compact;
         }
         if let Some(compact) =
@@ -26431,11 +26546,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 player_verb(&player, "mill", "mills")
             );
         }
+        let count_text = describe_card_count(&mill.count);
+        if let Some(rest) = count_text.strip_prefix("the number of ") {
+            let basis = singularize_for_each_basis(rest.strip_suffix(" cards").unwrap_or(rest));
+            return format!(
+                "{} {} a card for each {}",
+                player,
+                player_verb(&player, "mill", "mills"),
+                basis
+            );
+        }
         return format!(
             "{} {} {}",
             player,
             player_verb(&player, "mill", "mills"),
-            describe_card_count(&mill.count)
+            count_text
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {

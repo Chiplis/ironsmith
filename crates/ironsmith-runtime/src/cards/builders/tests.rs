@@ -31778,6 +31778,47 @@ fn parse_oracle_encroaching_mycosynth_type_addition_regression() {
 }
 
 #[test]
+fn parse_oracle_roshan_hidden_magister_regression() {
+    let def = parse_oracle_card_definition("Roshan, Hidden Magister");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.matches("addsubtypes").count() >= 3 && raw.contains("assassin"),
+        "expected Roshan to add Assassin subtype on battlefield, stack, and off-battlefield zones, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "other creatures you control are assassins in addition to their other types"
+        ),
+        "expected Roshan battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("creature spells you control are assassins in addition to their other types")
+            || rendered.contains("the same is true for creature spells you control"),
+        "expected Roshan stack clause to render, got {rendered}"
+    );
+    assert!(
+        (rendered.contains("creature cards in your hand")
+            && rendered.contains("creature cards in your library")
+            && rendered.contains("creature cards in your graveyard")
+            && rendered.contains("creature cards in your exile")
+            && rendered.contains("creature cards in your command zone")
+            && rendered.contains("are assassins in addition to their other types"))
+            || (rendered.contains("creature cards you own that aren't on the battlefield")
+                && rendered.contains("are assassins in addition to their other types")),
+        "expected Roshan off-battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Roshan to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_leyline_of_the_guildpact_static_characteristics_regression() {
     let def = parse_oracle_card_definition("Leyline of the Guildpact");
 
@@ -32811,6 +32852,157 @@ fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
             .iter()
             .any(|name| name == "Alice Permanent"),
         "expected Alice Permanent on the battlefield after Over the Top, got {battlefield_names:?}"
+    );
+}
+
+#[test]
+fn parse_oracle_warp_world_strict_parse_and_render_regression() {
+    let def = parse_oracle_card_definition("Warp World");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("shuffleobjectsintolibraryeffect")
+            && raw.contains("lookattopcardseffect")
+            && raw.contains("foreachtaggedeffect")
+            && raw.contains("conditionaleffect")
+            && raw.contains("zone: battlefield")
+            && raw.contains("zone: library"),
+        "expected Warp World to compile to shuffle/reveal/distribute effects, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("each player shuffles all permanents they own into their library")
+            && rendered.contains("reveals that many cards from the top of their library")
+            && rendered.contains("artifact, creature, and land cards revealed this way")
+            && rendered.contains("then does the same for enchantment cards")
+            && rendered.contains("weren't put onto the battlefield on the bottom of their library"),
+        "expected Warp World to keep the owned-shuffle and staged reveal distribution wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged '") && !rendered.contains("tagged object"),
+        "expected Warp World to avoid internal tagged-object markers, got {rendered}"
+    );
+}
+
+#[test]
+fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
+    use crate::card::CardBuilder;
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::zone::Zone;
+
+    let def = parse_oracle_card_definition("Warp World");
+    let effects = def.spell_effect.as_ref().expect("spell effects");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_old_perm = CardBuilder::new(CardId::from_raw(32_001), "Alice Old Permanent")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&alice_old_perm, alice, Zone::Battlefield);
+    let alice_old_land = CardBuilder::new(CardId::from_raw(32_007), "Alice Old Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    game.create_object_from_card(&alice_old_land, alice, Zone::Battlefield);
+
+    let bob_old_perm = CardBuilder::new(CardId::from_raw(32_002), "Bob Old Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&bob_old_perm, bob, Zone::Battlefield);
+    let bob_old_creature = CardBuilder::new(CardId::from_raw(32_008), "Bob Old Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&bob_old_creature, bob, Zone::Battlefield);
+
+    let alice_new_creature = CardBuilder::new(CardId::from_raw(32_003), "Alice New Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let alice_new_instant = CardBuilder::new(CardId::from_raw(32_004), "Alice New Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&alice_new_creature, alice, Zone::Library);
+    game.create_object_from_card(&alice_new_instant, alice, Zone::Library);
+
+    let bob_new_enchantment =
+        CardBuilder::new(CardId::from_raw(32_005), "Bob New Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+    let bob_new_sorcery = CardBuilder::new(CardId::from_raw(32_006), "Bob New Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&bob_new_enchantment, bob, Zone::Library);
+    game.create_object_from_card(&bob_new_sorcery, bob, Zone::Library);
+
+    let source = game.new_object_id();
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("execute Warp World effect");
+    }
+
+    let battlefield_names: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        battlefield_names.iter().any(|name| name == "Alice New Creature"),
+        "expected Warp World to put at least one revealed permanent onto the battlefield, got {battlefield_names:?}"
+    );
+    assert!(
+        !battlefield_names.iter().any(|name| name == "Alice New Instant")
+            && !battlefield_names.iter().any(|name| name == "Bob New Sorcery"),
+        "expected nonpermanent revealed cards to stay off the battlefield, got {battlefield_names:?}"
+    );
+
+    let alice_library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    let bob_library_names: Vec<_> = game
+        .player(bob)
+        .expect("bob")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        alice_library_names
+            .iter()
+            .any(|name| name == "Alice New Instant")
+            && bob_library_names.iter().any(|name| name == "Bob New Sorcery"),
+        "expected nonpermanent revealed cards on the bottom of their owners' libraries, got alice={alice_library_names:?}, bob={bob_library_names:?}"
+    );
+
+    let alice_graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    let bob_graveyard_names: Vec<_> = game
+        .player(bob)
+        .expect("bob")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        !alice_graveyard_names
+            .iter()
+            .any(|name| name == "Alice New Instant")
+            && !bob_graveyard_names.iter().any(|name| name == "Bob New Sorcery"),
+        "expected Warp World leftovers to go to library bottom rather than graveyard, got alice={alice_graveyard_names:?}, bob={bob_graveyard_names:?}"
     );
 }
 
@@ -34212,6 +34404,122 @@ fn parse_wave_of_rats_strict_regression() {
 #[test]
 fn parse_cloud_ex_soldier_strict_regression() {
     assert_oracle_card_parses_strict("Cloud, Ex-SOLDIER");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_cephalid_vandal_strict_regression() {
+    assert_oracle_card_parses_strict("Cephalid Vandal");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_compiled_text_keeps_shred_counter_mill_clause() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("at the beginning of your upkeep")
+            && rendered.contains("put a shred counter on this creature")
+            && rendered.contains("mill a card for each shred counter on this creature"),
+        "expected Cephalid Vandal upkeep shred-counter mill clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_upkeep_trigger_adds_shred_counter_then_mills_one() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Cephalid Vandal should have an upkeep triggered ability");
+
+    let effects = &triggered.effects.segments[0].default_effects;
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    for _ in 0..3 {
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+    let library_before = game.player(alice).expect("alice should exist").library.len();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cephalid Vandal upkeep effects should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source_id, crate::object::CounterType::Named("shred")),
+        1,
+        "Cephalid Vandal should gain one shred counter during upkeep"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice should exist").library.len(),
+        library_before - 1,
+        "Cephalid Vandal should mill one card after the first shred counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cephalid_vandal_upkeep_trigger_mill_count_scales_with_existing_shred_counters() {
+    let def = parse_oracle_card_definition("Cephalid Vandal");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Cephalid Vandal should have an upkeep triggered ability");
+
+    let effects = &triggered.effects.segments[0].default_effects;
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    for _ in 0..5 {
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+
+    game.add_counters_with_source(
+        source_id,
+        crate::object::CounterType::Named("shred"),
+        1,
+        None,
+        None,
+    );
+    let library_before = game.player(alice).expect("alice should exist").library.len();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cephalid Vandal upkeep effects should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source_id, crate::object::CounterType::Named("shred")),
+        2,
+        "Cephalid Vandal should add a second shred counter during upkeep"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice should exist").library.len(),
+        library_before - 2,
+        "Cephalid Vandal should mill two cards when it has two shred counters"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
