@@ -4733,6 +4733,181 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn roshan_hidden_magister_applies_assassin_subtype_across_zones_for_you_only() {
+    use crate::cards::builders::CardDefinitionBuilder;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let roshan = CardDefinitionBuilder::new(CardId::new(), "Roshan, Hidden Magister")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Other creatures you control are Assassins in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\nFace-down creatures you control have menace.\nWhenever a permanent you control is turned face up, you draw a card and you lose 1 life.",
+        )
+        .expect("Roshan text should parse");
+    let _roshan_id = game.create_object_from_definition(&roshan, alice, Zone::Battlefield);
+
+    let draw_probe = CardBuilder::new(CardId::new(), "Roshan Draw Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let _ = game.create_object_from_card(&draw_probe, alice, Zone::Library);
+
+    let ally_creature = CardBuilder::new(CardId::new(), "Roshan Ally")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let ally_id = game.create_object_from_card(&ally_creature, alice, Zone::Battlefield);
+
+    let opponent_creature = CardBuilder::new(CardId::new(), "Roshan Opponent")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let opponent_id = game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
+
+    let ally_gy_card = CardBuilder::new(CardId::new(), "Roshan GY")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let ally_gy_id = game.create_object_from_card(&ally_gy_card, alice, Zone::Graveyard);
+
+    assert!(
+        game.calculated_subtypes(ally_id).contains(&Subtype::Assassin),
+        "other creature you control should gain Assassin"
+    );
+    assert!(
+        game.calculated_subtypes(ally_gy_id).contains(&Subtype::Assassin),
+        "creature card you own off battlefield should gain Assassin"
+    );
+    assert!(
+        !game.calculated_subtypes(opponent_id).contains(&Subtype::Assassin),
+        "opponent creatures should not gain Assassin"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::{LegalAction, SelectFirstDecisionMaker};
+    use crate::special_actions::TurnFaceUpMethod;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let roshan = CardDefinitionBuilder::new(CardId::new(), "Roshan, Hidden Magister")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Other creatures you control are Assassins in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\nFace-down creatures you control have menace.\nWhenever a permanent you control is turned face up, you draw a card and you lose 1 life.",
+        )
+        .expect("Roshan text should parse");
+    let _roshan_id = game.create_object_from_definition(&roshan, alice, Zone::Battlefield);
+
+    let draw_probe = CardBuilder::new(CardId::new(), "Roshan Draw Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let _ = game.create_object_from_card(&draw_probe, alice, Zone::Library);
+
+    let morph = CardBuilder::new(CardId::new(), "Roshan Morph")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let alice_morph_id = game.create_object_from_card(&morph, alice, Zone::Battlefield);
+    let bob_morph_id = game.create_object_from_card(&morph, bob, Zone::Battlefield);
+    for id in [alice_morph_id, bob_morph_id] {
+        if let Some(obj) = game.object_mut(id) {
+            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
+                crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
+            )));
+        }
+        game.set_face_down(id);
+    }
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let alice_hand_before = game.player(alice).expect("alice exists").hand.len();
+    let alice_life_before = game.player(alice).expect("alice exists").life;
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let turn_up_alice = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id: alice_morph_id,
+        method: TurnFaceUpMethod::TurnFaceUpAbility,
+    });
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &turn_up_alice,
+        &mut dm,
+    )
+    .expect("turning your face-down permanent up should succeed");
+    resolve_stack_entry(&mut game).expect("Roshan trigger should resolve after your permanent turns up");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        alice_hand_before + 1,
+        "Roshan should draw one card when your permanent turns face up"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        alice_life_before - 1,
+        "Roshan should make you lose 1 life when your permanent turns face up"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    let turn_up_bob = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id: bob_morph_id,
+        method: TurnFaceUpMethod::TurnFaceUpAbility,
+    });
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &turn_up_bob,
+        &mut dm,
+    )
+    .expect("opponent should be able to turn their permanent face up");
+
+    assert!(
+        game.stack_is_empty(),
+        "Roshan should not trigger when an opponent-controlled permanent is turned face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::CardId;
