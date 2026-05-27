@@ -1676,6 +1676,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered.get(4).copied() == Some("than")
         && matches!(filtered.get(5).copied(), Some("opponent" | "opponents"))
     {
+        if matches!(
+            raw_words.as_slice(),
+            ["you", "have" | "has", "more", "life", "than", "each", "opponent" | "opponents"]
+        ) {
+            return Ok(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                player: PlayerAst::You,
+            });
+        }
         return Ok(PredicateAst::PlayerHasLessLifeThanYou {
             player: PlayerAst::Opponent,
         });

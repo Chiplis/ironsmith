@@ -1736,6 +1736,26 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    for (from, to) in [
+        (
+            ". Then if you control a modified creature, deal ",
+            ". If you control a modified creature, deal ",
+        ),
+        (
+            ". Then if it exploited that creature, it gains ",
+            ". If it exploited that creature, it gains ",
+        ),
+        (
+            ". Then if {S} was spent to cast this spell, that permanent doesn't untap ",
+            ". If {S} was spent to cast this spell, that permanent doesn't untap ",
+        ),
+        (
+            ". Then if this spell's behold cost was paid, you gain ",
+            ". If this spell's behold cost was paid, you gain ",
+        ),
+    ] {
+        normalized = normalized.replace(from, to);
+    }
     if let Some(rest) = normalized.strip_prefix("Whenever a Splinter enters, choose one or both") {
         normalized = format!("When this creature enters, choose one or both{rest}");
     }
@@ -2055,6 +2075,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact
         == "when this creature enters, mill three cards. you may put a land card from among the cards milled this way into your hand. if effect #0 that doesn't happen, put a +1/+1 counter on this creature."
+        || lower_compact
+            == "when this creature enters, mill three cards. you may put a land card from among the cards milled this way into your hand. then if effect #0 that doesn't happen, put a +1/+1 counter on this creature."
     {
         return "When this creature enters, mill three cards. You may put a land card from among them into your hand. If you don't, put a +1/+1 counter on this creature.".to_string();
     }
@@ -10416,6 +10438,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
+            if *player == PlayerFilter::You {
+                return "you have more life than each opponent".to_string();
+            }
             format!(
                 "{} has more life than each other player",
                 describe_player_filter(player)

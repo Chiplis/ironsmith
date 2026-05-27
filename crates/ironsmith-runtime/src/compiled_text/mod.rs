@@ -306,6 +306,10 @@ fn finalize_ast_surface_line(line: String) -> String {
         return line.replace("that object's controller", "that land's controller");
     }
     line = normalize_conditional_followup_case(&line);
+    line = line.replace(
+        ". Then if {S} was spent to cast this spell, that permanent doesn't untap ",
+        ". If {S} was spent to cast this spell, that permanent doesn't untap ",
+    );
     line = normalize_activation_colon_payload_case(&line);
     line = normalize_top_card_exile_imperative(&line);
     line = normalize_exact_during_your_turn_predicate_surface(&line);

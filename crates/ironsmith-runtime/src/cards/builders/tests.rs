@@ -15528,7 +15528,7 @@ fn parse_deal_damage_with_trailing_if_clause_emits_conditional() {
     assert!(
         rendered.contains("Deal 3 damage to target creature or planeswalker")
             && rendered.contains("If you control a modified creature")
-            && rendered.contains("Deal 2 damage to that object's controller"),
+            && rendered.contains("deal 2 damage to that object's controller"),
         "expected conditional damage followup, got {rendered}"
     );
 }
@@ -35601,7 +35601,7 @@ fn feudkillers_verdict_compiled_text_mentions_life_lead_condition() {
     let rendered = canonical_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("You gain 10 life")
-            && rendered.contains("If you have more life than an opponent")
+            && rendered.contains("Then if you have more life than an opponent")
             && rendered.contains("create a 5/5 white Giant Warrior creature token"),
         "expected compiled text to preserve Feudkiller's Verdict condition and token clause, got: {rendered}"
     );
