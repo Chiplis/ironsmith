@@ -8,7 +8,9 @@ use super::activation_and_restrictions::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
 use super::grammar::primitives as grammar;
-use super::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice, split_lexed_sentences};
+use super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, split_lexed_sentences,
+};
 
 pub(crate) fn split_text_for_parse(
     raw_text: &str,
@@ -191,8 +193,11 @@ fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'sta
 }
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .map(|(before, _after)| token_slice_contains_phrase(before, &["this", "way"]))
+        .unwrap_or(false);
     starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
-        && token_slice_contains_phrase(tokens, &["this", "way"])
+        && this_way_in_prefix
 }
 
 fn parse_when_it_connives_this_way_followup_intro_inner<'a>(

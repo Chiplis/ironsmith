@@ -2866,10 +2866,12 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
 ) -> Vec<OwnedLexToken> {
     // Generic "When one or more ... this way, ..." follow-ups are semantically
     // "If you do, ..." against the immediately previous effect result.
-    let has_this_way = grammar::contains_phrase(tokens, &["this", "way"]);
+    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
+        .unwrap_or(false);
     if (grammar::strip_lexed_prefix_phrase(tokens, &["when", "one", "or", "more"]).is_some()
         || grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "one", "or", "more"]).is_some())
-        && has_this_way
+        && this_way_in_prefix
     {
         let Some((_before, after)) =
             grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
