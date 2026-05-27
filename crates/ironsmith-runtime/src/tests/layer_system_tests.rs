@@ -629,7 +629,8 @@ fn test_natures_embrace_creature_branch_applies_only_creature_bonus() {
     assert!(
         !chars.abilities.iter().any(|ability| {
             crate::ability::ability_surface_text_for_tests(ability).is_some_and(|text| {
-                text.to_ascii_lowercase().contains("add two mana of any one color")
+                text.to_ascii_lowercase()
+                    .contains("add two mana of any one color")
             })
         }),
         "creature branch should not gain the land mana ability"
@@ -670,7 +671,8 @@ fn test_natures_embrace_land_branch_grants_mana_not_creature_bonus() {
     assert!(
         chars.abilities.iter().any(|ability| {
             crate::ability::ability_surface_text_for_tests(ability).is_some_and(|text| {
-                text.to_ascii_lowercase().contains("add two mana of any one color")
+                text.to_ascii_lowercase()
+                    .contains("add two mana of any one color")
             })
         }),
         "land branch should gain the two-mana ability"
@@ -715,7 +717,9 @@ fn test_rageform_grants_double_strike_only_to_attached_creature() {
 
     {
         let rageform = game.object_mut(rageform_id).expect("Rageform should exist");
-        rageform.attached_to = Some(crate::object::AttachmentTarget::Object(attached_creature_id));
+        rageform.attached_to = Some(crate::object::AttachmentTarget::Object(
+            attached_creature_id,
+        ));
     }
     {
         let creature = game

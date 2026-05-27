@@ -620,15 +620,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
         && str_contains(normalized_full_text.as_str(), "until end of turn instead")
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
-        let effect_text = if str_contains(normalized_effect_text.as_str(), "if you have a full party")
-        {
-            line.effect_text.as_str()
-        } else {
-            line.full_text
-                .split_once(',')
-                .map(|(_, rest)| rest.trim())
-                .unwrap_or(line.effect_text.as_str())
-        };
+        let effect_text =
+            if str_contains(normalized_effect_text.as_str(), "if you have a full party") {
+                line.effect_text.as_str()
+            } else {
+                line.full_text
+                    .split_once(',')
+                    .map(|(_, rest)| rest.trim())
+                    .unwrap_or(line.effect_text.as_str())
+            };
         let effects = parse_effect_sentences_from_text(effect_text, line.info.line_index)?;
         if !effects.is_empty() {
             return apply_chosen_option_to_triggered_chunk(

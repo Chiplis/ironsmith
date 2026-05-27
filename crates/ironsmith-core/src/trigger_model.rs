@@ -1125,7 +1125,10 @@ impl PlayerGetsCountersTrigger {
 
 impl CompilerTriggerMatcher for PlayerGetsCountersTrigger {
     fn into_trigger(self) -> Trigger {
-        Trigger::typed("player_gets_counters", TriggerKind::PlayerGetsCounters(self))
+        Trigger::typed(
+            "player_gets_counters",
+            TriggerKind::PlayerGetsCounters(self),
+        )
     }
 }
 

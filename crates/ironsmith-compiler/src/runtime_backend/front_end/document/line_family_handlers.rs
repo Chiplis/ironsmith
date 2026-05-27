@@ -289,10 +289,8 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
         return Ok(None);
     }
 
-    let permission_line = rewrite_line_normalized(
-        ctx.line,
-        "You may cast this card from your graveyard.",
-    )?;
+    let permission_line =
+        rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
     let Some(mut static_cst) = parse_static_line_cst(&permission_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower graveyard-cast control condition line: '{}'",
@@ -740,8 +738,7 @@ pub(super) fn run_keyword_line_family(
 pub(super) fn run_additional_combat_after_this_phase_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let needle =
-        "there is an additional combat phase after this phase, followed by an additional main phase";
+    let needle = "there is an additional combat phase after this phase, followed by an additional main phase";
     let raw = ctx.line.info.raw_line.trim();
     if !raw.to_ascii_lowercase().contains(needle) {
         return Ok(None);
@@ -963,7 +960,9 @@ fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bo
     }
 
     let has_additional = words.iter().any(|word| *word == "additional");
-    let has_creature_noun = words.iter().any(|word| *word == "creature" || *word == "creatures");
+    let has_creature_noun = words
+        .iter()
+        .any(|word| *word == "creature" || *word == "creatures");
     if !has_additional || !has_creature_noun {
         return false;
     }

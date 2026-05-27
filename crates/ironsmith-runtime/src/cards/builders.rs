@@ -9921,16 +9921,20 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
-        let source_card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70300), "Jötun Grunt")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
-            .build();
+        let source_card =
+            crate::card::CardBuilder::new(RuntimeCardId::from_raw(70300), "Jötun Grunt")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+                .build();
         let source_paid = game_paid.create_object_from_card(&source_card, alice, Zone::Battlefield);
 
         for idx in 0..2 {
-            let card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70310 + idx), "Graveyard Fodder")
-                .card_types(vec![CardType::Creature])
-                .build();
+            let card = crate::card::CardBuilder::new(
+                RuntimeCardId::from_raw(70310 + idx),
+                "Graveyard Fodder",
+            )
+            .card_types(vec![CardType::Creature])
+            .build();
             game_paid.create_object_from_card(&card, bob, Zone::Graveyard);
         }
 
@@ -9959,7 +9963,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let mut game_unpaid =
             crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let source_unpaid = game_unpaid.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_unpaid =
+            game_unpaid.create_object_from_card(&source_card, alice, Zone::Battlefield);
         let one_card = crate::card::CardBuilder::new(RuntimeCardId::from_raw(70400), "Only Card")
             .card_types(vec![CardType::Creature])
             .build();
@@ -12745,14 +12750,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .iter()
             .filter_map(|ability| match &ability.kind {
                 AbilityKind::Static(static_ability) => Some(static_ability.display()),
-                AbilityKind::Activated(_) => crate::ability::ability_surface_text_for_tests(ability),
+                AbilityKind::Activated(_) => {
+                    crate::ability::ability_surface_text_for_tests(ability)
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert!(
-            displays
-                .iter()
-                .any(|display| display.to_ascii_lowercase().contains("equipped creature has first strike")),
+            displays.iter().any(|display| display
+                .to_ascii_lowercase()
+                .contains("equipped creature has first strike")),
             "missing first-strike static grant in displays: {displays:?}"
         );
         assert!(

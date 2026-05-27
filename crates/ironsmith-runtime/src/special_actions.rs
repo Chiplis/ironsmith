@@ -1090,8 +1090,8 @@ fn perform_plot(
         )
         .ok_or(ActionError::ObjectNotFound)?;
     game.set_plotted(new_id, player);
-    let event_provenance =
-        game.alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
+    let event_provenance = game
+        .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
     game.queue_trigger_event(
         action_provenance,
         TriggerEvent::new_with_provenance(

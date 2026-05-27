@@ -983,7 +983,8 @@ mod tests {
         let other_source = damage(ObjectId::from_raw(7), DamageTarget::Player(alice), 3, true);
         assert!(!matcher.matches_event(&other_source, &ctx));
 
-        let unpreventable_from_src = unpreventable_damage(src, DamageTarget::Player(alice), 3, true);
+        let unpreventable_from_src =
+            unpreventable_damage(src, DamageTarget::Player(alice), 3, true);
         assert!(!matcher.matches_event(&unpreventable_from_src, &ctx));
     }
 

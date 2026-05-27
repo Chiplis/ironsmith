@@ -13,6 +13,7 @@
 //! - We record which creatures saddled the source this turn for filters like
 //!   "that saddled it this turn".
 
+use crate::ability::AbilityKind;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
@@ -23,7 +24,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::static_abilities::StaticAbilityId;
 use crate::triggers::TriggerEvent;
-use crate::ability::AbilityKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SaddleCostEffect {

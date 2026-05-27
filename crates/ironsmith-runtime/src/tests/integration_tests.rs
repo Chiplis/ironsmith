@@ -1767,14 +1767,16 @@ mod tests {
     #[test]
     #[cfg(ironsmith_runtime_parser_tests)]
     fn test_ruthless_cullblade_gets_bonus_when_opponent_is_at_ten_or_less_life() {
-        let def = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ruthless Cullblade")
-            .card_types(vec![crate::types::CardType::Creature])
-            .subtypes(vec![crate::types::Subtype::Vampire, crate::types::Subtype::Warrior])
-            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
-            .parse_text(
-                "As long as an opponent has 10 or less life, this creature gets +2/+1.",
-            )
-            .expect("Ruthless Cullblade text should parse");
+        let def =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ruthless Cullblade")
+                .card_types(vec![crate::types::CardType::Creature])
+                .subtypes(vec![
+                    crate::types::Subtype::Vampire,
+                    crate::types::Subtype::Warrior,
+                ])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+                .parse_text("As long as an opponent has 10 or less life, this creature gets +2/+1.")
+                .expect("Ruthless Cullblade text should parse");
 
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 10);
         let cullblade_id = game.create_object_from_definition(
@@ -1798,14 +1800,16 @@ mod tests {
     #[test]
     #[cfg(ironsmith_runtime_parser_tests)]
     fn test_ruthless_cullblade_no_bonus_when_opponent_is_above_ten_life() {
-        let def = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ruthless Cullblade")
-            .card_types(vec![crate::types::CardType::Creature])
-            .subtypes(vec![crate::types::Subtype::Vampire, crate::types::Subtype::Warrior])
-            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
-            .parse_text(
-                "As long as an opponent has 10 or less life, this creature gets +2/+1.",
-            )
-            .expect("Ruthless Cullblade text should parse");
+        let def =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ruthless Cullblade")
+                .card_types(vec![crate::types::CardType::Creature])
+                .subtypes(vec![
+                    crate::types::Subtype::Vampire,
+                    crate::types::Subtype::Warrior,
+                ])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+                .parse_text("As long as an opponent has 10 or less life, this creature gets +2/+1.")
+                .expect("Ruthless Cullblade text should parse");
 
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 11);
         let cullblade_id = game.create_object_from_definition(

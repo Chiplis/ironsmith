@@ -10598,7 +10598,8 @@ fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
 #[test]
 fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_into_hand_rest_bottom() {
     let text = "Look at the top X cards of your library. Put up to two of them into your hand and the rest on the bottom of your library in a random order.";
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify The Mana Rig activated text");
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify The Mana Rig activated text");
 
     let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:?}");
@@ -11423,8 +11424,7 @@ fn rewrite_lexed_effect_entrypoint_parses_two_additional_combat_phases() {
 
     let native_debug = format!("{native:?}");
     assert!(
-        native_debug.contains("AdditionalPhases")
-            && native_debug.matches("Combat").count() >= 2,
+        native_debug.contains("AdditionalPhases") && native_debug.matches("Combat").count() >= 2,
         "expected two additional combat phases, got {native_debug}"
     );
 }
@@ -12027,9 +12027,7 @@ fn rewrite_activation_cost_preserves_named_card_and_followup_segments() {
                 ..
             },
             super::ActivationCostSegmentCst::SacrificeChosen {
-                count,
-                filter_text,
-                ..
+                count, filter_text, ..
             },
         ] => {
             assert_eq!(name, "skoa, embermage");
@@ -12194,13 +12192,15 @@ fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one_segment() 
     .expect("lexer should classify Tekuthal remove-counter activation cost");
     let cst = parse_activation_cost_tokens_rewrite(&tokens)
         .expect("activation-cost parser should keep among-list as one segment");
-    let [super::ActivationCostSegmentCst::RemoveCountersAmong {
-        counter_type: None,
-        count: 3,
-        filter_text,
-        display_x: false,
-        dynamic: false,
-    }] = cst.segments.as_slice()
+    let [
+        super::ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type: None,
+            count: 3,
+            filter_text,
+            display_x: false,
+            dynamic: false,
+        },
+    ] = cst.segments.as_slice()
     else {
         panic!("unexpected segments: {:?}", cst.segments);
     };
@@ -13534,9 +13534,10 @@ fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
 fn parse_trigger_clause_supports_one_or_more_energy_player_gain() {
     let tokens = lex_line("you get one or more {E}", 0)
         .expect("rewrite lexer should tokenize one-or-more energy trigger clause");
-    let parsed = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
-        &tokens,
-    );
+    let parsed =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &tokens,
+        );
     assert!(
         matches!(
             parsed,

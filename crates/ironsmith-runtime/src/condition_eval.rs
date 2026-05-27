@@ -391,7 +391,13 @@ mod tests {
             crate::snapshot::ObjectSnapshot::from_object(object, &game)
         };
         let damage = RawEvent::new(
-            DamageEvent::with_cause(rat_id, DamageTarget::Player(bob), 4, true, EventCause::effect()),
+            DamageEvent::with_cause(
+                rat_id,
+                DamageTarget::Player(bob),
+                4,
+                true,
+                EventCause::effect(),
+            ),
             crate::provenance::ProvNodeId::default(),
         );
         game.turn_store

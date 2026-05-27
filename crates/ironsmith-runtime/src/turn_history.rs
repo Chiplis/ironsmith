@@ -506,9 +506,9 @@ impl TurnHistory {
                 .as_ref()
                 .or(record.object_snapshot.as_ref())
                 .is_some_and(|snapshot| {
-                snapshot.controller == dealer
-                    && snapshot.card_types.contains(&CardType::Creature)
-                    && snapshot.subtypes.contains(&subtype)
+                    snapshot.controller == dealer
+                        && snapshot.card_types.contains(&CardType::Creature)
+                        && snapshot.subtypes.contains(&subtype)
                 })
         })
     }

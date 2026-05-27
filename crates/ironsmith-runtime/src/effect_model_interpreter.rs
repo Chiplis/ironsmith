@@ -587,9 +587,7 @@ where
             hooks,
         )?);
         prevent.source_of_your_choice = payload.source_of_your_choice;
-        return Ok(Effect::new(
-            prevent,
-        ));
+        return Ok(Effect::new(prevent));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {
         return Ok(converted);
@@ -1209,7 +1207,9 @@ where
         ));
     }
     if M::downcast_ref::<ironsmith_core::ManifestCardFromHandEffect>(&effect).is_some() {
-        return Ok(Effect::new(crate::effects::ManifestCardFromHandEffect::new()));
+        return Ok(Effect::new(
+            crate::effects::ManifestCardFromHandEffect::new(),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SupportEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SupportEffect::new(

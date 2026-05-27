@@ -771,7 +771,8 @@ mod tests {
             "Megatron should not lower to fallback static abilities:\n{debug}"
         );
         assert!(
-            debug.to_ascii_lowercase()
+            debug
+                .to_ascii_lowercase()
                 .contains("more than meets the eye {1}{r}{w}{b}")
                 && debug.contains("OpponentsCantCastSpells")
                 && debug.contains("ConvertEffect")

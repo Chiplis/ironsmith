@@ -1961,8 +1961,8 @@ pub(crate) fn parse_trigger_clause_lexed(
             .token_index_for_word_index(counter_word_idx)
             .unwrap_or(tokens.len());
         let descriptor_span = &tokens[descriptor_token_start..descriptor_token_end];
-        let one_or_more =
-            ActivationRestrictionCompatWords::new(descriptor_span).slice_eq(0, &["one", "or", "more"]);
+        let one_or_more = ActivationRestrictionCompatWords::new(descriptor_span)
+            .slice_eq(0, &["one", "or", "more"]);
         let counter_descriptor_tokens = &tokens[descriptor_token_start..(descriptor_token_end + 1)];
         let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
 

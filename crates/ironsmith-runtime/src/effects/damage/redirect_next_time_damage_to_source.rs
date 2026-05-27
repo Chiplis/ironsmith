@@ -176,12 +176,12 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::effects::ExecutionContext;
+    use crate::effects::ResolvedTarget;
     use crate::events::DamageTarget;
     use crate::events::cause::EventCause;
-    use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::ids::PlayerId;
-    use crate::effects::ResolvedTarget;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -244,12 +244,15 @@ mod tests {
             RedirectNextTimeDamageSource::Choice,
             ChooseSpec::target_creature(),
         )
-            .all_this_turn()
-            .execute(&mut game, &mut ctx)
-            .expect("Oracle's Attendants style replacement should register");
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("Oracle's Attendants style replacement should register");
 
         assert_eq!(
-            game.effect_store.replacement_effects.one_shot_effects_snapshot().len(),
+            game.effect_store
+                .replacement_effects
+                .one_shot_effects_snapshot()
+                .len(),
             0,
             "all-damage redirect should not register as one-shot"
         );
@@ -284,11 +287,14 @@ mod tests {
             RedirectNextTimeDamageSource::Choice,
             ChooseSpec::target_creature(),
         )
-            .execute(&mut game, &mut ctx)
-            .expect("next-time replacement should register");
+        .execute(&mut game, &mut ctx)
+        .expect("next-time replacement should register");
 
         assert_eq!(
-            game.effect_store.replacement_effects.one_shot_effects_snapshot().len(),
+            game.effect_store
+                .replacement_effects
+                .one_shot_effects_snapshot()
+                .len(),
             1,
             "next-time redirect should remain one-shot"
         );
@@ -345,12 +351,18 @@ mod tests {
             .map(|assignment| assignment.amount)
             .sum();
 
-        assert_eq!(protected_damage, 0, "chosen-source damage should not stay on protected creature");
+        assert_eq!(
+            protected_damage, 0,
+            "chosen-source damage should not stay on protected creature"
+        );
         assert!(
             !processed.replacement_prevented,
             "redirect should not count as prevention"
         );
-        assert_eq!(redirected_to_attendants, 3, "chosen-source damage should be redirected to this creature");
+        assert_eq!(
+            redirected_to_attendants, 3,
+            "chosen-source damage should be redirected to this creature"
+        );
     }
 
     #[test]
@@ -397,12 +409,18 @@ mod tests {
             .map(|assignment| assignment.amount)
             .sum();
 
-        assert_eq!(protected_damage, 2, "non-chosen source should still damage the protected creature");
+        assert_eq!(
+            protected_damage, 2,
+            "non-chosen source should still damage the protected creature"
+        );
         assert!(
             !processed.replacement_prevented,
             "unredirected damage should not be prevented"
         );
-        assert_eq!(redirected_to_attendants, 0, "non-chosen source should not be redirected to this creature");
+        assert_eq!(
+            redirected_to_attendants, 0,
+            "non-chosen source should not be redirected to this creature"
+        );
     }
 
     #[test]
@@ -431,16 +449,23 @@ mod tests {
             .replacement_effects
             .clear_until_end_of_turn_effects();
 
-        let (protected_damage, replacement_prevented) = crate::events::processing::process_damage_with_event(
-            &mut game,
-            chosen_source,
-            DamageTarget::Object(protected),
-            4,
-            false,
-            EventCause::effect(),
-        );
+        let (protected_damage, replacement_prevented) =
+            crate::events::processing::process_damage_with_event(
+                &mut game,
+                chosen_source,
+                DamageTarget::Object(protected),
+                4,
+                false,
+                EventCause::effect(),
+            );
 
-        assert_eq!(protected_damage, 4, "chosen-source damage should stop redirecting after end of turn");
-        assert!(!replacement_prevented, "expired redirect should not prevent damage");
+        assert_eq!(
+            protected_damage, 4,
+            "chosen-source damage should stop redirecting after end of turn"
+        );
+        assert!(
+            !replacement_prevented,
+            "expired redirect should not prevent damage"
+        );
     }
 }

@@ -839,14 +839,7 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {
-                words: &[
-                    "entered",
-                    "under",
-                    "your",
-                    "control",
-                    "this",
-                    "turn",
-                ],
+                words: &["entered", "under", "your", "control", "this", "turn"],
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {
@@ -900,25 +893,11 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {
-                words: &[
-                    "entered",
-                    "under",
-                    "opponent",
-                    "control",
-                    "this",
-                    "turn",
-                ],
+                words: &["entered", "under", "opponent", "control", "this", "turn"],
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {
-                words: &[
-                    "entered",
-                    "under",
-                    "opponents",
-                    "control",
-                    "this",
-                    "turn",
-                ],
+                words: &["entered", "under", "opponents", "control", "this", "turn"],
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {

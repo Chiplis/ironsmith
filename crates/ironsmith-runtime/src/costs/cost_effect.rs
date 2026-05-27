@@ -247,8 +247,13 @@ impl CostPayer for CostEffect {
 
         let outcome = execute_effect(game, &self.effect, &mut exec_ctx)
             .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
-        if let Some(move_to_zone) = self.effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
-            let moved = outcome.affected_objects().map_or(0, |affected| affected.len());
+        if let Some(move_to_zone) = self
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        {
+            let moved = outcome
+                .affected_objects()
+                .map_or(0, |affected| affected.len());
             let count = move_to_zone.target.count();
             let fixed_required = count.max.filter(|max| *max == count.min).map(|_| count.min);
             if let Some(required) = fixed_required

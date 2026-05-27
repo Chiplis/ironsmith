@@ -148,11 +148,23 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
     combat.blockers.insert(attacker_id, Vec::new());
 
     let first_strike_events = execute_combat_damage_step(&mut game, &combat, true);
-    assert_eq!(first_strike_events.len(), 1, "equipped Bearer should hit in first-strike step");
-    assert_eq!(game.player(bob).unwrap().life, 16, "Bearer should deal 4 first-strike damage");
+    assert_eq!(
+        first_strike_events.len(),
+        1,
+        "equipped Bearer should hit in first-strike step"
+    );
+    assert_eq!(
+        game.player(bob).unwrap().life,
+        16,
+        "Bearer should deal 4 first-strike damage"
+    );
 
     let regular_events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(regular_events.len(), 0, "first strike should suppress regular damage step hit");
+    assert_eq!(
+        regular_events.len(),
+        0,
+        "first strike should suppress regular damage step hit"
+    );
 
     if let Some(equipment) = game.object_mut(glamdring_id) {
         equipment.attached_to = None;
@@ -222,7 +234,11 @@ fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
     assert_eq!(game.player(bob).unwrap().life, 17);
 
     let regular_events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(regular_events.len(), 0, "first strike should suppress regular damage");
+    assert_eq!(
+        regular_events.len(),
+        0,
+        "first strike should suppress regular damage"
+    );
 
     if let Some(human) = game.object_mut(human_id) {
         human.attachments.clear();
@@ -362,13 +378,21 @@ fn everybody_lives_prevents_life_loss_and_game_win_loss_for_all_players_this_tur
     assert!(!game.can_win_game(bob));
 
     let bob_life_before = game.player(bob).expect("bob exists").life;
-    assert_eq!(game.lose_life(bob, 3), 0, "life loss should be prevented this turn");
+    assert_eq!(
+        game.lose_life(bob, 3),
+        0,
+        "life loss should be prevented this turn"
+    );
     assert_eq!(game.player(bob).expect("bob exists").life, bob_life_before);
 
     let alice_life_before = game.player(alice).expect("alice exists").life;
     let mut gain_ctx = crate::effects::ExecutionContext::new_default(spell_id, alice);
-    crate::effects::execute_effect(&mut game, &crate::effect::Effect::gain_life(3), &mut gain_ctx)
-        .expect("life gain effect should resolve");
+    crate::effects::execute_effect(
+        &mut game,
+        &crate::effect::Effect::gain_life(3),
+        &mut gain_ctx,
+    )
+    .expect("life gain effect should resolve");
     assert_eq!(
         game.player(alice).expect("alice exists").life,
         alice_life_before + 3,
@@ -4050,7 +4074,8 @@ fn cloud_ex_soldier_etb_allows_skipping_optional_equipment_target() {
 
     let cloud_id = game.create_object_from_definition(&cloud, alice, Zone::Hand);
     assert!(
-        game.move_object_by_effect(cloud_id, Zone::Battlefield).is_some(),
+        game.move_object_by_effect(cloud_id, Zone::Battlefield)
+            .is_some(),
         "Cloud should enter the battlefield"
     );
 
@@ -4103,12 +4128,14 @@ fn cloud_ex_soldier_attack_trigger_draws_for_equipped_attackers_and_makes_treasu
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
         .build();
-    let cloud_equipment_id = game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
+    let cloud_equipment_id =
+        game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
     let wingman_equipment = CardBuilder::new(CardId::from_raw(91_113), "Wingman Blade")
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
         .build();
-    let wingman_equipment_id = game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
+    let wingman_equipment_id =
+        game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
 
     if let Some(equipment) = game.object_mut(cloud_equipment_id) {
         equipment.attached_to = Some(crate::object::AttachmentTarget::Object(cloud_id));
@@ -4147,7 +4174,11 @@ fn cloud_ex_soldier_attack_trigger_draws_for_equipped_attackers_and_makes_treasu
         .expect("attackers should be legal");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Cloud attack trigger should go on stack");
-    assert_eq!(game.stack.len(), 1, "Cloud should create one attack trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Cloud should create one attack trigger"
+    );
     resolve_stack_entry(&mut game).expect("Cloud attack trigger should resolve");
 
     let treasure_count = game
@@ -4155,7 +4186,10 @@ fn cloud_ex_soldier_attack_trigger_draws_for_equipped_attackers_and_makes_treasu
         .iter()
         .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
         .count();
-    assert_eq!(treasure_count, 2, "Cloud should create two Treasures at power 7 or greater");
+    assert_eq!(
+        treasure_count, 2,
+        "Cloud should create two Treasures at power 7 or greater"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -4185,12 +4219,14 @@ fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
         .build();
-    let cloud_equipment_id = game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
+    let cloud_equipment_id =
+        game.create_object_from_card(&cloud_equipment, alice, Zone::Battlefield);
     let wingman_equipment = CardBuilder::new(CardId::from_raw(91_123), "Wingman Blade")
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
         .build();
-    let wingman_equipment_id = game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
+    let wingman_equipment_id =
+        game.create_object_from_card(&wingman_equipment, alice, Zone::Battlefield);
 
     if let Some(equipment) = game.object_mut(cloud_equipment_id) {
         equipment.attached_to = Some(crate::object::AttachmentTarget::Object(cloud_id));
@@ -4229,7 +4265,11 @@ fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
         .expect("attackers should be legal");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Cloud attack trigger should go on stack");
-    assert_eq!(game.stack.len(), 1, "Cloud should create one attack trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Cloud should create one attack trigger"
+    );
     resolve_stack_entry(&mut game).expect("Cloud attack trigger should resolve");
 
     let treasure_count = game
@@ -4237,7 +4277,10 @@ fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
         .iter()
         .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
         .count();
-    assert_eq!(treasure_count, 0, "Cloud should not create Treasures below power 7");
+    assert_eq!(
+        treasure_count, 0,
+        "Cloud should not create Treasures below power 7"
+    );
 }
 
 fn bridge_from_below_definition() -> crate::cards::CardDefinition {
@@ -5237,7 +5280,8 @@ fn doom_weaver_dies_trigger_not_granted_when_unpaired() {
     let mut trigger_queue = TriggerQueue::new();
     let alice = PlayerId::from_index(0);
 
-    let _doom_weaver_id = game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
+    let _doom_weaver_id =
+        game.create_object_from_definition(&doom_weaver, alice, Zone::Battlefield);
     for idx in 0..4 {
         let library_card = CardBuilder::new(CardId::new(), format!("No Draw Fodder {idx}"))
             .card_types(vec![CardType::Creature])
@@ -7174,11 +7218,7 @@ fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damag
         )
         .expect("Magma Mine text should parse");
     let mine_id = game.create_object_from_definition(&mine_def, alice, Zone::Battlefield);
-    game.add_counters(
-        mine_id,
-        crate::object::CounterType::Named("pressure"),
-        3,
-    )
+    game.add_counters(mine_id, crate::object::CounterType::Named("pressure"), 3)
         .expect("pressure counters should be addable to Magma Mine");
 
     {
@@ -10565,7 +10605,8 @@ fn full_throttle_inserts_two_additional_combats_and_reaches_normal_next_main() {
     assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
 
     game.turn.step = None;
-    crate::turn::advance_phase(&mut game).expect("advance to normal phase order after added combats");
+    crate::turn::advance_phase(&mut game)
+        .expect("advance to normal phase order after added combats");
     assert_eq!(game.turn.phase, Phase::Ending);
 }
 
@@ -13520,15 +13561,15 @@ fn necrotic_fumes_cast_exiles_paid_creature_and_target_creature() {
 
     for _ in 0..6 {
         progress = match progress {
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
-                apply_priority_response(
-                    &mut game,
-                    &mut trigger_queue,
-                    &mut state,
-                    &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
-                )
-                .expect("Necrotic Fumes should accept creature target")
-            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
+            )
+            .expect("Necrotic Fumes should accept creature target"),
             GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectOptions(ctx),
             ) => {
@@ -13563,14 +13604,20 @@ fn necrotic_fumes_cast_exiles_paid_creature_and_target_creature() {
                 )
                 .expect("Necrotic Fumes should accept exiling chosen cost creature")
             }
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => {
                 break;
             }
             other => panic!("unexpected cast flow state for Necrotic Fumes: {other:?}"),
         };
     }
 
-    assert_eq!(game.stack.len(), 1, "Necrotic Fumes should be on stack after costs");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Necrotic Fumes should be on stack after costs"
+    );
     let cost_creature_exiled = game.exile.iter().any(|&id| {
         game.object(id)
             .is_some_and(|obj| obj.name == "Cost Creature" && obj.owner == alice)
@@ -13643,15 +13690,15 @@ fn necrotic_fumes_cast_exiles_target_planeswalker() {
 
     for _ in 0..6 {
         progress = match progress {
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
-                apply_priority_response(
-                    &mut game,
-                    &mut trigger_queue,
-                    &mut state,
-                    &PriorityResponse::Targets(vec![Target::Object(target_planeswalker_id)]),
-                )
-                .expect("Necrotic Fumes should accept planeswalker target")
-            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Object(target_planeswalker_id)]),
+            )
+            .expect("Necrotic Fumes should accept planeswalker target"),
             GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectObjects(_),
             ) => apply_priority_response(
@@ -13661,7 +13708,9 @@ fn necrotic_fumes_cast_exiles_target_planeswalker() {
                 &PriorityResponse::CardCostChoice(cost_creature_id),
             )
             .expect("Necrotic Fumes should accept cost creature choice"),
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => {
                 break;
             }
             GameProgress::NeedsDecisionCtx(
@@ -17000,8 +17049,9 @@ fn test_word_of_blasting_destroys_wall_and_deals_mana_value_damage_to_controller
     let mut state = PriorityLoopState::new(game.players_in_game());
 
     let cast_response = PriorityResponse::PriorityAction(cast_action);
-    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
-        .expect("Word of Blasting cast should start");
+    let progress =
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+            .expect("Word of Blasting cast should start");
     assert!(
         matches!(
             progress,
@@ -27542,8 +27592,7 @@ fn test_cream_of_the_crop_etb_trigger_uses_may_and_source_power_rearrange() {
         "Cream trigger should scale looked card count from the entering creature's power, got {trigger_debug}"
     );
     assert!(
-        trigger_debug.contains("rearrangelookedcardsinlibrary")
-            && trigger_debug.contains("min: 1"),
+        trigger_debug.contains("rearrangelookedcardsinlibrary") && trigger_debug.contains("min: 1"),
         "Cream trigger should rearrange looked cards by choosing exactly one for top, got {trigger_debug}"
     );
 }
@@ -28962,7 +29011,8 @@ fn sleep_with_the_fishes_creates_unblockable_fish_token() {
         })
         .expect("Sleep with the Fishes trigger should create a token");
 
-    let fish_id = game.create_object_from_definition(&create_effect.token, alice, Zone::Battlefield);
+    let fish_id =
+        game.create_object_from_definition(&create_effect.token, alice, Zone::Battlefield);
     let blocker_id = create_creature(&mut game, "Would-be Blocker", bob, 2, 2);
     game.refresh_continuous_state();
 
@@ -29464,7 +29514,8 @@ fn covert_technician_combat_damage_trigger_puts_only_artifact_with_mana_value_up
         "compiled text should keep the dynamic damage mana-value gate, got {rendered}"
     );
 
-    let technician_id = game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
+    let technician_id =
+        game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
 
     let legal_artifact = CardBuilder::new(CardId::new(), "Legal Bauble")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
@@ -29476,7 +29527,8 @@ fn covert_technician_combat_damage_trigger_puts_only_artifact_with_mana_value_up
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
         .card_types(vec![CardType::Artifact])
         .build();
-    let expensive_artifact_id = game.create_object_from_card(&expensive_artifact, alice, Zone::Hand);
+    let expensive_artifact_id =
+        game.create_object_from_card(&expensive_artifact, alice, Zone::Hand);
 
     let triggered = covert_technician
         .abilities
@@ -29516,7 +29568,8 @@ fn covert_technician_combat_damage_trigger_puts_only_artifact_with_mana_value_up
     );
 
     let mut game = setup_game();
-    let technician_id = game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
+    let technician_id =
+        game.create_object_from_definition(&covert_technician, alice, Zone::Battlefield);
     let legal_artifact_id = game.create_object_from_card(&legal_artifact, alice, Zone::Hand);
     let mut no_dm = ChooseArtifactDecisionMaker {
         accept_may: false,
@@ -31263,11 +31316,17 @@ fn return_to_dust_allows_second_target_on_your_main_phase() {
     .expect("Return to Dust cast should start");
 
     let targets = match progress {
-        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
         other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
     };
 
-    assert_eq!(targets.requirements.len(), 2, "main phase cast should expose both target branches");
+    assert_eq!(
+        targets.requirements.len(),
+        2,
+        "main phase cast should expose both target branches"
+    );
     assert_eq!(targets.requirements[0].min_targets, 1);
     assert_eq!(targets.requirements[0].max_targets, Some(1));
     assert_eq!(targets.requirements[1].min_targets, 0);
@@ -31327,11 +31386,17 @@ fn return_to_dust_does_not_allow_second_target_outside_main_phase() {
     .expect("Return to Dust cast should start");
 
     let targets = match progress {
-        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
         other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
     };
 
-    assert_eq!(targets.requirements.len(), 1, "non-main-phase cast should not expose second target branch");
+    assert_eq!(
+        targets.requirements.len(),
+        1,
+        "non-main-phase cast should not expose second target branch"
+    );
     assert_eq!(targets.requirements[0].min_targets, 1);
     assert_eq!(targets.requirements[0].max_targets, Some(1));
 }
@@ -31389,11 +31454,17 @@ fn return_to_dust_does_not_allow_second_target_on_opponents_turn() {
     .expect("Return to Dust cast should start");
 
     let targets = match progress {
-        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => ctx,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
         other => panic!("unexpected cast flow state for Return to Dust: {other:?}"),
     };
 
-    assert_eq!(targets.requirements.len(), 1, "opponent-turn cast should not expose second target branch");
+    assert_eq!(
+        targets.requirements.len(),
+        1,
+        "opponent-turn cast should not expose second target branch"
+    );
     assert_eq!(targets.requirements[0].min_targets, 1);
     assert_eq!(targets.requirements[0].max_targets, Some(1));
 }

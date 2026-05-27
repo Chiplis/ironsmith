@@ -479,7 +479,9 @@ fn describe_single_self_replacement_segment(
 
 fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text: &str) -> String {
     let mut replacement = super::normalize_common::lowercase_first(replacement_text);
-    if default_text.to_ascii_lowercase().contains("target creature")
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target creature")
         && replacement.starts_with("target creature ")
     {
         replacement = replacement.replacen("target creature", "that creature", 1);

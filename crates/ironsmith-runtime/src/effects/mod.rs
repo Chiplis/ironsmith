@@ -111,13 +111,12 @@ pub use composition::{
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, LocalRewriteEffect, ManaRestrictedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestTopCardOfLibraryEffect, MayEffect,
-    OpenAttractionEffect, PopulateEffect,
-    ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
-    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
-    TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption,
-    VoteResult, WithIdEffect,
+    OpenAttractionEffect, PopulateEffect, ReflexiveTriggerEffect, RepeatEffectsEffect,
+    RepeatProcessEffect, RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
+    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice,
+    VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};

@@ -2213,10 +2213,7 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        if self
-            .ability
-            .landwalk_kind()
-            .is_some()
+        if self.ability.landwalk_kind().is_some()
             && self.filter.card_types.len() == 1
             && self.filter.card_types[0] == crate::types::CardType::Creature
             && self

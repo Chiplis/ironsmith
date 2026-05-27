@@ -1574,13 +1574,19 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
     if matches!(words.get(..3), Some(["the", "number", "of"]))
         && words.len() >= 6
-        && matches!(words.get(words.len() - 3..), Some(["removed", "this", "way"]))
+        && matches!(
+            words.get(words.len() - 3..),
+            Some(["removed", "this", "way"])
+        )
     {
         return Some((Value::EventValue(EventValueSpec::Amount), words.len()));
     }
     if matches!(words.get(..2), Some(["number", "of"]))
         && words.len() >= 5
-        && matches!(words.get(words.len() - 3..), Some(["removed", "this", "way"]))
+        && matches!(
+            words.get(words.len() - 3..),
+            Some(["removed", "this", "way"])
+        )
     {
         return Some((Value::EventValue(EventValueSpec::Amount), words.len()));
     }
@@ -3212,10 +3218,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 | "cards"
         ) || parse_card_type(normalized).is_some()
             || parse_subtype_word(normalized).is_some()
-            || str_strip_suffix(normalized, "s")
-                .is_some_and(|singular| {
-                    parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
-                })
+            || str_strip_suffix(normalized, "s").is_some_and(|singular| {
+                parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
+            })
     });
     if remaining_words.len() >= 3
         && matches!(remaining_words[0], "that" | "the")
@@ -3287,10 +3292,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 | "cards"
         ) || parse_card_type(object_head).is_some()
             || parse_subtype_word(object_head).is_some()
-            || str_strip_suffix(object_head, "s")
-                .is_some_and(|singular| {
-                    parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
-                }))
+            || str_strip_suffix(object_head, "s").is_some_and(|singular| {
+                parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
+            }))
         {
             let player = if str_starts_with(remaining_words[1], "owner") {
                 PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
@@ -5564,15 +5568,16 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
             crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
                 crate::types::Subtype::Assassin,
             )
-        } else
-        if (words_have_prefix(
+        } else if (words_have_prefix(
             condition_words.as_slice(),
             &["youve", "been", "dealt", "damage", "by"],
         ) || words_have_prefix(
             condition_words.as_slice(),
             &["you", "have", "been", "dealt", "damage", "by"],
-        )) && words_have_suffix(condition_words.as_slice(), &["creatures", "this", "turn"])
-        {
+        )) && words_have_suffix(
+            condition_words.as_slice(),
+            &["creatures", "this", "turn"],
+        ) {
             let count_start = if condition_words.first().copied() == Some("youve") {
                 5usize
             } else {

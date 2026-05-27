@@ -141,9 +141,7 @@ pub(crate) fn parse_prevent_next_damage_clause(
     let this_turn_idx = idx + this_turn_rel;
     let source_of_your_choice = if this_turn_idx + 2 == clause_words.len() {
         false
-    } else if clause_words[this_turn_idx + 2..]
-        == ["by", "a", "source", "of", "your", "choice"]
-    {
+    } else if clause_words[this_turn_idx + 2..] == ["by", "a", "source", "of", "your", "choice"] {
         true
     } else {
         return Err(CardTextError::ParseError(format!(
@@ -165,12 +163,14 @@ pub(crate) fn parse_prevent_next_damage_clause(
         .collect::<Vec<_>>();
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(EffectAst::subject_verb_prevent_damage_with_source_choice(
-        amount,
-        target,
-        Until::EndOfTurn,
-        source_of_your_choice,
-    )))
+    Ok(Some(
+        EffectAst::subject_verb_prevent_damage_with_source_choice(
+            amount,
+            target,
+            Until::EndOfTurn,
+            source_of_your_choice,
+        ),
+    ))
 }
 
 pub(crate) fn parse_double_counters_clause(
@@ -1253,7 +1253,10 @@ pub(crate) fn parse_redirect_next_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if word_slice_starts_with(&clause_words, &["all", "damage", "that", "would", "be", "dealt", "to"]) {
+    if word_slice_starts_with(
+        &clause_words,
+        &["all", "damage", "that", "would", "be", "dealt", "to"],
+    ) {
         let idx = 7usize;
         let this_turn_rel = find_word_sequence_index(&clause_words[idx..], &["this", "turn"])
             .ok_or_else(|| {
@@ -1275,13 +1278,14 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         if clause_words.get(by_idx) != Some(&"by") {
             return Ok(None);
         }
-        let is_dealt_rel = find_word_sequence_index(&clause_words[by_idx + 1..], &["is", "dealt", "to"])
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported redirected-all-damage destination (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
+        let is_dealt_rel =
+            find_word_sequence_index(&clause_words[by_idx + 1..], &["is", "dealt", "to"])
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported redirected-all-damage destination (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?;
         let is_dealt_idx = by_idx + 1 + is_dealt_rel;
 
         let source_words = &clause_words[by_idx + 1..is_dealt_idx];
@@ -1304,7 +1308,10 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         let redirect_words = &clause_words[is_dealt_idx + 3..];
         let redirects_to_source = matches!(
             redirect_words,
-            ["this", "creature", "instead"] | ["this", "permanent", "instead"] | ["this", "instead"] | ["it", "instead"]
+            ["this", "creature", "instead"]
+                | ["this", "permanent", "instead"]
+                | ["this", "instead"]
+                | ["it", "instead"]
         );
         if !redirects_to_source {
             return Err(CardTextError::ParseError(format!(

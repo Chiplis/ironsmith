@@ -607,8 +607,20 @@ fn parse_activate_ability_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     let words = TokenWordView::new(tokens).to_word_refs();
-    if words == ["spend", "this", "mana", "only", "to", "activate", "abilities"]
-        || words == ["spend", "this", "mana", "only", "to", "activate", "an", "ability"]
+    if words
+        == [
+            "spend",
+            "this",
+            "mana",
+            "only",
+            "to",
+            "activate",
+            "abilities",
+        ]
+        || words
+            == [
+                "spend", "this", "mana", "only", "to", "activate", "an", "ability",
+            ]
     {
         Some(ManaUsageRestriction::ActivateAbility)
     } else {

@@ -1725,10 +1725,7 @@ fn split_activation_cost_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<Vec<Ow
 
         let split_here = if tokens[idx].is_comma() {
             let remainder = &tokens[idx + 1..];
-            let remainder = if remainder
-                .first()
-                .is_some_and(|token| token.is_word("and"))
-            {
+            let remainder = if remainder.first().is_some_and(|token| token.is_word("and")) {
                 &remainder[1..]
             } else {
                 remainder

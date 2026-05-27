@@ -211,9 +211,8 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 
 fn supported_keyword_marker_text(text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
-    let is_power_greater_marker = |prefix: &str| {
-        text.starts_with(prefix) && text.ends_with(" greater.")
-    };
+    let is_power_greater_marker =
+        |prefix: &str| text.starts_with(prefix) && text.ends_with(" greater.");
     text.starts_with("prototype ")
         || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
@@ -223,7 +222,9 @@ fn supported_keyword_marker_text(text: &str) -> bool {
         || is_power_greater_marker(
             "this creature saddles mounts and crews vehicles as though its power were ",
         )
-        || is_power_greater_marker("this token saddles mounts and crews vehicles as though its power were ")
+        || is_power_greater_marker(
+            "this token saddles mounts and crews vehicles as though its power were ",
+        )
         || (text.starts_with(
             "you may remove a loyalty counter from a planeswalker you control rather than pay ",
         ) && text.ends_with("'s crew cost."))
@@ -923,10 +924,12 @@ fn parse_static_ability_ast_line_early_lexed(
                 idx += used;
             }
 
-            if matches!(words.get(idx).copied(), Some("creature") | Some("creatures"))
-                && (words.get(idx + 1..).unwrap_or_default().is_empty()
-                    || words.get(idx + 1..) == Some(&["each", "combat"][..])
-                    || words.get(idx + 1..) == Some(&["this", "turn"][..]))
+            if matches!(
+                words.get(idx).copied(),
+                Some("creature") | Some("creatures")
+            ) && (words.get(idx + 1..).unwrap_or_default().is_empty()
+                || words.get(idx + 1..) == Some(&["each", "combat"][..])
+                || words.get(idx + 1..) == Some(&["this", "turn"][..]))
             {
                 return Ok(Some(vec![
                     StaticAbility::can_block_additional_creature_each_combat(additional).into(),
@@ -1677,7 +1680,10 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
         idx += used;
     }
 
-    if !matches!(normalized.get(idx).copied(), Some("creature") | Some("creatures")) {
+    if !matches!(
+        normalized.get(idx).copied(),
+        Some("creature") | Some("creatures")
+    ) {
         return Ok(None);
     }
     idx += 1;
@@ -4577,7 +4583,11 @@ pub(crate) fn parse_this_spell_cost_condition(
             "commander",
         ],
     ) {
-        return Some(ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype::Assassin));
+        return Some(
+            ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+                Subtype::Assassin,
+            ),
+        );
     }
 
     if let Some(condition_expr) = parse_conjoined_this_spell_cost_condition(tokens) {
@@ -8012,8 +8022,12 @@ pub(crate) fn parse_draw_replacement_exile_top_and_play_line(
         return Ok(None);
     }
 
-    if !slice_starts_with(&words, &["if", "you", "would", "draw", "a", "card", "exile", "the", "top"])
-    {
+    if !slice_starts_with(
+        &words,
+        &[
+            "if", "you", "would", "draw", "a", "card", "exile", "the", "top",
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -8059,15 +8073,17 @@ pub(crate) fn parse_keyword_action_replacement_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = parser_token_word_refs(tokens);
     let proliferate_display = render_token_slice(tokens);
-    if line_words == [
-        "if",
-        "you",
-        "would",
-        "proliferate",
-        "proliferate",
-        "twice",
-        "instead",
-    ] {
+    if line_words
+        == [
+            "if",
+            "you",
+            "would",
+            "proliferate",
+            "proliferate",
+            "twice",
+            "instead",
+        ]
+    {
         return Ok(Some(StaticAbility::keyword_action_replacement(
             crate::events::KeywordActionKind::Proliferate,
             ObjectFilter::default().controlled_by(PlayerFilter::You),
@@ -8075,18 +8091,20 @@ pub(crate) fn parse_keyword_action_replacement_line(
             proliferate_display,
         )));
     }
-    if line_words == [
-        "if",
-        "an",
-        "opponent",
-        "would",
-        "proliferate",
-        "that",
-        "player",
-        "proliferates",
-        "twice",
-        "instead",
-    ] {
+    if line_words
+        == [
+            "if",
+            "an",
+            "opponent",
+            "would",
+            "proliferate",
+            "that",
+            "player",
+            "proliferates",
+            "twice",
+            "instead",
+        ]
+    {
         return Ok(Some(StaticAbility::keyword_action_replacement(
             crate::events::KeywordActionKind::Proliferate,
             ObjectFilter::default().controlled_by(PlayerFilter::Opponent),

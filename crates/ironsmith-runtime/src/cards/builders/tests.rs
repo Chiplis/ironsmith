@@ -1467,7 +1467,9 @@ fn test_parse_marang_river_prowler_graveyard_cast_condition() {
     assert!(
         rendered.contains("Skulk")
             && rendered.contains("You may cast this card from your graveyard")
-            && rendered.contains("as long as you control a black permanent or you control a green permanent"),
+            && rendered.contains(
+                "as long as you control a black permanent or you control a green permanent"
+            ),
         "expected graveyard-cast condition for Marang River Prowler, got {rendered}"
     );
 }
@@ -7079,7 +7081,8 @@ fn test_rix_maadi_reveler_parses_with_spectacle_paid_predicate() {
     assert!(
         rendered.contains("you discard a card")
             && rendered.contains("Draw a card")
-            && rendered.contains("If this spell's spectacle cost was paid, instead you discard your hand")
+            && rendered
+                .contains("If this spell's spectacle cost was paid, instead you discard your hand")
             && rendered.contains("You draw three cards"),
         "expected Rix Maadi Reveler compiled text to keep both ETB branches, got {rendered}"
     );
@@ -7174,7 +7177,6 @@ fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
     game.object_mut(source)
         .expect("source object exists")
         .optional_costs_paid = paid.clone();
-
 
     let triggered = def
         .abilities
@@ -7770,7 +7772,8 @@ fn they_came_from_the_pipes_face_down_trigger_respects_controller() {
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
 
-    let alice_face_down = game.create_object_from_definition(&vanilla_creature, alice, Zone::Battlefield);
+    let alice_face_down =
+        game.create_object_from_definition(&vanilla_creature, alice, Zone::Battlefield);
     game.set_face_down(alice_face_down);
     let alice_etb = crate::events::RawEvent::new(
         crate::events::ZoneChangeEvent::with_cause(
@@ -7792,7 +7795,8 @@ fn they_came_from_the_pipes_face_down_trigger_respects_controller() {
         "expected They Came from the Pipes to trigger for your own face-down creature ETB"
     );
 
-    let bob_face_down = game.create_object_from_definition(&vanilla_creature, bob, Zone::Battlefield);
+    let bob_face_down =
+        game.create_object_from_definition(&vanilla_creature, bob, Zone::Battlefield);
     game.set_face_down(bob_face_down);
     let bob_etb = crate::events::RawEvent::new(
         crate::events::ZoneChangeEvent::with_cause(
@@ -8749,7 +8753,8 @@ fn test_parse_word_of_blasting_uses_destroyed_wall_mana_value_for_damage() {
     assert!(
         rendered.contains("destroy target wall")
             && rendered.contains("it can't be regenerated")
-            && rendered.contains("deals damage equal to its mana value to that object's controller"),
+            && rendered
+                .contains("deals damage equal to its mana value to that object's controller"),
         "expected Word of Blasting compiled text to preserve wall mana-value damage clause, got {rendered}"
     );
 }
@@ -11522,9 +11527,7 @@ fn parse_anger_graveyard_condition_with_land_control() {
 fn test_parse_quagmire_landwalk_as_though_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Quagmire")
         .card_types(vec![CardType::Enchantment])
-        .parse_text(
-            "Creatures with swampwalk can be blocked as though they didn't have swampwalk.",
-        )
+        .parse_text("Creatures with swampwalk can be blocked as though they didn't have swampwalk.")
         .expect("quagmire landwalk as-though clause should parse");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
@@ -11920,8 +11923,7 @@ fn parse_treasure_nabber_keeps_next_turn_end_control_duration() {
 
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("ChangeControllerToEffectController")
-            && debug.contains("YourNextTurnEnd"),
+        debug.contains("ChangeControllerToEffectController") && debug.contains("YourNextTurnEnd"),
         "expected Treasure Nabber to lower as a control-change duration through your next turn end, got {debug}"
     );
 }
@@ -13521,7 +13523,8 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
         .as_ref()
         .expect("Healing Grace should produce spell effects")
         .clone();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
@@ -13561,9 +13564,12 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
         None,
         &[],
     )
-        .expect("Healing Grace should resolve");
+    .expect("Healing Grace should resolve");
 
-    assert_eq!(game.players[0].life, 23, "Healing Grace should gain 3 life for the caster");
+    assert_eq!(
+        game.players[0].life, 23,
+        "Healing Grace should gain 3 life for the caster"
+    );
 
     let (first_damage, first_prevented) = crate::events::processing::process_damage_with_event(
         &mut game,
@@ -13587,7 +13593,10 @@ fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert_eq!(second_damage, 1, "shield should have exactly 1 prevention remaining");
+    assert_eq!(
+        second_damage, 1,
+        "shield should have exactly 1 prevention remaining"
+    );
     assert!(
         second_prevented || second_damage < 2,
         "second damage application should still be partially prevented"
@@ -13621,7 +13630,8 @@ fn healing_grace_runtime_only_protects_chosen_target() {
         .as_ref()
         .expect("Healing Grace should produce spell effects")
         .clone();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
@@ -13660,7 +13670,10 @@ fn healing_grace_runtime_only_protects_chosen_target() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert_eq!(damage_to_alice, 2, "non-targeted player should not be protected");
+    assert_eq!(
+        damage_to_alice, 2,
+        "non-targeted player should not be protected"
+    );
 
     let (damage_to_bob, _) = crate::events::processing::process_damage_with_event(
         &mut game,
@@ -13670,7 +13683,10 @@ fn healing_grace_runtime_only_protects_chosen_target() {
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert_eq!(damage_to_bob, 0, "chosen target should receive prevented damage");
+    assert_eq!(
+        damage_to_bob, 0,
+        "chosen target should receive prevented damage"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -15116,7 +15132,9 @@ fn foul_tongue_invocation_condition_matches_when_behold_label_was_paid() {
 #[test]
 fn kaya_orzhov_usurper_strict_parse_regression() {
     let def = parse_oracle_card_definition("Kaya, Orzhov Usurper");
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("exile up to two target cards")
@@ -15154,9 +15172,11 @@ fn kaya_orzhov_usurper_plus_one_conditional_life_gain_branch_false_without_creat
     let noncreature_def = CardDefinitionBuilder::new(CardId::from_raw(777001), "Tagged Relic")
         .card_types(vec![CardType::Artifact])
         .build();
-    let tagged_id = game.create_object_from_definition(&noncreature_def, alice, crate::zone::Zone::Exile);
+    let tagged_id =
+        game.create_object_from_definition(&noncreature_def, alice, crate::zone::Zone::Exile);
     let tagged_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(tagged_id).expect("tagged noncreature should exist"),
+        game.object(tagged_id)
+            .expect("tagged noncreature should exist"),
         &game,
     );
 
@@ -15205,9 +15225,11 @@ fn kaya_orzhov_usurper_plus_one_conditional_life_gain_branch_true_with_creature_
     let creature_def = CardDefinitionBuilder::new(CardId::from_raw(777002), "Tagged Witness")
         .card_types(vec![CardType::Creature])
         .build();
-    let tagged_id = game.create_object_from_definition(&creature_def, alice, crate::zone::Zone::Exile);
+    let tagged_id =
+        game.create_object_from_definition(&creature_def, alice, crate::zone::Zone::Exile);
     let tagged_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(tagged_id).expect("tagged creature should exist"),
+        game.object(tagged_id)
+            .expect("tagged creature should exist"),
         &game,
     );
 
@@ -15267,9 +15289,11 @@ fn kaya_orzhov_usurper_plus_one_conditional_life_gain_branch_true_with_mixed_tag
     let creature_def = CardDefinitionBuilder::new(CardId::from_raw(777004), "Tagged Witness")
         .card_types(vec![CardType::Creature])
         .build();
-    let creature_id = game.create_object_from_definition(&creature_def, alice, crate::zone::Zone::Exile);
+    let creature_id =
+        game.create_object_from_definition(&creature_def, alice, crate::zone::Zone::Exile);
     let creature_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(creature_id).expect("tagged creature should exist"),
+        game.object(creature_id)
+            .expect("tagged creature should exist"),
         &game,
     );
 
@@ -21527,7 +21551,9 @@ fn parse_sleep_with_the_fishes_keeps_unblockable_token_clause() {
         )
         .expect("Sleep with the Fishes should parse");
 
-    let compiled = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         compiled.contains("can't be blocked") || compiled.contains("cant be blocked"),
         "expected compiled text to keep unblockable token clause, got {compiled}"
@@ -30593,7 +30619,9 @@ fn parse_phyrexian_colossus_strict_and_render_three_or_more_blockers_clause() {
         )
         .expect("Phyrexian Colossus should parse strictly");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("can't be blocked except by 3 or more creatures")
             || rendered.contains("can't be blocked except by three or more creatures"),
@@ -33523,14 +33551,18 @@ fn proud_pack_rhino_proliferate_mode_increases_selected_counters() {
 #[test]
 fn parse_oracle_tekuthal_inquiry_dominus_compiles_strictly() {
     let def = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
-    let rendered = canonical_compiled_lines(&def).join("\n").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("if you would proliferate, proliferate twice instead"),
         "expected Tekuthal replacement clause in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("remove 3 counters from among other artifacts, creatures, and planeswalkers you control"),
+        rendered.contains(
+            "remove 3 counters from among other artifacts, creatures, and planeswalkers you control"
+        ),
         "expected Tekuthal activated cost in compiled text, got {rendered}"
     );
 }
@@ -33562,7 +33594,9 @@ fn tekuthal_activation_cost_targets_other_countered_permanents_only() {
         .expect("Tekuthal should have an activated ability");
     let cost_text = activated.mana_cost.display().to_ascii_lowercase();
     assert!(
-        cost_text.contains("remove 3 counters from among other artifacts, creatures, and planeswalkers you control"),
+        cost_text.contains(
+            "remove 3 counters from among other artifacts, creatures, and planeswalkers you control"
+        ),
         "Tekuthal activation cost should preserve among-other list, got {cost_text}"
     );
 }
@@ -33628,12 +33662,15 @@ fn tekuthal_replacement_makes_single_proliferate_happen_twice() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let tekuthal = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
-    let proliferate_source = game.create_object_from_definition(&tekuthal, alice, Zone::Battlefield);
-    let countered_creature = CardDefinitionBuilder::new(CardId::from_raw(98_101), "Countered Creature")
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(2, 2))
-        .build();
-    let countered_id = game.create_object_from_definition(&countered_creature, alice, Zone::Battlefield);
+    let proliferate_source =
+        game.create_object_from_definition(&tekuthal, alice, Zone::Battlefield);
+    let countered_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(98_101), "Countered Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+    let countered_id =
+        game.create_object_from_definition(&countered_creature, alice, Zone::Battlefield);
     assert!(
         game.add_counters(countered_id, crate::object::CounterType::PlusOnePlusOne, 1)
             .is_some(),
@@ -33646,12 +33683,8 @@ fn tekuthal_replacement_makes_single_proliferate_happen_twice() {
         player: bob,
     };
     let mut ctx = crate::effects::ExecutionContext::new(proliferate_source, alice, &mut dm);
-    crate::effects::execute_effect(
-        &mut game,
-        &crate::effect::Effect::proliferate(1),
-        &mut ctx,
-    )
-    .expect("proliferate should resolve");
+    crate::effects::execute_effect(&mut game, &crate::effect::Effect::proliferate(1), &mut ctx)
+        .expect("proliferate should resolve");
 
     assert_eq!(
         game.object(countered_id).and_then(|object| object
@@ -34185,7 +34218,9 @@ fn parse_cloud_ex_soldier_strict_regression() {
 #[test]
 fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
     let def = parse_oracle_card_definition("Cloud, Ex-SOLDIER");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("whenever this creature attacks")
@@ -34200,7 +34235,9 @@ fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
 #[test]
 fn wave_of_rats_compiled_text_keeps_combat_damage_condition_clause() {
     let def = parse_oracle_card_definition("Wave of Rats");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("when this creature dies")
@@ -34236,7 +34273,9 @@ fn wave_of_rats_dies_trigger_uses_source_combat_damage_condition() {
 #[test]
 fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
     let def = parse_oracle_card_definition("Xanthic Statue");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("until end of turn")
@@ -34320,7 +34359,9 @@ fn parse_demonic_torment_strict_regression() {
 #[test]
 fn demonic_torment_compiled_text_keeps_combat_prevention_clause() {
     let def = parse_oracle_card_definition("Demonic Torment");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("prevent all combat damage that would be dealt by enchanted creature"),
         "expected Demonic Torment compiled text to keep combat-only prevention clause, got {rendered}"
@@ -34346,7 +34387,9 @@ fn demonic_torment_grants_combat_only_damage_prevention_to_enchanted_creature() 
 #[test]
 fn wild_roads_compiled_text_keeps_pilot_saddle_and_crew_clause() {
     let def = parse_oracle_card_definition("Wild Roads");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("saddles mounts and crews vehicles as though its power were 2 greater"),
@@ -34420,7 +34463,8 @@ fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
 
     let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
-    let baseline_mount = baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    let baseline_mount =
+        baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
 
     assert!(
         crate::effects::CostExecutableEffect::can_execute_as_cost(
@@ -34449,7 +34493,9 @@ fn parse_brambleback_brute_strict_regression() {
 #[test]
 fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_clause() {
     let def = parse_oracle_card_definition("James, Wandering Dad // Follow Him");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("spend this mana only to activate abilities"),
@@ -34461,7 +34507,9 @@ fn james_wandering_dad_follow_him_compiled_text_keeps_spend_this_mana_only_claus
 #[test]
 fn raphael_tag_team_tough_compiled_text_keeps_additional_combat_phase_clause() {
     let def = parse_oracle_card_definition("Raphael, Tag Team Tough");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("there is an additional combat phase"),
@@ -34473,7 +34521,9 @@ fn raphael_tag_team_tough_compiled_text_keeps_additional_combat_phase_clause() {
 #[test]
 fn rankle_master_of_pranks_compiled_text_keeps_choose_any_number_modal_header() {
     let def = parse_oracle_card_definition("Rankle, Master of Pranks");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("choose any number"),
@@ -34485,7 +34535,9 @@ fn rankle_master_of_pranks_compiled_text_keeps_choose_any_number_modal_header() 
 #[test]
 fn brambleback_brute_compiled_text_keeps_unspecified_remove_counter_activation_cost() {
     let def = parse_oracle_card_definition("Brambleback Brute");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("remove a counter from this creature"),
@@ -34672,7 +34724,9 @@ fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() 
 #[test]
 fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
     let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("each green creature that entered this turn")
@@ -34683,7 +34737,8 @@ fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn oran_rief_the_vastwood_activation_runtime_only_counters_green_creatures_that_entered_this_turn() {
+fn oran_rief_the_vastwood_activation_runtime_only_counters_green_creatures_that_entered_this_turn()
+{
     let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
     let activated = def
         .abilities
@@ -34767,7 +34822,10 @@ fn oran_rief_the_vastwood_activation_runtime_only_counters_green_creatures_that_
         "Oran-Rief should counter your green creature that entered this turn"
     );
     assert_eq!(
-        game.counter_count(opponent_green_entered, crate::object::CounterType::PlusOnePlusOne),
+        game.counter_count(
+            opponent_green_entered,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
         1,
         "Oran-Rief should counter each green creature, including opponents'"
     );
@@ -34804,7 +34862,9 @@ fn sundial_of_the_infinite_strict_regression() {
 #[test]
 fn sundial_of_the_infinite_compiled_text_keeps_end_the_turn_clause() {
     let def = parse_oracle_card_definition("Sundial of the Infinite");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("end the turn") && rendered.contains("activate only during your turn"),
         "expected Sundial rendered text to preserve end-turn and timing clauses, got {rendered}"
@@ -34991,7 +35051,8 @@ fn bucolic_ranch_activated_ability_nonmount_top_card_skips_reveal_branch() {
         })
         .expect("Bucolic Ranch should have the look-at-top activated ability");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let ranch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
@@ -35014,8 +35075,7 @@ fn bucolic_ranch_activated_ability_nonmount_top_card_skips_reveal_branch() {
     }
 
     assert_eq!(
-        dm.index,
-        1,
+        dm.index, 1,
         "when the top card is not a Mount, Bucolic Ranch should only ask the fallback bottom-of-library decision"
     );
 }
@@ -35058,7 +35118,8 @@ fn bucolic_ranch_activated_ability_can_decline_hand_and_bottom_the_card() {
         })
         .expect("Bucolic Ranch should have the look-at-top activated ability");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let ranch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
@@ -35094,11 +35155,7 @@ fn bucolic_ranch_activated_ability_can_decline_hand_and_bottom_the_card() {
         "Bucolic Ranch should ask both optional branch decisions when the top card is a Mount"
     );
     assert!(
-        game.player(alice)
-            .expect("alice exists")
-            .library
-            .len()
-            >= 1,
+        game.player(alice).expect("alice exists").library.len() >= 1,
         "Bucolic Ranch should keep cards in library after resolving fallback branch"
     );
 }
@@ -35282,7 +35339,9 @@ fn strict_parse_animate_land() {
 #[test]
 fn animate_land_compiled_text_keeps_animation_clause() {
     let def = parse_oracle_card_definition("Animate Land");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("target land becomes a 3/3 creature")
             && rendered.contains("until end of turn")
@@ -35330,7 +35389,8 @@ fn animate_land_runtime_animates_target_land_until_end_of_turn() {
         panic!("expected Animate Land target to be an object filter, got {inner:?}");
     };
     assert!(
-        filter.card_types == vec![CardType::Land] && !filter.card_types.contains(&CardType::Creature),
+        filter.card_types == vec![CardType::Land]
+            && !filter.card_types.contains(&CardType::Creature),
         "expected Animate Land to target lands only, got {filter:?}"
     );
 
@@ -35357,7 +35417,9 @@ fn animate_land_runtime_animates_target_land_until_end_of_turn() {
 #[test]
 fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {
     let def = parse_oracle_card_definition("Escaped Null");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("whenever this creature blocks or this creature becomes blocked")
             && rendered.contains("gets +5/+0 until end of turn"),
@@ -35368,7 +35430,9 @@ fn escaped_null_compiled_text_keeps_blocks_or_becomes_blocked_trigger() {
 #[test]
 fn exuberant_fuseling_compiled_text_keeps_oil_counter_scaling_clause() {
     let def = parse_oracle_card_definition("Exuberant Fuseling");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("this creature gets +1/+0 for each oil counter on it"),
         "expected Exuberant Fuseling to keep its oil-counter scaling clause, got {rendered}"
@@ -35385,7 +35449,8 @@ fn exuberant_fuseling_compiled_text_keeps_oil_counter_scaling_clause() {
 #[test]
 fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_death_only() {
     let def = parse_oracle_card_definition("Exuberant Fuseling");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -35697,7 +35762,8 @@ fn olivias_midnight_ambush_compiled_text_preserves_night_branch() {
 
     assert!(
         rendered.contains("target creature gets -2/-2 until end of turn")
-            && rendered.contains("if it's night, that creature gets -13/-13 until end of turn instead"),
+            && rendered
+                .contains("if it's night, that creature gets -13/-13 until end of turn instead"),
         "expected Olivia's Midnight Ambush to preserve both base and night conditional branches, got {rendered}"
     );
 }
@@ -35772,13 +35838,15 @@ fn nighthawk_scavenger_compiled_text_preserves_card_types_among_clause() {
 
     assert!(
         (rendered.contains("power is 1 plus") || rendered.contains("power is equal to 1 plus"))
-            && (rendered
-                .contains("1 plus the number of card types among cards in your opponents' graveyard")
-            || rendered
-                .contains("1 plus the number of card types among cards in your opponents' graveyards")
-            || rendered.contains("1 plus the number of distinct card types in your opponents' graveyard")
-            || rendered
-                .contains("1 plus the number of distinct card types in your opponents' graveyards")),
+            && (rendered.contains(
+                "1 plus the number of card types among cards in your opponents' graveyard"
+            ) || rendered.contains(
+                "1 plus the number of card types among cards in your opponents' graveyards"
+            ) || rendered
+                .contains("1 plus the number of distinct card types in your opponents' graveyard")
+                || rendered.contains(
+                    "1 plus the number of distinct card types in your opponents' graveyards"
+                )),
         "expected Nighthawk Scavenger to keep a card-types-in-opponents-graveyards scaling clause, got {rendered}"
     );
 }
@@ -36195,7 +36263,8 @@ fn return_to_dust_main_phase_paid_label_condition_branches() {
         "expected Return to Dust to include CastDuringYourMainPhase condition, got {raw}"
     );
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
     let mut decision_maker = NoChoices;
@@ -36223,7 +36292,8 @@ fn return_to_dust_main_phase_paid_label_condition_branches() {
 #[test]
 fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {
     let def = parse_oracle_card_definition("Undercellar Sweep");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -36273,9 +36343,7 @@ fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {
         "expected initiative-on-you branch to create two Soldier tokens"
     );
     assert!(
-        soldier_tokens
-            .iter()
-            .all(|(id, _)| game.is_tapped(*id)),
+        soldier_tokens.iter().all(|(id, _)| game.is_tapped(*id)),
         "expected created Soldier tokens to enter tapped"
     );
 }
@@ -36284,7 +36352,8 @@ fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {
 #[test]
 fn undercellar_sweep_attack_trigger_branches_on_initiative_holder() {
     let def = parse_oracle_card_definition("Undercellar Sweep");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -36381,7 +36450,8 @@ fn parse_oracle_the_most_dangerous_gamer_regression() {
 #[test]
 fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
     let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
 
     let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
@@ -36397,7 +36467,10 @@ fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
 
     let triggered = crate::triggers::check_triggers(&game, &event);
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
-    for entry in triggered.into_iter().filter(|entry| entry.source == gamer_id) {
+    for entry in triggered
+        .into_iter()
+        .filter(|entry| entry.source == gamer_id)
+    {
         trigger_queue.add(entry);
     }
     assert_eq!(
@@ -36412,7 +36485,11 @@ fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
 
     let counters = game
         .object(gamer_id)
-        .and_then(|obj| obj.counters.get(&crate::object::CounterType::PlusOnePlusOne).copied())
+        .and_then(|obj| {
+            obj.counters
+                .get(&crate::object::CounterType::PlusOnePlusOne)
+                .copied()
+        })
         .unwrap_or(0);
     assert_eq!(
         counters, 1,
@@ -36424,7 +36501,8 @@ fn the_most_dangerous_gamer_triggers_on_you_open_an_attraction() {
 #[test]
 fn the_most_dangerous_gamer_does_not_trigger_for_opponents_opened_attraction() {
     let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -36450,7 +36528,8 @@ fn the_most_dangerous_gamer_does_not_trigger_for_opponents_opened_attraction() {
 #[test]
 fn the_most_dangerous_gamer_triggers_on_you_claiming_an_attraction_prize() {
     let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
 
     let gamer_id = game.create_object_from_definition(&gamer, alice, Zone::Battlefield);
@@ -36475,7 +36554,8 @@ fn the_most_dangerous_gamer_triggers_on_you_claiming_an_attraction_prize() {
 #[test]
 fn the_most_dangerous_gamer_ignores_opponent_claiming_an_attraction_prize() {
     let gamer = parse_oracle_card_definition("The Most Dangerous Gamer");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -38008,7 +38088,8 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         .expect("Tainted Strike should produce spell effects")
         .clone();
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
@@ -38039,7 +38120,10 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         normal_damage.applied,
         "baseline damage assignment to player should apply"
     );
-    assert_eq!(game.players[1].life, 18, "non-infect damage should reduce life");
+    assert_eq!(
+        game.players[1].life, 18,
+        "non-infect damage should reduce life"
+    );
     assert_eq!(
         game.players[1].poison_counters, 0,
         "non-infect damage should not add poison counters"
@@ -38078,9 +38162,18 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         keywords,
         crate::events::cause::EventCause::from_effect(target, alice),
     );
-    assert!(player_damage.applied, "damage assignment to player should apply");
-    assert_eq!(game.players[1].life, 18, "infect damage to player should not reduce life");
-    assert_eq!(game.players[1].poison_counters, 3, "infect damage should add poison counters");
+    assert!(
+        player_damage.applied,
+        "damage assignment to player should apply"
+    );
+    assert_eq!(
+        game.players[1].life, 18,
+        "infect damage to player should not reduce life"
+    );
+    assert_eq!(
+        game.players[1].poison_counters, 3,
+        "infect damage should add poison counters"
+    );
 
     let blocker = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(93_002), "Test Blocker")
@@ -38098,7 +38191,10 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         keywords,
         crate::events::cause::EventCause::from_effect(target, alice),
     );
-    assert!(creature_damage.applied, "damage assignment to creature should apply");
+    assert!(
+        creature_damage.applied,
+        "damage assignment to creature should apply"
+    );
     assert_eq!(
         game.object(blocker).and_then(|object| object
             .counters
@@ -38107,7 +38203,6 @@ fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
         Some(3),
         "infect damage to creature should use -1/-1 counters"
     );
-
 }
 
 #[test]
@@ -39604,9 +39699,12 @@ fn parse_skoa_embermage_grandeur_keeps_named_discard_and_sacrifice_costs() {
         )
         .expect("Skoa, Embermage should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        rendered.contains("grandeur") && rendered.contains("discard another card named skoa, embermage"),
+        rendered.contains("grandeur")
+            && rendered.contains("discard another card named skoa, embermage"),
         "expected named-card grandeur cost, got {rendered}"
     );
     assert!(
@@ -43394,7 +43492,8 @@ fn sorin_markov_compiles_control_player_and_life_total_effects() {
             {
                 has_set_life_to_ten = true;
             }
-            if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
+            if let Some(control_player) =
+                effect.downcast_ref::<crate::effects::ControlPlayerEffect>()
                 && format!("{:?}", control_player.start)
                     .to_ascii_lowercase()
                     .contains("nextturn")
@@ -43459,10 +43558,13 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
             "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
         )
         .expect("Eruth, Tormented Prophet oracle text should parse");
-    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("if you would draw a card, exile the top 2 cards of your library instead"),
+        rendered
+            .contains("if you would draw a card, exile the top 2 cards of your library instead"),
         "expected replacement clause in compiled text, got {rendered}"
     );
     assert!(
@@ -43542,10 +43644,14 @@ fn parse_oracle_loot_the_key_to_everything_strict_regression() {
 #[test]
 fn loot_the_key_to_everything_compiled_text_keeps_card_types_among_marker() {
     let def = parse_oracle_card_definition("Loot, the Key to Everything");
-    let rendered = unprocessed_compiled_lines(&def).join("\n").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("where x is the number of card types among other nonland permanents you control"),
+        rendered.contains(
+            "where x is the number of card types among other nonland permanents you control"
+        ),
         "expected Loot compiled text to preserve card-types-among clause, got {rendered}"
     );
     assert!(
@@ -43582,7 +43688,10 @@ fn loot_the_key_to_everything_runtime_count_uses_distinct_card_types_among_other
     let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");
-    assert_eq!(resolved, 2, "artifact + creature should produce two card types");
+    assert_eq!(
+        resolved, 2,
+        "artifact + creature should produce two card types"
+    );
 }
 
 #[test]
@@ -43644,7 +43753,10 @@ fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlands() {
     let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");
-    assert_eq!(resolved, 0, "no other nonland permanents should produce X=0");
+    assert_eq!(
+        resolved, 0,
+        "no other nonland permanents should produce X=0"
+    );
 }
 
 #[test]

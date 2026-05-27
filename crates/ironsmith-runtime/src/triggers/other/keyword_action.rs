@@ -190,7 +190,9 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.source_must_match && self.action == KeywordActionKind::Plot {
             return match &self.player {
                 PlayerFilter::You => "When this card becomes plotted".to_string(),
-                PlayerFilter::Opponent => "When this card becomes plotted by an opponent".to_string(),
+                PlayerFilter::Opponent => {
+                    "When this card becomes plotted by an opponent".to_string()
+                }
                 PlayerFilter::Any => "When this card becomes plotted".to_string(),
                 _ => "When this card becomes plotted".to_string(),
             };

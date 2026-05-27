@@ -18944,8 +18944,16 @@ fn describe_exile_top_then_play(
             }
         }
     };
-    let cards_text = if singular_count { "that card" } else { "those cards" };
-    let verb = if grant_play.allow_land { "play" } else { "cast" };
+    let cards_text = if singular_count {
+        "that card"
+    } else {
+        "those cards"
+    };
+    let verb = if grant_play.allow_land {
+        "play"
+    } else {
+        "cast"
+    };
     Some(format!(
         "{exile_clause}. You may {verb} {cards_text} this turn"
     ))
@@ -25024,7 +25032,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
             Zone::Battlefield => {
-                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering") {
+                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+                {
                     "it".to_string()
                 } else {
                     target
@@ -26833,7 +26842,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
-        let (count_text, noun, where_clause) = describe_top_count_noun_and_where_clause(&look_at_top.count);
+        let (count_text, noun, where_clause) =
+            describe_top_count_noun_and_where_clause(&look_at_top.count);
         if look_at_top.reveal {
             if look_at_top.player == PlayerFilter::You {
                 return format!("Reveal the top {count_text} {noun} of your library{where_clause}");
@@ -26851,7 +26861,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         let count_text = match (rearrange.count.min, rearrange.count.max) {
             (0, Some(1)) => "up to one".to_string(),
-            (min, Some(max)) if min == max => small_number_word(max as u32).unwrap_or_else(|| max.to_string()),
+            (min, Some(max)) if min == max => {
+                small_number_word(max as u32).unwrap_or_else(|| max.to_string())
+            }
             (0, Some(max)) => format!("up to {max}"),
             (min, Some(max)) => format!("between {min} and {max}"),
             (min, None) => format!("at least {min}"),
@@ -26982,9 +26994,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_count_filter_value_subject(power_filter)
                 ))
             }
-            (Value::CountersOnSource(power_counter), Value::CountersOnSource(toughness_counter))
-                if power_counter == toughness_counter =>
-            {
+            (
+                Value::CountersOnSource(power_counter),
+                Value::CountersOnSource(toughness_counter),
+            ) if power_counter == toughness_counter => {
                 Some(format!("{} counter on it", power_counter.description()))
             }
             _ => None,
@@ -27340,7 +27353,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let helper_tag = tag.starts_with("targeted_")
             || tag.starts_with("__source_")
             || tag == "__it__"
-            || matches!(tag, "exiled" | "revealed" | "looked" | "chosen" | "searched")
+            || matches!(
+                tag,
+                "exiled" | "revealed" | "looked" | "chosen" | "searched"
+            )
             || crate::cards::is_sentence_helper_tag(tag, "exiled")
             || crate::cards::is_sentence_helper_tag(tag, "revealed")
             || crate::cards::is_sentence_helper_tag(tag, "looked")
@@ -28509,7 +28525,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(end_turn) = effect.downcast_ref::<crate::effects::EndTurnEffect>() {
-        if matches!(end_turn.player, PlayerFilter::You | PlayerFilter::EffectController) {
+        if matches!(
+            end_turn.player,
+            PlayerFilter::You | PlayerFilter::EffectController
+        ) {
             return "end the turn".to_string();
         }
         return format!("{} ends the turn", describe_player_filter(&end_turn.player));
@@ -31644,7 +31663,8 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
                 &sacrifice.filter,
                 &sacrifice.count,
             )?);
-        } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        {
             parts.push(cumulative_upkeep_move_to_zone_text(move_to_zone)?);
         }
     }
@@ -33226,9 +33246,8 @@ pub(super) fn describe_ability(
             if static_ability.id() == crate::static_abilities::StaticAbilityId::SoulbondSharedBonus
                 && let Some(granted) = static_ability.granted_inline_ability()
             {
-                let granted_surface = normalize_granted_triggered_ability_surface(
-                    describe_inline_ability(granted),
-                );
+                let granted_surface =
+                    normalize_granted_triggered_ability_surface(describe_inline_ability(granted));
                 return vec![format!(
                     "Static ability {index}: As long as this creature is paired with another creature, each of those creatures has \"{}\"",
                     granted_surface

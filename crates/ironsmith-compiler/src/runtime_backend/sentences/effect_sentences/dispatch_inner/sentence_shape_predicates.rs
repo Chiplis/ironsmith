@@ -748,6 +748,19 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(vec![EffectAst::DelayedUntilEndOfCombat { effects }]);
     }
 
+    let leading_if_replacement_shape =
+        tokens.first().is_some_and(|token| token.is_word("if")) && sentence_words.contains(&"would");
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && !leading_if_replacement_shape
+        && let Ok(Some(mut effects)) =
+            parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
+        && matches!(effects.as_slice(), [EffectAst::Conditional { .. }])
+    {
+        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+        normalize_search_followup_shuffles(&mut effects);
+        return Ok(effects);
+    }
+
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
         crate::parse_trace::event(format!("effect-route: {route}"));
         normalize_search_followup_shuffles(&mut effects);

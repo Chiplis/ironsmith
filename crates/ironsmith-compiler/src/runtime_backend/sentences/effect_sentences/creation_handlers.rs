@@ -1075,11 +1075,13 @@ pub(crate) fn parse_create(
     }
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
 
-    let grants_unblockable = word_slice_contains_sequence(
-        &tail_words,
-        &["this", "token", "cant", "be", "blocked"],
-    ) || word_slice_contains_sequence(&tail_words, &["this", "creature", "cant", "be", "blocked"])
-        || word_slice_contains_sequence(&tail_words, &["cant", "be", "blocked"]);
+    let grants_unblockable =
+        word_slice_contains_sequence(&tail_words, &["this", "token", "cant", "be", "blocked"])
+            || word_slice_contains_sequence(
+                &tail_words,
+                &["this", "creature", "cant", "be", "blocked"],
+            )
+            || word_slice_contains_sequence(&tail_words, &["cant", "be", "blocked"]);
 
     if let Some((start, end)) = rules_text_range {
         if start < end && end <= modifier_tail_words.len() {

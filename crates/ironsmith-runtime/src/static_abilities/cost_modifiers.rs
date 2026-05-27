@@ -1633,8 +1633,7 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
             .turn_store
             .turn_history
             .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
-                controller,
-                *subtype,
+                controller, *subtype,
             ),
     }
 }

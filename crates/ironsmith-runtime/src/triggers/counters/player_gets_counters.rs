@@ -86,7 +86,9 @@ impl TriggerMatcher for PlayerGetsCountersTrigger {
         }
         let counter_phrase = match self.counter_type {
             Some(counter_type) => match self.count_mode {
-                CountMode::OneOrMore => format!("one or more {} counters", counter_type.description()),
+                CountMode::OneOrMore => {
+                    format!("one or more {} counters", counter_type.description())
+                }
                 CountMode::Each => format!("a {} counter", counter_type.description()),
             },
             None => match self.count_mode {
@@ -114,7 +116,8 @@ mod tests {
         let mut game = game;
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
-        let source_id = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let source_id =
+            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
         let trigger = PlayerGetsCountersTrigger::new(PlayerFilter::You)
             .counter_type(CounterType::Energy)
             .count(CountMode::OneOrMore);

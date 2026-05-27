@@ -2934,8 +2934,7 @@ impl GameState {
         if amount == 0 {
             return self.player(player).is_some();
         }
-        self.can_lose_life(player)
-            && self.player(player).is_some_and(|p| p.life >= amount as i32)
+        self.can_lose_life(player) && self.player(player).is_some_and(|p| p.life >= amount as i32)
     }
 
     /// Returns true if a player can currently pay life for the given reason.

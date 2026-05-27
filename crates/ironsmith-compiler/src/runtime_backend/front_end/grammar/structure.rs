@@ -1238,21 +1238,22 @@ pub(crate) fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
-    let parse_effects_with_leading_instead = |effect_tokens: &[OwnedLexToken],
-                                              parse_effects: &mut dyn FnMut(
-        &[OwnedLexToken],
-    ) -> Result<Vec<EffectAst>, CardTextError>| {
-        let trimmed = trim_lexed_commas(effect_tokens);
-        let without_instead = if trimmed
-            .first()
-            .is_some_and(|token| token.is_word("instead"))
-        {
-            trim_lexed_commas(&trimmed[1..])
-        } else {
-            trimmed
+    let parse_effects_with_leading_instead =
+        |effect_tokens: &[OwnedLexToken],
+         parse_effects: &mut dyn FnMut(
+            &[OwnedLexToken],
+        ) -> Result<Vec<EffectAst>, CardTextError>| {
+            let trimmed = trim_lexed_commas(effect_tokens);
+            let without_instead = if trimmed
+                .first()
+                .is_some_and(|token| token.is_word("instead"))
+            {
+                trim_lexed_commas(&trimmed[1..])
+            } else {
+                trimmed
+            };
+            parse_effects(without_instead)
         };
-        parse_effects(without_instead)
-    };
 
     if let Some(effect_token_idx) =
         primitives::find_phrase_start(tokens, &["exile", "them", "then", "meld", "them", "into"])
@@ -1267,7 +1268,8 @@ pub(crate) fn split_if_clause_lexed(
         if !predicate_tokens_without_commas.is_empty() {
             if let Ok(predicate) =
                 parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens_without_commas)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1276,7 +1278,8 @@ pub(crate) fn split_if_clause_lexed(
                 });
             }
             if let Some(predicate) = parse_if_result_predicate(&predicate_tokens_without_commas)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1300,7 +1303,8 @@ pub(crate) fn split_if_clause_lexed(
                 continue;
             }
             if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1309,7 +1313,8 @@ pub(crate) fn split_if_clause_lexed(
                 });
             }
             if let Some(predicate) = parse_if_result_predicate(predicate_tokens)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1337,7 +1342,8 @@ pub(crate) fn split_if_clause_lexed(
                 true
             };
             if comma_fragment_looks_like_effect
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {

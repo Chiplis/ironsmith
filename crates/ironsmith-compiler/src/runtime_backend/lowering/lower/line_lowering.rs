@@ -141,18 +141,6 @@ fn compile_trailing_instead_if_condition(
     .map(Some)
 }
 
-fn x_threshold_prefix_condition(normalized_line: &str) -> Option<crate::effect::Condition> {
-    let start = normalized_line.find("if x is ")?;
-    let rest = &normalized_line[start + "if x is ".len()..];
-    let (amount_text, after_amount) = rest.split_once(' ')?;
-    let amount = amount_text.parse::<u32>().ok()?;
-    if after_amount.starts_with("or more,") || after_amount.starts_with("or more ") {
-        Some(crate::effect::Condition::XValueAtLeast(amount))
-    } else {
-        None
-    }
-}
-
 fn with_chosen_creature_type_filter(effect: crate::effect::Effect) -> crate::effect::Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return crate::effect::Effect::new(crate::effects::TaggedEffect::new(
@@ -174,9 +162,15 @@ fn creature_type_choice_program(
     normalized_line: &str,
     compiled: &crate::resolution::ResolutionProgram,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !normalized_line.contains("creature type of your choice")
-        || !normalized_line.contains(" get ")
-    {
+    let words = normalized_line
+        .split_whitespace()
+        .map(|word| word.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '+'))
+        .collect::<Vec<_>>();
+    let has_choice_phrase = words
+        .windows(5)
+        .any(|window| window == ["creature", "type", "of", "your", "choice"]);
+    let has_get = words.iter().any(|word| matches!(*word, "get" | "gets"));
+    if !has_choice_phrase || !has_get {
         return None;
     }
     let effects = compiled.to_vec();
@@ -963,38 +957,6 @@ fn lower_statement_chunk(
     if matches!(
         instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
-    ) && builder.spell_effect.is_none()
-        && compiled.len() >= 2
-        && normalized_line.contains("if it's a human, instead it gets")
-        && normalized_line.contains("gains indestructible until end of turn")
-    {
-        let previous = compiled[0].clone();
-        let mut human_filter = crate::filter::ObjectFilter::creature();
-        human_filter.subtypes = vec![crate::types::Subtype::Human];
-        let condition = crate::effect::Condition::TargetMatches(human_filter);
-        let mut replacement_effects = compiled[1..].to_vec();
-        if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
-            replacement_effects =
-                retarget_replacement_effects(replacement_effects, &previous_target);
-        }
-        let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(vec![previous]);
-        let Some(segment) = spell_effect.last_segment_mut() else {
-            return Err(CardTextError::InvariantViolation(
-                "expected previous spell resolution segment for human self-replacement".to_string(),
-            ));
-        };
-        segment
-            .self_replacements
-            .push(crate::resolution::SelfReplacementBranch::new(
-                condition,
-                replacement_effects,
-            ));
-        builder.spell_effect = Some(spell_effect);
-        return Ok(builder);
-    }
-    if matches!(
-        instead_semantics,
-        crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 2
         && builder.spell_effect.is_none()
         && let Some(replacement) = conditional_self_replacement_followup(&compiled[1])
@@ -1188,23 +1150,6 @@ fn lower_statement_chunk(
         return Err(CardTextError::UnsupportedLine(
             "unsupported self-replacement follow-up without a prior spell segment".to_string(),
         ));
-    }
-    if let Some(condition) = x_threshold_prefix_condition(&normalized_line)
-        && normalized_line.contains("get +x/+x")
-        && normalized_line.contains("gain haste")
-    {
-        let mut effects = compiled.to_vec();
-        let conditional_effects_start = effects.len().saturating_sub(2);
-        let conditional_effects = effects.split_off(conditional_effects_start);
-        let wrapped = crate::effect::Effect::conditional_only(condition, conditional_effects);
-        effects.push(wrapped);
-        let program = crate::resolution::ResolutionProgram::from_effects(effects);
-        if let Some(ref mut existing) = builder.spell_effect {
-            existing.extend(program);
-        } else {
-            builder.spell_effect = Some(program);
-        }
-        return Ok(builder);
     }
     if matches!(
         instead_semantics,

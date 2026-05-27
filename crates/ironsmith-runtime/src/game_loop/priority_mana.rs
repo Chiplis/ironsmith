@@ -4755,7 +4755,9 @@ mod priority_mana_tests {
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Activated(activated) if !activated.mana_usage_restrictions.is_empty() => {
+                AbilityKind::Activated(activated)
+                    if !activated.mana_usage_restrictions.is_empty() =>
+                {
                     activated.mana_usage_restrictions.first().cloned()
                 }
                 _ => None,
@@ -4777,7 +4779,8 @@ mod priority_mana_tests {
             .build();
         let mana_rock_id = game.create_object_from_definition(&mana_rock, alice, Zone::Battlefield);
         assert!(
-            spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(mana_rock_id)).is_some(),
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(mana_rock_id))
+                .is_some(),
             "James restricted mana should be spendable to activate abilities"
         );
 

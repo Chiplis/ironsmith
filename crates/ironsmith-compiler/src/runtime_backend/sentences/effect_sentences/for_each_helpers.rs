@@ -25,8 +25,8 @@ use super::super::util::{
 };
 use super::chain_carry::bind_implicit_player_context;
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
-use super::{Verb, find_verb};
 use super::conditionals::negated_action_word_index;
+use super::{Verb, find_verb};
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::runtime_backend::lexer::token_word_refs(tokens)
@@ -499,9 +499,9 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             tail_words.get(1).copied(),
             Some("gain" | "gains" | "has" | "have")
         )
-        && tail_words.iter().any(|word| {
-            matches!(*word, "trample" | "haste" | "first" | "strike" | "infect")
-        })
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike" | "infect"))
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));
@@ -510,9 +510,9 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         && tail_words
             .iter()
             .any(|word| matches!(*word, "gain" | "gains" | "has" | "have"))
-        && tail_words.iter().any(|word| {
-            matches!(*word, "trample" | "haste" | "first" | "strike" | "infect")
-        })
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike" | "infect"))
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));

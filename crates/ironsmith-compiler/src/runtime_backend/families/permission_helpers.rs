@@ -1324,9 +1324,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     if without_idx <= 6 {
         return Ok(None);
     }
-    if normalized_tail[without_idx..]
-        != ["without", "paying", "its", "mana", "cost"]
-    {
+    if normalized_tail[without_idx..] != ["without", "paying", "its", "mana", "cost"] {
         return Ok(None);
     }
 
@@ -1334,7 +1332,8 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     else {
         return Ok(None);
     };
-    let Some(comparison_tokens_end) = token_index_for_word_index(rest_tokens, from_idx + without_idx)
+    let Some(comparison_tokens_end) =
+        token_index_for_word_index(rest_tokens, from_idx + without_idx)
     else {
         return Ok(None);
     };
@@ -1405,11 +1404,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     };
 
     Ok(Some(
-        EffectAst::may_cast_matching_spell_without_paying_mana_cost(
-            lead.player,
-            filter,
-            zone,
-        ),
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost(lead.player, filter, zone),
     ))
 }
 

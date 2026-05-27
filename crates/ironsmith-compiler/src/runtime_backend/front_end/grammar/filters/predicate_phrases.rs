@@ -1678,7 +1678,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         if matches!(
             raw_words.as_slice(),
-            ["you", "have" | "has", "more", "life", "than", "each", "opponent" | "opponents"]
+            [
+                "you",
+                "have" | "has",
+                "more",
+                "life",
+                "than",
+                "each",
+                "opponent" | "opponents"
+            ]
         ) {
             return Ok(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
                 player: PlayerAst::You,
@@ -3227,15 +3235,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if filtered.as_slice() == [
-        "you",
-        "or",
-        "player",
-        "youre",
-        "attacking",
-        "has",
-        "initiative",
-    ]
+    if filtered.as_slice()
+        == [
+            "you",
+            "or",
+            "player",
+            "youre",
+            "attacking",
+            "has",
+            "initiative",
+        ]
         || filtered.as_slice()
             == [
                 "you",
@@ -3340,18 +3349,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItIsNight);
     }
 
-    if filtered.as_slice() == ["it", "dealt", "combat", "damage", "to", "player", "this", "turn"]
+    if filtered.as_slice()
+        == [
+            "it", "dealt", "combat", "damage", "to", "player", "this", "turn",
+        ]
         || filtered.as_slice()
             == [
-                "it",
-                "dealt",
-                "combat",
-                "damage",
-                "to",
-                "a",
-                "player",
-                "this",
-                "turn",
+                "it", "dealt", "combat", "damage", "to", "a", "player", "this", "turn",
             ]
     {
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
@@ -3442,8 +3446,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_accepts_paid_label_with_trailing_instead_effect_tail(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_accepts_paid_label_with_trailing_instead_effect_tail()
+    -> Result<(), CardTextError> {
         let tokens = lex_line(
             "If this creature's spectacle cost was paid instead discard your hand",
             0,
@@ -3484,8 +3488,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_you_or_player_youre_attacking_has_initiative(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_you_or_player_youre_attacking_has_initiative()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("If you or a player you're attacking has the initiative", 0)?;
         let predicate_tokens = tokens
             .iter()
@@ -3547,8 +3551,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("if it dealt combat damage to a player this turn", 0)?;
         let predicate_tokens = tokens
             .iter()
@@ -3558,13 +3562,16 @@ mod tests {
 
         let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(parsed, PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+        assert_eq!(
+            parsed,
+            PredicateAst::SourceDealtCombatDamageToPlayerThisTurn
+        );
         Ok(())
     }
 
     #[test]
-    fn parse_predicate_supports_you_cast_this_spell_during_your_main_phase(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_you_cast_this_spell_during_your_main_phase()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("If you cast this spell during your main phase", 0)?;
         let predicate_tokens = tokens
             .iter()
@@ -3604,8 +3611,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_if_equipment_is_put_onto_the_battlefield_this_way(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_if_equipment_is_put_onto_the_battlefield_this_way()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("If an Equipment is put onto the battlefield this way", 0)?;
         let predicate_tokens = tokens
             .iter()
@@ -3625,8 +3632,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_if_aura_is_put_onto_the_battlefield_this_way(
-    ) -> Result<(), CardTextError> {
+    fn parse_predicate_supports_if_aura_is_put_onto_the_battlefield_this_way()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("If an Aura is put onto the battlefield this way", 0)?;
         let predicate_tokens = tokens
             .iter()
@@ -3655,7 +3662,12 @@ mod tests {
             .collect::<Vec<_>>();
 
         let parsed = parse_predicate(&predicate_tokens)?;
-        assert_eq!(parsed, PredicateAst::PlayerWouldDrawCard { player: PlayerAst::You });
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerWouldDrawCard {
+                player: PlayerAst::You
+            }
+        );
         Ok(())
     }
 

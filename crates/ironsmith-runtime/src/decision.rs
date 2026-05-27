@@ -2051,7 +2051,6 @@ mod tests {
             "prowl condition should be false before Rogue combat damage"
         );
 
-
         let rogue = CardBuilder::new(CardId::from_raw(9502), "Rogue Test Creature")
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Rogue])
@@ -2158,7 +2157,9 @@ mod tests {
             .abilities
             .push(Ability::static_ability(ability));
 
-        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Overpowering Attack should exist");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let initial_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(
@@ -2175,7 +2176,9 @@ mod tests {
         let wizard_id = game.create_object_from_card(&wizard, alice, Zone::Battlefield);
         stage_combat_damage_to_player_for_test(&mut game, wizard_id, bob, 2);
 
-        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Overpowering Attack should exist");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let wizard_only_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(
@@ -2192,7 +2195,9 @@ mod tests {
         let assassin_id = game.create_object_from_card(&assassin, alice, Zone::Battlefield);
         stage_combat_damage_to_player_for_test(&mut game, assassin_id, bob, 2);
 
-        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Overpowering Attack should exist");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let assassin_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(
@@ -2238,7 +2243,9 @@ mod tests {
             .set_commanders(vec![commander_id]);
         stage_combat_damage_to_player_for_test(&mut game, commander_id, bob, 3);
 
-        let spell_obj = game.object(spell_id).expect("Overpowering Attack should exist");
+        let spell_obj = game
+            .object(spell_id)
+            .expect("Overpowering Attack should exist");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let commander_cost = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(
@@ -4690,7 +4697,10 @@ mod tests {
         )
         .expect("Aloe Alchemist plot special action should resolve");
 
-        let exiled_id = *game.exile.first().expect("Aloe Alchemist should be in exile");
+        let exiled_id = *game
+            .exile
+            .first()
+            .expect("Aloe Alchemist should be in exile");
         assert!(
             game.object_performed_keyword_action_this_turn(
                 exiled_id,

@@ -308,7 +308,10 @@ fn player_gain_effects_for_abilities(
     subject_tokens: &[OwnedLexToken],
     player_filter: PlayerFilter,
 ) -> Option<Vec<EffectAst>> {
-    let player_target = TargetAst::Player(player_filter.clone(), span_from_lexed_tokens(subject_tokens));
+    let player_target = TargetAst::Player(
+        player_filter.clone(),
+        span_from_lexed_tokens(subject_tokens),
+    );
     let mut effects = Vec::new();
 
     for ability in abilities {
@@ -846,9 +849,12 @@ fn parse_simple_ability_modifier_clause_lexed(
         && (subject_word_refs.as_slice() == ["players"]
             || subject_word_refs.as_slice() == ["all", "players"])
     {
-        let Some(mut player_effects) =
-            player_gain_effects_for_abilities(&abilities, &duration, subject_tokens, PlayerFilter::Any)
-        else {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            subject_tokens,
+            PlayerFilter::Any,
+        ) else {
             return Ok(None);
         };
         if player_effects.len() == 1 {
@@ -1685,14 +1691,12 @@ pub(crate) fn parse_gain_ability_sentence(
 
     if !losing && real_subject_words.as_slice() == ["you", "and", "permanents", "you", "control"] {
         let permanent_filter = crate::target::ObjectFilter::permanent().you_control();
-        let Some(mut player_effects) =
-            player_gain_effects_for_abilities(
-                &abilities,
-                &duration,
-                &real_subject_tokens,
-                PlayerFilter::You,
-            )
-        else {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            &real_subject_tokens,
+            PlayerFilter::You,
+        ) else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed player/permanent gain-ability clause (clause: '{}')",
                 word_list.join(" ")
@@ -1708,7 +1712,10 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    if !losing && (real_subject_words.as_slice() == ["players"] || real_subject_words.as_slice() == ["all", "players"]) {
+    if !losing
+        && (real_subject_words.as_slice() == ["players"]
+            || real_subject_words.as_slice() == ["all", "players"])
+    {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,

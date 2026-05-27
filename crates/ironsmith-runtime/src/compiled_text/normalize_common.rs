@@ -272,9 +272,7 @@ pub(super) fn describe_possessive_choose_spec(spec: &ChooseSpec) -> String {
 fn describe_card_type_graveyard_scope(player: &PlayerFilter) -> String {
     match player {
         PlayerFilter::You => "your graveyard".to_string(),
-        PlayerFilter::Opponent | PlayerFilter::NotYou => {
-            "your opponents' graveyards".to_string()
-        }
+        PlayerFilter::Opponent | PlayerFilter::NotYou => "your opponents' graveyards".to_string(),
         PlayerFilter::Any => "all graveyards".to_string(),
         PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::Opponent) => {
             "target opponent's graveyard".to_string()
@@ -617,9 +615,9 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
             if ability == "\"This token can't block.\"" {
                 return true;
             }
-            ability
-                .to_ascii_lowercase()
-                .starts_with("\"this token saddles mounts and crews vehicles as though its power were ")
+            ability.to_ascii_lowercase().starts_with(
+                "\"this token saddles mounts and crews vehicles as though its power were ",
+            )
         }
         _ => false,
     }
@@ -4828,8 +4826,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return format!("Whenever this or another {rest}");
     }
     if let Some(rest) = normalized.strip_prefix("When this creature enters or a ")
-        && let Some((subject, effect_clause)) =
-            rest.split_once(" you control other than this is put into a graveyard from the battlefield,")
+        && let Some((subject, effect_clause)) = rest.split_once(
+            " you control other than this is put into a graveyard from the battlefield,",
+        )
     {
         return format!(
             "When this creature enters and whenever another {subject} you control is put into a graveyard from the battlefield,{effect_clause}"
@@ -8813,7 +8812,9 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    let adds_artifact_type = card_types.iter().any(|card_type| *card_type == CardType::Artifact);
+    let adds_artifact_type = card_types
+        .iter()
+        .any(|card_type| *card_type == CardType::Artifact);
     let target_is_guaranteed_artifact = effect
         .target_spec
         .as_ref()
@@ -8835,8 +8836,10 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
     let tail = describe_apply_continuous_tail(effect);
-    let inline_still_land =
-        preserves_land_types && !render_as_addition_to_other_types && !plural_target && target_text == "target land";
+    let inline_still_land = preserves_land_types
+        && !render_as_addition_to_other_types
+        && !plural_target
+        && target_text == "target land";
     match &tail {
         Some(tail) if inline_still_land => {
             text.push_str(" that's still a land");
@@ -9392,7 +9395,10 @@ fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) 
         let mut bare = filter.clone();
         bare.subtypes.clear();
         if bare == ObjectFilter::default() {
-            return Some(format!("{subject} is {}", with_indefinite_article(&subtype)));
+            return Some(format!(
+                "{subject} is {}",
+                with_indefinite_article(&subtype)
+            ));
         }
     }
 
@@ -9401,7 +9407,10 @@ fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) 
         let mut bare = filter.clone();
         bare.card_types.clear();
         if bare == ObjectFilter::default() {
-            return Some(format!("{subject} is {}", with_indefinite_article(&card_type)));
+            return Some(format!(
+                "{subject} is {}",
+                with_indefinite_article(&card_type)
+            ));
         }
     }
 
@@ -11738,7 +11747,10 @@ mod tests {
             ObjectFilter::default().with_subtype(crate::types::Subtype::Human),
         );
 
-        assert_eq!(describe_condition(&condition), "equipped creature is a human");
+        assert_eq!(
+            describe_condition(&condition),
+            "equipped creature is a human"
+        );
     }
 
     #[test]

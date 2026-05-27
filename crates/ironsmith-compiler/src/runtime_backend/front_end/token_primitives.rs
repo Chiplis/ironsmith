@@ -647,9 +647,7 @@ fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<T
 
 fn turn_duration_from_suffix_phrase(phrase: &[&str]) -> Option<TurnDurationPhrase> {
     match phrase {
-        ["until", "your", "next", "turn"] => {
-            Some(TurnDurationPhrase::UntilYourNextTurn)
-        }
+        ["until", "your", "next", "turn"] => Some(TurnDurationPhrase::UntilYourNextTurn),
         ["until", "the", "end", "of", "your", "next", "turn"]
         | ["until", "end", "of", "your", "next", "turn"] => {
             Some(TurnDurationPhrase::UntilYourNextTurnEnd)

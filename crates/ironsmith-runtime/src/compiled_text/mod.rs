@@ -827,8 +827,7 @@ mod tests {
             lines,
             vec![
                 "Equipped creature has first strike.".to_string(),
-                "Equipped creature gets +1/+1 as long as equipped creature is a human."
-                    .to_string(),
+                "Equipped creature gets +1/+1 as long as equipped creature is a human.".to_string(),
             ]
         );
     }

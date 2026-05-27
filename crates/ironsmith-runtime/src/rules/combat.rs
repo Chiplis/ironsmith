@@ -401,7 +401,9 @@ pub fn minimum_blockers(attacker: &Object) -> usize {
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability) => static_ability.minimum_blockers(),
+            crate::ability::AbilityKind::Static(static_ability) => {
+                static_ability.minimum_blockers()
+            }
             _ => None,
         })
         .max()
@@ -1534,7 +1536,10 @@ mod tests {
 
         let mut attacker = make_creature("Bog Raider", 2, 2);
         attacker.owner = alice;
-        add_ability(&mut attacker, StaticAbility::landwalk(crate::types::Subtype::Swamp));
+        add_ability(
+            &mut attacker,
+            StaticAbility::landwalk(crate::types::Subtype::Swamp),
+        );
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.owner = bob;
@@ -1547,10 +1552,12 @@ mod tests {
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
         quagmire.card_types = vec![CardType::Enchantment];
-        quagmire.abilities.push(Ability::static_ability(StaticAbility::remove_ability(
-            crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
-            StaticAbility::landwalk(crate::types::Subtype::Swamp),
-        )));
+        quagmire
+            .abilities
+            .push(Ability::static_ability(StaticAbility::remove_ability(
+                crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
+                StaticAbility::landwalk(crate::types::Subtype::Swamp),
+            )));
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());
@@ -1576,10 +1583,12 @@ mod tests {
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
         quagmire.card_types = vec![CardType::Enchantment];
-        quagmire.abilities.push(Ability::static_ability(StaticAbility::remove_ability(
-            crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
-            StaticAbility::landwalk(crate::types::Subtype::Swamp),
-        )));
+        quagmire
+            .abilities
+            .push(Ability::static_ability(StaticAbility::remove_ability(
+                crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
+                StaticAbility::landwalk(crate::types::Subtype::Swamp),
+            )));
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());

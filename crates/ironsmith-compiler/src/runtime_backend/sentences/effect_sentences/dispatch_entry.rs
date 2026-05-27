@@ -2607,7 +2607,10 @@ pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAs
 pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
     fn should_replace_self_replacement_target(effect_target: &TargetAst) -> bool {
         target_references_it(effect_target)
-            || matches!(effect_target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
+            || matches!(
+                effect_target,
+                TargetAst::Tagged(_, _) | TargetAst::Source(_)
+            )
     }
 
     match effect {
