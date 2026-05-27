@@ -4951,6 +4951,148 @@ fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_experiment_twelve_puts_counters_when_itself_is_turned_face_up() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::{LegalAction, SelectFirstDecisionMaker};
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::special_actions::TurnFaceUpMethod;
+    use crate::static_abilities::StaticAbility;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let experiment = CardDefinitionBuilder::new(CardId::new(), "Experiment Twelve")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)], vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Trample\nWhenever this creature or another creature you control is turned face up, put +1/+1 counters on that creature equal to its power.\nDisguise {4}{G}",
+        )
+        .expect("Experiment Twelve should parse for runtime test");
+
+    let experiment_id = game.create_object_from_definition(&experiment, alice, Zone::Battlefield);
+    game.object_mut(experiment_id)
+        .expect("Experiment Twelve permanent should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::morph(
+            crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
+        )));
+    game.set_face_down(experiment_id);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id: experiment_id,
+        method: TurnFaceUpMethod::TurnFaceUpAbility,
+    });
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &response,
+        &mut dm,
+    )
+    .expect("turning Experiment Twelve face up should succeed");
+
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Experiment Twelve trigger");
+    }
+
+    let experiment_obj = game
+        .object(experiment_id)
+        .expect("Experiment Twelve should remain on battlefield");
+    assert_eq!(experiment_obj.power(), Some(8));
+    assert_eq!(experiment_obj.toughness(), Some(8));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_experiment_twelve_puts_counters_on_another_turned_face_up_creature() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::{LegalAction, SelectFirstDecisionMaker};
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::special_actions::TurnFaceUpMethod;
+    use crate::static_abilities::StaticAbility;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let experiment = CardDefinitionBuilder::new(CardId::new(), "Experiment Twelve")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)], vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Trample\nWhenever this creature or another creature you control is turned face up, put +1/+1 counters on that creature equal to its power.\nDisguise {4}{G}",
+        )
+        .expect("Experiment Twelve should parse for runtime test");
+    game.create_object_from_definition(&experiment, alice, Zone::Battlefield);
+
+    let morph_probe = CardDefinitionBuilder::new(CardId::new(), "Face-Up Counter Target")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let morph_id = game.create_object_from_definition(&morph_probe, alice, Zone::Battlefield);
+    game.object_mut(morph_id)
+        .expect("morph target permanent should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::morph(
+            crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
+        )));
+    game.set_face_down(morph_id);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id: morph_id,
+        method: TurnFaceUpMethod::TurnFaceUpAbility,
+    });
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &response,
+        &mut dm,
+    )
+    .expect("turning the other creature face up should succeed");
+
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Experiment Twelve trigger");
+    }
+
+    let morph_obj = game
+        .object(morph_id)
+        .expect("morph target should remain on battlefield");
+    assert_eq!(morph_obj.power(), Some(7));
+    assert_eq!(morph_obj.toughness(), Some(7));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::CardId;

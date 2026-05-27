@@ -314,9 +314,29 @@ fn parse_put_counter_count_value(
         )));
     }
 
-    parse_value(tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause))
-    })
+    if parse_counter_type_from_tokens(tokens).is_some()
+        && let Some(on_idx) = find_token_index(tokens, |token| token.is_word("on"))
+    {
+        let on_tail = trim_commas(&tokens[on_idx + 1..]);
+        if let Some(equal_idx) = find_token_index(&on_tail, |token| token.is_word("equal"))
+            && on_tail
+                .get(equal_idx + 1)
+                .is_some_and(|token| token.is_word("to"))
+        {
+            let value_tokens = trim_commas(&on_tail[equal_idx + 2..]);
+            if let Some((value, used)) = parse_value(&value_tokens)
+                && used == value_tokens.len()
+            {
+                return Ok((value, 0));
+            }
+            if let Some(value) = parse_named_source_power_value(&value_tokens) {
+                return Ok((value, 0));
+            }
+        }
+    }
+
+    parse_value(tokens)
+        .ok_or_else(|| CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause)))
 }
 
 fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {
