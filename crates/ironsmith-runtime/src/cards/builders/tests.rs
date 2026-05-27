@@ -1398,10 +1398,21 @@ fn test_parse_leonardo_the_balance_strictly_parses_character_select_partner_line
         )
         .expect("Leonardo, the Balance should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lines = unprocessed_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    let debug = format!("{:#?}", def);
     assert!(
-        rendered.contains("Partner") && rendered.contains("Do this only once each turn"),
-        "expected Leonardo output to include partner and once-per-turn limiter, got {rendered}"
+        rendered_lines
+            .iter()
+            .any(|line| line.starts_with("Partner—Character select"))
+            && rendered.contains("Do this only once each turn")
+            && rendered.contains("Creatures you control gain menace")
+            && rendered.contains("gain trample")
+            && rendered.contains("gain lifelink until end of turn")
+            && debug.contains("id: Some(\n                            Partner,")
+            && debug.contains("DoThisMaxTimesEachTurn")
+            && !debug.contains("id: Some(\n                            PartnerWith,"),
+        "expected Leonardo output to preserve the partner variant label and keep once-per-turn and grant semantics, got rendered={rendered}; debug={debug}"
     );
 }
 

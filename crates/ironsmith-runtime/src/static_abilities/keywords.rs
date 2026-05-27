@@ -114,6 +114,33 @@ define_keyword!(Flanking, Flanking, "Flanking");
 define_keyword!(Partner, Partner, "Partner");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartnerVariant {
+    display: String,
+}
+
+impl PartnerVariant {
+    pub fn new(display: impl AsRef<str>) -> Self {
+        Self {
+            display: display.as_ref().trim().to_string(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PartnerVariant {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Partner
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartnerWith {
     display: String,
 }

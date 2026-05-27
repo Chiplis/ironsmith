@@ -613,7 +613,14 @@ pub(super) fn run_partner_variant_keyword_line_family(
     }
 
     let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
-    if let Some(keyword_line) = parse_keyword_line_cst(&partner_line)? {
+    if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
+        let visible_label = raw
+            .split_once('(')
+            .map(|(head, _)| head)
+            .unwrap_or(raw)
+            .trim()
+            .to_string();
+        keyword_line.text = visible_label;
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Keyword(keyword_line),
             ctx.idx + 1,
