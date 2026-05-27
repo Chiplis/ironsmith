@@ -8502,6 +8502,29 @@ fn is_up_to_land_subtype_target(spec: &ChooseSpec) -> bool {
         && filter.controller.is_none()
 }
 
+fn choose_spec_guarantees_artifact(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => {
+            hints.iter().any(|hint| {
+                matches!(
+                    hint,
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType(text)
+                    ) if text.eq_ignore_ascii_case("this artifact")
+                )
+            }) || choose_spec_guarantees_artifact(spec)
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            choose_spec_guarantees_artifact(inner)
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.card_types.contains(&CardType::Artifact)
+                && !filter.excluded_card_types.contains(&CardType::Artifact)
+        }
+        _ => false,
+    }
+}
+
 fn plural_non_target_land_animation_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
@@ -8643,9 +8666,12 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    let target_mentions_artifact = target_text.to_ascii_lowercase().contains("artifact");
     let adds_artifact_type = card_types.iter().any(|card_type| *card_type == CardType::Artifact);
-    let artifact_type_is_redundant = target_mentions_artifact && adds_artifact_type;
+    let target_is_guaranteed_artifact = effect
+        .target_spec
+        .as_ref()
+        .is_some_and(choose_spec_guarantees_artifact);
+    let artifact_type_is_redundant = target_is_guaranteed_artifact && adds_artifact_type;
     let render_as_addition_to_other_types =
         (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
             || (preserves_land_types
