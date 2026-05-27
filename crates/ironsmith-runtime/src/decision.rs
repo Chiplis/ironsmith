@@ -4657,6 +4657,50 @@ mod tests {
     }
 
     #[test]
+    fn test_aloe_alchemist_plot_records_plot_keyword_action_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Green, 2);
+
+        let def = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(783), "Aloe Alchemist")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Trample\nWhen this card becomes plotted, target creature gets +3/+2 and gains trample until end of turn.\nPlot {1}{G} (You may pay {1}{G} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)",
+            )
+            .expect("Aloe Alchemist oracle text should parse");
+        let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        crate::special_actions::perform(
+            crate::special_actions::SpecialAction::Plot { card_id },
+            &mut game,
+            alice,
+            &mut dm,
+        )
+        .expect("Aloe Alchemist plot special action should resolve");
+
+        let exiled_id = *game.exile.first().expect("Aloe Alchemist should be in exile");
+        assert!(
+            game.object_performed_keyword_action_this_turn(
+                exiled_id,
+                crate::events::KeywordActionKind::Plot,
+            ),
+            "plotting Aloe Alchemist should record a plot keyword action event"
+        );
+    }
+
+    #[test]
     fn test_spectacle_condition_controls_alternative_cast_legality() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -992,6 +992,45 @@ fn compile_oracle_text_strictly_compiles_aunt_may_from_workspace_cards() {
 }
 
 #[test]
+fn compile_oracle_text_strictly_compiles_aloe_alchemist_from_workspace_cards() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+    assert!(
+        cards_path.exists(),
+        "expected workspace cards.json at {cards_path:?}"
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Aloe Alchemist")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --name Aloe Alchemist --compare-text");
+
+    assert!(
+        output.status.success(),
+        "Aloe Alchemist should compile strictly, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(stdout.contains("Name: Aloe Alchemist"), "{stdout}");
+    assert!(stdout.contains("Similarity:"), "{stdout}");
+    assert!(
+        stdout.contains("When this card becomes plotted")
+            && stdout.contains("target creature gets +3/+2 and gains trample until end of turn"),
+        "expected plotted trigger and buff clause in compiled comparison output, got {stdout}"
+    );
+}
+
+#[test]
 fn compile_oracle_text_strictly_compiles_zagoth_mamba_from_workspace_cards() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

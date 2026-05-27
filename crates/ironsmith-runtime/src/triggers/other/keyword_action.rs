@@ -187,6 +187,14 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => "Whenever a player cycles this card".to_string(),
             };
         }
+        if self.source_must_match && self.action == KeywordActionKind::Plot {
+            return match &self.player {
+                PlayerFilter::You => "When this card becomes plotted".to_string(),
+                PlayerFilter::Opponent => "When this card becomes plotted by an opponent".to_string(),
+                PlayerFilter::Any => "When this card becomes plotted".to_string(),
+                _ => "When this card becomes plotted".to_string(),
+            };
+        }
         if self.source_must_match && self.action == KeywordActionKind::Exploit {
             return "Whenever this creature exploits a creature".to_string();
         }
@@ -414,6 +422,12 @@ mod tests {
             ObjectFilter::default().other(),
         );
         assert_eq!(trigger.display(), "Whenever you cycle another card");
+    }
+
+    #[test]
+    fn keyword_action_plot_from_source_display_phrase() {
+        let trigger = KeywordActionTrigger::from_source(KeywordActionKind::Plot, PlayerFilter::You);
+        assert_eq!(trigger.display(), "When this card becomes plotted");
     }
 
     #[test]

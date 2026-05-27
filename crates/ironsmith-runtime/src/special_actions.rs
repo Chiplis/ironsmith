@@ -12,6 +12,7 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::decisions::{DisplayOption, specs::ChoiceSpec};
 use crate::effects::ExecutionContext;
 use crate::events::cause::EventCause;
+use crate::events::other::KeywordActionEvent;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::{EventOutcome, execute_discard};
 use crate::filter::ObjectFilterExt as _;
@@ -1089,6 +1090,15 @@ fn perform_plot(
         )
         .ok_or(ActionError::ObjectNotFound)?;
     game.set_plotted(new_id, player);
+    let event_provenance =
+        game.alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
+    game.queue_trigger_event(
+        action_provenance,
+        TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(crate::events::KeywordActionKind::Plot, player, new_id, 1),
+            event_provenance,
+        ),
+    );
     Ok(())
 }
 

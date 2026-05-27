@@ -2048,6 +2048,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         });
     }
 
+    if words.as_slice() == ["this", "card", "becomes", "plotted"]
+        || words.as_slice() == ["this", "becomes", "plotted"]
+        || words.as_slice() == ["becomes", "plotted"]
+    {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::Plot,
+            player: PlayerFilter::You,
+        });
+    }
+
     if words.len() == 3
         && words[0] == "you"
         && words[1] == "expend"
