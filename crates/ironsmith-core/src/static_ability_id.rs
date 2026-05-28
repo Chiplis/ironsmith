@@ -216,6 +216,7 @@ pub enum StaticAbilityId {
     DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
+    ConditionalDrawReplacement,
     KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
     ExileToExileInsteadOfGraveyard,
@@ -460,6 +461,7 @@ impl StaticAbilityId {
             | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary
+            | ConditionalDrawReplacement
             | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard
             | ExileToExileInsteadOfGraveyard

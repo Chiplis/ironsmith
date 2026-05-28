@@ -2735,6 +2735,18 @@ impl StaticAbility {
         Self::new(DrawReplacementSkipEmptyLibrary)
     }
 
+    pub fn conditional_draw_replacement(
+        condition: crate::effect::Condition,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ConditionalDrawReplacement::new(
+            condition,
+            replacement_effects,
+            display,
+        ))
+    }
+
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
         Self::new(DrawReplacementExileTopAndPlay::new(count))
     }

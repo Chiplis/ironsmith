@@ -106,7 +106,7 @@ use crate::color::{Color, ColorSet};
 #[allow(unused_imports)]
 use crate::cost::TotalCost;
 #[allow(unused_imports)]
-use crate::effect::{Effect, EventValueSpec, Value};
+use crate::effect::{Condition, Effect, EventValueSpec, Value};
 #[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
 #[allow(unused_imports)]
@@ -607,6 +607,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_exile_top_and_play_line),
+        single_static_ability_ast_rule!(parse_conditional_draw_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
@@ -8267,6 +8268,106 @@ pub(crate) fn parse_draw_replacement_skip_empty_library_line(
     }
 
     Ok(None)
+}
+
+fn parse_conditional_draw_replacement_amount(word: &str) -> Option<u32> {
+    word.parse::<u32>()
+        .ok()
+        .or_else(|| parse_named_number(word))
+}
+
+pub(crate) fn parse_conditional_draw_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let draw_subject_len = if slice_starts_with(
+        &words,
+        &["if", "you", "would", "draw", "a", "card", "while"],
+    ) {
+        7
+    } else if slice_starts_with(
+        &words,
+        &["if", "you", "would", "draw", "card", "while"],
+    ) {
+        6
+    } else {
+        return Ok(None);
+    };
+
+    let Some(instead_idx) = find_index(&words[draw_subject_len..], |word| *word == "instead")
+    else {
+        return Ok(None);
+    };
+    let instead_idx = draw_subject_len + instead_idx;
+    if words[draw_subject_len..instead_idx] != ["you", "have", "no", "cards", "in", "hand"] {
+        return Ok(None);
+    }
+
+    let effect_words = &words[instead_idx + 1..];
+    let draw_idx = if effect_words.first().copied() == Some("you") {
+        1
+    } else {
+        0
+    };
+    if effect_words.get(draw_idx).copied() != Some("draw") {
+        return Ok(None);
+    }
+    let Some(draw_count_word) = effect_words.get(draw_idx + 1).copied() else {
+        return Ok(None);
+    };
+    let Some(draw_count) = parse_conditional_draw_replacement_amount(draw_count_word) else {
+        return Ok(None);
+    };
+    if !matches!(effect_words.get(draw_idx + 2).copied(), Some("card" | "cards")) {
+        return Ok(None);
+    }
+
+    let mut next_idx = draw_idx + 3;
+    if effect_words.get(next_idx).copied() == Some("instead") {
+        next_idx += 1;
+    }
+
+    let mut replacement_effects = vec![Effect::draw(draw_count as i32)];
+    let mut life_loss = None;
+    if next_idx < effect_words.len() {
+        let tail = &effect_words[next_idx..];
+        if tail.len() != 5
+            || tail[0] != "and"
+            || tail[1] != "you"
+            || tail[2] != "lose"
+            || tail[4] != "life"
+        {
+            return Ok(None);
+        }
+        let Some(amount) = parse_conditional_draw_replacement_amount(tail[3]) else {
+            return Ok(None);
+        };
+        life_loss = Some(amount);
+        replacement_effects.push(Effect::lose_life(amount as i32));
+    }
+
+    let draw_amount_text = match draw_count {
+        1 => "a".to_string(),
+        2 => "two".to_string(),
+        3 => "three".to_string(),
+        4 => "four".to_string(),
+        5 => "five".to_string(),
+        _ => draw_count.to_string(),
+    };
+    let draw_card_text = if draw_count == 1 { "card" } else { "cards" };
+    let mut display = format!(
+        "If you would draw a card while you have no cards in hand, instead you draw {draw_amount_text} {draw_card_text}"
+    );
+    if let Some(amount) = life_loss {
+        display.push_str(&format!(" and you lose {amount} life"));
+    }
+    display.push('.');
+
+    Ok(Some(StaticAbility::conditional_draw_replacement(
+        Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
+        replacement_effects,
+        display,
+    )))
 }
 
 fn keyword_action_replacement_subject_explores(words: &[&str]) -> bool {
