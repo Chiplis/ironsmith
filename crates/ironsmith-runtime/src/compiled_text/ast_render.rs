@@ -475,9 +475,80 @@ fn describe_single_self_replacement_segment(
     {
         return Some(damage_text);
     }
+    if let Some(counter_unless_text) = describe_counter_unless_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &condition_text,
+    ) {
+        return Some(counter_unless_text);
+    }
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
+    ))
+}
+
+fn unwrap_tagged_effect(mut effect: &Effect) -> &Effect {
+    while let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        effect = &tagged.effect;
+    }
+    effect
+}
+
+fn counter_effect_target(effect: &Effect) -> Option<&ChooseSpec> {
+    unwrap_tagged_effect(effect)
+        .downcast_ref::<crate::effects::CounterEffect>()
+        .map(|counter| &counter.target)
+}
+
+fn unless_pays_counter_target(effect: &Effect) -> Option<&ChooseSpec> {
+    let unless_pays = unwrap_tagged_effect(effect)
+        .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let [counter_effect] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    counter_effect_target(counter_effect)
+}
+
+fn counter_replacement_referent(target: &ChooseSpec) -> Option<&'static str> {
+    let target_text = super::normalize_common::describe_choose_spec(target).to_ascii_lowercase();
+    if target_text.contains(" spell or ability") || target_text.contains(" ability or spell") {
+        Some("that spell or ability")
+    } else if target_text.contains(" ability") && !target_text.contains(" spell") {
+        Some("that ability")
+    } else if target_text.contains(" spell") {
+        Some("that spell")
+    } else {
+        None
+    }
+}
+
+fn describe_counter_unless_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let [default_effect] = default_effects else {
+        return None;
+    };
+    let replacement_counter_target = counter_effect_target(replacement_effects.first()?)?;
+    let default_counter_target = unless_pays_counter_target(default_effect)?;
+    if replacement_counter_target != default_counter_target {
+        return None;
+    }
+
+    let referent = counter_replacement_referent(default_counter_target)?;
+    let mut replacement_text = format!("instead counter {referent}");
+    if replacement_effects.len() > 1 {
+        let followup_text = describe_effect_list(&replacement_effects[1..]);
+        replacement_text.push_str(", then ");
+        replacement_text.push_str(&super::normalize_common::lowercase_first(&followup_text));
+    }
+
+    Some(format!(
+        "{default_text}. If {condition_text}, {replacement_text}"
     ))
 }
 

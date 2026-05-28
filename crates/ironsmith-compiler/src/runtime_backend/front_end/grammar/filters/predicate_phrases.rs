@@ -424,6 +424,13 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     }
 }
 
+fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
+    match player {
+        PlayerAst::You | PlayerAst::Implicit => possessive == "your",
+        _ => possessive == "their",
+    }
+}
+
 fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
     if matches!(
         words,
@@ -1691,6 +1698,29 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         {
             return Ok(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
         }
+    }
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
+        && let Some(count_word) = filtered.get(subject_len + 1).copied()
+        && let Some(count) = count_word
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(count_word).map(|n| n as i32))
+        && filtered.get(subject_len + 2).copied() == Some("or")
+        && filtered.get(subject_len + 3).copied() == Some("more")
+        && matches!(filtered.get(subject_len + 4).copied(), Some("card" | "cards"))
+        && filtered.get(subject_len + 5).copied() == Some("in")
+        && let Some(possessive) = filtered.get(subject_len + 6).copied()
+        && graveyard_possessive_matches_subject(player, possessive)
+        && filtered.get(subject_len + 7).copied() == Some("graveyard")
+        && filtered.len() == subject_len + 8
+        && let Some(player_filter) = player_filter_for_turn_value(player)
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::CardsInGraveyard(player_filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
+        });
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && matches!(

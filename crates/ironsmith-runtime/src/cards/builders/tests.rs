@@ -38639,6 +38639,276 @@ fn parse_oracle_stubborn_denial_ferocious_counters_without_payment() {
     );
 }
 
+fn add_graveyard_filler(game: &mut crate::game_state::GameState, player: PlayerId, count: usize) {
+    for idx in 0..count {
+        let filler =
+            crate::card::CardBuilder::new(CardId::new(), format!("Graveyard Filler {idx}"))
+                .card_types(vec![CardType::Instant])
+                .build();
+        game.create_object_from_card(&filler, player, Zone::Graveyard);
+    }
+}
+
+#[test]
+fn parse_oracle_anticognition_strictly_parses_and_renders_threshold_replacement() {
+    let def = parse_oracle_card_definition("Anticognition");
+
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    assert_eq!(program.segments.len(), 1);
+    assert_eq!(program.segments[0].default_effects.len(), 1);
+    assert_eq!(program.segments[0].self_replacements.len(), 1);
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Counter target creature or planeswalker spell unless its controller pays {2}. If an opponent has eight or more cards in their graveyard, instead counter that spell, then scry 2"
+        ),
+        "expected Anticognition threshold replacement and scry wording, got {rendered}"
+    );
+
+    let debug = format!("{program:?}");
+    assert!(
+        debug.contains("CardsInGraveyard")
+            && debug.contains("Opponent")
+            && debug.contains("Fixed(8)")
+            && debug.contains("ScryEffect"),
+        "expected Anticognition to lower the opponent graveyard threshold and scry structurally, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_anticognition_targets_only_creature_or_planeswalker_spells() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let creature_spell = crate::card::CardBuilder::new(CardId::new(), "Bob Creature Spell")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_id = game.create_object_from_card(&creature_spell, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(creature_id, bob));
+
+    let planeswalker_spell = crate::card::CardBuilder::new(CardId::new(), "Bob Planeswalker Spell")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+    let planeswalker_id = game.create_object_from_card(&planeswalker_spell, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(planeswalker_id, bob));
+
+    let instant_spell = crate::card::CardBuilder::new(CardId::new(), "Bob Instant Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id = game.create_object_from_card(&instant_spell, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(instant_id, bob));
+
+    let anticognition = parse_oracle_card_definition("Anticognition");
+    let anticognition_id = game.create_object_from_definition(&anticognition, alice, Zone::Stack);
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        anticognition.spell_effect.as_ref().expect("spell effect"),
+        alice,
+        Some(anticognition_id),
+        None,
+    );
+    let legal_targets = requirements
+        .first()
+        .expect("Anticognition should require a target")
+        .legal_targets
+        .clone();
+
+    assert!(
+        legal_targets.contains(&crate::game_state::Target::Object(creature_id)),
+        "creature spells should be legal Anticognition targets"
+    );
+    assert!(
+        legal_targets.contains(&crate::game_state::Target::Object(planeswalker_id)),
+        "planeswalker spells should be legal Anticognition targets"
+    );
+    assert!(
+        !legal_targets.contains(&crate::game_state::Target::Object(instant_id)),
+        "noncreature nonplaneswalker spells should not be legal Anticognition targets"
+    );
+}
+
+#[test]
+fn parse_oracle_anticognition_under_threshold_lets_target_controller_pay() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_graveyard_filler(&mut game, bob, 7);
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Creature Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    let target_stable_id = game
+        .object(target_id)
+        .expect("target spell should exist")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let anticognition = parse_oracle_card_definition("Anticognition");
+    let anticognition_id = game.create_object_from_definition(&anticognition, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(anticognition_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)]),
+    );
+
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Anticognition should resolve");
+
+    let target_after = game
+        .find_object_by_stable_id(target_stable_id)
+        .expect("target spell should still be tracked");
+    assert_eq!(
+        game.object(target_after).expect("target spell exists").zone,
+        Zone::Stack,
+        "below threshold, Bob should be able to pay {{2}} and keep the target spell on the stack"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "Bob should spend the {{2}} prevention payment"
+    );
+}
+
+#[test]
+fn parse_oracle_anticognition_threshold_counters_without_payment_and_scries() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_graveyard_filler(&mut game, bob, 8);
+
+    for name in ["Alice Top Card", "Alice Second Card"] {
+        let card = crate::card::CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Creature Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    let target_stable_id = game
+        .object(target_id)
+        .expect("target spell should exist")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let anticognition = parse_oracle_card_definition("Anticognition");
+    let anticognition_id = game.create_object_from_definition(&anticognition, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(anticognition_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)]),
+    );
+
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Anticognition should resolve");
+
+    let target_after = game
+        .find_object_by_stable_id(target_stable_id)
+        .expect("countered target spell should still be tracked");
+    assert_eq!(
+        game.object(target_after).expect("target spell exists").zone,
+        Zone::Graveyard,
+        "eight-card opponent graveyard threshold should replace the payment branch with an unconditional counter"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        2,
+        "threshold replacement should not offer or spend the {{2}} prevention payment"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        2,
+        "threshold branch should execute scry 2 without moving cards out of Alice's library"
+    );
+}
+
+#[test]
+fn parse_oracle_anticognition_multiplayer_checks_any_opponent_graveyard() {
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Carol".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    add_graveyard_filler(&mut game, bob, 8);
+    add_graveyard_filler(&mut game, carol, 3);
+
+    for name in ["Alice Top Card", "Alice Second Card"] {
+        let card = crate::card::CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Carol Creature Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, carol, Zone::Stack);
+    let target_stable_id = game
+        .object(target_id)
+        .expect("target spell should exist")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, carol));
+
+    let anticognition = parse_oracle_card_definition("Anticognition");
+    let anticognition_id = game.create_object_from_definition(&anticognition, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(anticognition_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)]),
+    );
+
+    game.player_mut(carol)
+        .expect("carol exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Anticognition should resolve in multiplayer");
+
+    let target_after = game
+        .find_object_by_stable_id(target_stable_id)
+        .expect("countered target spell should still be tracked");
+    assert_eq!(
+        game.object(target_after).expect("target spell exists").zone,
+        Zone::Graveyard,
+        "Anticognition should count any opponent's eight-card graveyard in multiplayer"
+    );
+    assert_eq!(
+        game.player(carol).expect("carol exists").mana_pool.total(),
+        2,
+        "threshold replacement should not offer or spend Carol's {{2}} prevention payment"
+    );
+}
+
 #[test]
 fn parse_oracle_future_replacement_followups_do_not_use_self_replacement_bridge() {
     for name in ["Faunsbane Troll", "Mawloc", "Nine-Ringed Bo"] {
