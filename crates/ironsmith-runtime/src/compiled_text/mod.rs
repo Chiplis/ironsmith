@@ -40,11 +40,11 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
-    normalize_ast_surface_lines(debug_compiled_lines(def))
+    normalize_ast_surface_lines(def, debug_compiled_lines(def))
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    normalize_ast_surface_lines(debug_compiled_lines(def))
+    normalize_ast_surface_lines(def, debug_compiled_lines(def))
 }
 
 /// Render a single ability using the same surface renderer as compiled oracle text.
@@ -55,7 +55,7 @@ pub fn ability_surface_text(ability: &Ability) -> String {
     self::render_effects::describe_inline_ability(ability)
 }
 
-fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
+fn normalize_ast_surface_lines(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     let lines: Vec<String> = lines
         .into_iter()
         .map(|line| normalize_common_semantic_phrasing(&line))
@@ -63,6 +63,7 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
     merge_ast_surface_lines(lines)
         .into_iter()
         .map(finalize_ast_surface_line)
+        .map(|line| rewrite_source_target_restriction_subject(def, &line))
         .flat_map(expand_finalized_ast_surface_line)
         .collect()
 }

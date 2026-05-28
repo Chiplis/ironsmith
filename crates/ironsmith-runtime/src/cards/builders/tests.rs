@@ -45384,3 +45384,196 @@ fn loot_the_key_to_everything_runtime_grants_play_permission_until_end_of_turn()
         "expected Loot play permission to allow lands as well as spells, got {debug}"
     );
 }
+
+#[test]
+fn parse_oracle_tetsuo_umezawa_strict_regression_and_compiled_text_clause() {
+    let def = parse_oracle_card_definition("Tetsuo Umezawa");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("can't be the target of aura spells"),
+        "expected Tetsuo Umezawa compiled text to preserve the Aura-spell target restriction, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("destroy target tapped or blocking creature"),
+        "expected Tetsuo Umezawa compiled text to preserve the activated destroy target clause, got {rendered}"
+    );
+}
+
+#[test]
+fn tetsuo_umezawa_runtime_aura_spell_target_restriction_blocks_any_controller() {
+    let def = parse_oracle_card_definition("Tetsuo Umezawa");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let bob = crate::ids::PlayerId::from_index(1);
+    let tetsuo_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+    game.update_cant_effects();
+
+    let aura_spell = CardDefinitionBuilder::new(CardId::new(), "Aura Spell Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let alice_aura =
+        game.create_object_from_definition(&aura_spell, alice, crate::zone::Zone::Stack);
+    let bob_aura = game.create_object_from_definition(&aura_spell, bob, crate::zone::Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(alice_aura, alice));
+    game.push_to_stack(crate::game_state::StackEntry::new(bob_aura, bob));
+
+    assert!(
+        matches!(
+            crate::targeting::can_target_object(&game, tetsuo_id, alice_aura, alice),
+            crate::targeting::TargetingResult::Invalid(
+                crate::targeting::TargetingInvalidReason::CantBeTargeted
+            )
+        ),
+        "Tetsuo Umezawa should not be targetable by its controller's Aura spells"
+    );
+    assert!(
+        matches!(
+            crate::targeting::can_target_object(&game, tetsuo_id, bob_aura, bob),
+            crate::targeting::TargetingResult::Invalid(
+                crate::targeting::TargetingInvalidReason::CantBeTargeted
+            )
+        ),
+        "Tetsuo Umezawa should not be targetable by opponents' Aura spells"
+    );
+}
+
+#[test]
+fn tetsuo_umezawa_runtime_target_restriction_allows_non_aura_spells() {
+    let def = parse_oracle_card_definition("Tetsuo Umezawa");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let bob = crate::ids::PlayerId::from_index(1);
+    let tetsuo_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+    game.update_cant_effects();
+
+    let instant_spell = CardDefinitionBuilder::new(CardId::new(), "Instant Probe")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id =
+        game.create_object_from_definition(&instant_spell, bob, crate::zone::Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(instant_id, bob));
+
+    assert!(
+        matches!(
+            crate::targeting::can_target_object(&game, tetsuo_id, instant_id, bob),
+            crate::targeting::TargetingResult::Legal { .. }
+        ),
+        "Tetsuo Umezawa's restriction should not block non-Aura spells"
+    );
+}
+
+#[test]
+fn tetsuo_umezawa_runtime_destroy_ability_requires_tapped_or_blocking_target() {
+    let def = parse_oracle_card_definition("Tetsuo Umezawa");
+    let destroy = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::DestroyEffect>()
+                        .cloned()
+                })
+        })
+        .expect("Tetsuo Umezawa should compile a destroy effect");
+
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let bob = crate::ids::PlayerId::from_index(1);
+    let tetsuo_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+    let tapped_target = CardDefinitionBuilder::new(CardId::new(), "Tapped Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let untapped_target = CardDefinitionBuilder::new(CardId::new(), "Untapped Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocking_target = CardDefinitionBuilder::new(CardId::new(), "Blocking Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacking_target = CardDefinitionBuilder::new(CardId::new(), "Attacking Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let tapped_id =
+        game.create_object_from_definition(&tapped_target, bob, crate::zone::Zone::Battlefield);
+    let untapped_id =
+        game.create_object_from_definition(&untapped_target, bob, crate::zone::Zone::Battlefield);
+    let blocking_id =
+        game.create_object_from_definition(&blocking_target, bob, crate::zone::Zone::Battlefield);
+    let attacking_id = game.create_object_from_definition(
+        &attacking_target,
+        alice,
+        crate::zone::Zone::Battlefield,
+    );
+    game.tap(tapped_id);
+
+    let mut valid_ctx = crate::effects::ExecutionContext::new_default(tetsuo_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(tapped_id)]);
+    let valid_outcome = destroy
+        .execute(&mut game, &mut valid_ctx)
+        .expect("destroying a tapped target should execute");
+    assert_eq!(valid_outcome.status, crate::effect::OutcomeStatus::Succeeded);
+    assert!(
+        game.objects_in_zone(crate::zone::Zone::Graveyard)
+            .iter()
+            .filter_map(|id| game.object(*id))
+        .any(|object| object.name == "Tapped Target"),
+        "Tetsuo Umezawa should destroy a tapped target creature"
+    );
+
+    let mut blockers = HashMap::new();
+    blockers.insert(attacking_id, vec![blocking_id]);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: attacking_id,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        blockers,
+        ..Default::default()
+    });
+
+    let mut blocking_ctx = crate::effects::ExecutionContext::new_default(tetsuo_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(blocking_id)]);
+    let blocking_outcome = destroy
+        .execute(&mut game, &mut blocking_ctx)
+        .expect("destroying a blocking target should execute");
+    assert_eq!(blocking_outcome.status, crate::effect::OutcomeStatus::Succeeded);
+    assert!(
+        game.objects_in_zone(crate::zone::Zone::Graveyard)
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .any(|object| object.name == "Blocking Target"),
+        "Tetsuo Umezawa should destroy an untapped blocking target creature"
+    );
+
+    let mut invalid_ctx = crate::effects::ExecutionContext::new_default(tetsuo_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(untapped_id)]);
+    let invalid_outcome = destroy
+        .execute(&mut game, &mut invalid_ctx)
+        .expect("invalid untapped target should be reported without panicking");
+    assert_eq!(
+        invalid_outcome.status,
+        crate::effect::OutcomeStatus::TargetInvalid,
+        "untapped nonblocking creature should not satisfy Tetsuo Umezawa's target restriction"
+    );
+    assert_eq!(
+        game.object(untapped_id)
+            .expect("untapped target should remain tracked")
+            .zone,
+        crate::zone::Zone::Battlefield,
+        "invalid target should remain on the battlefield"
+    );
+}

@@ -13,8 +13,30 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
     stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
         .into_iter()
         .map(|line| rewrite_self_exile_cost_source(def, &line))
+        .map(|line| rewrite_source_target_restriction_subject(def, &line))
         .map(RawRenderedLine)
         .collect()
+}
+
+pub(super) fn rewrite_source_target_restriction_subject(
+    def: &CardDefinition,
+    line: &str,
+) -> String {
+    if def.card.name.trim().is_empty() {
+        return line.to_string();
+    }
+
+    for prefix in [
+        "This creature can't be the target of ",
+        "This permanent can't be the target of ",
+        "This can't be the target of ",
+    ] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            return format!("{} can't be the target of {rest}", def.card.name);
+        }
+    }
+
+    line.to_string()
 }
 
 fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {

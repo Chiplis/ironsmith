@@ -119,6 +119,14 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 
+    if !game
+        .effect_store
+        .cant_effects
+        .can_target_object_from_source(game, target_id, source_id)
+    {
+        return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
+    }
+
     TargetingResult::legal()
 }
 
@@ -164,6 +172,14 @@ fn can_target_object_from_source_snapshot_with_view(
     }
 
     if game.is_untargetable(target_id) && game.controller_of(target) != caster {
+        return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
+    }
+
+    if !game
+        .effect_store
+        .cant_effects
+        .can_target_object_from_source_snapshot(game, target_id, source_snapshot)
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 

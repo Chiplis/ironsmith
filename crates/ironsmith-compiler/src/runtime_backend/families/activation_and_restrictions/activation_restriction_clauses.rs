@@ -1373,6 +1373,18 @@ pub(crate) fn parse_negated_object_restriction_clause(
             Restriction::phase_out(filter)
         }
         ["be", "targeted"] => Restriction::be_targeted(filter),
+        _ if slice_starts_with(&remainder_words, &["be", "the", "target", "of"])
+            && remainder_words.len() > 4 =>
+        {
+            let source_filter = parse_spell_restriction_subject_filter(&remainder_words[4..])
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported negated restriction target source (clause: '{}')",
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    ))
+                })?;
+            Restriction::be_targeted_by(filter, source_filter)
+        }
         _ if remainder_words.first() == Some(&"block") && remainder_words.len() > 1 => {
             let attacker_tokens = trim_commas(&remainder_tokens[1..]);
             let attacker_filter = parse_subject_object_filter(&attacker_tokens)?

@@ -1138,6 +1138,25 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::BeTargetedBy(target_filter, source_filter) => {
+                let candidate_ids = game
+                    .objects_in_zone(Zone::Battlefield)
+                    .into_iter()
+                    .chain(game.objects_in_zone(Zone::Stack));
+                for obj_id in candidate_ids {
+                    if let Some(obj) = game.object(obj_id)
+                        && target_filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_target_objects_from.push(
+                            crate::game_state::ObjectCantBeTargetedFrom {
+                                object: obj_id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
+                    }
+                }
+            }
             Restriction::BeTargetedPlayer(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

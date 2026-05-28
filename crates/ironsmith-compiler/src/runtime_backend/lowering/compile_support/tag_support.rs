@@ -1106,6 +1106,18 @@ pub(crate) fn restriction_references_tag(
             .any(|constraint| constraint.tag.as_str() == tag);
     }
 
+    if let Restriction::BeTargetedBy(target_filter, source_filter) = restriction {
+        let target_references = target_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag);
+        let source_references = source_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag);
+        return target_references || source_references;
+    }
+
     if let Restriction::BlockSpecificAttacker { blockers, attacker } = restriction {
         let blockers_reference = blockers
             .tagged_constraints

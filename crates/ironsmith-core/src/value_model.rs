@@ -291,6 +291,7 @@ pub enum Restriction {
     BeSacrificed(ObjectFilter),
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
+    BeTargetedBy(ObjectFilter, ObjectFilter),
     BeTargetedPlayer(PlayerFilter),
     BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
@@ -539,6 +540,10 @@ impl Restriction {
 
     pub fn be_targeted(filter: ObjectFilter) -> Self {
         Self::BeTargeted(filter)
+    }
+
+    pub fn be_targeted_by(target_filter: ObjectFilter, source_filter: ObjectFilter) -> Self {
+        Self::BeTargetedBy(target_filter, source_filter)
     }
 
     pub fn be_targeted_player(filter: PlayerFilter) -> Self {

@@ -644,6 +644,9 @@ pub struct CantEffectTracker {
     /// Players that can't be targeted by sources matching a filter.
     pub cant_target_players_from: Vec<PlayerCantBeTargetedFrom>,
 
+    /// Permanents that can't be targeted by sources matching a filter.
+    pub cant_target_objects_from: Vec<ObjectCantBeTargetedFrom>,
+
     /// Permanents that can't be countered while on the stack.
     /// Example: Vexing Shusher, Prowling Serpopard
     pub cant_be_countered: HashSet<ObjectId>,
@@ -660,6 +663,13 @@ pub struct CantEffectTracker {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerCantBeTargetedFrom {
     pub player: PlayerId,
+    pub source_filter: crate::target::ObjectFilter,
+    pub controller: PlayerId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectCantBeTargetedFrom {
+    pub object: ObjectId,
     pub source_filter: crate::target::ObjectFilter,
     pub controller: PlayerId,
 }
@@ -868,6 +878,8 @@ impl CantEffectTracker {
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
+        self.cant_target_objects_from
+            .extend(other.cant_target_objects_from.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
         self.cant_phase_out.extend(other.cant_phase_out);
@@ -910,6 +922,7 @@ impl CantEffectTracker {
         self.cant_be_targeted.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
+        self.cant_target_objects_from.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
         self.cant_phase_out.clear();
@@ -1211,6 +1224,46 @@ impl CantEffectTracker {
             }
             let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
             restriction.source_filter.matches(source, &filter_ctx, game)
+        })
+    }
+
+    /// Check if a permanent can be targeted by a specific source.
+    pub fn can_target_object_from_source(
+        &self,
+        game: &GameState,
+        object: ObjectId,
+        source_id: ObjectId,
+    ) -> bool {
+        let Some(source) = game.object(source_id) else {
+            return true;
+        };
+
+        !self.cant_target_objects_from.iter().any(|restriction| {
+            if restriction.object != object {
+                return false;
+            }
+            let mut filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
+            filter_ctx.caster = Some(game.controller_of(source));
+            restriction.source_filter.matches(source, &filter_ctx, game)
+        })
+    }
+
+    /// Check if a permanent can be targeted using a source's last known information.
+    pub fn can_target_object_from_source_snapshot(
+        &self,
+        game: &GameState,
+        object: ObjectId,
+        source_snapshot: &crate::snapshot::ObjectSnapshot,
+    ) -> bool {
+        !self.cant_target_objects_from.iter().any(|restriction| {
+            if restriction.object != object {
+                return false;
+            }
+            let mut filter_ctx = game.filter_context_for(restriction.controller, None);
+            filter_ctx.caster = Some(source_snapshot.controller);
+            restriction
+                .source_filter
+                .matches_snapshot(source_snapshot, &filter_ctx, game)
         })
     }
 

@@ -1733,6 +1733,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("card ins ", "cards in ")
         .replace("Card ins ", "Cards in ");
     normalized = normalized
+        .replace("tapped creature or blocking creature", "tapped or blocking creature")
+        .replace("Tapped creature or blocking creature", "Tapped or blocking creature");
+    normalized = normalized
+        .replace("target of aura spells", "target of Aura spells")
+        .replace("target of aura spell", "target of Aura spell");
+    normalized = normalized
         .replace(
             "If you control a creature with power 4 or greater, counter target noncreature spell instead",
             "If you control a creature with power 4 or greater, instead counter target noncreature spell",
@@ -9663,6 +9669,18 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())
+        }
+        crate::effect::Restriction::BeTargetedBy(target_filter, source_filter) => {
+            let subject = if target_filter.source
+                && target_filter.card_types.is_empty()
+                && target_filter.subtypes.is_empty()
+            {
+                "This".to_string()
+            } else {
+                capitalize_first(&target_filter.description())
+            };
+            let source = pluralize_noun_phrase(&source_filter.description()).replace("aura", "Aura");
+            format!("{subject} can't be the target of {source}")
         }
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))

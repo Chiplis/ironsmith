@@ -1209,6 +1209,33 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
+    if segments.len() > 1
+        && all_words
+            .iter()
+            .any(|word| matches!(*word, "creature" | "creatures"))
+        && segment_words_lists
+            .iter()
+            .any(|segment| segment.iter().any(|word| word == "tapped"))
+        && segment_words_lists
+            .iter()
+            .any(|segment| segment.iter().any(|word| word == "blocking"))
+    {
+        let mut base = filter.clone();
+        base.any_of.clear();
+        base.tapped = false;
+        base.blocking = false;
+
+        let mut tapped_branch = base.clone();
+        tapped_branch.tapped = true;
+
+        let mut blocking_branch = base;
+        blocking_branch.blocking = true;
+
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = vec![tapped_branch, blocking_branch];
+        filter = disjunction;
+    }
+
     let permanent_type_defaults = vec![
         CardType::Artifact,
         CardType::Creature,
