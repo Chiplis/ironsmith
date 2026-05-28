@@ -10143,6 +10143,67 @@ fn describe_counter_constraint_phrase(counter: crate::filter::CounterConstraint)
     }
 }
 
+fn describe_source_matches_keyword_condition(filter: &ObjectFilter) -> Option<String> {
+    if filter.static_abilities.len() != 1
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
+    {
+        return None;
+    }
+
+    let label = describe_source_condition_static_ability(filter.static_abilities[0])?;
+    let mut subject_filter = filter.clone();
+    subject_filter.static_abilities.clear();
+    let subject = subject_filter.description();
+    let subject = strip_leading_article(&subject);
+    if subject == "permanent" || subject == "source" {
+        Some(format!("this source has {label}"))
+    } else if subject.starts_with("this ") {
+        Some(format!("{subject} has {label}"))
+    } else {
+        Some(format!("this {subject} has {label}"))
+    }
+}
+
+fn describe_source_condition_static_ability(
+    ability_id: crate::static_abilities::StaticAbilityId,
+) -> Option<&'static str> {
+    use crate::static_abilities::StaticAbilityId::*;
+    match ability_id {
+        Flying => Some("flying"),
+        FirstStrike => Some("first strike"),
+        DoubleStrike => Some("double strike"),
+        Deathtouch => Some("deathtouch"),
+        Defender => Some("defender"),
+        Flash => Some("flash"),
+        Haste => Some("haste"),
+        Hexproof => Some("hexproof"),
+        Indestructible => Some("indestructible"),
+        Intimidate => Some("intimidate"),
+        Lifelink => Some("lifelink"),
+        Menace => Some("menace"),
+        Reach => Some("reach"),
+        Skulk => Some("skulk"),
+        Shroud => Some("shroud"),
+        Trample => Some("trample"),
+        Vigilance => Some("vigilance"),
+        Fear => Some("fear"),
+        Flanking => Some("flanking"),
+        Landwalk => Some("landwalk"),
+        Bloodthirst => Some("bloodthirst"),
+        Morph => Some("morph"),
+        Disguise => Some("disguise"),
+        Megamorph => Some("megamorph"),
+        Shadow => Some("shadow"),
+        Horsemanship => Some("horsemanship"),
+        Wither => Some("wither"),
+        Infect => Some("infect"),
+        Changeling => Some("changeling"),
+        _ => None,
+    }
+}
+
 pub(super) fn describe_condition(condition: &Condition) -> String {
     if let Some(compact) = describe_happily_ever_after_condition(condition) {
         return compact;
@@ -10717,6 +10778,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
+            if let Some(text) = describe_source_matches_keyword_condition(filter) {
+                return text;
+            }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
             if stripped == "permanent" {

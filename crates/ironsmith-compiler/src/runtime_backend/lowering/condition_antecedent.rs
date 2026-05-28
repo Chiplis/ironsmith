@@ -172,7 +172,12 @@ fn retarget_it_animation_target_to_source(target: &mut TargetAst) {
 
 pub(crate) fn retarget_it_animation_to_source(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::BecomeBasePtCreature { target, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
+        | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+        | SubjectVerbActionAst::GrantToTarget { target, .. }
+        | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
+        | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } =
+            &mut subject_verb.action
     {
         retarget_it_animation_target_to_source(target);
     }

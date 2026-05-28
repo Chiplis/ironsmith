@@ -35334,6 +35334,40 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[test]
+fn guardian_of_the_ages_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Guardian of the Ages");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Defender".to_string(),
+            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and gains trample.".to_string(),
+        ],
+        "Guardian of the Ages should render the source-keyword intervening-if clause"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Guardian of the Ages should have an attack trigger");
+    assert!(
+        matches!(
+            triggered.intervening_if.as_ref(),
+            Some(crate::ConditionExpr::SourceMatches(filter))
+                if filter.card_types.is_empty()
+                    && filter.static_abilities.as_slice() == [StaticAbilityId::Defender]
+        ),
+        "Guardian of the Ages should gate the trigger on the source having defender, got {:?}",
+        triggered.intervening_if
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_sporeweb_weaver_strict_regression() {

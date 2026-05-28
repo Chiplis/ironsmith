@@ -104,6 +104,29 @@ impl AttacksYouTrigger {
             .count();
         (count > 0).then_some(count as i32)
     }
+
+    fn singular_subject_description(&self) -> String {
+        let subject = self.filter.description();
+        let lower = subject.to_ascii_lowercase();
+        if lower.starts_with("a ")
+            || lower.starts_with("an ")
+            || lower.starts_with("the ")
+            || lower.starts_with("another ")
+            || lower.starts_with("this ")
+            || lower.starts_with("that ")
+            || lower.starts_with("target ")
+        {
+            return subject;
+        }
+
+        let first = lower.chars().next().unwrap_or('a');
+        let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+            "an"
+        } else {
+            "a"
+        };
+        format!("{article} {subject}")
+    }
 }
 
 impl TriggerMatcher for AttacksYouTrigger {
@@ -145,7 +168,7 @@ impl TriggerMatcher for AttacksYouTrigger {
         }
         format!(
             "Whenever {} attacks you or a planeswalker you control",
-            self.filter.description()
+            self.singular_subject_description()
         )
     }
 
