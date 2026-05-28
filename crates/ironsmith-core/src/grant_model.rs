@@ -1,5 +1,6 @@
 use crate::{
-    AlternativeCastingMethod, CardType, CostComponent, ManaCost, ObjectFilter, PlayerFilter, Zone,
+    AlternativeCastingMethod, CardType, CostComponent, ManaCost, ObjectFilter, PlayerFilter,
+    ThisSpellCostCondition, Zone,
 };
 
 pub trait GrantStaticAbility: Clone + PartialEq {
@@ -29,6 +30,8 @@ pub enum DerivedAlternativeCast<C> {
     GraveyardCastFromCardManaCost {
         additional_costs: Vec<C>,
         usage_limit: Option<GrantUsageLimit>,
+        condition: Option<ThisSpellCostCondition>,
+        exiles_after_resolution: bool,
     },
 }
 
@@ -90,6 +93,20 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
         Self::GraveyardCastFromCardManaCost {
             additional_costs,
             usage_limit: Some(GrantUsageLimit::OnceDuringEachOfYourTurns),
+            condition: None,
+            exiles_after_resolution: false,
+        }
+    }
+
+    pub fn graveyard_cast_from_cards_mana_cost_with_condition(
+        condition: ThisSpellCostCondition,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::GraveyardCastFromCardManaCost {
+            additional_costs: Vec::new(),
+            usage_limit: None,
+            condition: Some(condition),
+            exiles_after_resolution,
         }
     }
 }
@@ -178,6 +195,18 @@ where
         Self::DerivedAlternativeCast(
             DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost(
                 additional_costs,
+            ),
+        )
+    }
+
+    pub fn graveyard_cast_from_cards_mana_cost_with_condition(
+        condition: ThisSpellCostCondition,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::graveyard_cast_from_cards_mana_cost_with_condition(
+                condition,
+                exiles_after_resolution,
             ),
         )
     }
@@ -625,6 +654,8 @@ where
             DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                 additional_costs,
                 usage_limit,
+                condition,
+                exiles_after_resolution,
             },
         ) = &self.grantable
             && self.zone == Zone::Graveyard
@@ -642,6 +673,19 @@ where
                         .join(", ")
                 )
             };
+            if self.filter == ObjectFilter::source() {
+                let mut line = format!("{may_prefix} cast this card from your graveyard");
+                if let Some(condition) = condition
+                    && let Some(condition_text) = describe_cast_condition(condition)
+                {
+                    line.push_str(" as long as ");
+                    line.push_str(&condition_text);
+                }
+                if *exiles_after_resolution {
+                    line.push_str(". If you cast it this way and it would be put into your graveyard, exile it instead");
+                }
+                return line;
+            }
             let prefix = if matches!(
                 usage_limit,
                 Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
@@ -674,5 +718,15 @@ where
             zone_name(self.zone),
             self.grantable.display()
         )
+    }
+}
+
+fn describe_cast_condition(condition: &ThisSpellCostCondition) -> Option<String> {
+    match condition {
+        ThisSpellCostCondition::Always => None,
+        ThisSpellCostCondition::ConditionExpr { display, .. } => Some(display.clone()),
+        ThisSpellCostCondition::YourTurn => Some("it's your turn".to_string()),
+        ThisSpellCostCondition::NotYourTurn => Some("it isn't your turn".to_string()),
+        _ => Some("the condition is true".to_string()),
     }
 }

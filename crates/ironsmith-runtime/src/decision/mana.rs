@@ -1476,6 +1476,31 @@ pub(crate) fn can_cast_spell_with_context(
     };
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
+    if let Some(method) = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone()),
+        _ => spell.cast_alternative_method.clone(),
+    } && let Some(condition) = method.cast_condition()
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            game,
+            spell.id,
+            condition,
+            &[],
+        )
+    {
+        return false;
+    }
+
     let restrictions_started_at = PerfTimer::start();
     if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
@@ -1691,6 +1716,31 @@ pub(crate) fn can_cast_with_cost_with_context(
         None
     };
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
+
+    if let Some(method) = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method.clone()),
+        _ => spell.cast_alternative_method.clone(),
+    } && let Some(condition) = method.cast_condition()
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            game,
+            spell_id,
+            condition,
+            &[],
+        )
+    {
+        return false;
+    }
 
     let restrictions_started_at = PerfTimer::start();
     if violates_any_cant_cast_restriction(game, player, spell_for_checks) {

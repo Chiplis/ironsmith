@@ -158,7 +158,10 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 ))
             }
             Self::GraveyardCastFromCardManaCost {
-                additional_costs, ..
+                additional_costs,
+                usage_limit,
+                condition,
+                exiles_after_resolution,
             } => {
                 let mana_cost = card.mana_cost.clone()?;
                 if card.zone != Zone::Graveyard {
@@ -171,8 +174,14 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     "Cast from graveyard",
                     Zone::Graveyard,
                     TotalCost::from_costs(costs),
-                    Some(crate::static_abilities::ThisSpellCostCondition::YourTurn),
-                    false,
+                    condition.clone().or_else(|| {
+                        matches!(
+                            usage_limit,
+                            Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+                        )
+                        .then_some(crate::static_abilities::ThisSpellCostCondition::YourTurn)
+                    }),
+                    *exiles_after_resolution,
                 ))
             }
         }
@@ -182,8 +191,25 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::ThisSpellCostCondition;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
+
+    fn graveyard_card_object() -> Object {
+        let card = CardBuilder::new(CardId::from_raw(91_500), "Graveyard Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        Object::from_card(
+            ObjectId::from_raw(91_500),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Graveyard,
+        )
+    }
 
     #[test]
     fn test_grantable_display() {
@@ -273,6 +299,40 @@ mod tests {
             "grant zone already scopes graveyard land permissions"
         );
         assert_eq!(spec.display(), "You may play lands from your graveyard");
+    }
+
+    #[test]
+    fn test_once_during_your_turn_graveyard_cast_keeps_turn_condition() {
+        let method = DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+            additional_costs: Vec::new(),
+            usage_limit: Some(GrantUsageLimit::OnceDuringEachOfYourTurns),
+            condition: None,
+            exiles_after_resolution: false,
+        }
+        .materialize_for(&graveyard_card_object())
+        .expect("graveyard cast grant should produce an alternative method");
+
+        assert!(matches!(
+            method.cast_condition(),
+            Some(ThisSpellCostCondition::YourTurn)
+        ));
+        assert!(!method.exiles_after_resolution());
+    }
+
+    #[test]
+    fn test_explicit_graveyard_cast_condition_and_exile_are_preserved() {
+        let method = DerivedAlternativeCast::graveyard_cast_from_cards_mana_cost_with_condition(
+            ThisSpellCostCondition::NotYourTurn,
+            true,
+        )
+        .materialize_for(&graveyard_card_object())
+        .expect("conditional graveyard cast grant should produce an alternative method");
+
+        assert!(matches!(
+            method.cast_condition(),
+            Some(ThisSpellCostCondition::NotYourTurn)
+        ));
+        assert!(method.exiles_after_resolution());
     }
 
     #[test]

@@ -639,6 +639,10 @@ pub enum Condition {
     PlayerCommittedCrimeThisTurn {
         player: PlayerFilter,
     },
+    PlayerRolledResultThisTurn {
+        player: PlayerFilter,
+        result: u32,
+    },
     PlayerCompletedDungeon {
         player: PlayerFilter,
         dungeon_name: Option<String>,
