@@ -658,6 +658,38 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
     ))
 }
 
+fn parse_control_land_types_and_creature_colors_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() != 13
+        || words[0] != "you"
+        || !matches!(words[1], "control" | "controls")
+        || words[2] != "land"
+        || words[3] != "of"
+        || words[4] != "each"
+        || words[5] != "basic"
+        || words[6] != "land"
+        || !matches!(words[7], "type" | "types")
+        || words[8] != "and"
+        || words[9] != "creature"
+        || words[10] != "of"
+        || words[11] != "each"
+        || !matches!(words[12], "color" | "colors")
+    {
+        return None;
+    }
+
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+            player: PlayerAst::You,
+            count: 5,
+        }),
+        Box::new(PredicateAst::ValueComparison {
+            left: Value::ColorsAmong(ObjectFilter::creature().you_control()),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(5),
+        }),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -786,6 +818,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_revealed_or_controlled_subtype_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_control_land_types_and_creature_colors_predicate(&filtered) {
         return Ok(predicate);
     }
 
