@@ -8998,9 +8998,9 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     assert!(
         matches!(
             enters_or_transforms,
-            Ok(crate::cards::builders::TriggerSpec::Either(left, right))
-                if matches!(*left, crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
-                    && matches!(*right, crate::cards::builders::TriggerSpec::ThisTransforms)
+            Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
+                if matches!(left.as_ref(), crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
+                    && matches!(right.as_ref(), crate::cards::builders::TriggerSpec::ThisTransforms)
         ),
         "expected enter-or-transform trigger pair, got {enters_or_transforms:?}"
     );
