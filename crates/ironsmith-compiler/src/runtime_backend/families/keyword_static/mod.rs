@@ -217,7 +217,7 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     text.starts_with("prototype ")
         || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
-        || is_ticket_power_toughness_sticker_marker_line(&text)
+        || is_ticket_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."
         || is_power_greater_marker("this creature crews vehicles as though its power were ")
         || is_power_greater_marker(
@@ -231,8 +231,8 @@ fn supported_keyword_marker_text(text: &str) -> bool {
         ) && text.ends_with("'s crew cost."))
 }
 
-fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
-    let Some((cost, pt_text)) = text.split_once('—') else {
+fn is_ticket_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, body_text)) = text.split_once('—') else {
         return false;
     };
 
@@ -246,14 +246,7 @@ fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
         return false;
     }
 
-    let pt = pt_text.trim();
-    let Some((power, toughness)) = pt.split_once('/') else {
-        return false;
-    };
-    !power.is_empty()
-        && !toughness.is_empty()
-        && power.chars().all(|c| c.is_ascii_digit())
-        && toughness.chars().all(|c| c.is_ascii_digit())
+    !body_text.trim().is_empty()
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -889,6 +882,11 @@ fn parse_static_ability_ast_line_early_lexed(
         .replace("you ve", "youve")
         .replace("'", "");
     let rendered = rendered.trim().trim_end_matches('.').to_string();
+    let marker_text = render_token_slice(tokens);
+    if is_ticket_sticker_marker_line(&marker_text) {
+        return Ok(Some(vec![keyword_static_marker(tokens).into()]));
+    }
+
     if rendered == "this creature cant attack unless youve cast a creature spell this turn"
         || rendered == "this cant attack unless youve cast a creature spell this turn"
     {

@@ -7680,6 +7680,81 @@ fn costume_shop_keeps_visit_sticker_effect() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn eldrazi_guacamole_tightrope_ticket_sticker_lines_parse_strictly() {
+    let text = concat!(
+        "Type: Stickers\n",
+        "{TK}{TK} — Haste\n",
+        "{TK}{TK}{TK}{TK}{TK} — You may cast this card from your graveyard by ",
+        "paying 2 life in addition to paying its other costs.\n",
+        "{TK}{TK} — 1/4\n",
+        "{TK}{TK}{TK} — 5/3",
+    );
+    let def = CardDefinitionBuilder::new(CardId::from_raw(58_3538), "Eldrazi Guacamole Tightrope")
+        .parse_text(text)
+        .expect("Eldrazi Guacamole Tightrope should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("{tk}{tk}{tk}{tk}{tk} — you may cast this card from your graveyard by paying 2 life in addition to paying its other costs"),
+        "expected ticket graveyard-cast sticker row to be preserved, got {rendered}"
+    );
+    assert!(
+        rendered.contains("{tk}{tk} — haste")
+            && rendered.contains("{tk}{tk} — 1/4")
+            && rendered.contains("{tk}{tk}{tk} — 5/3"),
+        "expected all Eldrazi Guacamole Tightrope sticker rows to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported") && !rendered.contains("chosen option"),
+        "sticker rows should compile as marker text without fallback or chosen-option conditions: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn eldrazi_guacamole_tightrope_sticker_marker_does_not_grant_graveyard_casting() {
+    let text = concat!(
+        "Type: Stickers\n",
+        "{TK}{TK} — Haste\n",
+        "{TK}{TK}{TK}{TK}{TK} — You may cast this card from your graveyard by ",
+        "paying 2 life in addition to paying its other costs.\n",
+        "{TK}{TK} — 1/4\n",
+        "{TK}{TK}{TK} — 5/3",
+    );
+    let def = CardDefinitionBuilder::new(CardId::from_raw(58_3539), "Eldrazi Guacamole Tightrope")
+        .parse_text(text)
+        .expect("Eldrazi Guacamole Tightrope should parse strictly");
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("keywordmarker") && debug.contains("paying 2 life"),
+        "expected graveyard-cast sticker row to remain marker text, got {debug}"
+    );
+    assert!(
+        !debug.contains("grantstaticability") && !debug.contains("graveyardcastfromcardmanacost"),
+        "sticker marker text should not create an intrinsic graveyard-cast permission: {debug}"
+    );
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let card_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+
+    assert!(
+        !game
+            .effect_store
+            .grant_registry
+            .card_can_play_from_zone(&game, card_id, Zone::Graveyard, alice),
+        "sticker marker text should not grant cast-from-graveyard runtime permission"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_adapt_activation_with_reminder_text_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Adapt Probe")
         .card_types(vec![CardType::Creature])

@@ -14,7 +14,49 @@ pub(super) fn run_trailing_keyword_activation_line_family(
 pub(super) fn run_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if is_sticker_sheet_ticket_marker_line(ctx) {
+        let Some(static_line) = parse_static_line_cst(ctx.line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower sticker ticket marker line: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(static_line),
+            ctx.idx + 1,
+        )));
+    }
+
     try_parse_labeled_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
+}
+
+fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
+    let is_sticker_sheet = ctx.preprocessed.items.iter().any(|item| {
+        matches!(
+            item,
+            PreprocessedItem::Metadata(metadata)
+                if matches!(
+                    &metadata.value,
+                    crate::runtime_backend::MetadataLine::TypeLine(value)
+                        if value.eq_ignore_ascii_case("Stickers")
+                )
+        )
+    });
+    if !is_sticker_sheet {
+        return false;
+    }
+
+    let Some((cost, body)) = ctx.line.info.raw_line.split_once('—') else {
+        return false;
+    };
+    let mut remainder = cost.trim().to_ascii_lowercase();
+    let mut saw_ticket_symbol = false;
+    while let Some(next) = remainder.strip_prefix("{tk}") {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start().to_string();
+    }
+
+    saw_ticket_symbol && remainder.is_empty() && !body.trim().is_empty()
 }
 
 pub(super) fn run_triggered_line_family(

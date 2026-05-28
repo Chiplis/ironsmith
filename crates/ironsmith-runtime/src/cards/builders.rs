@@ -4387,11 +4387,11 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     text == "compleated"
         || text.starts_with("prototype ")
         || text.starts_with("splice onto ")
-        || is_ticket_power_toughness_sticker_marker_line(&text)
+        || is_ticket_sticker_marker_line(&text)
 }
 
-fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
-    let Some((cost, pt_text)) = text.split_once('—') else {
+fn is_ticket_sticker_marker_line(text: &str) -> bool {
+    let Some((cost, body_text)) = text.split_once('—') else {
         return false;
     };
 
@@ -4405,14 +4405,7 @@ fn is_ticket_power_toughness_sticker_marker_line(text: &str) -> bool {
         return false;
     }
 
-    let pt = pt_text.trim();
-    let Some((power, toughness)) = pt.split_once('/') else {
-        return false;
-    };
-    !power.is_empty()
-        && !toughness.is_empty()
-        && power.chars().all(|c| c.is_ascii_digit())
-        && toughness.chars().all(|c| c.is_ascii_digit())
+    !body_text.trim().is_empty()
 }
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
