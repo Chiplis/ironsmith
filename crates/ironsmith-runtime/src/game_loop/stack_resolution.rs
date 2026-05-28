@@ -1208,6 +1208,7 @@ pub(super) fn resolve_stack_entry_full(
                         *zone,
                         *idx,
                     )
+                    .or_else(|| obj.cast_alternative_method.clone())
                     .map(|m| m.exiles_after_resolution())
                     .unwrap_or(false)
                 }

@@ -635,6 +635,8 @@ where
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                     additional_costs,
                     usage_limit,
+                    condition,
+                    exiles_after_resolution,
                 } => {
                     let mut mapped = Vec::with_capacity(additional_costs.len());
                     for cost in additional_costs {
@@ -643,6 +645,8 @@ where
                     DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                         additional_costs: mapped,
                         usage_limit,
+                        condition,
+                        exiles_after_resolution,
                     }
                 }
             })

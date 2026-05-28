@@ -906,6 +906,65 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
+    if matches!(
+        rest_words.as_slice(),
+        [
+            "this",
+            "card",
+            "from",
+            "your",
+            "graveyard",
+            "as",
+            "long",
+            "as",
+            "youve" | "you've",
+            "rolled",
+            "a",
+            result,
+            "this",
+            "turn",
+            "if",
+            "you",
+            "cast",
+            "it",
+            "this",
+            "way",
+            "and",
+            "it",
+            "would",
+            "be",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "exile",
+            "it",
+            "instead",
+        ] if result.parse::<u32>().is_ok()
+    ) {
+        let result = rest_words[11].parse::<u32>().map_err(|_| {
+            CardTextError::ParseError("invalid die roll graveyard-cast condition".to_string())
+        })?;
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::new(
+                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost_with_condition(
+                    crate::static_abilities::ThisSpellCastCondition::ConditionExpr {
+                        condition: crate::ConditionExpr::PlayerRolledResultThisTurn {
+                            player: crate::target::PlayerFilter::You,
+                            result,
+                        },
+                        display: format!("you've rolled a {result} this turn"),
+                    },
+                    true,
+                ),
+                ObjectFilter::source(),
+                Zone::Graveyard,
+            ),
+            lifetime: PermissionLifetime::Static,
+        }));
+    }
+
     if allow_land && let Some(after_lands) = strip_prefix_phrase(rest_tokens, &["lands"]) {
         let zone_words = token_word_refs(after_lands);
         if zone_words == ["from", "the", "top", "of", "your", "library"] {

@@ -19564,6 +19564,204 @@ fn test_marang_river_prowler_castable_from_graveyard_with_green_permanent() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn eelectrocute_definition() -> crate::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_615), "Eelectrocute")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Eelectrocute deals 2 damage to any target.\nYou may cast this card from your graveyard as long as you've rolled a 6 this turn. If you cast it this way and it would be put into your graveyard, exile it instead.",
+        )
+        .expect("Eelectrocute should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_not_castable_from_graveyard_without_rolled_six() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    game.turn_store.turn_history.record_die_roll(alice, 5);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
+
+    let actions = compute_legal_actions(&game, alice);
+    let graveyard_cast = actions.iter().find(|action| {
+        matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+            } if *spell_id == eelectrocute_id
+        )
+    });
+    assert!(
+        graveyard_cast.is_none(),
+        "Eelectrocute should not be castable from graveyard unless you rolled a 6 this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_cast_from_graveyard_after_rolled_six_exiles_after_resolution() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    game.turn_store.turn_history.record_die_roll(alice, 6);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                } if *spell_id == eelectrocute_id
+            )
+        })
+        .expect("Eelectrocute should be castable from graveyard after rolling a 6");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Eelectrocute graveyard cast should start");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing player target should complete Eelectrocute cast");
+
+    resolve_stack_entry(&mut game).expect("Eelectrocute should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        18,
+        "Eelectrocute should deal 2 damage to the chosen target"
+    );
+    assert!(
+        game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "Eelectrocute cast from the graveyard this way should be exiled after resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_normal_cast_goes_to_graveyard_not_exile() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Hand);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == eelectrocute_id
+            )
+        })
+        .expect("Eelectrocute should be normally castable from hand");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Eelectrocute hand cast should start");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing player target should complete normal Eelectrocute cast");
+
+    resolve_stack_entry(&mut game).expect("Eelectrocute should resolve");
+
+    let player = game.player(alice).expect("Alice should exist");
+    assert!(
+        player.graveyard.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "normally cast Eelectrocute should go to graveyard"
+    );
+    assert!(
+        !game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "normally cast Eelectrocute should not be exiled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_appears_in_legal_actions_from_graveyard() {
     use crate::cards::definitions::think_twice;

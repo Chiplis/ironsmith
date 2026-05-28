@@ -1476,6 +1476,32 @@ fn test_parse_marang_river_prowler_graveyard_cast_condition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_eelectrocute_roll_six_graveyard_cast_condition_and_exile_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Eelectrocute")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Eelectrocute deals 2 damage to any target.\nYou may cast this card from your graveyard as long as you've rolled a 6 this turn. If you cast it this way and it would be put into your graveyard, exile it instead.",
+        )
+        .expect("Eelectrocute should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains("Eelectrocute deals 2 damage to any target")
+            && rendered.contains("You may cast this card from your graveyard as long as you've rolled a 6 this turn")
+            && rendered.contains("If you cast it this way and it would be put into your graveyard, exile it instead")
+            && debug.contains("PlayerRolledResultThisTurn")
+            && debug.contains("exiles_after_resolution: true"),
+        "expected Eelectrocute parser/text output to preserve roll-six graveyard casting and exile-after-resolution semantics, got rendered={rendered}; debug={debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_max_speed_draw_replacement_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vnwxt Parse Test")
         .card_types(vec![CardType::Creature])

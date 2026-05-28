@@ -23,12 +23,15 @@ impl EffectExecutor for RollDieEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let _player = resolve_player_filter(game, &self.player, ctx)?;
+        let player = resolve_player_filter(game, &self.player, ctx)?;
         if self.sides == 0 {
             return Ok(EffectOutcome::count(0));
         }
         if let Some(forced) = game.take_forced_die_roll() {
             let clamped = forced.clamp(1, self.sides);
+            game.turn_store
+                .turn_history
+                .record_die_roll(player, clamped);
             return Ok(
                 EffectOutcome::count(clamped as i32)
                     .with_execution_fact(ExecutionFact::ChosenNumber(clamped)),
@@ -37,10 +40,12 @@ impl EffectExecutor for RollDieEffect {
 
         let mut faces: Vec<u32> = (1..=self.sides).collect();
         game.shuffle_slice(&mut faces);
-        Ok(
-            EffectOutcome::count(faces[0] as i32)
-                .with_execution_fact(ExecutionFact::ChosenNumber(faces[0])),
-        )
+        let result = faces[0];
+        game.turn_store
+            .turn_history
+            .record_die_roll(player, result);
+        Ok(EffectOutcome::count(result as i32)
+            .with_execution_fact(ExecutionFact::ChosenNumber(result)))
     }
 }
 
@@ -97,6 +102,12 @@ mod tests {
         .expect("die roll should resolve");
 
         assert_eq!(outcome.as_count(), Some(6));
+        assert!(
+            game.turn_store
+                .turn_history
+                .player_rolled_result_this_turn(alice, 6),
+            "die rolls should be available to this-turn roll conditions"
+        );
         assert_eq!(
             game.irreversible_random_count(),
             before,
