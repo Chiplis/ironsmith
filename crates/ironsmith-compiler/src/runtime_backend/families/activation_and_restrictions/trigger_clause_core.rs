@@ -31,6 +31,15 @@ fn this_enters_battlefield_trigger_spec(
     }
 }
 
+fn this_transforms_trigger_spec(
+    surface: Option<crate::target::SourceReferenceSurface>,
+) -> TriggerSpec {
+    match surface {
+        Some(surface) => TriggerSpec::ThisTransformsWithSurface(surface),
+        None => TriggerSpec::ThisTransforms,
+    }
+}
+
 pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         if !token.is_word("or") {
@@ -1053,7 +1062,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                     Box::new(this_enters_battlefield_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
                     )),
-                    Box::new(TriggerSpec::ThisTransforms),
+                    Box::new(this_transforms_trigger_spec(
+                        source_reference_surface_for_trigger_subject(subject_tokens),
+                    )),
                 ));
             }
         }
@@ -1242,6 +1253,24 @@ pub(crate) fn parse_trigger_clause_lexed(
                     cause_filter,
                 }
             });
+        }
+    }
+
+    if let Some(transforms_word_idx) =
+        find_index(&words, |word| *word == "transforms" || *word == "transform")
+    {
+        let transforms_token_idx = word_view
+            .token_index_for_word_index(transforms_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..transforms_token_idx];
+        let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if is_source_reference_words(&subject_words)
+            && words.get(transforms_word_idx + 1) == Some(&"into")
+        {
+            return Ok(this_transforms_trigger_spec(
+                source_reference_surface_for_trigger_subject(subject_tokens),
+            ));
         }
     }
 

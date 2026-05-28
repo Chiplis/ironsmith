@@ -678,7 +678,7 @@ mod tests {
             .expect("converted permanent should keep an entry timestamp");
         assert!(after_ts > before_ts);
 
-        let trigger = TransformsTrigger;
+        let trigger = TransformsTrigger::new();
         let trigger_ctx = TriggerContext::for_source(source, alice, &game);
         assert!(
             !trigger.matches(&outcome.events[0], &trigger_ctx),

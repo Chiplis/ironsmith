@@ -312,6 +312,7 @@ pub(crate) enum TriggerSpec {
         owner: Option<PlayerFilter>,
     },
     ThisTransforms,
+    ThisTransformsWithSurface(crate::target::SourceReferenceSurface),
     ThisDealsCombatDamageToPlayer,
     DealsCombatDamageToPlayer {
         source: ObjectFilter,

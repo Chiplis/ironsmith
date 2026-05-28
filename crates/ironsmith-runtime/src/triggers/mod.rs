@@ -906,7 +906,12 @@ impl Trigger {
 
     /// Create a "when this permanent transforms" trigger.
     pub fn transforms() -> Self {
-        Self::new(TransformsTrigger)
+        Self::new(TransformsTrigger::new())
+    }
+
+    /// Create a transform trigger preserving the parsed source-reference surface.
+    pub fn transforms_with_surface(surface: crate::target::SourceReferenceSurface) -> Self {
+        Self::new(TransformsTrigger::new().this_surface(surface))
     }
 
     /// Create a "when this creature becomes monstrous" trigger.

@@ -8950,6 +8950,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         0,
     )
     .expect("rewrite lexer should classify enter-or-transform trigger probe");
+    let transforms_tokens = lex_line("this creature transforms into Trystan, Penitent Culler", 0)
+        .expect("rewrite lexer should classify standalone transforms trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -9000,9 +9002,25 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             enters_or_transforms,
             Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
                 if matches!(left.as_ref(), crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
-                    && matches!(right.as_ref(), crate::cards::builders::TriggerSpec::ThisTransforms)
+                    && matches!(
+                        right.as_ref(),
+                        crate::cards::builders::TriggerSpec::ThisTransforms
+                            | crate::cards::builders::TriggerSpec::ThisTransformsWithSurface(_)
+                    )
         ),
         "expected enter-or-transform trigger pair, got {enters_or_transforms:?}"
+    );
+    let transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &transforms_tokens,
+        );
+    assert!(
+        matches!(
+            transforms,
+            Ok(crate::cards::builders::TriggerSpec::ThisTransforms)
+                | Ok(crate::cards::builders::TriggerSpec::ThisTransformsWithSurface(_))
+        ),
+        "expected standalone transform trigger, got {transforms:?}"
     );
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
