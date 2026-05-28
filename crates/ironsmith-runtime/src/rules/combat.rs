@@ -752,7 +752,7 @@ mod tests {
         obj.abilities.push(Ability::static_ability(static_ability));
     }
 
-    fn set_mana_value(obj: &mut Object, mana_value: u32) {
+    fn set_mana_value(obj: &mut Object, mana_value: u8) {
         obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]));
     }
 

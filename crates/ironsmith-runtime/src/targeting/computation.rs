@@ -923,7 +923,7 @@ mod tests {
         obj
     }
 
-    fn create_artifact(id: u32, name: &str, controller: PlayerId, mana_value: u32) -> Object {
+    fn create_artifact(id: u32, name: &str, controller: PlayerId, mana_value: u8) -> Object {
         let card = CardBuilder::new(CardId::from_raw(id), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
             .card_types(vec![CardType::Artifact])
