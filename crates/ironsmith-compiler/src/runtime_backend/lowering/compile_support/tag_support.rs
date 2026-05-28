@@ -91,6 +91,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }

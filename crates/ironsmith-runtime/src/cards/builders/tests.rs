@@ -37260,6 +37260,23 @@ fn saving_grace_runtime_redirects_controller_and_permanent_damage_this_turn_only
         "Saving Grace should not redirect damage to permanents controlled by another player"
     );
 
+    let damage_to_bob = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_bob.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Player(bob),
+            amount: 4,
+        }],
+        "Saving Grace should not redirect damage to another player"
+    );
+
     game.effect_store
         .replacement_effects
         .clear_until_end_of_turn_effects();
