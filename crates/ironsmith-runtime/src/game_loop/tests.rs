@@ -84,6 +84,31 @@ fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn k9_mark_i_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_940), "K-9, Mark I")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Negative — As long as K-9 is untapped, other legendary creatures you control have ward {1}.\n\
+             Affirmative — {1}{U}, {T}: Target legendary creature can't be blocked this turn.\n\
+             Doctor's companion (You can have two commanders if the other is the Doctor.)",
+        )
+        .expect("K-9, Mark I should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn legendary_creature_card(name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn explore_event_for(game: &GameState, controller: PlayerId, source: ObjectId) -> TriggerEvent {
     let snapshot = game
         .object(source)
@@ -386,6 +411,160 @@ fn merfolk_cave_diver_ignores_opponent_creatures_exploring() {
     assert!(
         game.can_be_blocked(merfolk_id),
         "Merfolk Cave-Diver should remain blockable without a matching explore trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn k9_mark_i_grants_ward_only_while_untapped_to_other_legendary_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let k9 = k9_mark_i_definition();
+    let k9_id = game.create_object_from_definition(&k9, alice, Zone::Battlefield);
+    let legendary_ally = legendary_creature_card("Legendary Ally");
+    let legendary_ally_id = game.create_object_from_card(&legendary_ally, alice, Zone::Battlefield);
+    let ordinary_ally_id = create_creature(&mut game, "Ordinary Ally", alice, 2, 2);
+
+    let ward = crate::targeting::get_ward_cost(&game, legendary_ally_id, bob)
+        .expect("Bob targeting another legendary creature Alice controls should see ward {1}");
+    assert_eq!(
+        ward.cost.display(),
+        "{1}",
+        "K-9 should grant the ward cost from its oracle text"
+    );
+    assert!(
+        crate::targeting::get_ward_cost(&game, legendary_ally_id, alice).is_none(),
+        "ward should not tax the warded permanent's controller"
+    );
+    assert!(
+        crate::targeting::get_ward_cost(&game, ordinary_ally_id, bob).is_none(),
+        "K-9 should not grant ward to nonlegendary creatures"
+    );
+    assert!(
+        crate::targeting::get_ward_cost(&game, k9_id, bob).is_none(),
+        "K-9's other-creature filter should not grant ward to itself"
+    );
+
+    game.tap(k9_id);
+    assert!(
+        crate::targeting::get_ward_cost(&game, legendary_ally_id, bob).is_none(),
+        "K-9 should stop granting ward once it is tapped"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn k9_mark_i_activation_targets_legendary_creature_and_makes_it_unblockable() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let k9 = k9_mark_i_definition();
+    let k9_id = game.create_object_from_definition(&k9, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(k9_id);
+    let legendary_target = legendary_creature_card("Legendary Target");
+    let legendary_target_id =
+        game.create_object_from_card(&legendary_target, alice, Zone::Battlefield);
+    let nonlegendary_target_id = create_creature(&mut game, "Ordinary Target", alice, 2, 2);
+    let blocker_id = create_creature(&mut game, "Training Blocker", bob, 2, 2);
+
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(legendary_target_id)
+                .expect("legendary target exists"),
+            game.object(blocker_id).expect("blocker exists"),
+            &game,
+        ),
+        "the legendary target should start blockable"
+    );
+
+    let ability_index = game
+        .object(k9_id)
+        .expect("K-9 should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("K-9 should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == k9_id && *idx == ability_index
+            )
+        })
+        .expect("K-9's activated ability should be legal with mana and an untapped source");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("K-9 activation should start");
+
+    let crate::decision::GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::Targets(ctx),
+    ) = progress
+    else {
+        panic!("expected K-9 activation to ask for targets, got {progress:?}");
+    };
+    let legal_targets = &ctx.requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(legendary_target_id)),
+        "K-9 should be able to target a legendary creature"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(nonlegendary_target_id)),
+        "K-9's activated ability should not be able to target a nonlegendary creature"
+    );
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(legendary_target_id)]),
+        &mut dm,
+    )
+    .expect("K-9 should accept the legendary target");
+    assert!(
+        game.is_tapped(k9_id),
+        "{{T}} should tap K-9 as an activation cost"
+    );
+    resolve_stack_entry(&mut game).expect("K-9 activated ability should resolve");
+
+    assert!(
+        !game.can_be_blocked(legendary_target_id),
+        "K-9 should make the target legendary creature unable to be blocked this turn"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(legendary_target_id)
+                .expect("legendary target exists"),
+            game.object(blocker_id).expect("blocker exists"),
+            &game,
+        ),
+        "the blocker should not be able to block the target after K-9 resolves"
     );
 }
 

@@ -190,7 +190,7 @@ fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
 fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
     let trimmed = name.trim();
     let bytes = trimmed.as_bytes();
-    if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+    if bytes.len() > 2 && bytes[0].eq_ignore_ascii_case(&b'a') && bytes[1] == b'-' {
         let rest = trimmed[2..].trim();
         if !rest.is_empty() {
             return Some(rest);

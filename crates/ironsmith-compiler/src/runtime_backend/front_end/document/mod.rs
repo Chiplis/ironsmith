@@ -1293,7 +1293,7 @@ fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
 fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
     let trimmed = name.trim();
     let bytes = trimmed.as_bytes();
-    if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+    if bytes.len() > 2 && bytes[0].eq_ignore_ascii_case(&b'a') && bytes[1] == b'-' {
         let rest = trimmed[2..].trim();
         if !rest.is_empty() {
             return Some(rest);
@@ -2599,7 +2599,9 @@ fn try_parse_labeled_line_dispatch(
     };
 
     let is_named_label = is_named_ability_label(label.as_str());
-    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx);
+    let ability_word_label = looks_like_ability_word_label(label.as_str(), false);
+    let preserve_as_choice_label =
+        labeled_choice_block_has_peer(&preprocessed.items, idx) && !ability_word_label;
     if preserve_keyword_prefix_for_parse(label.as_str()) {
         return Ok(None);
     }
@@ -2629,7 +2631,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if ability_word_label {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
@@ -2643,7 +2645,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if ability_word_label {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
@@ -2661,7 +2663,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if ability_word_label {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =

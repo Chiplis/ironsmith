@@ -1057,7 +1057,7 @@ pub(crate) fn preprocess_document(
     fn normalize_card_name_for_self_reference(name: &str) -> String {
         let lower = name.to_ascii_lowercase();
         let bytes = lower.as_bytes();
-        if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+        if bytes.len() > 2 && bytes[0] == b'a' && bytes[1] == b'-' {
             lower[2..].to_string()
         } else {
             lower

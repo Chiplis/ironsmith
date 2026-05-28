@@ -1707,6 +1707,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
+    if let Some(reordered) = normalize_conditional_granted_ward_surface(&normalized) {
+        normalized = reordered;
+    }
     normalized = normalized
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
@@ -5556,6 +5559,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         )
         ;
     normalized
+}
+
+fn normalize_conditional_granted_ward_surface(line: &str) -> Option<String> {
+    let (main, condition) = line.rsplit_once(" as long as ")?;
+    let condition = condition.trim_end_matches('.');
+    let main = main
+        .replace(" have Ward ", " have ward ")
+        .replace(" has Ward ", " has ward ");
+    if !main.contains(" have ward ") && !main.contains(" has ward ") {
+        return None;
+    }
+    Some(format!("As long as {condition}, {}", lowercase_first(&main)))
 }
 
 pub(super) fn normalize_reveal_match_filter(filter: &str) -> String {

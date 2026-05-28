@@ -35307,6 +35307,57 @@ fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn parse_k9_mark_i_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("K-9, Mark I")
+        .expect("missing K-9 oracle text")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "K-9, Mark I")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(oracle)
+        .expect("K-9, Mark I should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_k9_mark_i_strict_regression() {
+    let def = parse_k9_mark_i_definition();
+    assert_eq!(def.name(), "K-9, Mark I");
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.display().contains("as long as this creature is untapped")
+                    && static_ability.display().contains("other legendary creatures you control")
+                    && static_ability.display().contains("Ward {1}")
+        )),
+        "expected K-9 to grant ward to other legendary creatures only while untapped: {:#?}",
+        def.abilities
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_k9_mark_i_compiled_text_preserves_untapped_ward_clause() {
+    let def = parse_k9_mark_i_definition();
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "As long as K-9 is untapped, other legendary creatures you control have ward {1}."
+        ),
+        "expected K-9 compiled text to preserve the untapped ward condition, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("chosen option"),
+        "ability-word labels should not become chosen-option conditions: {rendered}"
+    );
+}
+
 fn assert_oracle_card_parses_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)
