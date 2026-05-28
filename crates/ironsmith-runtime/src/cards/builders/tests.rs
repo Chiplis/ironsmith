@@ -35392,6 +35392,150 @@ fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     );
 }
 
+fn rebbec_runtime_test_card(
+    name: &str,
+    card_types: Vec<CardType>,
+    mana_value: u8,
+    power_toughness: Option<(i32, i32)>,
+) -> CardDefinition {
+    let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]));
+    if let Some((power, toughness)) = power_toughness {
+        builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
+    }
+    builder.build()
+}
+
+#[test]
+fn rebbec_architect_of_ascension_runtime_targeting_uses_controller_artifact_mana_values() {
+    let rebbec = parse_oracle_card_definition("Rebbec, Architect of Ascension");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+
+    game.create_object_from_definition(&rebbec, alice, Zone::Battlefield);
+    let protected_artifact = rebbec_runtime_test_card(
+        "Alice Rebbec-Protected Mana Rock",
+        vec![CardType::Artifact],
+        2,
+        None,
+    );
+    let protected_id =
+        game.create_object_from_definition(&protected_artifact, alice, Zone::Battlefield);
+    let matching_spell = rebbec_runtime_test_card(
+        "Mana Value Two Targeting Spell",
+        vec![CardType::Instant],
+        2,
+        None,
+    );
+    let matching_spell_id = game.create_object_from_definition(&matching_spell, bob, Zone::Stack);
+    let nonmatching_spell = rebbec_runtime_test_card(
+        "Mana Value Three Targeting Spell",
+        vec![CardType::Instant],
+        3,
+        None,
+    );
+    let nonmatching_spell_id =
+        game.create_object_from_definition(&nonmatching_spell, bob, Zone::Stack);
+    let opponent_artifact = rebbec_runtime_test_card(
+        "Opponent Artifact With Mana Value Three",
+        vec![CardType::Artifact],
+        3,
+        None,
+    );
+    game.create_object_from_definition(&opponent_artifact, bob, Zone::Battlefield);
+    let bob_artifact = rebbec_runtime_test_card(
+        "Bob Artifact With Matching Mana Value",
+        vec![CardType::Artifact],
+        2,
+        None,
+    );
+    let bob_artifact_id =
+        game.create_object_from_definition(&bob_artifact, bob, Zone::Battlefield);
+
+    assert!(
+        !crate::targeting::can_target_object(&game, protected_id, matching_spell_id, bob)
+            .is_legal(),
+        "Rebbec, Architect of Ascension should make Alice's artifact illegal to target from sources whose mana value matches Alice's artifacts"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, protected_id, nonmatching_spell_id, bob)
+            .is_legal(),
+        "Rebbec, Architect of Ascension should not count Bob's artifacts when checking Alice's protected artifact"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, bob_artifact_id, matching_spell_id, bob)
+            .is_legal(),
+        "Rebbec, Architect of Ascension should not grant protection to artifacts controlled by another player"
+    );
+}
+
+#[test]
+fn rebbec_architect_of_ascension_runtime_blocking_uses_controller_artifact_mana_values() {
+    let rebbec = parse_oracle_card_definition("Rebbec, Architect of Ascension");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+
+    game.create_object_from_definition(&rebbec, alice, Zone::Battlefield);
+    let attacker_def = rebbec_runtime_test_card(
+        "Alice Rebbec-Protected Artifact Creature",
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        Some((2, 2)),
+    );
+    let attacker_id = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let matching_blocker_def = rebbec_runtime_test_card(
+        "Mana Value Two Blocker",
+        vec![CardType::Creature],
+        2,
+        Some((2, 2)),
+    );
+    let matching_blocker_id =
+        game.create_object_from_definition(&matching_blocker_def, bob, Zone::Battlefield);
+    let nonmatching_blocker_def = rebbec_runtime_test_card(
+        "Mana Value Three Blocker",
+        vec![CardType::Creature],
+        3,
+        Some((3, 3)),
+    );
+    let nonmatching_blocker_id =
+        game.create_object_from_definition(&nonmatching_blocker_def, bob, Zone::Battlefield);
+    let opponent_artifact = rebbec_runtime_test_card(
+        "Opponent Artifact With Mana Value Three",
+        vec![CardType::Artifact],
+        3,
+        None,
+    );
+    game.create_object_from_definition(&opponent_artifact, bob, Zone::Battlefield);
+
+    let attacker = game.object(attacker_id).expect("attacker exists").clone();
+    let matching_blocker = game
+        .object(matching_blocker_id)
+        .expect("matching blocker exists")
+        .clone();
+    let nonmatching_blocker = game
+        .object(nonmatching_blocker_id)
+        .expect("nonmatching blocker exists")
+        .clone();
+
+    assert!(
+        !crate::rules::combat::can_block(&attacker, &matching_blocker, &game),
+        "Rebbec, Architect of Ascension should stop blockers whose mana value matches Alice's artifacts"
+    );
+    assert!(
+        crate::rules::combat::can_block(&attacker, &nonmatching_blocker, &game),
+        "Rebbec, Architect of Ascension should not count Bob's artifacts when checking Alice's protected attacker"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_sporeweb_weaver_strict_regression() {
