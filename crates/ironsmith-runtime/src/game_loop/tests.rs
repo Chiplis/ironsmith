@@ -30292,6 +30292,266 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn heroism_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(30_267), "Heroism")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Sacrifice a white creature: For each attacking red creature, prevent all combat \
+             damage that would be dealt by that creature this turn unless its controller pays {2}{R}.",
+        )
+        .expect("Heroism should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_test_creature(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    color: crate::color::ColorSet,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .color_indicator(color)
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_heroism(
+    game: &mut GameState,
+    controller: PlayerId,
+    heroism_id: ObjectId,
+    sacrifice_id: ObjectId,
+    dm: &mut impl DecisionMaker,
+) {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let ability_index = game
+        .object(heroism_id)
+        .expect("Heroism should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Heroism should have an activated ability");
+    let activate_action = compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == heroism_id && *idx == ability_index
+            )
+        })
+        .expect("Heroism activation should be legal with a white creature to sacrifice");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        dm,
+    )
+    .expect("Heroism activation should start");
+
+    while let crate::decision::GameProgress::NeedsDecisionCtx(decision) = progress {
+        progress = match decision {
+            crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
+                let choice = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && option
+                                .description
+                                .to_ascii_lowercase()
+                                .contains("sacrifice")
+                    })
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .map(|option| option.index)
+                    .expect("Heroism should offer a legal sacrifice-cost choice");
+                apply_priority_response_with_dm(
+                    game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(choice),
+                    dm,
+                )
+                .expect("Heroism sacrifice-cost choice should continue activation")
+            }
+            crate::decisions::context::DecisionContext::SelectObjects(_) => {
+                apply_priority_response_with_dm(
+                    game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::SacrificeTarget(sacrifice_id),
+                    dm,
+                )
+                .expect("Heroism should accept the selected white creature sacrifice")
+            }
+            crate::decisions::context::DecisionContext::Priority(_) => break,
+            other => panic!("unexpected decision while activating Heroism: {:?}", other),
+        };
+
+        if game.stack.len() == 1 {
+            break;
+        }
+    }
+
+    assert_eq!(game.stack.len(), 1, "Heroism ability should be on the stack");
+    assert!(
+        game.object(sacrifice_id)
+            .map(|object| object.zone != Zone::Battlefield)
+            .unwrap_or(true),
+        "Heroism should sacrifice the chosen white creature as an activation cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Debug, Default)]
+struct PayUnlessDecisionMaker;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for PayUnlessDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_heroism_prevents_unpaid_attacking_red_creature_damage_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let heroism_id =
+        game.create_object_from_definition(&heroism_definition(), alice, Zone::Battlefield);
+    let sacrifice_id = colored_test_creature(
+        &mut game,
+        "Heroism Cost Bearer",
+        alice,
+        crate::color::ColorSet::WHITE,
+        1,
+        1,
+    );
+    let red_attacker = colored_test_creature(
+        &mut game,
+        "Red Attacker",
+        bob,
+        crate::color::ColorSet::RED,
+        3,
+        3,
+    );
+    let colorless_attacker = create_creature(&mut game, "Colorless Attacker", bob, 2, 2);
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: red_attacker,
+        target: AttackTarget::Player(alice),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: colorless_attacker,
+        target: AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(red_attacker, Vec::new());
+    combat.blockers.insert(colorless_attacker, Vec::new());
+    game.combat = Some(combat.clone());
+
+    let mut dm = AutoPassDecisionMaker;
+    activate_heroism(&mut game, alice, heroism_id, sacrifice_id, &mut dm);
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Heroism ability should resolve");
+
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 2, "both attackers should assign combat damage");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        18,
+        "Heroism should prevent unpaid red attacker damage while leaving nonred attacker damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_heroism_controller_payment_allows_red_attacker_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let heroism_id =
+        game.create_object_from_definition(&heroism_definition(), alice, Zone::Battlefield);
+    let sacrifice_id = colored_test_creature(
+        &mut game,
+        "Heroism Cost Bearer",
+        alice,
+        crate::color::ColorSet::WHITE,
+        1,
+        1,
+    );
+    let red_attacker = colored_test_creature(
+        &mut game,
+        "Paying Red Attacker",
+        bob,
+        crate::color::ColorSet::RED,
+        3,
+        3,
+    );
+    game.player_mut(bob)
+        .expect("Bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.player_mut(bob)
+        .expect("Bob exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: red_attacker,
+        target: AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(red_attacker, Vec::new());
+    game.combat = Some(combat.clone());
+
+    let mut dm = PayUnlessDecisionMaker;
+    activate_heroism(&mut game, alice, heroism_id, sacrifice_id, &mut dm);
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Heroism ability should resolve after attacker controller pays");
+
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 1, "the red attacker should assign combat damage");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        17,
+        "paying {{2}}{{R}} should stop Heroism from preventing that red attacker's damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_elsewhere_flask_activation_changes_land_type_until_cleanup() {
     use crate::cards::builders::CardDefinitionBuilder;

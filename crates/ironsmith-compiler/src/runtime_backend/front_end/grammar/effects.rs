@@ -659,7 +659,12 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         let source_tokens = &core_tokens[5..];
         if source_tokens
             .first()
-            .is_some_and(|token| token.is_word("target"))
+            .is_some_and(|token| {
+                token.is_word("target")
+                    || token.is_word("that")
+                    || token.is_word("this")
+                    || token.is_word("it")
+            })
         {
             let (source, has_color_condition) =
                 parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
