@@ -494,6 +494,7 @@ pub(crate) enum KeywordAction {
     Prowess,
     Exalted,
     Cascade,
+    Demonstrate,
     Storm,
     Toxic(u32),
     BattleCry,
@@ -648,6 +649,7 @@ impl KeywordAction {
                 | Self::Prowess
                 | Self::Exalted
                 | Self::Cascade
+                | Self::Demonstrate
                 | Self::Storm
                 | Self::Toxic(_)
                 | Self::BattleCry
@@ -760,6 +762,7 @@ impl KeywordAction {
             Self::Prowess => "Prowess".to_string(),
             Self::Exalted => "Exalted".to_string(),
             Self::Cascade => "Cascade".to_string(),
+            Self::Demonstrate => "Demonstrate".to_string(),
             Self::Storm => "Storm".to_string(),
             Self::Toxic(amount) => format!("Toxic {amount}"),
             Self::BattleCry => "Battle cry".to_string(),
@@ -1621,6 +1624,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Prowess => self.prowess(),
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Cascade => self.cascade(),
+            KeywordAction::Demonstrate => self.demonstrate(),
             KeywordAction::Storm => self.storm(),
             KeywordAction::Toxic(amount) => self.toxic(amount),
             KeywordAction::BattleCry => self.battle_cry(),
@@ -3274,6 +3278,15 @@ impl CardDefinitionBuilder {
     pub fn cascade(self) -> Self {
         self.with_ability(
             Ability::static_ability(StaticAbility::cascade()).in_zones(vec![Zone::Stack]),
+        )
+    }
+
+    /// Add demonstrate.
+    ///
+    /// Demonstrate triggers when this spell is cast and may copy it for its caster and an opponent.
+    pub fn demonstrate(self) -> Self {
+        self.with_ability(
+            Ability::static_ability(StaticAbility::demonstrate()).in_zones(vec![Zone::Stack]),
         )
     }
 

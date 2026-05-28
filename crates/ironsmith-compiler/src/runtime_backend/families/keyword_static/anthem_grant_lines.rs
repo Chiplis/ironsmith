@@ -871,8 +871,10 @@ pub(crate) fn parse_granted_keyword_static_line(
         }
 
         let keyword_words = crate::runtime_backend::token_word_refs(&keyword_tokens);
-        let ignore_keyword_reminder =
-            matches!(keyword_words.first().copied(), Some("unearth" | "conspire"));
+        let ignore_keyword_reminder = matches!(
+            keyword_words.first().copied(),
+            Some("unearth" | "conspire" | "demonstrate")
+        );
         if !ignore_keyword_reminder {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing granted-keyword clause (clause: '{}')",

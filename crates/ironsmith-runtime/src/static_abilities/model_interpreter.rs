@@ -312,6 +312,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::SplitSecond
                 | StaticAbilityId::Rebound
                 | StaticAbilityId::Cascade
+                | StaticAbilityId::Demonstrate
                 | StaticAbilityId::ReadAhead
                 | StaticAbilityId::Unleash
                 | StaticAbilityId::Bloodthirst

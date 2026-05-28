@@ -60,6 +60,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Prowess => Some(StaticAbility::keyword_marker("prowess".to_string())),
         KeywordAction::Exalted => Some(StaticAbility::keyword_marker("exalted".to_string())),
         KeywordAction::Cascade => Some(StaticAbility::cascade()),
+        KeywordAction::Demonstrate => Some(StaticAbility::demonstrate()),
         KeywordAction::Storm => Some(StaticAbility::keyword_marker("storm".to_string())),
         KeywordAction::Toxic(amount) => {
             Some(StaticAbility::keyword_marker(format!("toxic {amount}")))

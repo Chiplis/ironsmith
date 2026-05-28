@@ -1296,6 +1296,75 @@ pub(crate) fn check_triggers_with_view(
         }
     }
 
+    // Demonstrate: When a spell with demonstrate is cast, its caster may copy it.
+    // If they do, they choose an opponent to also copy it.
+    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
+        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
+        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+        && let Some(obj) = game.object(cast.spell)
+    {
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+        let native_demonstrate_count = view
+            .static_abilities_rc(cast.spell)
+            .map(|abilities| {
+                abilities
+                    .iter()
+                    .filter(|static_ability| {
+                        static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Demonstrate
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        let granted_demonstrate_count = game
+            .temporary_granted_spell_abilities(cast.spell, cast.caster)
+            .into_iter()
+            .filter(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::Demonstrate
+            })
+            .count();
+        let demonstrate_count = native_demonstrate_count + granted_demonstrate_count;
+        if demonstrate_count > 0 {
+            let chosen_opponent_tag = crate::tag::TagKey::from("demonstrate_opponent");
+            let ability = TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: ResolutionProgram::from_effects(vec![Effect::may(vec![
+                    Effect::copy_spell(crate::target::ChooseSpec::Source),
+                    Effect::choose_player(
+                        crate::target::PlayerFilter::You,
+                        crate::target::PlayerFilter::Opponent,
+                        chosen_opponent_tag.clone(),
+                    ),
+                    Effect::new(crate::effects::CopySpellEffect::new_for_player(
+                        crate::target::ChooseSpec::Source,
+                        1,
+                        crate::target::PlayerFilter::TaggedPlayer(chosen_opponent_tag),
+                    )),
+                ])]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            };
+            let trigger_identity = compute_trigger_identity(&ability);
+
+            for _ in 0..demonstrate_count {
+                triggered.push(TriggeredAbilityEntry {
+                    source: cast.spell,
+                    controller: cast.caster,
+                    x_value: entry.x_value,
+                    event_value_amount: None,
+                    ability: ability.clone(),
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: obj.stable_id,
+                    source_name: obj.name.clone(),
+                    source_snapshot: None,
+                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                    trigger_identity,
+                });
+            }
+        }
+    }
+
     // Replicate: When a spell with Replicate is cast, it triggers to copy itself for each time
     // its Replicate cost was paid. (We model this as a synthetic triggered ability so it
     // stacks and can be responded to like the real mechanic.)

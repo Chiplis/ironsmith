@@ -41,6 +41,7 @@ pub enum KeywordAction {
     Prowess,
     Exalted,
     Cascade,
+    Demonstrate,
     Storm,
     Toxic(u32),
     BattleCry,
@@ -195,6 +196,7 @@ impl KeywordAction {
                 | Self::Prowess
                 | Self::Exalted
                 | Self::Cascade
+                | Self::Demonstrate
                 | Self::Storm
                 | Self::Toxic(_)
                 | Self::BattleCry
@@ -308,6 +310,7 @@ impl KeywordAction {
             Self::Prowess => "Prowess".to_string(),
             Self::Exalted => "Exalted".to_string(),
             Self::Cascade => "Cascade".to_string(),
+            Self::Demonstrate => "Demonstrate".to_string(),
             Self::Storm => "Storm".to_string(),
             Self::Toxic(amount) => format!("Toxic {amount}"),
             Self::BattleCry => "Battle cry".to_string(),

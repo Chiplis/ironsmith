@@ -54,6 +54,7 @@ pub enum StaticAbilityId {
     SplitSecond,
     Rebound,
     Cascade,
+    Demonstrate,
     ReadAhead,
     Unleash,
     ConditionalSpellKeyword,

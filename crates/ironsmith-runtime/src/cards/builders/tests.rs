@@ -5585,6 +5585,33 @@ fn test_parse_spells_you_cast_have_cascade_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_silverquill_lecturer_grants_demonstrate_to_creature_spells() {
+    let oracle = "Creature spells you cast have demonstrate. (Whenever you cast a creature spell, you may copy it. If you do, choose an opponent to also copy it. Each copy becomes a token.)";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(665370), "Silverquill Lecturer")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Silverquill Lecturer should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Creature spells you cast have demonstrate"),
+        "expected demonstrate grant in render output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you cast a creature spell, you may copy it")
+            && rendered.contains("Each copy becomes a token"),
+        "expected demonstrate reminder text in compiled output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("GrantAbility") && debug.contains("Demonstrate"),
+        "expected granted demonstrate static ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_colorless_spells_from_hand_have_double_cascade_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zhulodok Probe")
         .card_types(vec![CardType::Creature])

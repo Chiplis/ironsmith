@@ -371,6 +371,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Assist => self.assist(),
             KeywordAction::SplitSecond => self.split_second(),
             KeywordAction::Cascade => self.cascade(),
+            KeywordAction::Demonstrate => self.demonstrate(),
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::ReadAhead => self.read_ahead(),
@@ -1733,6 +1734,15 @@ impl CardDefinitionBuilder {
         self.with_ability(
             crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::cascade(),
+            )
+            .in_zones(vec![crate::zone::Zone::Stack]),
+        )
+    }
+
+    pub fn demonstrate(self) -> Self {
+        self.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::demonstrate(),
             )
             .in_zones(vec![crate::zone::Zone::Stack]),
         )

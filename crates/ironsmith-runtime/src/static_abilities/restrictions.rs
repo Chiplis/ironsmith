@@ -302,6 +302,26 @@ impl StaticAbilityKind for Cascade {
     }
 }
 
+/// "Demonstrate" spell keyword.
+///
+/// Runtime handling is performed as a synthetic cast trigger in `triggers/check.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Demonstrate;
+
+impl StaticAbilityKind for Demonstrate {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Demonstrate
+    }
+
+    fn display(&self) -> String {
+        "Demonstrate".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
 /// "For each {B} in a cost, you may pay 2 life rather than pay that mana."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlackManaMayBePaidWithLife;

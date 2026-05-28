@@ -640,6 +640,7 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         "prowess" => Some(KeywordAction::Prowess),
         "exalted" => Some(KeywordAction::Exalted),
         "cascade" => Some(KeywordAction::Cascade),
+        "demonstrate" => Some(KeywordAction::Demonstrate),
         "storm" => Some(KeywordAction::Storm),
         "rebound" => Some(KeywordAction::Rebound),
         "ascend" => Some(KeywordAction::Ascend),

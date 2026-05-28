@@ -784,6 +784,9 @@ pub(super) fn resolve_stack_entry_full(
                 if let Some(perm) = game.object_mut(entry.object_id) {
                     perm.optional_costs_paid = entry.optional_costs_paid.clone();
                     perm.cast_tagged_objects = entry.tagged_objects.clone();
+                    if perm.kind == crate::object::ObjectKind::SpellCopy {
+                        perm.kind = crate::object::ObjectKind::Token;
+                    }
                 }
 
                 // Interactive replacement was already processed above - skip second ETB processing
@@ -838,6 +841,9 @@ pub(super) fn resolve_stack_entry_full(
             if let Some(perm) = game.object_mut(entry.object_id) {
                 perm.optional_costs_paid = entry.optional_costs_paid.clone();
                 perm.cast_tagged_objects = entry.tagged_objects.clone();
+                if perm.kind == crate::object::ObjectKind::SpellCopy {
+                    perm.kind = crate::object::ObjectKind::Token;
+                }
                 // Preserve Convoke/Improvise contributors for later triggered ability resolution.
                 perm.keyword_payment_contributions_to_cast =
                     entry.keyword_payment_contributions.clone();

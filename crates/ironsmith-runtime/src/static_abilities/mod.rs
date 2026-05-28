@@ -1648,6 +1648,10 @@ impl StaticAbility {
         Self::new(Cascade)
     }
 
+    pub fn demonstrate() -> Self {
+        Self::new(Demonstrate)
+    }
+
     pub fn read_ahead() -> Self {
         Self::new(ReadAhead)
     }

@@ -17,7 +17,7 @@ use crate::filter::{PlayerFilterExt, TaggedConstraintSubject, TaggedOpbjectRelat
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -2002,6 +2002,11 @@ impl StaticAbilityKind for GrantAbility {
             ability_text = format!("\"{ability_text}\"");
         }
         let mut text = match self.ability.id() {
+            StaticAbilityId::Demonstrate if filter_is_you_cast_creature_spells(&self.filter) => {
+                format!(
+                    "{subject} have demonstrate. (Whenever you cast a creature spell, you may copy it. If you do, choose an opponent to also copy it. Each copy becomes a token.)"
+                )
+            }
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
@@ -2086,6 +2091,12 @@ impl StaticAbilityKind for GrantAbility {
         };
         static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
+}
+
+fn filter_is_you_cast_creature_spells(filter: &ObjectFilter) -> bool {
+    filter.cast_by == Some(PlayerFilter::You)
+        && filter.card_types == vec![CardType::Creature]
+        && filter.zone.is_none()
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1992,6 +1992,10 @@ impl<
         Self::identified(StaticAbilityId::Cascade, "cascade")
     }
 
+    pub fn demonstrate() -> Self {
+        Self::identified(StaticAbilityId::Demonstrate, "demonstrate")
+    }
+
     pub fn read_ahead() -> Self {
         Self::identified(StaticAbilityId::ReadAhead, "read ahead")
     }
