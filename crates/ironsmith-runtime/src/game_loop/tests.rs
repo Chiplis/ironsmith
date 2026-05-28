@@ -55,6 +55,19 @@ fn open_the_way_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn desmond_miles_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_910), "Desmond Miles")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .parse_text(
+            "Menace\nDesmond Miles gets +1/+0 for each other Assassin you control and each Assassin card in your graveyard.\nWhenever Desmond Miles deals combat damage to a player, surveil X, where X is the amount of damage it dealt to that player.",
+        )
+        .expect("Desmond Miles should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn open_the_way_x_choice_is_capped_by_players_in_game() {
     let mut game = setup_three_player_game();
@@ -91,6 +104,152 @@ fn open_the_way_x_choice_is_capped_by_players_in_game() {
     assert_eq!(
         max_x_after_player_lost, 2,
         "players no longer in the game should stop increasing Open the Way's X cap"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn desmond_miles_counts_other_assassins_and_assassin_cards_in_your_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let desmond = desmond_miles_definition();
+    let desmond_id = game.create_object_from_definition(&desmond, alice, Zone::Battlefield);
+    assert_eq!(
+        game.calculated_power(desmond_id),
+        Some(1),
+        "Desmond should not count itself as another Assassin"
+    );
+
+    let bystander = CardBuilder::new(CardId::from_raw(72_911), "Bystander")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&bystander, alice, Zone::Battlefield);
+    assert_eq!(
+        game.calculated_power(desmond_id),
+        Some(1),
+        "non-Assassins you control should not increase Desmond's power"
+    );
+
+    let assassin = CardBuilder::new(CardId::from_raw(72_912), "Assassin Ally")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&assassin, bob, Zone::Battlefield);
+    game.create_object_from_card(&assassin, alice, Zone::Hand);
+    assert_eq!(
+        game.calculated_power(desmond_id),
+        Some(1),
+        "opponents' Assassins and non-graveyard Assassin cards should not count"
+    );
+
+    game.create_object_from_card(&assassin, alice, Zone::Battlefield);
+    assert_eq!(
+        game.calculated_power(desmond_id),
+        Some(2),
+        "another Assassin you control should add +1/+0"
+    );
+
+    game.create_object_from_card(&assassin, alice, Zone::Graveyard);
+    assert_eq!(
+        game.calculated_power(desmond_id),
+        Some(3),
+        "an Assassin card in your graveyard should add another +1/+0"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_noncombat() {
+    #[derive(Default)]
+    struct RecordingSurveilDecisionMaker {
+        viewed_cards: usize,
+        partition_description: String,
+    }
+
+    impl DecisionMaker for RecordingSurveilDecisionMaker {
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            _viewer: PlayerId,
+            cards: &[ObjectId],
+            _ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.viewed_cards = cards.len();
+        }
+
+        fn decide_partition(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::PartitionContext,
+        ) -> Vec<ObjectId> {
+            self.partition_description = ctx.description.clone();
+            ctx.cards
+                .first()
+                .map(|(id, _)| vec![*id])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let desmond = desmond_miles_definition();
+    let desmond_id = game.create_object_from_definition(&desmond, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        let card = CardBuilder::new(CardId::from_raw(72_920 + idx), format!("Library Card {idx}"))
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+
+    let noncombat_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            desmond_id,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &noncombat_damage).is_empty(),
+        "Desmond should not trigger from noncombat damage"
+    );
+
+    let combat_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            desmond_id,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(desmond_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &combat_damage) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "combat damage should trigger once");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Desmond combat-damage trigger should go on the stack");
+    let mut dm = RecordingSurveilDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Desmond surveil trigger should resolve");
+
+    assert_eq!(dm.viewed_cards, 3, "surveil X should use the damage amount");
+    assert_eq!(dm.partition_description, "Surveil 3");
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        1,
+        "the test decision maker should put one surveilled card into the graveyard"
     );
 }
 

@@ -33020,6 +33020,48 @@ fn parse_oracle_sarkhan_dragon_ascendant_behold_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn desmond_miles_test_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Desmond Miles")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .parse_text(
+            "Menace\nDesmond Miles gets +1/+0 for each other Assassin you control and each Assassin card in your graveyard.\nWhenever Desmond Miles deals combat damage to a player, surveil X, where X is the amount of damage it dealt to that player.",
+        )
+        .expect("Desmond Miles should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_desmond_miles_strict_and_renders_compound_count_and_surveil_x() {
+    let def = desmond_miles_test_definition();
+    let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("other: true")
+            && debug.contains("zone: Some(Graveyard)")
+            && compact_debug.contains("EventValue(Amount"),
+        "expected Desmond Miles to lower compound count and surveil event amount structurally, got {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Desmond Miles gets +1/+0 for each other Assassin you control and each Assassin card in your graveyard."
+        ),
+        "expected Desmond Miles compound count wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever Desmond Miles deals combat damage to a player, surveil X, where X is the amount of damage it dealt to that player."
+        ),
+        "expected Desmond Miles combat-damage surveil-X wording, got {rendered}"
+    );
+}
+
 #[test]
 fn parse_oracle_nadaar_enters_or_attacks_surface_regression() {
     let def = parse_oracle_card_definition("Nadaar, Selfless Paladin");
