@@ -35181,6 +35181,49 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[test]
+fn guardian_of_the_ages_strict_parser_and_text_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Guardian of the Ages")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Defender\n\
+             When a creature attacks you or a planeswalker you control, if this creature has defender, it loses defender and gains trample.",
+        )
+        .expect("Guardian of the Ages should parse strictly");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Defender".to_string(),
+            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and gains trample.".to_string(),
+        ],
+        "Guardian of the Ages should render the source-keyword intervening-if clause"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Guardian of the Ages should have an attack trigger");
+    assert!(
+        matches!(
+            triggered.intervening_if.as_ref(),
+            Some(crate::ConditionExpr::SourceMatches(filter))
+                if filter.card_types.as_slice() == [CardType::Creature]
+                    && filter.static_abilities.as_slice() == [StaticAbilityId::Defender]
+        ),
+        "Guardian of the Ages should gate the trigger on the source having defender, got {:?}",
+        triggered.intervening_if
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_sporeweb_weaver_strict_regression() {

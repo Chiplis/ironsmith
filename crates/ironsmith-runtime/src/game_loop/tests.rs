@@ -542,6 +542,87 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
     );
 }
 
+#[test]
+fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let guardian = CardDefinitionBuilder::new(CardId::from_raw(72_141), "Guardian of the Ages")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Defender\n\
+             When a creature attacks you or a planeswalker you control, if this creature has defender, it loses defender and gains trample.",
+        )
+        .expect("Guardian of the Ages should parse");
+    let guardian_id = game.create_object_from_definition(&guardian, alice, Zone::Battlefield);
+
+    assert!(
+        game.object_has_ability(guardian_id, &StaticAbility::defender()),
+        "Guardian of the Ages should start with defender"
+    );
+    assert!(
+        !game.object_has_ability(guardian_id, &StaticAbility::trample()),
+        "Guardian of the Ages should not start with trample"
+    );
+
+    let first_attacker = create_creature(&mut game, "First Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(first_attacker);
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: first_attacker,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attacking Guardian's controller should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Guardian of the Ages trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "Guardian should trigger while it has defender");
+    resolve_stack_entry(&mut game).expect("Guardian of the Ages trigger should resolve");
+
+    assert!(
+        !game.object_has_ability(guardian_id, &StaticAbility::defender()),
+        "Guardian of the Ages should lose defender after its trigger resolves"
+    );
+    assert!(
+        game.object_has_ability(guardian_id, &StaticAbility::trample()),
+        "Guardian of the Ages should gain trample after its trigger resolves"
+    );
+
+    let second_attacker = create_creature(&mut game, "Second Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(second_attacker);
+    let mut second_combat = CombatState::default();
+    let mut second_trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut second_combat,
+        &mut second_trigger_queue,
+        &[AttackerDeclaration {
+            creature: second_attacker,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("a later attack should be legal");
+    put_triggers_on_stack(&mut game, &mut second_trigger_queue)
+        .expect("empty trigger queue should still process");
+    assert!(
+        game.stack.is_empty(),
+        "Guardian of the Ages should not trigger once it no longer has defender"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
