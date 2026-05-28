@@ -5953,6 +5953,13 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     if describe_tagged_this_way_action(filter) == Some("revealed") {
         return pluralize_noun_phrase(&describe_for_each_count_filter(filter));
     }
+    if describe_tagged_this_way_action(filter) == Some("discarded") {
+        let mut untagged = filter.clone();
+        untagged.tagged_constraints.clear();
+        if untagged == ObjectFilter::default() {
+            return "cards discarded this way".to_string();
+        }
+    }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str().starts_with("milled_")

@@ -46475,3 +46475,170 @@ fn loot_the_key_to_everything_runtime_grants_play_permission_until_end_of_turn()
         "expected Loot play permission to allow lands as well as spells, got {debug}"
     );
 }
+
+#[test]
+fn occult_epiphany_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Occult Epiphany");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(
+        debug.contains("CardTypesAmong"),
+        "Occult Epiphany should count card types among discarded cards structurally, got {debug}"
+    );
+    assert!(
+        debug.contains("discarded_0"),
+        "Occult Epiphany should bind the token count to cards discarded this way, got {debug}"
+    );
+    assert_eq!(
+        rendered,
+        "Draw X cards, then discard X cards. Create a 1/1 white Spirit creature token with flying for each card type among cards discarded this way.",
+        "Occult Epiphany should render the full oracle text"
+    );
+}
+
+fn create_occult_epiphany_test_card(
+    game: &mut crate::GameState,
+    name: &str,
+    owner: PlayerId,
+    card_types: Vec<CardType>,
+    zone: Zone,
+) -> ObjectId {
+    let card = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build();
+    game.create_object_from_definition(&card, owner, zone)
+}
+
+fn resolve_occult_epiphany_with_x(game: &mut crate::GameState, controller: PlayerId, x: u32) {
+    let def = parse_oracle_card_definition("Occult Epiphany");
+    let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.object_mut(spell_id)
+        .expect("Occult Epiphany spell exists")
+        .x_value = Some(x);
+    let stable_id = game
+        .object(spell_id)
+        .expect("Occult Epiphany spell exists")
+        .stable_id;
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(spell_id, controller)
+            .with_x(x)
+            .with_source_info(stable_id, "Occult Epiphany".to_string()),
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(game, &mut dm)
+        .expect("Occult Epiphany should resolve");
+}
+
+#[test]
+fn occult_epiphany_runtime_creates_spirits_for_distinct_discarded_card_types() {
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    create_occult_epiphany_test_card(
+        &mut game,
+        "Existing Enchantment Card",
+        alice,
+        vec![CardType::Enchantment],
+        Zone::Graveyard,
+    );
+    create_occult_epiphany_test_card(
+        &mut game,
+        "Artifact Creature Card",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        Zone::Library,
+    );
+    create_occult_epiphany_test_card(
+        &mut game,
+        "Duplicate Artifact Card",
+        alice,
+        vec![CardType::Artifact],
+        Zone::Library,
+    );
+    create_occult_epiphany_test_card(
+        &mut game,
+        "Instant Card",
+        alice,
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    resolve_occult_epiphany_with_x(&mut game, alice, 3);
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        0,
+        "Occult Epiphany should discard the X cards it drew"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").graveyard.len(),
+        5,
+        "the existing graveyard card, three discarded cards, and Occult Epiphany should end in Alice's graveyard"
+    );
+
+    let spirit_ids = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| {
+            let Some(obj) = game.object(*id) else {
+                return false;
+            };
+            game.controller_of(obj) == alice
+                && obj.card_types.contains(&CardType::Creature)
+                && obj.subtypes.contains(&Subtype::Spirit)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spirit_ids.len(),
+        3,
+        "artifact, creature, and instant among discarded cards should create three Spirits; the existing enchantment and duplicate artifact should not add tokens"
+    );
+
+    for spirit_id in spirit_ids {
+        let spirit = game.object(spirit_id).expect("Spirit token exists");
+        assert_eq!(game.calculated_power(spirit_id), Some(1));
+        assert_eq!(game.calculated_toughness(spirit_id), Some(1));
+        assert_eq!(
+            game.current_colors(spirit_id),
+            Some(crate::color::ColorSet::WHITE)
+        );
+        assert!(
+            spirit.has_static_ability_id(StaticAbilityId::Flying),
+            "Occult Epiphany Spirit tokens should have flying"
+        );
+    }
+}
+
+#[test]
+fn occult_epiphany_runtime_x_zero_draws_discards_and_creates_no_tokens() {
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    create_occult_epiphany_test_card(
+        &mut game,
+        "Library Card",
+        alice,
+        vec![CardType::Sorcery],
+        Zone::Library,
+    );
+
+    resolve_occult_epiphany_with_x(&mut game, alice, 0);
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        0,
+        "X=0 should draw no cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").library.len(),
+        1,
+        "X=0 should leave the library unchanged"
+    );
+    assert!(
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .all(|obj| !obj.subtypes.contains(&Subtype::Spirit)),
+        "X=0 should create no Spirit tokens"
+    );
+}
