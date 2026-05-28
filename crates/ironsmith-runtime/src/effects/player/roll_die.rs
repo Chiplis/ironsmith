@@ -9,11 +9,24 @@ use crate::target::PlayerFilter;
 pub struct RollDieEffect {
     pub player: PlayerFilter,
     pub sides: u32,
+    pub die_text: Option<String>,
 }
 
 impl RollDieEffect {
     pub fn new(player: PlayerFilter, sides: u32) -> Self {
-        Self { player, sides }
+        Self {
+            player,
+            sides,
+            die_text: None,
+        }
+    }
+
+    pub fn new_with_die_text(player: PlayerFilter, sides: u32, die_text: Option<String>) -> Self {
+        Self {
+            player,
+            sides,
+            die_text,
+        }
     }
 }
 

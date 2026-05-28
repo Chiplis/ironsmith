@@ -15591,6 +15591,109 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn arden_angel_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Arden Angel")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\nAt the beginning of your upkeep, if Arden Angel is in your graveyard, roll a four-sided die. If the result is 1, return Arden Angel from your graveyard to the battlefield.",
+        )
+        .expect("Arden Angel should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn arden_angel_upkeep_roll_one_returns_from_graveyard_to_battlefield() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let arden = arden_angel_definition();
+    let arden_id = game.create_object_from_definition(&arden, alice, Zone::Graveyard);
+    let arden_stable_id = game.object(arden_id).expect("Arden Angel exists").stable_id;
+    game.force_next_die_roll(1);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Arden Angel should trigger from its controller's graveyard during upkeep"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Arden Angel upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Arden Angel upkeep trigger should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(arden_stable_id)
+        .expect("Arden Angel should still be trackable after returning");
+    assert!(
+        game.object(returned_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "rolling 1 should return Arden Angel to the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn arden_angel_upkeep_non_one_roll_leaves_it_in_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let arden = arden_angel_definition();
+    let arden_id = game.create_object_from_definition(&arden, alice, Zone::Graveyard);
+    let arden_stable_id = game.object(arden_id).expect("Arden Angel exists").stable_id;
+    game.force_next_die_roll(2);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Arden Angel should trigger");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Arden Angel upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Arden Angel upkeep trigger should resolve");
+
+    let arden_id = game
+        .find_object_by_stable_id(arden_stable_id)
+        .expect("Arden Angel should still be trackable after resolving");
+    assert!(
+        game.object(arden_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "rolling a non-1 should leave Arden Angel in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn arden_angel_does_not_trigger_when_not_in_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let arden = arden_angel_definition();
+    game.create_object_from_definition(&arden, alice, Zone::Battlefield);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Arden Angel's upkeep ability should only function from the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
     use crate::decision::compute_legal_actions;

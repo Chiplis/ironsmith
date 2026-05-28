@@ -477,6 +477,22 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
+    let source_from_graveyard_target = if is_battlefield
+        && target_words.len() > 3
+        && target_words[target_words.len() - 3..] == ["from", "your", "graveyard"]
+    {
+        let prefix_word_len = target_words.len() - 3;
+        let prefix_token_len = token_index_for_word_index(target_tokens, prefix_word_len)
+            .unwrap_or(target_tokens.len());
+        let prefix_tokens = trim_commas(&target_tokens[..prefix_token_len]);
+        match parse_target_phrase(&prefix_tokens) {
+            Ok(TargetAst::Source(span)) => Some(TargetAst::Source(span)),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     let mut count_value = None;
     let (target_tokens, dynamic_count) = if target_words
         .get(..2)
@@ -499,7 +515,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     } else {
         (target_tokens, false)
     };
-    let mut target = if matches!(
+    let mut target = if let Some(target) = source_from_graveyard_target {
+        target
+    } else if matches!(
         target_words.as_slice(),
         ["it"]
             | ["them"]

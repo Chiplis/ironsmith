@@ -826,11 +826,19 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
 
     let normalized = normalized_line.to_ascii_lowercase();
     for (needle, zone) in [
+        ("if this is in your hand", Zone::Hand),
         ("if this card is in your hand", Zone::Hand),
+        ("if this is in your graveyard", Zone::Graveyard),
         ("if this card is in your graveyard", Zone::Graveyard),
+        ("if this creature is in your graveyard", Zone::Graveyard),
+        ("if this permanent is in your graveyard", Zone::Graveyard),
+        ("if this object is in your graveyard", Zone::Graveyard),
+        ("if this is in your library", Zone::Library),
         ("if this card is in your library", Zone::Library),
+        ("if this is in exile", Zone::Exile),
         ("if this card is in exile", Zone::Exile),
         ("if this card is exiled", Zone::Exile),
+        ("if this is in the command zone", Zone::Command),
         ("if this card is in the command zone", Zone::Command),
     ] {
         if str_contains(normalized.as_str(), needle) {
@@ -838,7 +846,8 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
             break;
         }
     }
-    if str_contains(normalized.as_str(), "return this card from your graveyard")
+    if (str_contains(normalized.as_str(), "return this from your graveyard")
+        || str_contains(normalized.as_str(), "return this card from your graveyard"))
         && !trigger_references_attached_object(trigger)
     {
         zones = vec![Zone::Graveyard];

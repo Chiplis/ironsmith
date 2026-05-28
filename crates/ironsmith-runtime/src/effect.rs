@@ -2870,6 +2870,16 @@ impl Effect {
         Self::new(RollDieEffect::new(player, sides))
     }
 
+    /// Roll a die, preserving source text such as "four-sided die" for rendering.
+    pub fn roll_die_with_die_text(
+        sides: u32,
+        player: PlayerFilter,
+        die_text: Option<String>,
+    ) -> Self {
+        use crate::effects::RollDieEffect;
+        Self::new(RollDieEffect::new_with_die_text(player, sides, die_text))
+    }
+
     // === Effect composition builders ===
 
     /// Wrap an effect with an ID for later reference.

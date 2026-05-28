@@ -226,6 +226,11 @@ pub(crate) fn parse_roll(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_sided_die_word(word: &str) -> Option<u32> {
+        let prefix = word.strip_suffix("-sided")?;
+        ironsmith_core::parse_cardinal_word(prefix).or_else(|| prefix.parse::<u32>().ok())
+    }
+
     let player = match subject.unwrap_or(SubjectAst::This) {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
@@ -243,16 +248,56 @@ pub(crate) fn parse_roll(
         ));
     };
     let die_word = die_word.to_ascii_lowercase();
+    let die_noun = die_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .map(str::to_ascii_lowercase)
+        .take(3)
+        .collect::<Vec<_>>();
+    let die_text = match die_noun.as_slice() {
+        [sided, noun] if sided.ends_with("-sided") && matches!(noun.as_str(), "die" | "dice") => {
+            Some(format!("{sided} {noun}"))
+        }
+        [number, sided, noun] if sided == "sided" && matches!(noun.as_str(), "die" | "dice") => {
+            Some(format!("{number}-sided {noun}"))
+        }
+        _ => None,
+    };
     let Some(sides) = die_word
         .strip_prefix('d')
         .and_then(|sides| sides.parse::<u32>().ok())
+        .or_else(|| {
+            let has_die_noun = die_tokens
+                .get(1)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| matches!(word, "die" | "dice"));
+            has_die_noun.then(|| parse_sided_die_word(&die_word)).flatten()
+        })
+        .or_else(|| {
+            let has_sided_die_noun = die_tokens
+                .get(1)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| word == "sided")
+                && die_tokens
+                    .get(2)
+                    .and_then(OwnedLexToken::as_word)
+                    .is_some_and(|word| matches!(word, "die" | "dice"));
+            has_sided_die_noun
+                .then(|| {
+                    ironsmith_core::parse_cardinal_word(&die_word)
+                        .or_else(|| die_word.parse::<u32>().ok())
+                })
+                .flatten()
+        })
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
-    Ok(EffectAst::subject_verb_roll_die(player, sides))
+    Ok(EffectAst::subject_verb_roll_die_with_die_text(
+        player, sides, die_text,
+    ))
 }
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

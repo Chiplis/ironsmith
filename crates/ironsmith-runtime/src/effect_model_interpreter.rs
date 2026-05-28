@@ -1259,9 +1259,10 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDieEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::RollDieEffect::new(
+        return Ok(Effect::new(crate::effects::RollDieEffect::new_with_die_text(
             payload.player.clone(),
             payload.sides,
+            payload.die_text.clone(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::EmitGiftGivenEffect>(&effect) {

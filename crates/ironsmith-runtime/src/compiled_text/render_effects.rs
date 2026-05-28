@@ -13322,7 +13322,10 @@ fn describe_triggered_inline_ability(
     let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
-        line.push_str(&describe_condition(&condition));
+        line.push_str(&describe_trigger_intervening_condition(
+            &condition,
+            triggered,
+        ));
     }
 
     let mut clauses = Vec::new();
@@ -13398,6 +13401,52 @@ fn describe_triggered_inline_ability(
     line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
     apply_triggered_presentation_label(triggered, line)
+}
+
+fn describe_trigger_intervening_condition(
+    condition: &Condition,
+    triggered: &crate::ability::TriggeredAbility,
+) -> String {
+    if matches!(condition, Condition::SourceIsInZone(Zone::Graveyard))
+        && let Some(subject) = source_return_from_graveyard_subject(triggered)
+    {
+        return format!("{subject} is in your graveyard");
+    }
+    describe_condition(condition)
+}
+
+fn source_return_from_graveyard_subject(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    triggered
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(source_return_from_graveyard_subject_in_effect)
+}
+
+fn source_return_from_graveyard_subject_in_effect(effect: &Effect) -> Option<String> {
+    if let Some(return_to_battlefield) = effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+        && matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source)
+    {
+        return Some(describe_choose_spec(&return_to_battlefield.target));
+    }
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return if_effect
+            .then
+            .iter()
+            .chain(if_effect.else_.iter())
+            .find_map(source_return_from_graveyard_subject_in_effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return source_return_from_graveyard_subject_in_effect(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return source_return_from_graveyard_subject_in_effect(&with_id.effect);
+    }
+    None
 }
 
 fn normalize_modal_named_source_etb_surface(
@@ -22952,7 +23001,9 @@ fn describe_with_id_if_clause(
             let player = describe_player_filter(&roll_die.player);
             let result_text = describe_roll_result_comparison(cmp)?;
             let verb = player_verb(&player, "roll", "rolls");
-            if player == "you" {
+            if matches!(cmp, Comparison::Equal(_)) {
+                format!("If the result is {result_text}")
+            } else if player == "you" {
                 format!("If you roll {result_text}")
             } else {
                 format!("If {player} {verb} {result_text}")
@@ -22972,7 +23023,9 @@ fn describe_with_id_if_clause(
                 let player = describe_player_filter(&roll_die.player);
                 let result_text = describe_roll_result_comparison(cmp)?;
                 let verb = player_verb(&player, "roll", "rolls");
-                if player == "you" {
+                if matches!(cmp, Comparison::Equal(_)) {
+                    format!("If the result is {result_text}")
+                } else if player == "you" {
                     format!("If you roll {result_text}")
                 } else {
                     format!("If {player} {verb} {result_text}")
@@ -26666,6 +26719,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(return_to_battlefield) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
     {
+        if matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source) {
+            return format!(
+                "Return {} from your graveyard to the battlefield{}",
+                describe_choose_spec(&return_to_battlefield.target),
+                if return_to_battlefield.tapped {
+                    " tapped"
+                } else {
+                    ""
+                }
+            );
+        }
         if let Some(owner) = graveyard_owner_from_spec(&return_to_battlefield.target) {
             let target_text =
                 describe_choose_spec_without_graveyard_zone(&return_to_battlefield.target);
@@ -28135,13 +28199,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(roll_die) = effect.downcast_ref::<crate::effects::RollDieEffect>() {
         let player = describe_player_filter(&roll_die.player);
+        let die_text = roll_die
+            .die_text
+            .clone()
+            .unwrap_or_else(|| format!("d{}", roll_die.sides));
         if player == "you" {
-            return format!("Roll a d{}", roll_die.sides);
+            return format!("Roll a {die_text}");
         }
         return format!(
-            "{player} {} a d{}",
+            "{player} {} a {die_text}",
             player_verb(&player, "roll", "rolls"),
-            roll_die.sides
         );
     }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
@@ -34301,7 +34368,10 @@ pub(super) fn describe_ability(
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
-                line.push_str(&describe_condition(&condition));
+                line.push_str(&describe_trigger_intervening_condition(
+                    &condition,
+                    triggered,
+                ));
             }
             let mut clauses = Vec::new();
             if !triggered.choices.is_empty()
