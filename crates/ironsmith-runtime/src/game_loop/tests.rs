@@ -32524,6 +32524,113 @@ fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(992_001), "The Aesir Escape Valhalla")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .parse_text(
+            "I — Exile a permanent card from your graveyard. You gain life equal to its mana value.\n\
+             II — Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.\n\
+             III — Return this Saga and the exiled card to their owner's hand.",
+        )
+        .expect("The Aesir Escape Valhalla should parse");
+    let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
+    let saga_stable_id = game.object(saga_id).expect("saga exists").stable_id;
+
+    let exiled_card = CardBuilder::new(CardId::from_raw(992_002), "Valhalla Relic")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let graveyard_id = game.create_object_from_card(&exiled_card, alice, Zone::Graveyard);
+    let exiled_stable_id = game
+        .object(graveyard_id)
+        .expect("graveyard card exists")
+        .stable_id;
+
+    let target_creature = CardBuilder::new(CardId::from_raw(992_003), "Small Ally")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let target_id = game.create_object_from_card(&target_creature, alice, Zone::Battlefield);
+    let opponent_creature = CardBuilder::new(CardId::from_raw(992_004), "Opposing Ally")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opponent_target_id = game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter I should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter I should resolve");
+
+    let exiled_id = game
+        .find_object_by_stable_id(exiled_stable_id)
+        .expect("exiled card should still exist");
+    assert_eq!(game.object(exiled_id).expect("exiled card exists").zone, Zone::Exile);
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        24,
+        "chapter I should gain life equal to the exiled card's mana value"
+    );
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter II should go on the stack with a legal controlled target");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter II should resolve");
+
+    assert_eq!(
+        game.counter_count(target_id, CounterType::PlusOnePlusOne),
+        4,
+        "chapter II should use the exiled card's mana value, not the target creature's mana value"
+    );
+    assert_eq!(
+        game.counter_count(opponent_target_id, CounterType::PlusOnePlusOne),
+        0,
+        "chapter II's target restriction should not put counters on an opponent's creature"
+    );
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter III should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter III should resolve");
+
+    let returned_saga_id = game
+        .find_object_by_stable_id(saga_stable_id)
+        .expect("saga should still exist after returning");
+    let returned_exiled_id = game
+        .find_object_by_stable_id(exiled_stable_id)
+        .expect("exiled card should still exist after returning");
+    assert_eq!(
+        game.object(returned_saga_id).expect("returned saga exists").zone,
+        Zone::Hand,
+        "chapter III should return this Saga to its owner's hand"
+    );
+    assert_eq!(
+        game.object(returned_exiled_id)
+            .expect("returned exiled card exists")
+            .zone,
+        Zone::Hand,
+        "chapter III should return the exiled card to its owner's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_saga_precombat_main_adds_lore_counter() {
     use crate::cards::definitions::the_birth_of_meletis;
 
