@@ -106,7 +106,7 @@ use crate::color::{Color, ColorSet};
 #[allow(unused_imports)]
 use crate::cost::TotalCost;
 #[allow(unused_imports)]
-use crate::effect::{Effect, EventValueSpec, Value};
+use crate::effect::{Condition, Effect, EventValueSpec, Value};
 #[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
 #[allow(unused_imports)]
@@ -595,6 +595,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
+        single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
         single_static_ability_ast_rule!(
             parse_no_more_than_creatures_can_attack_or_block_each_combat_line
@@ -606,6 +607,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_exile_top_and_play_line),
+        single_static_ability_ast_rule!(parse_conditional_draw_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
@@ -887,6 +889,15 @@ fn parse_static_ability_ast_line_early_lexed(
         return Ok(Some(vec![keyword_static_marker(tokens).into()]));
     }
 
+    if rendered == "x cant be greater than the number of players in the game" {
+        return Ok(Some(vec![
+            StaticAbility::this_spell_x_maximum(
+                Value::CountPlayers(PlayerFilter::Any),
+                "X can't be greater than the number of players in the game.",
+            )
+            .into(),
+        ]));
+    }
     if rendered == "this creature cant attack unless youve cast a creature spell this turn"
         || rendered == "this cant attack unless youve cast a creature spell this turn"
     {
@@ -3496,6 +3507,52 @@ pub(crate) fn parse_damage_redirect_to_source_line(
         ));
     }
     Ok(None)
+}
+
+pub(crate) fn parse_damage_redirect_to_source_controller_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.first() != Some(&"if") {
+        return Ok(None);
+    }
+
+    let Some(would_idx) = find_window_by(&words, 5, |window| {
+        window == ["would", "deal", "damage", "to", "you"]
+    }) else {
+        return Ok(None);
+    };
+    let tail = &words[would_idx + 5..];
+    if tail != [
+        "it",
+        "deals",
+        "that",
+        "damage",
+        "to",
+        "its",
+        "controller",
+        "instead",
+    ] {
+        return Ok(None);
+    }
+    if would_idx <= 1 {
+        return Ok(None);
+    }
+
+    let source_start = token_index_for_word_index(tokens, 1).unwrap_or(0);
+    let source_end = token_index_for_word_index(tokens, would_idx).unwrap_or(tokens.len());
+    let source_tokens = trim_lexed_commas(&tokens[source_start..source_end]);
+    let source_filter = parse_object_filter_lexed(source_tokens, false)?;
+    let mut display = render_token_slice(tokens).trim().to_string();
+    if !display.ends_with('.') {
+        display.push('.');
+    }
+
+    Ok(Some(StaticAbility::redirect_damage_to_source_controller(
+        source_filter,
+        PlayerFilter::You,
+        display,
+    )))
 }
 
 pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
@@ -6891,6 +6948,52 @@ pub(crate) fn parse_double_token_creation_replacement_line(
         )));
     }
 
+    let add_one_prefix = ["if", "you", "would", "create", "one", "or", "more"];
+    if slice_starts_with(&line_words, &add_one_prefix)
+        && let Some(token_idx) = line_words[add_one_prefix.len()..]
+            .iter()
+            .position(|word| matches!(*word, "token" | "tokens"))
+            .map(|idx| idx + add_one_prefix.len())
+    {
+        let descriptor = &line_words[add_one_prefix.len()..token_idx];
+        let additional_prefix = [
+            "instead",
+            "create",
+            "those",
+            "tokens",
+            "plus",
+            "an",
+            "additional",
+        ];
+        let after_token = &line_words[token_idx + 1..];
+        if !descriptor.is_empty()
+            && slice_starts_with(after_token, &additional_prefix)
+            && after_token.last() == Some(&"token")
+            && &after_token[additional_prefix.len()..after_token.len() - 1] == descriptor
+        {
+            if descriptor != ["treasure"] {
+                return Ok(None);
+            }
+            let mut token_filter = ObjectFilter::default().token();
+            for word in descriptor {
+                if let Some(card_type) = parse_card_type(word) {
+                    token_filter = token_filter.with_type(card_type);
+                } else if let Some(subtype) = parse_subtype_flexible(word) {
+                    token_filter = token_filter.with_subtype(subtype);
+                } else {
+                    return Ok(None);
+                }
+            }
+            return Ok(Some(StaticAbility::add_token_creation_replacement(
+                PlayerFilter::You,
+                token_filter,
+                ironsmith_core::AdditionalTokenKind::Treasure,
+                1,
+                display_text_for_tokens(tokens, true),
+            )));
+        }
+    }
+
     Ok(None)
 }
 
@@ -8202,6 +8305,106 @@ pub(crate) fn parse_draw_replacement_skip_empty_library_line(
     }
 
     Ok(None)
+}
+
+fn parse_conditional_draw_replacement_amount(word: &str) -> Option<u32> {
+    word.parse::<u32>()
+        .ok()
+        .or_else(|| parse_named_number(word))
+}
+
+pub(crate) fn parse_conditional_draw_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let draw_subject_len = if slice_starts_with(
+        &words,
+        &["if", "you", "would", "draw", "a", "card", "while"],
+    ) {
+        7
+    } else if slice_starts_with(
+        &words,
+        &["if", "you", "would", "draw", "card", "while"],
+    ) {
+        6
+    } else {
+        return Ok(None);
+    };
+
+    let Some(instead_idx) = find_index(&words[draw_subject_len..], |word| *word == "instead")
+    else {
+        return Ok(None);
+    };
+    let instead_idx = draw_subject_len + instead_idx;
+    if words[draw_subject_len..instead_idx] != ["you", "have", "no", "cards", "in", "hand"] {
+        return Ok(None);
+    }
+
+    let effect_words = &words[instead_idx + 1..];
+    let draw_idx = if effect_words.first().copied() == Some("you") {
+        1
+    } else {
+        0
+    };
+    if effect_words.get(draw_idx).copied() != Some("draw") {
+        return Ok(None);
+    }
+    let Some(draw_count_word) = effect_words.get(draw_idx + 1).copied() else {
+        return Ok(None);
+    };
+    let Some(draw_count) = parse_conditional_draw_replacement_amount(draw_count_word) else {
+        return Ok(None);
+    };
+    if !matches!(effect_words.get(draw_idx + 2).copied(), Some("card" | "cards")) {
+        return Ok(None);
+    }
+
+    let mut next_idx = draw_idx + 3;
+    if effect_words.get(next_idx).copied() == Some("instead") {
+        next_idx += 1;
+    }
+
+    let mut replacement_effects = vec![Effect::draw(draw_count as i32)];
+    let mut life_loss = None;
+    if next_idx < effect_words.len() {
+        let tail = &effect_words[next_idx..];
+        if tail.len() != 5
+            || tail[0] != "and"
+            || tail[1] != "you"
+            || tail[2] != "lose"
+            || tail[4] != "life"
+        {
+            return Ok(None);
+        }
+        let Some(amount) = parse_conditional_draw_replacement_amount(tail[3]) else {
+            return Ok(None);
+        };
+        life_loss = Some(amount);
+        replacement_effects.push(Effect::lose_life(amount as i32));
+    }
+
+    let draw_amount_text = match draw_count {
+        1 => "a".to_string(),
+        2 => "two".to_string(),
+        3 => "three".to_string(),
+        4 => "four".to_string(),
+        5 => "five".to_string(),
+        _ => draw_count.to_string(),
+    };
+    let draw_card_text = if draw_count == 1 { "card" } else { "cards" };
+    let mut display = format!(
+        "If you would draw a card while you have no cards in hand, instead you draw {draw_amount_text} {draw_card_text}"
+    );
+    if let Some(amount) = life_loss {
+        display.push_str(&format!(" and you lose {amount} life"));
+    }
+    display.push('.');
+
+    Ok(Some(StaticAbility::conditional_draw_replacement(
+        Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
+        replacement_effects,
+        display,
+    )))
 }
 
 fn keyword_action_replacement_subject_explores(words: &[&str]) -> bool {

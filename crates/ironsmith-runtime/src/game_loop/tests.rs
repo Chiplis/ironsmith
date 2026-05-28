@@ -38,6 +38,123 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn open_the_way_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_900), "Open the Way")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "X can't be greater than the number of players in the game.\n\
+             Reveal cards from the top of your library until you reveal X land cards. Put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Open the Way should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn open_the_way_x_choice_is_capped_by_players_in_game() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let charlie = PlayerId::from_index(2);
+
+    let forest = crate::cards::definitions::basic_forest();
+    for _ in 0..8 {
+        game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    }
+
+    let open_the_way = open_the_way_definition();
+    let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
+    let mana_cost = game.object(spell_id).unwrap().mana_cost.clone();
+
+    let (needs_x, max_x) = compute_spell_cast_x_bounds(
+        &game,
+        alice,
+        spell_id,
+        &CastingMethod::Normal,
+        mana_cost.as_ref(),
+    );
+    assert!(needs_x, "Open the Way should ask for X while being cast");
+    assert_eq!(max_x, 3, "three players in game should cap X at 3");
+
+    game.player_mut(charlie).unwrap().has_lost = true;
+    let (_, max_x_after_player_lost) = compute_spell_cast_x_bounds(
+        &game,
+        alice,
+        spell_id,
+        &CastingMethod::Normal,
+        mana_cost.as_ref(),
+    );
+    assert_eq!(
+        max_x_after_player_lost, 2,
+        "players no longer in the game should stop increasing Open the Way's X cap"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let open_the_way = open_the_way_definition();
+    let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
+    game.object_mut(spell_id).unwrap().x_value = Some(2);
+    let spell_stable = game.object(spell_id).unwrap().stable_id;
+
+    let forest = crate::cards::definitions::basic_forest();
+    let second_land = game.create_object_from_definition(&forest, alice, Zone::Library);
+    let filler = CardBuilder::new(CardId::from_raw(72_901), "Filler Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let filler_id = game.create_object_from_card(&filler, alice, Zone::Library);
+    let top_land = game.create_object_from_definition(&forest, alice, Zone::Library);
+    let second_land_stable = game.object(second_land).unwrap().stable_id;
+    let filler_stable = game.object(filler_id).unwrap().stable_id;
+    let top_land_stable = game.object(top_land).unwrap().stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_x(2)
+            .with_source_info(
+                game.object(spell_id).unwrap().stable_id,
+                "Open the Way".to_string(),
+            ),
+    );
+    resolve_stack_entry(&mut game).expect("Open the Way should resolve");
+
+    for stable_id in [top_land_stable, second_land_stable] {
+        let land_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed land should still exist after changing zones");
+        assert!(
+            game.battlefield.contains(&land_id),
+            "revealed land {land_id:?} should be on the battlefield"
+        );
+        assert!(
+            game.is_tapped(land_id),
+            "revealed land {land_id:?} should enter tapped"
+        );
+    }
+    let filler_id = game
+        .find_object_by_stable_id(filler_stable)
+        .expect("filler card should still exist after bottoming");
+    assert!(
+        game.player(alice).unwrap().library.contains(&filler_id),
+        "nonmatching revealed cards should be put on the bottom of the library"
+    );
+    let resolved_spell_id = game
+        .find_object_by_stable_id(spell_stable)
+        .expect("Open the Way should still exist after resolving");
+    assert!(
+        game.player(alice).unwrap().graveyard.contains(&resolved_spell_id),
+        "Open the Way should move to its owner's graveyard after resolving"
+    );
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();
@@ -19610,6 +19727,204 @@ fn test_marang_river_prowler_castable_from_graveyard_with_green_permanent() {
     assert!(
         can_play_from_graveyard,
         "Marang River Prowler should grant play-from-graveyard when you control a green permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn eelectrocute_definition() -> crate::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_615), "Eelectrocute")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Eelectrocute deals 2 damage to any target.\nYou may cast this card from your graveyard as long as you've rolled a 6 this turn. If you cast it this way and it would be put into your graveyard, exile it instead.",
+        )
+        .expect("Eelectrocute should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_not_castable_from_graveyard_without_rolled_six() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    game.turn_store.turn_history.record_die_roll(alice, 5);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
+
+    let actions = compute_legal_actions(&game, alice);
+    let graveyard_cast = actions.iter().find(|action| {
+        matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+            } if *spell_id == eelectrocute_id
+        )
+    });
+    assert!(
+        graveyard_cast.is_none(),
+        "Eelectrocute should not be castable from graveyard unless you rolled a 6 this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_cast_from_graveyard_after_rolled_six_exiles_after_resolution() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    game.turn_store.turn_history.record_die_roll(alice, 6);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Graveyard);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                } if *spell_id == eelectrocute_id
+            )
+        })
+        .expect("Eelectrocute should be castable from graveyard after rolling a 6");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Eelectrocute graveyard cast should start");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing player target should complete Eelectrocute cast");
+
+    resolve_stack_entry(&mut game).expect("Eelectrocute should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        18,
+        "Eelectrocute should deal 2 damage to the chosen target"
+    );
+    assert!(
+        game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "Eelectrocute cast from the graveyard this way should be exiled after resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_eelectrocute_normal_cast_goes_to_graveyard_not_exile() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    let eelectrocute = eelectrocute_definition();
+    let eelectrocute_id = game.create_object_from_definition(&eelectrocute, alice, Zone::Hand);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == eelectrocute_id
+            )
+        })
+        .expect("Eelectrocute should be normally castable from hand");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Eelectrocute hand cast should start");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing player target should complete normal Eelectrocute cast");
+
+    resolve_stack_entry(&mut game).expect("Eelectrocute should resolve");
+
+    let player = game.player(alice).expect("Alice should exist");
+    assert!(
+        player.graveyard.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "normally cast Eelectrocute should go to graveyard"
+    );
+    assert!(
+        !game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eelectrocute")
+        }),
+        "normally cast Eelectrocute should not be exiled"
     );
 }
 

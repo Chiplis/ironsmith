@@ -2749,6 +2749,100 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         effect
     }
 
+    fn describe_consult_reveal_put_battlefield_then_bottom(effects: &[&Effect]) -> Option<String> {
+        let [consult_effect, move_effect, bottom_effect] = effects else {
+            return None;
+        };
+
+        let consult = unwrap_wrapped_effect(consult_effect)
+            .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+        if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+            return None;
+        }
+
+        let move_to_zone = unwrap_wrapped_effect(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || move_to_zone.to_top
+            || !matches!(
+                move_to_zone.target.base(),
+                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            )
+        {
+            return None;
+        }
+
+        let bottom = unwrap_wrapped_effect(bottom_effect)
+            .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+        if bottom.tag != consult.all_tag
+            || bottom.keep_tagged.as_ref() != Some(&consult.match_tag)
+        {
+            return None;
+        }
+
+        let player = describe_player_filter(&consult.player);
+        let library_owner = describe_possessive_player_filter(&consult.player);
+        let reveal_verb = player_verb(&player, "reveal", "reveals");
+        let put_verb = player_verb(&player, "put", "puts");
+        let pronoun = if player == "you" { "you" } else { "they" };
+        let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
+            "reveal"
+        } else {
+            "reveals"
+        };
+        let selection = describe_search_selection_with_cards(&consult.filter.description());
+        let stop_text = match &consult.stop_rule {
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                selection.clone()
+            }
+            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+                format!(
+                    "{} {}",
+                    describe_value(count),
+                    pluralize_noun_phrase(&selection)
+                )
+            }
+        };
+        let moved_phrase = match &consult.stop_rule {
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                "that card".to_string()
+            }
+            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(_) => {
+                format!("those {}", pluralize_noun_phrase(&selection))
+            }
+        };
+        let tapped_suffix = if move_to_zone.enters_tapped {
+            " tapped"
+        } else {
+            ""
+        };
+        let order_text = match bottom.order {
+            crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+                " in a random order".to_string()
+            }
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
+                " in an order chosen by {}",
+                describe_player_filter(&bottom.player)
+            ),
+        };
+
+        if player == "you" {
+            Some(format!(
+                "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of {library_owner} library{order_text}"
+            ))
+        } else {
+            Some(format!(
+                "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} {moved_phrase} onto the battlefield{tapped_suffix} and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+            ))
+        }
+    }
+
+    if let Some(compact) = describe_consult_reveal_put_battlefield_then_bottom(&raw_effects) {
+        return compact;
+    }
+
     fn doubled_affected_count_for_effect(value: &Value, id: crate::effect::EffectId) -> bool {
         let Value::Add(left, right) = value.unhinted() else {
             return false;
@@ -8045,7 +8139,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 return None;
             }
             if !matches!(
-                &move_to_zone.target,
+                move_to_zone.target.base(),
                 ChooseSpec::Tagged(tag) if tag == &consult.match_tag
             ) {
                 return None;
@@ -8187,7 +8281,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 return None;
             }
             if !matches!(
-                &move_to_zone.target,
+                move_to_zone.target.base(),
                 ChooseSpec::Tagged(tag) if tag == &consult.match_tag
             ) {
                 return None;
@@ -8213,9 +8307,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             };
             let selection = describe_search_selection_with_cards(&consult.filter.description());
             let stop_text = match &consult.stop_rule {
-                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-                    selection
+                    selection.clone()
                 }
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
                     "{} {}",
@@ -8240,81 +8334,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             } else {
                 Some(format!(
                     "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card into their hand and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
-                ))
-            }
-        }
-
-        fn render_consult_reveal_put_battlefield_then_bottom(
-            effects: &[&Effect],
-        ) -> Option<String> {
-            if effects.len() != 3 {
-                return None;
-            }
-
-            let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
-            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
-                return None;
-            }
-
-            let move_effect = unwrap_tag_wrappers(effects[1]);
-            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-            if move_to_zone.zone != Zone::Battlefield || move_to_zone.to_top {
-                return None;
-            }
-            if !matches!(
-                &move_to_zone.target,
-                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
-            ) {
-                return None;
-            }
-
-            let remainder = effects[2]
-                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-            if remainder.tag != consult.all_tag
-                || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
-            {
-                return None;
-            }
-
-            let player = describe_player_filter(&consult.player);
-            let library_owner = describe_possessive_player_filter(&consult.player);
-            let reveal_verb = player_verb(&player, "reveal", "reveals");
-            let put_verb = player_verb(&player, "put", "puts");
-            let pronoun = if player == "you" { "you" } else { "they" };
-            let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
-                "reveal"
-            } else {
-                "reveals"
-            };
-            let selection = describe_search_selection_with_cards(&consult.filter.description());
-            let stop_text = match &consult.stop_rule {
-                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
-                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-                    selection
-                }
-                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-                    "{} {}",
-                    describe_value(count),
-                    pluralize_noun_phrase(&selection)
-                ),
-            };
-            let order_text = match remainder.order {
-                crate::effects::consult_helpers::LibraryBottomOrder::Random => {
-                    " in a random order".to_string()
-                }
-                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
-                    " in an order chosen by {}",
-                    describe_player_filter(&remainder.player)
-                ),
-            };
-
-            if player == "you" {
-                Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card onto the battlefield, then put the rest on the bottom of {library_owner} library{order_text}"
-                ))
-            } else {
-                Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
                 ))
             }
         }
@@ -10107,7 +10126,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
 
         if idx + 2 < filtered.len()
-            && let Some(rendered) = render_consult_reveal_put_battlefield_then_bottom(&[
+            && let Some(rendered) = describe_consult_reveal_put_battlefield_then_bottom(&[
                 filtered[idx],
                 filtered[idx + 1],
                 filtered[idx + 2],
@@ -12220,6 +12239,19 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         && !compact_trimmed.starts_with("Whenever ")
         && !compact_trimmed.starts_with("At ")
         && !compact_trimmed.starts_with("Choose ")
+    {
+        return Some(cleanup_decompiled_text(&lowercase_first(
+            compact_trimmed.trim_end_matches('.'),
+        )));
+    }
+    if !compact_trimmed.is_empty()
+        && compact_trimmed.contains(" until ")
+        && compact_trimmed.contains(". Put ")
+        && compact_trimmed.contains(" and the rest on the bottom of ")
+        && !compact_trimmed.starts_with("If ")
+        && !compact_trimmed.starts_with("When ")
+        && !compact_trimmed.starts_with("Whenever ")
+        && !compact_trimmed.starts_with("At ")
     {
         return Some(cleanup_decompiled_text(&lowercase_first(
             compact_trimmed.trim_end_matches('.'),

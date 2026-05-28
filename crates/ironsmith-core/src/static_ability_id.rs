@@ -58,6 +58,7 @@ pub enum StaticAbilityId {
     Unleash,
     ConditionalSpellKeyword,
     ThisSpellCastRestriction,
+    ThisSpellXMaximum,
     Unblockable,
     FlyingRestriction,
     FlyingOnlyRestriction,
@@ -163,6 +164,7 @@ pub enum StaticAbilityId {
     AddChosenCreatureType,
     SetChosenColor,
     RedirectDamageToSource,
+    RedirectDamageToSourceController,
     PreventAllDamageDealtByThisPermanent,
     PreventAllCombatDamageDealtByThisPermanent,
     PreventAllDamageDealtToCreatures,
@@ -214,6 +216,7 @@ pub enum StaticAbilityId {
     DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
+    ConditionalDrawReplacement,
     KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
     ExileToExileInsteadOfGraveyard,
@@ -221,6 +224,7 @@ pub enum StaticAbilityId {
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
     DoubleTokenCreationReplacement,
+    AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     SuppressMatchingTriggeredAbilities,
@@ -300,6 +304,7 @@ impl StaticAbilityId {
             | Unleash
             | ConditionalSpellKeyword
             | ThisSpellCastRestriction
+            | ThisSpellXMaximum
             | Unblockable
             | FlyingRestriction
             | FlyingOnlyRestriction
@@ -405,6 +410,7 @@ impl StaticAbilityId {
             | AddChosenCreatureType
             | SetChosenColor
             | RedirectDamageToSource
+            | RedirectDamageToSourceController
             | PreventAllDamageDealtByThisPermanent
             | PreventAllCombatDamageDealtByThisPermanent
             | PreventAllDamageDealtToCreatures
@@ -456,6 +462,7 @@ impl StaticAbilityId {
             | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary
+            | ConditionalDrawReplacement
             | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard
             | ExileToExileInsteadOfGraveyard
@@ -463,6 +470,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
             | DoubleTokenCreationReplacement
+            | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | SuppressMatchingTriggeredAbilities

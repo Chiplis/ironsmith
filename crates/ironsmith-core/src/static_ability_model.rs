@@ -31,6 +31,11 @@ pub struct ConditionalSpellKeywordSpec {
     pub threshold: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdditionalTokenKind {
+    Treasure,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
@@ -172,6 +177,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
     ThisSpellCastRestriction {
         kind: ThisSpellCastRestrictionKind,
+        display: String,
+    },
+    ThisSpellXMaximum {
+        maximum: Value,
         display: String,
     },
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
@@ -351,6 +360,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         toughness: i32,
     },
     DoubleDamageFromSourcesYouControlOfChosenType(String),
+    RedirectDamageToSourceController {
+        source_filter: ObjectFilter,
+        target_player_filter: PlayerFilter,
+        display: String,
+    },
     AdditionalLandPlays(u32),
     RevealFirstCardYouDrawEachTurn {
         optional: bool,
@@ -401,9 +415,21 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         controller: PlayerFilter,
         display: String,
     },
+    AddTokenCreationReplacement {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional_token: AdditionalTokenKind,
+        additional: i32,
+        display: String,
+    },
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
+        replacement_effects: Vec<E>,
+        display: String,
+    },
+    ConditionalDrawReplacement {
+        condition: Condition,
         replacement_effects: Vec<E>,
         display: String,
     },
@@ -635,6 +661,8 @@ where
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                     additional_costs,
                     usage_limit,
+                    condition,
+                    exiles_after_resolution,
                 } => {
                     let mut mapped = Vec::with_capacity(additional_costs.len());
                     for cost in additional_costs {
@@ -643,6 +671,8 @@ where
                     DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                         additional_costs: mapped,
                         usage_limit,
+                        condition,
+                        exiles_after_resolution,
                     }
                 }
             })
@@ -790,6 +820,9 @@ where
             }
             StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
                 StaticAbilityPayload::ThisSpellCastRestriction { kind, display }
+            }
+            StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -1132,6 +1165,15 @@ where
             StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display) => {
                 StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display)
             }
+            StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            } => StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            },
             StaticAbilityPayload::AdditionalLandPlays(count) => {
                 StaticAbilityPayload::AdditionalLandPlays(count)
             }
@@ -1227,6 +1269,19 @@ where
                 controller,
                 display,
             },
+            StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
+                display,
+            } => StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
+                display,
+            },
             StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
@@ -1235,6 +1290,18 @@ where
             } => StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            } => StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(map_effect)
@@ -1534,6 +1601,15 @@ impl<
             id: Some(StaticAbilityId::ThisSpellCastRestriction),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellCastRestriction { kind, display },
+        }
+    }
+
+    pub fn this_spell_x_maximum(maximum: Value, text: impl Into<String>) -> Self {
+        let display = text.into();
+        Self {
+            id: Some(StaticAbilityId::ThisSpellXMaximum),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
         }
     }
 
@@ -2854,6 +2930,23 @@ impl<
             payload: StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display),
         }
     }
+
+    pub fn redirect_damage_to_source_controller(
+        source_filter: ObjectFilter,
+        target_player_filter: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RedirectDamageToSourceController),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            },
+        }
+    }
     pub fn with_enter_as_copy_as_enters(
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: impl Into<String>,
@@ -3217,6 +3310,23 @@ impl<
         }
     }
 
+    pub fn conditional_draw_replacement(
+        condition: Condition,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ConditionalDrawReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            },
+        }
+    }
+
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::DrawReplacementExileTopAndPlay),
@@ -3417,6 +3527,27 @@ impl<
             label: display.clone(),
             payload: StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
+                display,
+            },
+        }
+    }
+
+    pub fn add_token_creation_replacement(
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional_token: AdditionalTokenKind,
+        additional: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
                 display,
             },
         }

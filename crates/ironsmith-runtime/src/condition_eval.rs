@@ -1040,6 +1040,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
         Condition::PlayerCommittedCrimeThisTurn { .. } => {}
+        Condition::PlayerRolledResultThisTurn { .. } => {}
         Condition::PlayerCompletedDungeon { .. } => {}
         Condition::PlayerGraveyardHasCardsAtLeast { .. } => {}
     }
@@ -1318,6 +1319,14 @@ pub fn evaluate_condition_external(
             game.turn_store
                 .turn_history
                 .player_committed_crime_this_turn(player_id)
+        }
+        Condition::PlayerRolledResultThisTurn { player, result } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            game.turn_store
+                .turn_history
+                .player_rolled_result_this_turn(player_id, *result)
         }
         Condition::PlayerCompletedDungeon {
             player,
@@ -2323,6 +2332,14 @@ fn evaluate_condition_simple(
                 .turn_history
                 .player_committed_crime_this_turn(player_id)
         }
+        Condition::PlayerRolledResultThisTurn { player, result } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.turn_store
+                .turn_history
+                .player_rolled_result_this_turn(player_id, *result)
+        }
         Condition::PlayerCompletedDungeon {
             player,
             dungeon_name,
@@ -2971,6 +2988,13 @@ fn evaluate_condition(
                 .turn_store
                 .turn_history
                 .player_committed_crime_this_turn(player_id))
+        }
+        Condition::PlayerRolledResultThisTurn { player, result } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .player_rolled_result_this_turn(player_id, *result))
         }
         Condition::PlayerCompletedDungeon {
             player,

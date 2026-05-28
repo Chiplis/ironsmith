@@ -41,6 +41,7 @@ pub struct TurnHistory {
     pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
+    pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -63,6 +64,7 @@ impl TurnHistory {
         self.mana_spent_to_cast_spells_this_turn.clear();
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();
+        self.die_rolls_this_turn.clear();
         self.creatures_attacked_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
@@ -664,6 +666,19 @@ impl TurnHistory {
                     event.player == player && event.action == KeywordActionKind::CommitCrime
                 })
         })
+    }
+
+    pub fn record_die_roll(&mut self, player: PlayerId, result: u32) {
+        self.die_rolls_this_turn
+            .entry(player)
+            .or_default()
+            .push(result);
+    }
+
+    pub fn player_rolled_result_this_turn(&self, player: PlayerId, result: u32) -> bool {
+        self.die_rolls_this_turn
+            .get(&player)
+            .is_some_and(|rolls| rolls.contains(&result))
     }
 
     pub fn player_sacrificed_artifact_this_turn(&self, player: PlayerId) -> bool {

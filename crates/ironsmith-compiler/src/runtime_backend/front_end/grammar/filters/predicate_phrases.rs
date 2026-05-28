@@ -1072,6 +1072,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if let Some(while_idx) = find_index(&filtered, |word| *word == "while")
+        && while_idx > 0
+        && while_idx + 1 < filtered.len()
+    {
+        let left_tokens = filtered[..while_idx]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let right_tokens = filtered[while_idx + 1..]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let left = parse_predicate(&left_tokens)?;
+        let right = parse_predicate(&right_tokens)?;
+        return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
+    }
+
     if filtered.as_slice() == ["this", "tapped"]
         || filtered.as_slice() == ["thiss", "tapped"]
         || ((filtered.first().copied() == Some("this")
@@ -3688,6 +3705,29 @@ mod tests {
             PredicateAst::PlayerWouldDrawCard {
                 player: PlayerAst::You
             }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_would_draw_while_no_cards_in_hand() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you would draw a card while you have no cards in hand", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::And(
+                Box::new(PredicateAst::PlayerWouldDrawCard {
+                    player: PlayerAst::You,
+                }),
+                Box::new(PredicateAst::YouHaveNoCardsInHand),
+            )
         );
         Ok(())
     }

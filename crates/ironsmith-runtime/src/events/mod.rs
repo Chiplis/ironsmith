@@ -367,6 +367,19 @@ impl Event {
         )
     }
 
+    /// Create a token creation event with known token characteristics.
+    pub fn create_tokens_with_token(
+        controller: PlayerId,
+        count: u32,
+        token: crate::object::Object,
+        cause: EventCause,
+    ) -> Self {
+        Self::new_with_provenance(
+            CreateTokensEvent::with_token_cause(controller, count, token, cause),
+            ProvNodeId::default(),
+        )
+    }
+
     /// Create a remove counters event.
     pub fn remove_counters(target: ObjectId, counter_type: CounterType, count: u32) -> Self {
         Self::new_with_provenance(

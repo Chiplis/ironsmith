@@ -10485,6 +10485,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerCommittedCrimeThisTurn { player } => {
             format!("{} committed a crime this turn", describe_player_filter(player))
         }
+        Condition::PlayerRolledResultThisTurn { player, result } => {
+            format!("{} rolled a {result} this turn", describe_player_filter(player))
+        }
         Condition::PlayerCompletedDungeon {
             player,
             dungeon_name,

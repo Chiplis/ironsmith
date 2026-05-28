@@ -20,6 +20,7 @@ use crate::target::ChooseSpec;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+use ironsmith_core::AdditionalTokenKind;
 
 /// A replacement effect that modifies events.
 #[derive(Debug, Clone)]
@@ -175,6 +176,9 @@ pub enum ReplacementAction {
     /// Add an additional effect
     Additionally(Vec<Effect>),
 
+    /// Add separately defined tokens to a token-creation event.
+    AddTokens { token: AdditionalTokenKind, count: u32 },
+
     /// Skip (for "skip your draw step" etc.)
     Skip,
 
@@ -268,6 +272,9 @@ pub enum RedirectTarget {
 
     /// Redirect to the source of the effect
     ToSource,
+
+    /// Redirect to the controller of the event source.
+    ToSourceController,
 }
 
 /// Which target to redirect in a multi-target event.

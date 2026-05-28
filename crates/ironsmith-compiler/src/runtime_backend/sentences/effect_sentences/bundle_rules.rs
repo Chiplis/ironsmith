@@ -1484,6 +1484,59 @@ fn parse_reveal_until_land_put_all_graveyard_bundle(
     Some(effects)
 }
 
+fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
+    consult_sentence: &[OwnedLexToken],
+    followup_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(parts) = super::consult_family::parse_consult_traversal_sentence(consult_sentence)?
+    else {
+        return Ok(None);
+    };
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                mode: LibraryConsultModeAst::Reveal,
+                ..
+            },
+        ..
+    })) = parts.effects.last()
+    else {
+        return Ok(None);
+    };
+
+    let followup_words = crate::runtime_backend::token_word_refs(followup_sentence);
+    if !followup_words.starts_with(&["put", "those"])
+        || !followup_words.contains(&"battlefield")
+        || !followup_words.contains(&"rest")
+        || !followup_words.contains(&"bottom")
+        || !followup_words.contains(&"library")
+    {
+        return Ok(None);
+    }
+    let Some(order) = super::consult_family::parse_consult_remainder_order(&followup_words) else {
+        return Ok(None);
+    };
+
+    let enters_tapped = followup_words.contains(&"tapped");
+    let mut effects = parts.effects;
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(parts.match_tag.clone(), None),
+        Zone::Battlefield,
+        false,
+        ReturnControllerAst::Preserve,
+        enters_tapped,
+        None,
+    ));
+    effects.push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+        parts.all_tag,
+        Some(parts.match_tag),
+        order,
+        parts.player,
+    ));
+
+    Ok(Some(effects))
+}
+
 fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
     let sentence_word_refs = sentence_words
@@ -1768,6 +1821,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_then_source_leaves_return_bundle(sentences[0], sentences[1])

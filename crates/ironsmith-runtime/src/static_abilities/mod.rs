@@ -891,6 +891,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the maximum legal value for X while casting this spell, if any.
+    fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        None
+    }
+
     /// Return a pregame-action descriptor, if this ability creates one.
     fn pregame_action_kind(&self) -> Option<PregameActionKind> {
         None
@@ -1075,6 +1080,10 @@ impl StaticAbility {
 
     pub fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
         self.0.this_spell_cast_restriction_kind()
+    }
+
+    pub fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        self.0.this_spell_x_maximum_value()
     }
 
     pub fn pregame_action_kind(&self) -> Option<PregameActionKind> {
@@ -2477,6 +2486,13 @@ impl StaticAbility {
         Self::new(ThisSpellCastRestriction::new(kind, display))
     }
 
+    pub fn this_spell_x_maximum(
+        maximum: crate::effect::Value,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ThisSpellXMaximum::new(maximum, display))
+    }
+
     pub fn damage_not_removed_during_cleanup() -> Self {
         Self::new(DamageNotRemovedDuringCleanup)
     }
@@ -2610,6 +2626,18 @@ impl StaticAbility {
         Self::new(DoubleDamageFromSourcesYouControlOfChosenType::new(display))
     }
 
+    pub fn redirect_damage_to_source_controller(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: crate::target::PlayerFilter,
+        display: String,
+    ) -> Self {
+        Self::new(RedirectDamageToSourceController::new(
+            source_filter,
+            target_player_filter,
+            display,
+        ))
+    }
+
     pub fn modify_damage_amount_replacement(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: Option<crate::target::PlayerFilter>,
@@ -2677,6 +2705,22 @@ impl StaticAbility {
         Self::new(DoubleTokenCreationReplacement::new(controller, display))
     }
 
+    pub fn add_token_creation_replacement(
+        controller: crate::target::PlayerFilter,
+        token_filter: crate::target::ObjectFilter,
+        additional_token: ironsmith_core::AdditionalTokenKind,
+        additional: i32,
+        display: String,
+    ) -> Self {
+        Self::new(AddTokenCreationReplacement::new(
+            controller,
+            token_filter,
+            additional_token,
+            additional,
+            display,
+        ))
+    }
+
     pub fn effect_discard_to_library_replacement() -> Self {
         Self::new(EffectDiscardToLibraryReplacement)
     }
@@ -2705,6 +2749,18 @@ impl StaticAbility {
 
     pub fn draw_replacement_skip_empty_library() -> Self {
         Self::new(DrawReplacementSkipEmptyLibrary)
+    }
+
+    pub fn conditional_draw_replacement(
+        condition: crate::effect::Condition,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ConditionalDrawReplacement::new(
+            condition,
+            replacement_effects,
+            display,
+        ))
     }
 
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {

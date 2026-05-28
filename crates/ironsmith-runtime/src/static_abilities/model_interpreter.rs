@@ -110,6 +110,11 @@ impl StaticAbilityModelInterpreter {
                     display
                 )
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                format!(
+                    "ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}"
+                )
+            }
             payload => format!("{payload:?}"),
         }
     }
@@ -1131,6 +1136,9 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 )
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
@@ -1175,6 +1183,15 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(
                 display,
             ) => StaticAbility::double_damage_from_sources_you_control_of_chosen_type(
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            } => StaticAbility::redirect_damage_to_source_controller(
+                source_filter.clone(),
+                target_player_filter.clone(),
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::AdditionalLandPlays(count) => {
@@ -1274,6 +1291,19 @@ impl StaticAbilityModelInterpreter {
                 controller.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
+                display,
+            } => StaticAbility::add_token_creation_replacement(
+                controller.clone(),
+                token_filter.clone(),
+                *additional_token,
+                *additional,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
@@ -1282,6 +1312,15 @@ impl StaticAbilityModelInterpreter {
             } => StaticAbility::keyword_action_replacement(
                 *action,
                 source_filter.clone(),
+                replacement_effects.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            } => StaticAbility::conditional_draw_replacement(
+                condition.clone(),
                 replacement_effects.clone(),
                 display.clone(),
             ),
@@ -1920,6 +1959,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_kind(&self) -> Option<super::ThisSpellCastRestrictionKind> {
         self.leaf_static_ability()?
             .this_spell_cast_restriction_kind()
+    }
+
+    fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        self.leaf_static_ability()?.this_spell_x_maximum_value()
     }
 
     fn generic_attack_tax_per_attacker_against_you(
