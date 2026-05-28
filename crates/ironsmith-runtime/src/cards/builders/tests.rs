@@ -45806,3 +45806,160 @@ fn loot_the_key_to_everything_runtime_grants_play_permission_until_end_of_turn()
         "expected Loot play permission to allow lands as well as spells, got {debug}"
     );
 }
+
+fn the_fugitive_doctor_reflexive_flashback_grant(
+    def: &CardDefinition,
+) -> (
+    &crate::effects::WithIdEffect,
+    &crate::effects::ReflexiveTriggerEffect,
+    &crate::effects::GrantEffect,
+) {
+    for ability in &def.abilities {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            continue;
+        };
+        for segment in &triggered.effects.segments {
+            for effect in &segment.default_effects {
+                let Some(reflexive) =
+                    effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
+                else {
+                    continue;
+                };
+                let grant = reflexive
+                    .effects
+                    .iter()
+                    .find_map(|effect| effect.downcast_ref::<crate::effects::GrantEffect>())
+                    .expect("The Fugitive Doctor reflexive trigger should grant flashback");
+                let condition = segment
+                    .default_effects
+                    .iter()
+                    .find_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+                    .filter(|with_id| with_id.id == reflexive.condition)
+                    .expect(
+                        "The Fugitive Doctor reflexive trigger should depend on a tracked prior effect",
+                    );
+                return (condition, reflexive, grant);
+            }
+        }
+    }
+
+    panic!("The Fugitive Doctor should compile its attack follow-up as a reflexive flashback grant")
+}
+
+#[test]
+fn parse_oracle_the_fugitive_doctor_strictly_parses_reflexive_flashback_grant() {
+    assert_oracle_card_parses_strict("The Fugitive Doctor");
+    let def = parse_oracle_card_definition("The Fugitive Doctor");
+    let (condition, reflexive, grant) = the_fugitive_doctor_reflexive_flashback_grant(&def);
+    let debug = format!("{:#?}", def.abilities);
+    let condition_debug = format!("{:#?}", condition.effect);
+
+    assert!(!debug.contains("KeywordFallbackText"), "{debug}");
+    assert!(debug.contains("ReflexiveTriggerEffect"), "{debug}");
+    assert!(matches!(
+        reflexive.predicate,
+        crate::effect::EffectPredicate::Happened
+    ));
+    assert!(condition_debug.contains("MayEffect"), "{condition_debug}");
+    assert!(condition_debug.contains("Sacrifice"), "{condition_debug}");
+    assert!(condition_debug.contains("Clue"), "{condition_debug}");
+    assert!(matches!(
+        &grant.grantable,
+        crate::grant::Grantable::AlternativeCast(
+            crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
+        )
+    ));
+}
+
+#[test]
+fn the_fugitive_doctor_compiled_text_keeps_flashback_cost_clause() {
+    let def = parse_oracle_card_definition("The Fugitive Doctor");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("When you do, target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn"),
+        "expected rendered The Fugitive Doctor text to keep the reflexive flashback-cost grant, got {rendered}"
+    );
+}
+
+#[test]
+fn the_fugitive_doctor_runtime_grants_exact_flashback_cost_to_target_card() {
+    let def = parse_oracle_card_definition("The Fugitive Doctor");
+    let (_condition, _reflexive, grant) = the_fugitive_doctor_reflexive_flashback_grant(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_def =
+        CardDefinitionBuilder::new(CardId::new(), "The Fugitive Doctor Target Instant")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+    let target_id = game.create_object_from_definition(&target_def, alice, Zone::Graveyard);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    ctx.targets = vec![crate::effects::ResolvedTarget::Object(target_id)];
+    let result = grant
+        .execute(&mut game, &mut ctx)
+        .expect("The Fugitive Doctor grant effect should resolve");
+
+    assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+    let granted_casts = game
+        .effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(&game, target_id, Zone::Graveyard, alice);
+    let method = granted_casts
+        .first()
+        .map(|grant| &grant.method)
+        .expect("target card should receive a granted flashback method");
+    let crate::alternative_cast::AlternativeCastingMethod::Flashback { total_cost } = method else {
+        panic!("expected granted flashback, got {method:?}");
+    };
+    assert_eq!(total_cost.display(), "{2}{R}{G}");
+}
+
+#[test]
+fn the_fugitive_doctor_flashback_target_legality_requires_your_graveyard_instant_or_sorcery() {
+    let def = parse_oracle_card_definition("The Fugitive Doctor");
+    let (_condition, _reflexive, grant) = the_fugitive_doctor_reflexive_flashback_grant(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let instant = CardDefinitionBuilder::new(CardId::new(), "The Fugitive Doctor Legal Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let sorcery = CardDefinitionBuilder::new(CardId::new(), "The Fugitive Doctor Legal Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let creature =
+        CardDefinitionBuilder::new(CardId::new(), "The Fugitive Doctor Illegal Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+    let alice_instant_graveyard =
+        game.create_object_from_definition(&instant, alice, Zone::Graveyard);
+    let alice_sorcery_graveyard =
+        game.create_object_from_definition(&sorcery, alice, Zone::Graveyard);
+    let alice_creature_graveyard =
+        game.create_object_from_definition(&creature, alice, Zone::Graveyard);
+    let bob_instant_graveyard = game.create_object_from_definition(&instant, bob, Zone::Graveyard);
+    let alice_instant_hand = game.create_object_from_definition(&instant, alice, Zone::Hand);
+
+    let legal_targets = crate::targeting::compute_legal_targets(
+        &game,
+        &grant.target,
+        alice,
+        Some(source_id),
+    );
+
+    assert!(legal_targets.contains(&crate::game_state::Target::Object(alice_instant_graveyard)));
+    assert!(legal_targets.contains(&crate::game_state::Target::Object(alice_sorcery_graveyard)));
+    assert!(!legal_targets.contains(&crate::game_state::Target::Object(
+        alice_creature_graveyard
+    )));
+    assert!(!legal_targets.contains(&crate::game_state::Target::Object(bob_instant_graveyard)));
+    assert!(!legal_targets.contains(&crate::game_state::Target::Object(alice_instant_hand)));
+}

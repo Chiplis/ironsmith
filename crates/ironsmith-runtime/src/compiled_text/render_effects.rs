@@ -30848,6 +30848,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .granted_inline_ability()
                 .map(describe_inline_ability)
                 .unwrap_or_else(|| lowercase_first(&ability.display())),
+            crate::grant::Grantable::AlternativeCast(method) => {
+                let mut text = lowercase_first(method.name());
+                let cost_text = method
+                    .total_cost()
+                    .map(|cost| cost.display())
+                    .or_else(|| method.mana_cost().map(|cost| cost.to_oracle()))
+                    .filter(|cost| cost != "Free");
+                if let Some(cost_text) = cost_text {
+                    text.push(' ');
+                    text.push_str(&cost_text);
+                }
+                text
+            }
             _ => grant.grantable.display(),
         };
         return format!(

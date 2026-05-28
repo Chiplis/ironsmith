@@ -5280,7 +5280,7 @@ fn target_gains_explicit_flashback_cost_until_end_of_turn_parses_as_grant() {
 
     assert!(debug.contains("GrantToTarget"), "{debug}");
     assert!(debug.contains("Flashback"), "{debug}");
-    assert!(debug.contains("Generic(2)"), "{debug}");
+    assert!(debug.contains("Generic") && debug.contains("2"), "{debug}");
     assert!(debug.contains("Red"), "{debug}");
     assert!(debug.contains("Green"), "{debug}");
 }

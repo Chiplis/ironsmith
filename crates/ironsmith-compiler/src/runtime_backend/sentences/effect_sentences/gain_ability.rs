@@ -601,7 +601,9 @@ fn parse_explicit_flashback_grant_to_target(
         return Ok(None);
     };
     let target = parse_target_phrase(subject_tokens)?;
-    let total_cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![pips]));
+    let total_cost = crate::cost::TotalCost::mana(ManaCost::from_pips(
+        pips.into_iter().map(|pip| vec![pip]).collect(),
+    ));
     Ok(Some(EffectAst::subject_verb_grant_to_target(
         target,
         crate::grant::Grantable::AlternativeCast(
@@ -816,6 +818,17 @@ fn parse_simple_ability_modifier_clause_lexed(
     ));
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+
+    if !losing {
+        let subject_tokens = trim_trailing_also(trim_lexed_commas(
+            &tokens[subject_start_token_idx..verb_token_idx],
+        ));
+        if let Some(effect) =
+            parse_explicit_flashback_grant_to_target(subject_tokens, &ability_tokens, &duration)?
+        {
+            return Ok(Some(effect));
+        }
     }
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
@@ -1035,6 +1048,13 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let ability_tokens = trim_edge_punctuation(&ability_token_storage);
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+
+    if !losing
+        && let Some(effect) =
+            parse_explicit_flashback_grant_to_target(&subject_tokens, &ability_tokens, &duration)?
+    {
+        return Ok(Some(effect));
     }
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
