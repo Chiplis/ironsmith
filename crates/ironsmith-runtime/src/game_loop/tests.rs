@@ -39,6 +39,163 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn loxodon_lifechanter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(97_027), "Loxodon Lifechanter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant, Subtype::Cleric])
+        .power_toughness(PowerToughness::fixed(4, 6))
+        .parse_text(
+            "When this creature enters, you may have your life total become the total toughness of creatures you control.\n\
+             {5}{W}: This creature gets +X/+X until end of turn, where X is your life total.",
+        )
+        .expect("Loxodon Lifechanter should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct LoxodonMayDecisionMaker {
+    accept: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for LoxodonMayDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_lifechanter_etb_sets_life_to_total_toughness_when_accepted() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.player_mut(alice).expect("Alice exists").life = 3;
+    create_creature(&mut game, "High-Toughness Ally", alice, 1, 4);
+
+    let loxodon = loxodon_lifechanter_definition();
+    let loxodon_id = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    game.move_object_by_effect(loxodon_id, Zone::Battlefield)
+        .expect("Loxodon Lifechanter should enter the battlefield");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Loxodon Lifechanter ETB trigger should stack");
+
+    let mut dm = LoxodonMayDecisionMaker { accept: true };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("accepted Loxodon Lifechanter trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        10,
+        "accepted ETB should set life to total toughness of controlled creatures, including Loxodon"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_lifechanter_etb_decline_leaves_life_unchanged() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.player_mut(alice).expect("Alice exists").life = 3;
+    create_creature(&mut game, "High-Toughness Ally", alice, 1, 4);
+
+    let loxodon = loxodon_lifechanter_definition();
+    let loxodon_id = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    game.move_object_by_effect(loxodon_id, Zone::Battlefield)
+        .expect("Loxodon Lifechanter should enter the battlefield");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Loxodon Lifechanter ETB trigger should stack");
+
+    let mut dm = LoxodonMayDecisionMaker { accept: false };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("declined Loxodon Lifechanter trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        3,
+        "declining the optional ETB should leave life total unchanged"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_lifechanter_activation_uses_current_life_total_for_pt_bonus() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice).expect("Alice exists").life = 9;
+
+    let loxodon = loxodon_lifechanter_definition();
+    let loxodon_id = game.create_object_from_definition(&loxodon, alice, Zone::Battlefield);
+    {
+        let player = game.player_mut(alice).expect("Alice exists");
+        player.mana_pool.add(ManaSymbol::Colorless, 5);
+        player.mana_pool.add(ManaSymbol::White, 1);
+    }
+
+    let ability_index = game
+        .object(loxodon_id)
+        .expect("Loxodon Lifechanter should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                format!("{:?}", activated.effects).contains("ModifyPowerToughness")
+            } else {
+                false
+            }
+        })
+        .expect("Loxodon Lifechanter should have its P/T activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == loxodon_id && *idx == ability_index
+            )
+        })
+        .expect("Loxodon Lifechanter activation should be legal with {5}{W} available");
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Loxodon Lifechanter activation should start");
+
+    assert_eq!(game.stack.len(), 1, "activated ability should be on the stack");
+    resolve_stack_entry(&mut game).expect("Loxodon Lifechanter ability should resolve");
+
+    assert_eq!(game.calculated_power(loxodon_id), Some(13));
+    assert_eq!(game.calculated_toughness(loxodon_id), Some(15));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn open_the_way_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_900), "Open the Way")
         .mana_cost(ManaCost::from_pips(vec![

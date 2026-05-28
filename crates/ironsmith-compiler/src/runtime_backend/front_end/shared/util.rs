@@ -1530,6 +1530,55 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
 
+    let mut aggregate_idx = 0usize;
+    if words.get(aggregate_idx).copied() == Some("the") {
+        aggregate_idx += 1;
+    }
+    if let Some(aggregate) = words.get(aggregate_idx).copied()
+        && matches!(aggregate, "total" | "greatest")
+    {
+        aggregate_idx += 1;
+        let value_kind = if words.get(aggregate_idx).copied() == Some("power") {
+            aggregate_idx += 1;
+            "power"
+        } else if words.get(aggregate_idx).copied() == Some("toughness") {
+            aggregate_idx += 1;
+            "toughness"
+        } else if words.get(aggregate_idx).copied() == Some("mana")
+            && words.get(aggregate_idx + 1).copied() == Some("value")
+        {
+            aggregate_idx += 2;
+            "mana_value"
+        } else {
+            ""
+        };
+        if !value_kind.is_empty() && matches!(words.get(aggregate_idx), Some(&"of" | &"among")) {
+            let filter_start = aggregate_idx + 1;
+            let mut filter_end = filter_start;
+            while filter_end < words.len() && !matches!(words[filter_end], "plus" | "minus") {
+                filter_end += 1;
+            }
+            if filter_end > filter_start {
+                let filter_tokens = words[filter_start..filter_end]
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                if let Ok(filter) = parse_object_filter(&filter_tokens, false) {
+                    let value = match (aggregate, value_kind) {
+                        ("total", "power") => Value::TotalPower(filter),
+                        ("total", "toughness") => Value::TotalToughness(filter),
+                        ("total", "mana_value") => Value::TotalManaValue(filter),
+                        ("greatest", "power") => Value::GreatestPower(filter),
+                        ("greatest", "toughness") => Value::GreatestToughness(filter),
+                        ("greatest", "mana_value") => Value::GreatestManaValue(filter),
+                        _ => return None,
+                    };
+                    return Some((value, filter_end));
+                }
+            }
+        }
+    }
+
     if matches!(
         words.get(..2),
         Some(["that", "many"]) | Some(["that", "much"]) | Some(["that", "amount"])

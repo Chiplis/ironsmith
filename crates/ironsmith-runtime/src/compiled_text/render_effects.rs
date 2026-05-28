@@ -114,7 +114,7 @@ fn may_causative_clause(inner: &str) -> Option<String> {
     let lower = trimmed.to_ascii_lowercase();
     if ![
         "a ", "an ", "all ", "another ", "each ", "it ", "other ", "that ", "the ", "those ",
-        "target ",
+        "target ", "your ",
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
@@ -29649,8 +29649,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
         return format!(
-            "{}'s life total becomes {}",
-            describe_player_filter(&set_life.player),
+            "{} life total becomes {}",
+            describe_possessive_player_filter(&set_life.player),
             describe_value(&set_life.amount)
         );
     }

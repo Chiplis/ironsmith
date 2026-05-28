@@ -14756,6 +14756,50 @@ fn parse_starting_life_total_amount_in_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_loxodon_lifechanter_oracle_text_with_total_toughness_life_amount() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(97_027), "Loxodon Lifechanter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant, Subtype::Cleric])
+        .power_toughness(PowerToughness::fixed(4, 6))
+        .parse_text(
+            "When this creature enters, you may have your life total become the total toughness of creatures you control.\n\
+             {5}{W}: This creature gets +X/+X until end of turn, where X is your life total.",
+        )
+        .expect("Loxodon Lifechanter oracle text should parse strictly");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("SetLifeTotalEffect")
+            && debug.contains("TotalToughness"),
+        "expected optional total-toughness life-total setter, got {debug}"
+    );
+    assert!(
+        debug.contains("LifeTotal") && debug.contains("ModifyPowerToughness"),
+        "expected activated life-total-scaled P/T modifier, got {debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        joined.contains(
+            "When this creature enters, you may have your life total become the total toughness of creatures you control."
+        ),
+        "expected Loxodon ETB wording, got {joined}"
+    );
+    assert!(
+        joined.contains(
+            "{5}{W}: This creature gets +X/+X until end of turn, where X is your life total."
+        ),
+        "expected Loxodon activated ability wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_starting_life_total_amount_with_extra_math_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Endstone Negative Variant")
         .card_types(vec![CardType::Artifact])
