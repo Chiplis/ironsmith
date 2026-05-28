@@ -32523,15 +32523,8 @@ fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair() {
-    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-    let alice = PlayerId::from_index(0);
-    let bob = PlayerId::from_index(1);
-    let mut trigger_queue = TriggerQueue::new();
-    let mut dm = SelectFirstDecisionMaker;
-
-    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(992_001), "The Aesir Escape Valhalla")
+fn the_aesir_escape_valhalla_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(992_001), "The Aesir Escape Valhalla")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::Green],
@@ -32543,7 +32536,19 @@ fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair
              II — Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.\n\
              III — Return this Saga and the exiled card to their owner's hand.",
         )
-        .expect("The Aesir Escape Valhalla should parse");
+        .expect("The Aesir Escape Valhalla should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let saga_def = the_aesir_escape_valhalla_definition();
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
     let saga_stable_id = game.object(saga_id).expect("saga exists").stable_id;
 
@@ -32568,7 +32573,8 @@ fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
-    let opponent_target_id = game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
+    let opponent_target_id =
+        game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
 
     add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
@@ -32626,6 +32632,54 @@ fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair
             .zone,
         Zone::Hand,
         "chapter III should return the exiled card to its owner's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_aesir_escape_valhalla_chapter_two_requires_a_creature_you_control_target() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let saga_def = the_aesir_escape_valhalla_definition();
+    let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
+
+    let exiled_card = CardBuilder::new(CardId::from_raw(992_005), "Valhalla Relic")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&exiled_card, alice, Zone::Graveyard);
+
+    let opponent_creature = CardBuilder::new(CardId::from_raw(992_006), "Opposing Ally")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opponent_target_id =
+        game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter I should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter I should resolve");
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter II target selection should complete even with no legal target");
+
+    assert_eq!(
+        game.stack.len(),
+        0,
+        "chapter II should not go on the stack without a target creature you control"
+    );
+    assert_eq!(
+        game.counter_count(opponent_target_id, CounterType::PlusOnePlusOne),
+        0,
+        "chapter II must not target an opponent's creature to satisfy its target requirement"
     );
 }
 

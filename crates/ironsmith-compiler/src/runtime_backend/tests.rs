@@ -2841,6 +2841,7 @@ fn the_aesir_escape_valhalla_lowers_source_exiled_counter_and_return_pair() {
     let debug = format!("{def:#?}");
     assert!(debug.contains("ManaValueOf"), "{debug}");
     assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(!debug.contains("__it__"), "{debug}");
     assert!(debug.contains("PutCountersEffect"), "{debug}");
     assert!(debug.contains("ReturnToHandEffect"), "{debug}");
     assert!(debug.contains("source: true"), "{debug}");

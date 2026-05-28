@@ -8,6 +8,8 @@ use crate::events::processing::{EventOutcome, process_zone_change_with_additiona
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
@@ -193,6 +195,12 @@ impl EffectExecutor for MoveToZoneEffect {
                         for &new_id in &result.new_object_ids {
                             if final_zone == Zone::Exile {
                                 game.add_exiled_with_source_link(ctx.source, new_id);
+                                if let Some(object) = game.object(new_id) {
+                                    ctx.tag_object(
+                                        SOURCE_EXILED_TAG,
+                                        ObjectSnapshot::from_object(object, game),
+                                    );
+                                }
                             }
                             if final_zone == Zone::Library
                                 && !self.to_top

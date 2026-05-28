@@ -470,7 +470,23 @@ fn advance_reference_frame_for_effect(
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::Exile { target, .. } => {
-                    maybe_tag_target(target, frame, id_gen, "exiled")?;
+                    let refs = lowering_reference_frame(frame);
+                    let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    if matches!(spec.base(), ChooseSpec::Source) {
+                        frame.source_object_antecedent = true;
+                    }
+                    if frame.auto_tag_object_targets {
+                        if spec.is_target() {
+                            if let Some(tag) =
+                                propagated_or_generated_object_tag(&spec, id_gen, "exiled")
+                            {
+                                frame.last_object_tag = Some(tag);
+                            }
+                        } else if choose_spec_targets_object(&spec) {
+                            frame.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                        }
+                    }
+                    track_target_player(target, frame);
                 }
                 SubjectVerbActionAst::ExileAll { filter, .. } => {
                     let keep_last_object_tag =

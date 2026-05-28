@@ -223,6 +223,14 @@ fn describe_source_exile_with_counters_pair(first: &Effect, second: &Effect) -> 
     ))
 }
 
+fn value_is_source_exiled_mana_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::ManaValueOf(spec)
+            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    )
+}
+
 fn is_source_exiled_cards_filter(filter: &ObjectFilter) -> bool {
     if filter.zone != Some(Zone::Exile)
         || !filter.tagged_constraints.iter().any(|constraint| {
@@ -15149,6 +15157,28 @@ mod tests {
     }
 
     #[test]
+    fn describe_effect_list_compacts_exile_then_gain_life_from_its_mana_value() {
+        let exile = Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(
+                ObjectFilter::permanent()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+            Zone::Exile,
+            true,
+        ));
+        let gain = Effect::gain_life(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        ))));
+
+        assert_eq!(
+            describe_effect_list(&[exile, gain]),
+            "Exile a card from your graveyard. you gain life equal to its mana value"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_targeted_delayed_unblocked_trigger() {
         let tag = TagKey::from("__it__");
         let choose_filter = ObjectFilter::creature()
@@ -27127,6 +27157,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if matches!(gain.amount, Value::CreaturesDiedThisTurn) {
             return format!(
                 "{} {} 1 life for each creature that died this turn",
+                player,
+                player_verb(&player, "gain", "gains")
+            );
+        }
+        if value_is_source_exiled_mana_value(&gain.amount) {
+            return format!(
+                "{} {} life equal to its mana value",
                 player,
                 player_verb(&player, "gain", "gains")
             );
