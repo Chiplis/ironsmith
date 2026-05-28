@@ -7068,6 +7068,42 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         Some("This creature gains shroud and can't be blocked this turn".to_string())
     }
 
+    fn describe_source_pump_unblockable_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [apply_effect, cant_effect] = filtered else {
+            return None;
+        };
+        let apply = apply_continuous_for_compaction(apply_effect)?;
+        if apply.until != Until::EndOfTurn
+            || apply.condition.is_some()
+            || apply.modification.is_some()
+            || !apply.additional_modifications.is_empty()
+            || !matches!(apply.target, crate::continuous::EffectTarget::Source)
+        {
+            return None;
+        }
+        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+            power,
+            toughness,
+        }] = apply.runtime_modifications.as_slice()
+        else {
+            return None;
+        };
+
+        let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+        let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+            return None;
+        };
+        if cant.duration != Until::EndOfTurn || !filter.source {
+            return None;
+        }
+
+        Some(format!(
+            "This creature gets {}/{} until end of turn and can't be blocked this turn",
+            describe_signed_value(power),
+            describe_toughness_delta_with_power_context(power, toughness),
+        ))
+    }
+
     fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String> {
         let [tap_effect, cant_effect] = filtered else {
             return None;
@@ -7644,6 +7680,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_self_unblockable_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_source_pump_unblockable_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_tap_freeze_bundle(&filtered) {

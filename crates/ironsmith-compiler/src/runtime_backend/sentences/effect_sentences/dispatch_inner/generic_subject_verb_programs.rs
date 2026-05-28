@@ -171,6 +171,12 @@ impl GenericTopLevelProgram {
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    if let Some(effects) = parse_source_gets_unblockable_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Get subject=source recognizer=source-pump-unblockable",
+            effects,
+        )));
+    }
     if let Some(effects) = parse_source_gets_filter_gains_subject_verb(tokens)? {
         return Ok(Some((
             "subject-verb verb=Get subject=source recognizer=source-pump-filter-gain",
@@ -240,6 +246,73 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
         let route = program.route();
         (route, program.lower())
     }))
+}
+
+fn parse_source_gets_unblockable_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(get_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "get" | "gets"))
+    else {
+        return Ok(None);
+    };
+    let source_words = &words[..get_idx];
+    if !matches!(
+        source_words,
+        ["this"] | ["this", "creature"] | ["this", "permanent"]
+    ) {
+        return Ok(None);
+    }
+
+    let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(&tokens[get_idx + 1..]);
+    let modifier_tail = collapsed_modifier_tail
+        .as_deref()
+        .unwrap_or(&tokens[get_idx + 1..]);
+    let modifier_words = crate::runtime_backend::token_word_refs(modifier_tail);
+    let Some(modifier_word) = modifier_words.first().copied() else {
+        return Ok(None);
+    };
+    let Ok((power, toughness)) =
+        crate::runtime_backend::keyword_static::parse_pt_modifier_values(modifier_word)
+    else {
+        return Ok(None);
+    };
+
+    let tail = &modifier_words[1..];
+    if !matches!(
+        tail,
+        [
+            "until",
+            "end",
+            "of",
+            "turn",
+            "and",
+            "cant" | "can't",
+            "be",
+            "blocked",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_pump(
+            power,
+            toughness,
+            TargetAst::Source(None),
+            Until::EndOfTurn,
+            None,
+        ),
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::be_blocked(ObjectFilter::source()),
+            Until::EndOfTurn,
+            None,
+        ),
+    ]))
 }
 
 fn parse_source_gets_filter_gains_subject_verb(

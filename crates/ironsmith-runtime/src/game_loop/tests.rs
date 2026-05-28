@@ -68,6 +68,39 @@ fn desmond_miles_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_930), "Merfolk Cave-Diver")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Merfolk, Subtype::Scout])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "Whenever a creature you control explores, this creature gets +1/+0 until end of turn and can't be blocked this turn.",
+        )
+        .expect("Merfolk Cave-Diver should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn explore_event_for(game: &GameState, controller: PlayerId, source: ObjectId) -> TriggerEvent {
+    let snapshot = game
+        .object(source)
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game));
+    TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::Explore,
+            controller,
+            source,
+            1,
+        )
+        .with_snapshot(snapshot),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn open_the_way_x_choice_is_capped_by_players_in_game() {
     let mut game = setup_three_player_game();
@@ -250,6 +283,109 @@ fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_nonc
         game.player(alice).expect("alice exists").graveyard.len(),
         1,
         "the test decision maker should put one surveilled card into the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn merfolk_cave_diver_triggers_on_your_creature_exploring_and_expires_at_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let merfolk = merfolk_cave_diver_definition();
+    let merfolk_id = game.create_object_from_definition(&merfolk, alice, Zone::Battlefield);
+    let explorer_id = create_creature(&mut game, "Friendly Explorer", alice, 1, 1);
+    let blocker_id = create_creature(&mut game, "Ground Blocker", bob, 2, 2);
+
+    let event = explore_event_for(&game, alice, explorer_id);
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Merfolk Cave-Diver should trigger when a creature you control explores"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Merfolk Cave-Diver trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Merfolk Cave-Diver trigger should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(merfolk_id),
+        Some(3),
+        "Merfolk Cave-Diver should get +1/+0 after the explore trigger resolves"
+    );
+    assert_eq!(
+        game.calculated_toughness(merfolk_id),
+        Some(4),
+        "Merfolk Cave-Diver should not get a toughness bonus"
+    );
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: merfolk_id,
+        target: AttackTarget::Player(bob),
+    });
+    let mut blocker_queue = TriggerQueue::new();
+    let err = apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut blocker_queue,
+        &[BlockerDeclaration {
+            blocker: blocker_id,
+            blocking: merfolk_id,
+        }],
+        bob,
+    )
+    .expect_err("Merfolk Cave-Diver shouldn't be blockable after the trigger resolves");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("InvalidBlockers"),
+        "expected blocking Merfolk Cave-Diver to be rejected, got {msg}"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.calculated_power(merfolk_id),
+        Some(2),
+        "Merfolk Cave-Diver's +1/+0 should expire during cleanup"
+    );
+    assert!(
+        game.can_be_blocked(merfolk_id),
+        "Merfolk Cave-Diver's can't-be-blocked restriction should expire during cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn merfolk_cave_diver_ignores_opponent_creatures_exploring() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let merfolk = merfolk_cave_diver_definition();
+    let merfolk_id = game.create_object_from_definition(&merfolk, alice, Zone::Battlefield);
+    let opposing_explorer_id = create_creature(&mut game, "Opposing Explorer", bob, 1, 1);
+
+    let event = explore_event_for(&game, bob, opposing_explorer_id);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggers.is_empty(),
+        "Merfolk Cave-Diver should not trigger when an opponent's creature explores"
+    );
+    assert_eq!(
+        game.calculated_power(merfolk_id),
+        Some(2),
+        "Merfolk Cave-Diver should not be pumped by an opponent's explore event"
+    );
+    assert!(
+        game.can_be_blocked(merfolk_id),
+        "Merfolk Cave-Diver should remain blockable without a matching explore trigger"
     );
 }
 

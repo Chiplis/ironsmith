@@ -7854,6 +7854,28 @@ fn test_parse_explore_trigger_subject_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_merfolk_cave_diver_strictly_parses_pump_unblockable_explore_trigger() {
+    let def = parse_oracle_card_definition("Merfolk Cave-Diver");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Whenever a creature you control explores, this creature gets +1/+0 until end of turn and can't be blocked this turn."
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("KeywordAction")
+            && debug.contains("Explore")
+            && debug.contains("ModifyPowerToughness")
+            && debug.contains("CantEffect")
+            && debug.contains("BeBlocked"),
+        "expected Merfolk Cave-Diver to lower to explore-triggered pump plus can't-be-blocked effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_explore_trigger_revealed_card_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nicanzil Probe")
         .card_types(vec![CardType::Creature])
