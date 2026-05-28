@@ -39472,6 +39472,44 @@ fn parse_portal_to_phyrexia_subtype_followup_sentence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_rise_from_the_grave_color_and_subtype_followup_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rise from the Grave")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black Zombie in addition to its other colors and types.",
+        )
+        .expect("Rise from the Grave should parse strictly");
+
+    let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
+    let effects = &spell_effect.segments[0].default_effects;
+    let debug = format!("{spell_effect:#?}");
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("AddColors")
+            && debug.contains("AddSubtypes")
+            && debug.contains("Zombie"),
+        "expected return, add-black, and add-Zombie effects, got {debug}"
+    );
+
+    let score_path = crate::compiled_text::compile_effect_list(effects);
+    assert_eq!(
+        score_path,
+        "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black zombie in addition to its other colors and types"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("that creature is a black zombie in addition to its other colors and types"),
+        "expected combined color/type followup rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
     CardDefinitionBuilder::new(CardId::new(), "Ghost Vacuum Variant")
         .parse_text(

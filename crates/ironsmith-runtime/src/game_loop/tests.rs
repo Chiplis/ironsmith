@@ -84,6 +84,20 @@ fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn rise_from_the_grave_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_940), "Rise from the Grave")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black Zombie in addition to its other colors and types.",
+        )
+        .expect("Rise from the Grave should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn explore_event_for(game: &GameState, controller: PlayerId, source: ObjectId) -> TriggerEvent {
     let snapshot = game
         .object(source)
@@ -447,6 +461,94 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
     assert!(
         game.player(alice).unwrap().graveyard.contains(&resolved_spell_id),
         "Open the Way should move to its owner's graveyard after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rise_from_the_grave_returns_creature_under_your_control_black_zombie() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell = rise_from_the_grave_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let target_card = CardBuilder::new(CardId::from_raw(72_941), "Emerald Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .color_indicator(crate::color::ColorSet::GREEN)
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Graveyard);
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target_id)]));
+    resolve_stack_entry(&mut game).expect("Rise from the Grave should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("returned creature should still exist");
+    assert!(
+        game.battlefield.contains(&returned_id),
+        "target creature card should move from graveyard to battlefield"
+    );
+    assert_eq!(
+        game.controller_of(game.object(returned_id).expect("returned object exists")),
+        alice,
+        "returned creature should be under the spell controller's control"
+    );
+    assert_eq!(
+        game.current_colors(returned_id),
+        Some(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLACK)),
+        "returned creature should keep green and add black"
+    );
+    let subtypes = game.calculated_subtypes(returned_id);
+    assert!(
+        subtypes.contains(&Subtype::Bear) && subtypes.contains(&Subtype::Zombie),
+        "returned creature should keep Bear and add Zombie, got {subtypes:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rise_from_the_grave_targets_only_creature_cards_in_graveyards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = rise_from_the_grave_definition();
+    let effects = spell.spell_effect.as_ref().expect("expected spell effects");
+
+    let graveyard_creature = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(72_942), "Graveyard Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let graveyard_artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(72_943), "Graveyard Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let battlefield_creature = create_creature(&mut game, "Battlefield Creature", bob, 2, 2);
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(requirements.len(), 1, "Rise should have one target requirement");
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(graveyard_creature)),
+        "creature cards in graveyards should be legal targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(graveyard_artifact)),
+        "noncreature cards in graveyards should not be legal targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(battlefield_creature)),
+        "battlefield creatures should not be legal targets, got {legal_targets:?}"
     );
 }
 

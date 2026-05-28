@@ -1137,6 +1137,11 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    AddColors {
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    },
     AddAllSubtypesOfFamily {
         target: TargetAst,
         family: SubtypeFamily,
@@ -2406,6 +2411,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("AddSubtypes")
                 .field("target", target)
                 .field("subtypes", subtypes)
+                .field("duration", duration)
+                .finish(),
+            Self::AddColors {
+                target,
+                colors,
+                duration,
+            } => f
+                .debug_struct("AddColors")
+                .field("target", target)
+                .field("colors", colors)
                 .field("duration", duration)
                 .finish(),
             Self::AddAllSubtypesOfFamily {
@@ -3962,6 +3977,22 @@ impl EffectAst {
             SubjectVerbActionAst::AddSubtypes {
                 target,
                 subtypes,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_add_colors(
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AddColors {
+                target,
+                colors,
                 duration,
             },
         )

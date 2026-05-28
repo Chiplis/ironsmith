@@ -2478,6 +2478,17 @@ fn compile_subject_verb_effect(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::AddColors {
+            target,
+            colors,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "colored", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::AddColors(*colors),
+                duration.clone(),
+            ))
+        }),
         SubjectVerbActionAst::AddAllSubtypesOfFamily {
             target,
             family,
