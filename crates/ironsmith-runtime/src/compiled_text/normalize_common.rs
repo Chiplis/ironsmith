@@ -11307,6 +11307,30 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::CardsInGraveyard(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+            {
+                let subject = describe_player_filter(player);
+                let count_text = small_number_word(*count as u32)
+                    .unwrap_or_else(|| count.to_string());
+                let graveyard = match player {
+                    PlayerFilter::You => "your graveyard".to_string(),
+                    PlayerFilter::Opponent | PlayerFilter::Any | PlayerFilter::NotYou => {
+                        "their graveyard".to_string()
+                    }
+                    _ => format!("{} graveyard", describe_possessive_player_filter(player)),
+                };
+                return format!(
+                    "{} {} {} or more cards in {}",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    count_text,
+                    graveyard
+                );
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
