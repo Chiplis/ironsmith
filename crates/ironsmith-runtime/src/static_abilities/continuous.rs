@@ -3940,6 +3940,50 @@ impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
     }
 }
 
+/// "Objects are the chosen color in addition to their other colors."
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddChosenColorForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl AddChosenColorForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for AddChosenColorForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddChosenColor
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_color) = game.chosen_color(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddColors(crate::color::ColorSet::from(chosen_color)),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// "This permanent is the chosen color."
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetChosenColorForFilter {

@@ -672,6 +672,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
         multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
+        single_static_ability_ast_rule!(parse_all_cards_spells_permanents_add_chosen_color_line),
         single_static_ability_ast_rule!(parse_all_creatures_are_color_line),
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
         single_static_ability_ast_rule!(parse_nonbasic_lands_are_basic_land_type_line),
@@ -6177,6 +6178,45 @@ pub(crate) fn parse_all_cards_spells_permanents_colorless_line(
     {
         return Ok(Some(StaticAbility::make_colorless(ObjectFilter::default())));
     }
+    Ok(None)
+}
+
+pub(crate) fn parse_all_cards_spells_permanents_add_chosen_color_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "all",
+            "cards",
+            "that",
+            "aren",
+            "t",
+            "on",
+            "the",
+            "battlefield",
+            "spells",
+            "and",
+            "permanents",
+            "are",
+            "the",
+            "chosen",
+            "color",
+            "in",
+            "addition",
+            "to",
+            "their",
+            "other",
+            "colors"
+        ]
+    ) {
+        return Ok(Some(StaticAbility::add_chosen_color(
+            ObjectFilter::default(),
+            "All cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors.",
+        )));
+    }
+
     Ok(None)
 }
 

@@ -162,6 +162,7 @@ pub enum StaticAbilityId {
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
     AddChosenCreatureType,
+    AddChosenColor,
     SetChosenColor,
     RedirectDamageToSource,
     RedirectDamageToSourceController,
@@ -408,6 +409,7 @@ impl StaticAbilityId {
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType
             | AddChosenCreatureType
+            | AddChosenColor
             | SetChosenColor
             | RedirectDamageToSource
             | RedirectDamageToSourceController
@@ -649,6 +651,7 @@ impl StaticAbilityId {
                 | AddSubtypes
                 | SetLandSubtypes
                 | AddColors
+                | AddChosenColor
                 | SetColors
         )
     }

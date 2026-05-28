@@ -2541,6 +2541,10 @@ impl StaticAbility {
         Self::new(AddChosenCreatureTypeForFilter::new(filter, display))
     }
 
+    pub fn add_chosen_color(filter: crate::target::ObjectFilter, display: String) -> Self {
+        Self::new(AddChosenColorForFilter::new(filter, display))
+    }
+
     pub fn set_chosen_color(filter: crate::target::ObjectFilter, display: String) -> Self {
         Self::new(SetChosenColorForFilter::new(filter, display))
     }

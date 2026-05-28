@@ -1014,6 +1014,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
                 StaticAbility::add_chosen_creature_type(filter.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::AddChosenColor { filter, display } => {
+                StaticAbility::add_chosen_color(filter.clone(), display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbility::set_chosen_color(filter.clone(), display.clone())
             }
