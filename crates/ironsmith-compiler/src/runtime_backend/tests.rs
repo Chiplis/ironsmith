@@ -2805,6 +2805,50 @@ fn rewrite_zone_counter_helpers_parse_equal_to_named_source_power_counter_amount
 }
 
 #[test]
+fn rewrite_zone_counter_helpers_parse_target_before_exiled_card_mana_value_amount() {
+    let tokens = lex_line(
+        "Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.",
+        0,
+    )
+    .expect("rewrite lexer should classify source-exiled mana-value counter clause");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("source-exiled mana-value counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+}
+
+#[test]
+fn the_aesir_escape_valhalla_lowers_source_exiled_counter_and_return_pair() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "The Aesir Escape Valhalla")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .parse_text(
+            "I — Exile a permanent card from your graveyard. You gain life equal to its mana value.\n\
+             II — Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.\n\
+             III — Return this Saga and the exiled card to their owner's hand.",
+        )
+        .expect("The Aesir Escape Valhalla should parse strictly");
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(!debug.contains("__it__"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("ReturnToHandEffect"), "{debug}");
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("any_of"), "{debug}");
+}
+
+#[test]
 fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Warstorm Surge Probe")
         .card_types(vec![CardType::Enchantment])

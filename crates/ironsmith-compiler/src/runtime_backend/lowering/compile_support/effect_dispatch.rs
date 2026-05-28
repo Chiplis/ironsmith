@@ -228,7 +228,7 @@ fn compile_subject_verb_effect(
             true,
             true,
             true,
-            false,
+            true,
             Effect::gain_life,
             |value, filter| Effect::gain_life_player(value, ChooseSpec::Player(filter)),
         ),

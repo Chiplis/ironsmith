@@ -281,6 +281,52 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let target_words = crate::runtime_backend::token_word_refs(target_tokens);
+    if is_hand
+        && let Some(and_idx) = find_index(target_tokens, |token| token.is_word("and"))
+        && and_idx > 0
+    {
+        let left_tokens = trim_commas(&target_tokens[..and_idx]);
+        let right_tokens = trim_commas(&target_tokens[and_idx + 1..]);
+        let left_words = crate::runtime_backend::token_word_refs(&left_tokens);
+        let right_words = crate::runtime_backend::token_word_refs(&right_tokens);
+
+        let source_filter_for_words = |words: &[&str]| -> Option<ObjectFilter> {
+            if words.first().copied() != Some("this") {
+                return None;
+            }
+            let mut filter = ObjectFilter::source();
+            if let Some(subtype_word) = words.get(1).copied()
+                && let Some(subtype) = parse_subtype_word(subtype_word)
+            {
+                filter.subtypes.push(subtype);
+            }
+            Some(filter)
+        };
+        let exiled_filter_for_words = |words: &[&str]| -> Option<ObjectFilter> {
+            matches!(
+                words,
+                ["the", "exiled", "card"]
+                    | ["the", "exiled", "cards"]
+                    | ["exiled", "card"]
+                    | ["exiled", "cards"]
+            )
+            .then(|| ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile))
+        };
+
+        let paired_filters = source_filter_for_words(&left_words)
+            .zip(exiled_filter_for_words(&right_words))
+            .or_else(|| {
+                source_filter_for_words(&right_words).zip(exiled_filter_for_words(&left_words))
+            });
+        if let Some((source_filter, exiled_filter)) = paired_filters {
+            let mut filter = ObjectFilter::default();
+            filter.any_of = vec![source_filter, exiled_filter];
+            return Ok(wrap_return_with_delayed_timing(
+                EffectAst::subject_verb_return_all_to_hand(filter),
+                delayed_timing,
+            ));
+        }
+    }
     if let Some(and_idx) = find_index(target_tokens, |token| token.is_word("and"))
         && and_idx > 0
     {

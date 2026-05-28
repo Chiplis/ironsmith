@@ -223,6 +223,14 @@ fn describe_source_exile_with_counters_pair(first: &Effect, second: &Effect) -> 
     ))
 }
 
+fn value_is_source_exiled_mana_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::ManaValueOf(spec)
+            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    )
+}
+
 fn is_source_exiled_cards_filter(filter: &ObjectFilter) -> bool {
     if filter.zone != Some(Zone::Exile)
         || !filter.tagged_constraints.iter().any(|constraint| {
@@ -240,6 +248,41 @@ fn is_source_exiled_cards_filter(filter: &ObjectFilter) -> bool {
             && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
     });
     base == ObjectFilter::default()
+}
+
+fn source_and_source_exiled_return_text(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() != 2 {
+        return None;
+    }
+
+    let mut source_text = None;
+    let mut has_source_exiled = false;
+    for branch in &filter.any_of {
+        if is_source_exiled_cards_filter(branch) {
+            has_source_exiled = true;
+            continue;
+        }
+
+        if branch.source {
+            let mut base = branch.clone();
+            base.source = false;
+            let is_saga = base.subtypes == [Subtype::Saga];
+            if is_saga {
+                base.subtypes.clear();
+            }
+            if base == ObjectFilter::default() {
+                source_text = Some(if is_saga { "this Saga" } else { "this card" });
+            }
+        }
+    }
+
+    if has_source_exiled {
+        source_text.map(|source_text| {
+            format!("Return {source_text} and the exiled card to their owner's hand")
+        })
+    } else {
+        None
+    }
 }
 
 fn has_vote_winners_tag(filter: &ObjectFilter) -> bool {
@@ -15255,6 +15298,28 @@ mod tests {
     }
 
     #[test]
+    fn describe_effect_list_compacts_exile_then_gain_life_from_its_mana_value() {
+        let exile = Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(
+                ObjectFilter::permanent()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+            Zone::Exile,
+            true,
+        ));
+        let gain = Effect::gain_life(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        ))));
+
+        assert_eq!(
+            describe_effect_list(&[exile, gain]),
+            "Exile a card from your graveyard. you gain life equal to its mana value"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_targeted_delayed_unblocked_trigger() {
         let tag = TagKey::from("__it__");
         let choose_filter = ObjectFilter::creature()
@@ -18978,6 +19043,9 @@ fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String 
         return format!("that creature's {attribute}");
     }
     match spec.base() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG => {
+            format!("the exiled card's {attribute}")
+        }
         ChooseSpec::Tagged(tag) if tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG => {
             format!("the revealed card's {attribute}")
         }
@@ -26172,7 +26240,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let target = describe_choose_spec(&move_to_zone.target);
         return match move_to_zone.zone {
-            Zone::Exile => format!("Exile {target}"),
+            Zone::Exile => {
+                if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
+                    let target_text = describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+                    let from_text = match owner {
+                        Some(owner) => format!("{} graveyard", describe_possessive_player_filter(&owner)),
+                        None => "a graveyard".to_string(),
+                    };
+                    format!("Exile {target_text} from {from_text}")
+                } else {
+                    format!("Exile {target}")
+                }
+            }
             Zone::Graveyard => {
                 if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
                     && crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
@@ -26873,6 +26952,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return format!("Put {counter_text} on {target}, where X is {where_x}");
         }
+        if let Value::ManaValueOf(spec) = &put_counters.amount
+            && matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+        {
+            return format!(
+                "Put a number of {} counters on {target} equal to the mana value of the exiled card",
+                describe_counter_type(put_counters.counter_type)
+            );
+        }
         if let Value::CountersOn(spec, Some(counter_type)) = &put_counters.amount
             && is_graveyard_same_stable_tagged_spec(spec)
         {
@@ -27222,6 +27309,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if matches!(gain.amount, Value::CreaturesDiedThisTurn) {
             return format!(
                 "{} {} 1 life for each creature that died this turn",
+                player,
+                player_verb(&player, "gain", "gains")
+            );
+        }
+        if value_is_source_exiled_mana_value(&gain.amount) {
+            return format!(
+                "{} {} life equal to its mana value",
                 player,
                 player_verb(&player, "gain", "gains")
             );
@@ -27774,10 +27868,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return "Return target exiled card with flashback you own to your hand".to_string();
         }
-        if let ChooseSpec::All(filter) = &return_to_hand.spec
-            && is_source_exiled_cards_filter(filter)
+        if let ChooseSpec::All(filter) = &return_to_hand.spec {
+            if let Some(text) = source_and_source_exiled_return_text(filter) {
+                return text;
+            }
+            if is_source_exiled_cards_filter(filter)
         {
             return "Return the exiled cards to their owners' hands".to_string();
+        }
+        }
+        if let ChooseSpec::Object(filter) = &return_to_hand.spec
+            && let Some(text) = source_and_source_exiled_return_text(filter)
+        {
+            return text;
         }
         if let Some(owner) = graveyard_owner_from_spec(&return_to_hand.spec) {
             let target_text = describe_choose_spec_without_graveyard_zone(&return_to_hand.spec);
