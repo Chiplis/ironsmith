@@ -1602,6 +1602,20 @@ fn compile_subject_verb_effect(
                 Effect::new(effect)
             })
         }
+        SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+            player_filter,
+            object_filter,
+            target,
+        } => {
+            let object_filter = resolve_it_tag(object_filter, &current_reference_env(ctx))?;
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                    player_filter.clone(),
+                    object_filter.clone(),
+                    spec,
+                ))
+            })
+        }
         SubjectVerbActionAst::PutOrRemoveCounters {
             put_counter_type,
             put_count,

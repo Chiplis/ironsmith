@@ -37000,6 +37000,7 @@ strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_profane_memento, "Profane Memento");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
 strict_parse_card_test!(strict_parse_inviolability, "Inviolability");
+strict_parse_card_test!(strict_parse_saving_grace, "Saving Grace");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
 strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
@@ -37122,6 +37123,161 @@ fn inviolability_runtime_prevents_damage_to_enchanted_creature_only() {
     assert!(
         !other_prevented,
         "damage to unenchanted creature should remain unprevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn saving_grace_compiled_text_keeps_damage_redirection_clause() {
+    let def = parse_oracle_card_definition("Saving Grace");
+
+    assert_eq!(
+        def.aura_attach_filter,
+        Some(AuraAttachmentFilter::Object(ObjectFilter::creature().you_control())),
+        "Saving Grace should enchant only creatures you control"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "all damage that would be dealt this turn to you and permanents you control is dealt to enchanted creature instead"
+        ),
+        "expected Saving Grace compiled text to preserve the temporary enchanted-creature redirection clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn saving_grace_runtime_redirects_controller_and_permanent_damage_this_turn_only() {
+    let def = parse_oracle_card_definition("Saving Grace");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().to_ascii_lowercase().contains("enters") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Saving Grace should have an Aura-enters triggered ability");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let protected_creature = CardBuilder::new(CardId::from_raw(99_001), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id =
+        game.create_object_from_card(&protected_creature, alice, crate::zone::Zone::Battlefield);
+
+    let other_creature = CardBuilder::new(CardId::from_raw(99_002), "Other Alice Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_id = game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
+
+    let bob_creature = CardBuilder::new(CardId::from_raw(99_003), "Bob Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bob_creature_id = game.create_object_from_card(&bob_creature, bob, crate::zone::Zone::Battlefield);
+
+    let damage_source = CardBuilder::new(CardId::from_raw(99_004), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let source_id = game.create_object_from_card(&damage_source, bob, crate::zone::Zone::Battlefield);
+
+    let aura_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+    game.object_mut(aura_id)
+        .expect("Saving Grace object should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(protected_id));
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .attachments
+        .push(aura_id);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(aura_id, alice);
+    for effect in &triggered.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Saving Grace ETB effect should resolve");
+    }
+
+    let damage_to_alice = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_alice.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(protected_id),
+            amount: 3,
+        }],
+        "damage to Saving Grace's controller should be redirected to enchanted creature"
+    );
+
+    let damage_to_other_permanent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(other_id),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_other_permanent.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(protected_id),
+            amount: 2,
+        }],
+        "damage to permanents controlled by Saving Grace's controller should be redirected"
+    );
+
+    let damage_to_opponent_permanent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(bob_creature_id),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_opponent_permanent.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(bob_creature_id),
+            amount: 4,
+        }],
+        "Saving Grace should not redirect damage to permanents controlled by another player"
+    );
+
+    game.effect_store
+        .replacement_effects
+        .clear_until_end_of_turn_effects();
+    let after_turn_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(alice),
+        5,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        after_turn_damage.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Player(alice),
+            amount: 5,
+        }],
+        "Saving Grace's damage redirection should expire at end of turn"
     );
 }
 

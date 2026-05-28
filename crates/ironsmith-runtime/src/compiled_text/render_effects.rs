@@ -30190,6 +30190,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&redirect_next_time.target)
         );
     }
+    if let Some(redirect_all) =
+        effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
+    {
+        let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
+            && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
+        {
+            "you and permanents you control".to_string()
+        } else {
+            let player = describe_player_filter(&redirect_all.player_filter);
+            let object = redirect_all.object_filter.description();
+            format!("{player} and {object}")
+        };
+        return format!(
+            "All damage that would be dealt this turn to {target_set} is dealt to {} instead",
+            describe_choose_spec(&redirect_all.target)
+        );
+    }
     if let Some(prevent_from) =
         effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
     {

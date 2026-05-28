@@ -2436,6 +2436,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }

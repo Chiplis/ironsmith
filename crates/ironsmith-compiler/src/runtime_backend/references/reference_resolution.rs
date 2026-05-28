@@ -1726,6 +1726,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
@@ -2495,6 +2496,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                object_filter,
+                target,
+                ..
+            } => bind_unresolved_it_in_filter(object_filter, seed_tag)
+                + bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::PreventDamage {
                 amount, target, ..
             } => {

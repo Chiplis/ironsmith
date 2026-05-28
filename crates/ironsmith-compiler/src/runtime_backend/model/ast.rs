@@ -1316,6 +1316,11 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         all_this_turn: bool,
     },
+    RedirectAllDamageThisTurnToTarget {
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
+    },
     Meld {
         result_name: String,
         enters_tapped: bool,
@@ -2649,6 +2654,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("source", source)
                 .field("target", target)
                 .field("all_this_turn", all_this_turn)
+                .finish(),
+            Self::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
+            } => f
+                .debug_struct("RedirectAllDamageThisTurnToTarget")
+                .field("player_filter", player_filter)
+                .field("object_filter", object_filter)
+                .field("target", target)
                 .finish(),
             Self::Meld {
                 result_name,
@@ -4344,6 +4359,22 @@ impl EffectAst {
                 source,
                 target,
                 all_this_turn: true,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_target(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
             },
         )
     }
