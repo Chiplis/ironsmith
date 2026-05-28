@@ -35683,6 +35683,197 @@ fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
 }
 
 #[test]
+fn essence_channeler_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Essence Channeler");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("as long as you've lost life this turn"),
+        "Essence Channeler should render the life-loss static condition, got {rendered}"
+    );
+    assert!(
+        rendered.contains("This creature has flying and has vigilance"),
+        "Essence Channeler should render both conditional keywords, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you gain life, put a +1/+1 counter on this creature."),
+        "Essence Channeler should render its life-gain counter trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("When this creature dies, put its counters on target creature you control."),
+        "Essence Channeler should render its dies counter-transfer trigger, got {rendered}"
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PlayerLostLifeThisTurn { player: You }")
+            && abilities_debug.contains("YouGainLifeTrigger")
+            && abilities_debug.contains("MoveAllCountersEffect"),
+        "Essence Channeler should compile to typed life-loss, life-gain, and counter-transfer models, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn essence_channeler_conditional_keywords_require_controller_lost_life() {
+    let def = parse_oracle_card_definition("Essence Channeler");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let channeler_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    assert!(
+        !game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::flying())
+            && !game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::vigilance()),
+        "Essence Channeler should not have flying or vigilance before its controller loses life"
+    );
+
+    let opponent_lost_life = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::LifeLossEvent::from_effect(bob, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.stage_turn_history_event(&opponent_lost_life);
+    game.refresh_continuous_state();
+    assert!(
+        !game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::flying())
+            && !game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::vigilance()),
+        "Essence Channeler's condition should care that its controller lost life, not an opponent"
+    );
+
+    let controller_lost_life = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::LifeLossEvent::from_effect(alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.stage_turn_history_event(&controller_lost_life);
+    game.refresh_continuous_state();
+    assert!(
+        game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::flying())
+            && game.object_has_ability(channeler_id, &crate::static_abilities::StaticAbility::vigilance()),
+        "Essence Channeler should gain flying and vigilance after its controller loses life"
+    );
+}
+
+#[test]
+fn essence_channeler_life_gain_trigger_adds_counter_only_for_controller() {
+    let def = parse_oracle_card_definition("Essence Channeler");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let channeler_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let opponent_gain = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::LifeGainEvent::new(bob, 3),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &opponent_gain)
+            .into_iter()
+            .all(|entry| entry.source != channeler_id),
+        "Essence Channeler should not trigger when an opponent gains life"
+    );
+
+    let controller_gain = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::LifeGainEvent::new(alice, 3),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &controller_gain)
+        .into_iter()
+        .filter(|entry| entry.source == channeler_id)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Essence Channeler should trigger once when its controller gains life"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Essence Channeler life-gain trigger on stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("resolve Essence Channeler life-gain trigger");
+
+    assert_eq!(
+        game.counter_count(channeler_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Essence Channeler should put a +1/+1 counter on itself"
+    );
+}
+
+#[test]
+fn essence_channeler_dies_trigger_moves_counters_to_controlled_creature() {
+    let def = parse_oracle_card_definition("Essence Channeler");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let channeler_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_301), "Allied Bat")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_302), "Opposing Bat")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.add_counters(channeler_id, crate::object::CounterType::PlusOnePlusOne, 2)
+        .expect("add counters to Essence Channeler");
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(channeler_id)
+            .expect("Essence Channeler should be on the battlefield"),
+        &game,
+    );
+    game.move_object_by_effect(channeler_id, Zone::Graveyard);
+
+    let dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            channeler_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &dies_event)
+        .into_iter()
+        .filter(|entry| entry.source == channeler_id)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Essence Channeler should trigger once when it dies"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Essence Channeler dies trigger on stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("resolve Essence Channeler dies trigger");
+
+    assert_eq!(
+        game.counter_count(alice_creature, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "Essence Channeler should move its counters to a target creature its controller controls"
+    );
+    assert_eq!(
+        game.counter_count(bob_creature, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Essence Channeler should not target an opponent's creature for its dies trigger"
+    );
+}
+
+#[test]
 fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
 

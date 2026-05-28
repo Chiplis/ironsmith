@@ -761,6 +761,16 @@ fn evaluate_condition_shared_core(
                     .player_lost_life_this_turn(*opponent)
             }))
         }
+        Condition::PlayerLostLifeThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player) else {
+                return Some(false);
+            };
+            Some(
+                game.turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player_id),
+            )
+        }
         Condition::PermanentLeftBattlefieldThisTurn => Some(
             game.turn_store
                 .turn_history
@@ -936,6 +946,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
         Condition::OpponentLostLifeThisTurn => {}
+        Condition::PlayerLostLifeThisTurn { .. } => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
@@ -1805,6 +1816,7 @@ pub fn evaluate_condition_external(
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
         | Condition::OpponentLostLifeThisTurn
+        | Condition::PlayerLostLifeThisTurn { .. }
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
@@ -2427,6 +2439,14 @@ fn evaluate_condition_simple(
                 .turn_history
                 .total_life_gained_for_players(&[player_id])
                 >= *count
+        }
+        Condition::PlayerLostLifeThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.turn_store
+                .turn_history
+                .player_lost_life_this_turn(player_id)
         }
         Condition::CreatureDiedThisTurnOrMore(count) => {
             game.turn_store
@@ -3078,6 +3098,13 @@ fn evaluate_condition(
                 .turn_history
                 .total_life_gained_for_players(&[player_id])
                 >= *count)
+        }
+        Condition::PlayerLostLifeThisTurn { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .player_lost_life_this_turn(player_id))
         }
         Condition::CreatureDiedThisTurnOrMore(count) => Ok(game
             .turn_store

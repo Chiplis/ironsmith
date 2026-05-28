@@ -681,6 +681,9 @@ pub enum Condition {
     },
     AttackedThisTurn,
     OpponentLostLifeThisTurn,
+    PlayerLostLifeThisTurn {
+        player: PlayerFilter,
+    },
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),

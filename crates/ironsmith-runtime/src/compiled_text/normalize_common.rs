@@ -10636,6 +10636,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::OpponentLostLifeThisTurn => {
             "an opponent was dealt damage this turn".to_string()
         }
+        Condition::PlayerLostLifeThisTurn { player } => match player {
+            PlayerFilter::You => "you've lost life this turn".to_string(),
+            PlayerFilter::Opponent => "an opponent lost life this turn".to_string(),
+            PlayerFilter::Any => "a player lost life this turn".to_string(),
+            _ => "that player lost life this turn".to_string(),
+        },
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }

@@ -951,6 +951,18 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as there are {count} or more card types among cards in {graveyard_owner} graveyard"
             )
         }
+        crate::ConditionExpr::PlayerLostLifeThisTurn { player } => match player {
+            crate::target::PlayerFilter::You => {
+                "as long as you've lost life this turn".to_string()
+            }
+            crate::target::PlayerFilter::Opponent => {
+                "as long as an opponent lost life this turn".to_string()
+            }
+            crate::target::PlayerFilter::Any => {
+                "as long as a player lost life this turn".to_string()
+            }
+            _ => "as long as that player lost life this turn".to_string(),
+        },
         crate::ConditionExpr::PlayerCardsInHandOrFewer { player, count } => {
             let subject = match player {
                 crate::target::PlayerFilter::You => "you",

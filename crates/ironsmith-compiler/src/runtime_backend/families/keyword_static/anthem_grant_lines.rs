@@ -2150,6 +2150,14 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::LifeTotalOrLess(life as i32));
     }
 
+    if clause_words == ["youve", "lost", "life", "this", "turn"]
+        || clause_words == ["you", "lost", "life", "this", "turn"]
+    {
+        return Ok(crate::ConditionExpr::PlayerLostLifeThisTurn {
+            player: PlayerFilter::You,
+        });
+    }
+
     if let Some(condition) = parse_devotion_static_condition(&clause_words)? {
         return Ok(condition);
     }
