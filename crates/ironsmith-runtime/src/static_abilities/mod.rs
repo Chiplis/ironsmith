@@ -2626,6 +2626,18 @@ impl StaticAbility {
         Self::new(DoubleDamageFromSourcesYouControlOfChosenType::new(display))
     }
 
+    pub fn redirect_damage_to_source_controller(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: crate::target::PlayerFilter,
+        display: String,
+    ) -> Self {
+        Self::new(RedirectDamageToSourceController::new(
+            source_filter,
+            target_player_filter,
+            display,
+        ))
+    }
+
     pub fn modify_damage_amount_replacement(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: Option<crate::target::PlayerFilter>,

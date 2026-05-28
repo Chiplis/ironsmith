@@ -108,8 +108,7 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::Redirect { target, which } => {
-            let modified =
-                apply_trait_redirect(&event, target, which, effect.controller, effect.source);
+            let modified = apply_trait_redirect(game, &event, target, which, effect.controller);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -130,8 +129,13 @@ pub(super) fn apply_trait_replacement(
             let Some(damage) = downcast_event::<DamageEvent>(event.inner()) else {
                 return TraitApplyResult::Unchanged(event);
             };
-            let Some(new_target) =
-                resolve_trait_redirect_target(event.inner(), target, which, effect.controller)
+            let Some(new_target) = resolve_trait_redirect_target(
+                game,
+                event.inner(),
+                target,
+                which,
+                effect.controller,
+            )
             else {
                 return TraitApplyResult::Unchanged(event);
             };
@@ -818,14 +822,19 @@ fn apply_trait_enter_with_characteristics(
 }
 
 fn apply_trait_redirect(
+    game: &GameState,
     event: &Event,
     redirect_target: &RedirectTarget,
     which: &RedirectWhich,
     effect_controller: PlayerId,
-    _effect_source: crate::ids::ObjectId,
 ) -> Option<Event> {
-    let new_target =
-        resolve_trait_redirect_target(event.inner(), redirect_target, which, effect_controller)?;
+    let new_target = resolve_trait_redirect_target(
+        game,
+        event.inner(),
+        redirect_target,
+        which,
+        effect_controller,
+    )?;
     let redirectable = event.inner().redirectable_targets();
     let selected = match which {
         RedirectWhich::First => redirectable.first(),
@@ -839,6 +848,7 @@ fn apply_trait_redirect(
 }
 
 fn resolve_trait_redirect_target(
+    game: &GameState,
     event: &dyn crate::events::traits::GameEventType,
     redirect_target: &RedirectTarget,
     which: &RedirectWhich,
@@ -856,6 +866,10 @@ fn resolve_trait_redirect_target(
         RedirectTarget::ToPlayer(player_id) => Target::Player(*player_id),
         RedirectTarget::ToObject(object_id) => Target::Object(*object_id),
         RedirectTarget::ToSource => Target::Object(event.source_object()?),
+        RedirectTarget::ToSourceController => {
+            let source = event.source_object()?;
+            Target::Player(game.current_controller(source)?)
+        }
     };
 
     if !selected.valid_redirect_types.is_valid(&new_target) {

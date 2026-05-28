@@ -1185,6 +1185,15 @@ impl StaticAbilityModelInterpreter {
             ) => StaticAbility::double_damage_from_sources_you_control_of_chosen_type(
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            } => StaticAbility::redirect_damage_to_source_controller(
+                source_filter.clone(),
+                target_player_filter.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::AdditionalLandPlays(count) => {
                 StaticAbility::additional_land_plays(*count)
             }
