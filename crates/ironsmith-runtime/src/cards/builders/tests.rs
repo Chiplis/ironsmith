@@ -35993,6 +35993,66 @@ fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn castle_garenbrig_parses_strict_regression() {
+    assert_oracle_card_parses_strict("Castle Garenbrig");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn castle_garenbrig_compiled_text_keeps_compound_spend_restriction() {
+    let def = parse_oracle_card_definition("Castle Garenbrig");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains(
+            "spend this mana only to cast creature spells or activate abilities of creatures"
+        ),
+        "expected Castle Garenbrig compiled text to preserve compound spend restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn castle_garenbrig_models_compound_mana_usage_restriction() {
+    let def = parse_oracle_card_definition("Castle Garenbrig");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated
+                    .mana_usage_restrictions
+                    .iter()
+                    .any(|restriction| {
+                        matches!(
+                            restriction,
+                            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility { .. }
+                        )
+                    }) => Some(activated),
+            _ => None,
+        })
+        .expect("Castle Garenbrig should have a restricted mana ability");
+
+    let [crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility {
+        spell_filter,
+        ability_source_filter,
+    }] = activated.mana_usage_restrictions.as_slice()
+    else {
+        panic!(
+            "expected one compound mana usage restriction, got {:?}",
+            activated.mana_usage_restrictions
+        );
+    };
+    assert_eq!(activated.mana_symbols(), &[ManaSymbol::Green; 6]);
+    assert_eq!(spell_filter.card_types, vec![CardType::Creature]);
+    assert_eq!(ability_source_filter.card_types, vec![CardType::Creature]);
+    assert_eq!(ability_source_filter.zone, Some(Zone::Battlefield));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn jetfire_ingenious_scientist_card_parses_strictly() {
     let def = parse_oracle_card_definition("Jetfire, Ingenious Scientist // Jetfire, Air Guardian");
     assert!(

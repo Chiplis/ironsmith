@@ -766,6 +766,9 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
     if spec_words.is_empty() {
         return None;
     }
+    if let Some(restriction) = parse_cast_or_activate_mana_usage_restriction_words(&spec_words) {
+        return Some(restriction);
+    }
     let special_filter = parse_special_mana_usage_spell_filter_words(&spec_words);
     if special_filter.is_none()
         && spec_words.iter().any(|word| {
@@ -813,6 +816,37 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
         grant_uncounterable,
         enters_with_counters: vec![],
         granted_abilities: vec![],
+    })
+}
+
+fn parse_cast_or_activate_mana_usage_restriction_words(
+    words: &[&str],
+) -> Option<ManaUsageRestriction> {
+    let or_idx = words.iter().position(|word| *word == "or")?;
+    let cast_words = &words[..or_idx];
+    let ability_words = &words[or_idx + 1..];
+    if !matches!(
+        ability_words,
+        ["activate", "abilities", "of", "creatures"]
+            | ["activate", "an", "ability", "of", "a", "creature"]
+            | ["activate", "abilities", "of", "a", "creature"]
+            | ["activate", "a", "creature", "ability"]
+            | ["activate", "creature", "abilities"]
+    ) {
+        return None;
+    }
+
+    let spell_words = strip_optional_leading_article(cast_words);
+    let spell_filter = match spell_words {
+        ["creature", "spell" | "spells"] => {
+            ObjectFilter::default().with_type(crate::types::CardType::Creature)
+        }
+        _ => return None,
+    };
+
+    Some(ManaUsageRestriction::CastSpellOrActivateAbility {
+        spell_filter,
+        ability_source_filter: ObjectFilter::creature(),
     })
 }
 

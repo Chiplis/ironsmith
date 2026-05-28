@@ -2549,6 +2549,55 @@ fn rewrite_activate_ability_mana_restriction_parses() {
 }
 
 #[test]
+fn rewrite_cast_or_activate_mana_restriction_parses_creature_sources() {
+    let tokens = lex_line(
+        "Spend this mana only to cast creature spells or activate abilities of creatures.",
+        0,
+    )
+    .expect("rewrite lexer should classify compound mana restriction");
+
+    match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+        Some(crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility {
+            spell_filter,
+            ability_source_filter,
+        }) => {
+            assert_eq!(spell_filter.card_types, vec![CardType::Creature]);
+            assert_eq!(ability_source_filter.card_types, vec![CardType::Creature]);
+            assert_eq!(ability_source_filter.zone, Some(crate::zone::Zone::Battlefield));
+        }
+        other => panic!("expected compound cast-or-activate mana restriction, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_activation_line_preserves_spelled_out_fixed_mana_output() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Castle Garenbrig")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{2}{G}{G}, {T}: Add six {G}. Spend this mana only to cast creature spells or activate abilities of creatures.",
+        )
+        .expect("Castle Garenbrig-style activated line should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated ability");
+    assert_eq!(
+        activated.mana_output,
+        Some(vec![ManaSymbol::Green; 6]),
+        "expected spelled-out fixed mana amount to produce six green mana"
+    );
+    assert!(matches!(
+        activated.mana_usage_restrictions.as_slice(),
+        [crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility { .. }]
+    ));
+}
+
+#[test]
 fn rewrite_cant_be_spent_mana_restriction_parses_as_positive_filter() {
     let tokens = lex_line("This mana can't be spent to cast nonartifact spells.", 0)
         .expect("rewrite lexer should classify negative mana restriction");

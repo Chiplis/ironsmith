@@ -724,6 +724,7 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
             restrict_to_matching_spell,
             ..
         } => *restrict_to_matching_spell,
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility { .. } => true,
         crate::ability::ManaUsageRestriction::ActivateAbility => true,
     }
 }
@@ -772,6 +773,7 @@ fn restriction_bonus_applies_to_payment_source(
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility { .. } => false,
         crate::ability::ManaUsageRestriction::ActivateAbility => false,
     }
 }
@@ -836,6 +838,25 @@ pub(super) fn payment_source_matches_restriction(
                 return true;
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
+        }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility {
+            spell_filter,
+            ability_source_filter,
+        } => {
+            if source_obj.zone == Zone::Stack {
+                return cast_spell_filter_matches_payment_source(
+                    game,
+                    unit,
+                    spell_filter,
+                    Some(source_obj.id),
+                );
+            }
+            let Some(mana_source) = game.object(unit.source) else {
+                return false;
+            };
+            let filter_ctx =
+                game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
+            ability_source_filter.matches(source_obj, &filter_ctx, game)
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
@@ -976,6 +997,7 @@ pub(super) fn apply_spent_mana_bonuses(
                 enters_with_counters,
                 granted_abilities,
             ),
+            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility { .. } => continue,
             crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 
@@ -4801,6 +4823,142 @@ mod priority_mana_tests {
         assert!(
             spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(spell_id)).is_none(),
             "James restricted mana should not be spendable to cast spells"
+        );
+    }
+
+    #[test]
+    fn castle_garenbrig_restricted_mana_pays_creature_spells_or_creature_abilities_only() {
+        let alice = PlayerId::from_index(0);
+        let castle = CardDefinitionBuilder::new(CardId::new(), "Castle Garenbrig")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "Castle Garenbrig enters tapped unless you control a Forest.\n\
+                 {T}: Add {G}.\n\
+                 {2}{G}{G}, {T}: Add six {G}. Spend this mana only to cast creature spells or activate abilities of creatures.",
+            )
+            .expect("Castle Garenbrig should parse its compound restricted mana ability");
+
+        let restriction = castle
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => activated
+                    .mana_usage_restrictions
+                    .iter()
+                    .find(|restriction| {
+                        matches!(
+                            restriction,
+                            ManaUsageRestriction::CastSpellOrActivateAbility { .. }
+                        )
+                    })
+                    .cloned(),
+                _ => None,
+            })
+            .expect("Castle Garenbrig should carry a compound mana usage restriction");
+
+        let mut game = setup_game();
+        let castle_id = game.create_object_from_definition(&castle, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: castle_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction.clone()],
+            });
+        let creature_spell = CardDefinitionBuilder::new(CardId::new(), "Creature Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_spell_id =
+            game.create_object_from_definition(&creature_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(creature_spell_id))
+                .is_some(),
+            "Castle Garenbrig mana should be spendable to cast creature spells"
+        );
+
+        let mut game = setup_game();
+        let castle_id = game.create_object_from_definition(&castle, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: castle_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction.clone()],
+            });
+        let creature_source = CardDefinitionBuilder::new(CardId::new(), "Creature Ability Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_source_id =
+            game.create_object_from_definition(&creature_source, alice, Zone::Battlefield);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(creature_source_id))
+                .is_some(),
+            "Castle Garenbrig mana should be spendable to activate abilities of creatures"
+        );
+
+        let mut game = setup_game();
+        let castle_id = game.create_object_from_definition(&castle, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: castle_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction.clone()],
+            });
+        let noncreature_spell = CardDefinitionBuilder::new(CardId::new(), "Instant Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let noncreature_spell_id =
+            game.create_object_from_definition(&noncreature_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(noncreature_spell_id))
+                .is_none(),
+            "Castle Garenbrig mana should not be spendable to cast noncreature spells"
+        );
+
+        let mut game = setup_game();
+        let castle_id = game.create_object_from_definition(&castle, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: castle_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction.clone()],
+            });
+        let creature_card = CardDefinitionBuilder::new(CardId::new(), "Creature Card Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_card_id =
+            game.create_object_from_definition(&creature_card, alice, Zone::Graveyard);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(creature_card_id))
+                .is_none(),
+            "Castle Garenbrig mana should only activate abilities of creature permanents"
+        );
+
+        let mut game = setup_game();
+        let castle_id = game.create_object_from_definition(&castle, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: castle_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction],
+            });
+        let artifact_source = CardDefinitionBuilder::new(CardId::new(), "Artifact Ability Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_source_id =
+            game.create_object_from_definition(&artifact_source, alice, Zone::Battlefield);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(artifact_source_id))
+                .is_none(),
+            "Castle Garenbrig mana should not be spendable to activate noncreature abilities"
         );
     }
 

@@ -12890,14 +12890,7 @@ pub(super) fn describe_inline_ability_with_self_subject(
             let mana_symbols = activated.mana_symbols();
             if !mana_symbols.is_empty() {
                 payload.push_str("Add ");
-                payload.push_str(
-                    &mana_symbols
-                        .iter()
-                        .copied()
-                        .map(describe_mana_symbol)
-                        .collect::<Vec<_>>()
-                        .join(""),
-                );
+                payload.push_str(&describe_fixed_mana_symbols_for_add(mana_symbols));
             } else if !activated.effects.is_empty() {
                 let rendered =
                     super::ast_render::describe_mana_ability_resolution_program(&activated.effects)
@@ -27100,17 +27093,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(add_mana) = effect.downcast_ref::<crate::effects::AddManaEffect>() {
-        let mana = add_mana
-            .mana
-            .iter()
-            .copied()
-            .map(describe_mana_symbol)
-            .collect::<Vec<_>>()
-            .join("");
+        let mana = describe_fixed_mana_symbols_for_add(&add_mana.mana);
         if matches!(add_mana.player, PlayerFilter::ChosenPlayer) {
             return format!(
                 "A player of your choice adds {}",
-                if mana.is_empty() { "{0}" } else { &mana }
+                if mana.is_empty() { "{0}" } else { mana.as_str() }
             );
         }
         if !matches!(add_mana.player, PlayerFilter::You) {
@@ -27119,12 +27106,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "{} {} {}",
                 player,
                 player_verb(&player, "add", "adds"),
-                if mana.is_empty() { "{0}" } else { &mana }
+                if mana.is_empty() { "{0}" } else { mana.as_str() }
             );
         }
         return format!(
             "Add {}{}",
-            if mana.is_empty() { "{0}" } else { &mana },
+            if mana.is_empty() { "{0}" } else { mana.as_str() },
             describe_add_mana_destination_suffix(&add_mana.player)
         );
     }
@@ -31354,10 +31341,47 @@ fn describe_mana_usage_restriction(
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbility {
+            spell_filter,
+            ability_source_filter,
+        } => {
+            let spell_text = describe_mana_usage_spell_filter_target_with_options(
+                spell_filter,
+                activated
+                    .and_then(activated_mana_output_amount)
+                    .is_some_and(|amount| amount > 1),
+            )?;
+            let ability_text = describe_mana_usage_ability_source_filter(ability_source_filter)?;
+            Some(format!(
+                "Spend this mana only to cast {spell_text} or activate {ability_text}"
+            ))
+        }
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }
     }
+}
+
+fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -> Option<String> {
+    if filter == &ObjectFilter::creature() {
+        return Some("abilities of creatures".to_string());
+    }
+    None
+}
+
+fn describe_fixed_mana_symbols_for_add(mana: &[ManaSymbol]) -> String {
+    if mana.len() == 6
+        && let Some(first) = mana.first().copied()
+        && mana.iter().all(|symbol| *symbol == first)
+    {
+        let count = small_number_word(mana.len() as u32).unwrap_or_else(|| mana.len().to_string());
+        return format!("{} {}", count, describe_mana_symbol(first));
+    }
+    mana.iter()
+        .copied()
+        .map(describe_mana_symbol)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn activated_mana_output_amount(activated: &crate::ability::ActivatedAbility) -> Option<i32> {
@@ -31407,6 +31431,14 @@ fn describe_mana_usage_spell_filter_target_with_options(
         .unwrap_or_else(|| describe_cast_limit_spell_filter(filter));
     if described.is_empty() {
         return None;
+    }
+    if pluralize_origin_spell {
+        if described == "spell" {
+            return Some("spells".to_string());
+        }
+        if let Some(singular) = described.strip_suffix(" spell") {
+            return Some(format!("{singular} spells"));
+        }
     }
     if described == "spell" {
         return Some("a spell".to_string());
@@ -34421,12 +34453,7 @@ pub(super) fn describe_ability(
             let add_text = if !mana_symbols.is_empty() {
                 Some(format!(
                     "Add {}",
-                    mana_symbols
-                        .iter()
-                        .copied()
-                        .map(describe_mana_symbol)
-                        .collect::<Vec<_>>()
-                        .join("")
+                    describe_fixed_mana_symbols_for_add(mana_symbols)
                 ))
             } else {
                 None
@@ -34529,14 +34556,7 @@ pub(super) fn describe_ability(
                 if !mana_symbols.is_empty() {
                     line.push(' ');
                     line.push_str("Add ");
-                    line.push_str(
-                        &mana_symbols
-                            .iter()
-                            .copied()
-                            .map(describe_mana_symbol)
-                            .collect::<Vec<_>>()
-                            .join(""),
-                    );
+                    line.push_str(&describe_fixed_mana_symbols_for_add(mana_symbols));
                 } else if !activated.effects.is_empty() {
                     line.push(' ');
                     let effects =

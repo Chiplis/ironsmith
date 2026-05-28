@@ -1,6 +1,8 @@
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::ir::RewriteActivatedLine;
 use super::*;
+use crate::effect::Value;
+use crate::runtime_backend::util::parse_value;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -185,12 +187,30 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
         return None;
     }
 
-    let mana: Vec<_> = tokens[add_idx + 1..]
+    let mana_tokens = &tokens[add_idx + 1..];
+    let first_mana_idx = mana_tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::ManaGroup))?;
+    let repeat_count = if first_mana_idx == 0 {
+        1usize
+    } else {
+        match parse_value(&mana_tokens[..first_mana_idx]) {
+            Some((Value::Fixed(count), used)) if used == first_mana_idx && count > 0 => {
+                usize::try_from(count).ok()?
+            }
+            _ => return None,
+        }
+    };
+
+    let mana: Vec<_> = mana_tokens[first_mana_idx..]
         .iter()
         .try_fold(Vec::new(), |mut acc, token| match token.kind {
             TokenKind::ManaGroup => {
                 let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
-                acc.push(parse_mana_symbol(inner).ok()?);
+                let symbol = parse_mana_symbol(inner).ok()?;
+                for _ in 0..repeat_count {
+                    acc.push(symbol);
+                }
                 Some(acc)
             }
             TokenKind::Period | TokenKind::Comma => Some(acc),
