@@ -9,8 +9,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::ids::PlayerId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
 use crate::types::CardType;
@@ -119,6 +120,68 @@ fn choose_attack_target(
         .cloned()
 }
 
+fn build_token_copy_object(
+    effect: &CreateTokenCopyEffect,
+    id: ObjectId,
+    controller_id: PlayerId,
+    target_object: Option<&Object>,
+    copy_snapshot: Option<&ObjectSnapshot>,
+    resolved_target_id: ObjectId,
+    half_power: i32,
+    half_toughness: i32,
+    static_abilities_to_grant: &[StaticAbility],
+) -> Result<Object, ExecutionError> {
+    let mut token = if let Some(snapshot) = copy_snapshot {
+        Object::token_copy_from_snapshot(snapshot, id, controller_id)
+    } else {
+        let target = target_object.ok_or(ExecutionError::ObjectNotFound(resolved_target_id))?;
+        Object::token_copy_of(target, id, controller_id)
+    };
+
+    if let Some(CopyPtAdjustment::HalfRoundUp) = effect.pt_adjustment {
+        token.base_power = Some(PtValue::Fixed(half_power));
+        token.base_toughness = Some(PtValue::Fixed(half_toughness));
+    }
+    if let Some((power, toughness)) = effect.set_base_power_toughness {
+        token.base_power = Some(PtValue::Fixed(power));
+        token.base_toughness = Some(PtValue::Fixed(toughness));
+    }
+    if let Some(colors) = effect.set_colors {
+        token.color_override = Some(colors);
+    }
+    if effect.clear_mana_cost {
+        token.mana_cost = None;
+    }
+    if let Some(card_types) = &effect.set_card_types {
+        token.card_types = card_types.clone();
+    }
+    if let Some(subtypes) = &effect.set_subtypes {
+        token.subtypes = subtypes.clone();
+    }
+    for card_type in &effect.added_card_types {
+        if !token.card_types.contains(card_type) {
+            token.card_types.push(*card_type);
+        }
+    }
+    for subtype in &effect.added_subtypes {
+        if !token.subtypes.contains(subtype) {
+            token.subtypes.push(*subtype);
+        }
+    }
+    if !effect.removed_supertypes.is_empty() {
+        token
+            .supertypes
+            .retain(|supertype| !effect.removed_supertypes.contains(supertype));
+    }
+    for static_ability in static_abilities_to_grant {
+        token
+            .abilities
+            .push(Ability::static_ability(static_ability.clone()));
+    }
+
+    Ok(token)
+}
+
 impl EffectExecutor for CreateTokenCopyEffect {
     fn execute(
         &self,
@@ -127,14 +190,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let replaced_count = crate::events::processing::process_token_creation_with_event(
-            game,
-            controller_id,
-            base_count,
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-        ) as usize;
-        let count = replaced_count.min(remaining_token_slots(game, controller_id));
 
         // Resolve target from spec (supports tagged/spec-specific references)
         let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
@@ -190,9 +245,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
         }
         static_abilities_to_grant.extend(self.granted_static_abilities.iter().cloned());
 
-        let mut created_ids = Vec::with_capacity(count);
-        let mut events = Vec::with_capacity(count);
-
         let (half_power, half_toughness) = match self.pt_adjustment {
             Some(CopyPtAdjustment::HalfRoundUp) => {
                 let (power, toughness) = if let Some(snapshot) = copy_snapshot {
@@ -208,58 +260,44 @@ impl EffectExecutor for CreateTokenCopyEffect {
             None => (0, 0),
         };
 
+        let token_preview = build_token_copy_object(
+            self,
+            ObjectId::from_raw(0),
+            controller_id,
+            target_object.as_ref(),
+            copy_snapshot,
+            resolved_target_id,
+            half_power,
+            half_toughness,
+            &static_abilities_to_grant,
+        )?;
+        let replaced_count = crate::events::processing::process_token_creation_for_token_with_event(
+            game,
+            controller_id,
+            base_count,
+            Some(token_preview),
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+        ) as usize;
+        let count = replaced_count.min(remaining_token_slots(game, controller_id));
+
+        let mut created_ids = Vec::with_capacity(count);
+        let mut events = Vec::with_capacity(count);
+
         for _ in 0..count {
             let id = game.new_object_id();
-            let mut token = if let Some(snapshot) = copy_snapshot {
-                Object::token_copy_from_snapshot(snapshot, id, controller_id)
-            } else {
-                let target = target_object
-                    .as_ref()
-                    .ok_or(ExecutionError::ObjectNotFound(resolved_target_id))?;
-                Object::token_copy_of(target, id, controller_id)
-            };
+            let mut token = build_token_copy_object(
+                self,
+                id,
+                controller_id,
+                target_object.as_ref(),
+                copy_snapshot,
+                resolved_target_id,
+                half_power,
+                half_toughness,
+                &static_abilities_to_grant,
+            )?;
             token.zone = Zone::Command;
-
-            if let Some(CopyPtAdjustment::HalfRoundUp) = self.pt_adjustment {
-                token.base_power = Some(PtValue::Fixed(half_power));
-                token.base_toughness = Some(PtValue::Fixed(half_toughness));
-            }
-            if let Some((power, toughness)) = self.set_base_power_toughness {
-                token.base_power = Some(PtValue::Fixed(power));
-                token.base_toughness = Some(PtValue::Fixed(toughness));
-            }
-            if let Some(colors) = self.set_colors {
-                token.color_override = Some(colors);
-            }
-            if self.clear_mana_cost {
-                token.mana_cost = None;
-            }
-            if let Some(card_types) = &self.set_card_types {
-                token.card_types = card_types.clone();
-            }
-            if let Some(subtypes) = &self.set_subtypes {
-                token.subtypes = subtypes.clone();
-            }
-            for card_type in &self.added_card_types {
-                if !token.card_types.contains(card_type) {
-                    token.card_types.push(*card_type);
-                }
-            }
-            for subtype in &self.added_subtypes {
-                if !token.subtypes.contains(subtype) {
-                    token.subtypes.push(*subtype);
-                }
-            }
-            if !self.removed_supertypes.is_empty() {
-                token
-                    .supertypes
-                    .retain(|supertype| !self.removed_supertypes.contains(supertype));
-            }
-            for static_ability in &static_abilities_to_grant {
-                token
-                    .abilities
-                    .push(Ability::static_ability(static_ability.clone()));
-            }
             let token_is_creature = token.is_creature();
 
             game.add_object(token);
@@ -330,7 +368,7 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::cards::CardDefinitionBuilder;
+    use crate::cards::{CardDefinition, CardDefinitionBuilder};
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -339,7 +377,7 @@ mod tests {
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::target::ObjectFilter;
     use crate::test_prelude::*;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -372,6 +410,32 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    fn treasure_token_definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Treasure")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Treasure])
+            .build()
+    }
+
+    fn clue_token_definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Clue")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Clue])
+            .build()
+    }
+
+    fn xorn_definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Xorn")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental])
+            .parse_text(
+                "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
+            )
+            .expect("Xorn should parse strictly")
     }
 
     #[test]
@@ -579,6 +643,109 @@ mod tests {
                 token.name == "Grizzly Bears" && token.kind == ObjectKind::Token
             })
         }));
+    }
+
+    #[test]
+    fn xorn_adds_one_token_when_copying_a_treasure_token() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let treasure_id = game.create_object_from_definition(
+            &treasure_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        let source = game.new_object_id();
+        game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(treasure_id)]);
+        let effect = CreateTokenCopyEffect::new(
+            ChooseSpec::Object(ObjectFilter::artifact().with_subtype(Subtype::Treasure)),
+            1,
+            PlayerFilter::You,
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 2, "Xorn should add one Treasure token copy");
+        assert!(ids.iter().all(|id| {
+            game.object(*id).is_some_and(|token| {
+                token.name == "Treasure"
+                    && token.kind == ObjectKind::Token
+                    && token.subtypes.contains(&Subtype::Treasure)
+                    && game.controller_of(token) == alice
+            })
+        }));
+    }
+
+    #[test]
+    fn xorn_does_not_add_tokens_when_copying_non_treasure_tokens() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let clue_id = game.create_object_from_definition(
+            &clue_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        let source = game.new_object_id();
+        game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(clue_id)]);
+        let effect = CreateTokenCopyEffect::new(
+            ChooseSpec::Object(ObjectFilter::artifact().with_subtype(Subtype::Clue)),
+            1,
+            PlayerFilter::You,
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 1, "Xorn should ignore non-Treasure token copies");
+        let token = game.object(ids[0]).expect("token should exist");
+        assert_eq!(token.name, "Clue");
+        assert!(token.subtypes.contains(&Subtype::Clue));
+    }
+
+    #[test]
+    fn xorn_does_not_add_tokens_to_other_players_treasure_token_copies() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let treasure_id = game.create_object_from_definition(
+            &treasure_token_definition(),
+            bob,
+            Zone::Battlefield,
+        );
+        let source = game.new_object_id();
+        game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(treasure_id)]);
+        let effect = CreateTokenCopyEffect::new(
+            ChooseSpec::Object(ObjectFilter::artifact().with_subtype(Subtype::Treasure)),
+            1,
+            PlayerFilter::Specific(bob),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(
+            ids.len(),
+            1,
+            "Xorn should only affect its controller's Treasure token copies"
+        );
+        let token = game.object(ids[0]).expect("token should exist");
+        assert_eq!(token.name, "Treasure");
+        assert_eq!(game.controller_of(token), bob);
     }
 
     #[test]
