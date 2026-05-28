@@ -8,8 +8,8 @@ use crate::compiled_text::{
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TargetOnlyEffect, UntapEffect,
+    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, SwitchBlockingAssignmentsEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
@@ -35166,6 +35166,67 @@ fn assert_oracle_card_parses_strict(name: &str) {
         result.err(),
         oracle
     );
+}
+
+#[test]
+fn parse_oracle_general_jarkeld_strictly_parses_targets_timing_and_switch_text() {
+    assert_oracle_card_parses_strict("General Jarkeld");
+    let def = parse_oracle_card_definition("General Jarkeld");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        concat!(
+            "{T}: Choose two target blocked attacking creatures. If each of those creatures ",
+            "could be blocked by all creatures that the other is blocked by, each creature ",
+            "that's blocking exactly one of those attacking creatures stops blocking it and ",
+            "is blocking the other attacking creature. Activate only during the declare ",
+            "blockers step."
+        )
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("General Jarkeld should have an activated ability");
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::DuringDeclareBlockersStep
+    );
+    assert_eq!(activated.choices.len(), 1);
+    assert!(
+        activated.choices[0].is_target(),
+        "General Jarkeld's two blocked attackers must be activation targets: {:?}",
+        activated.choices
+    );
+    let choice = activated.choices[0].unhinted();
+    let ChooseSpec::WithCount(_, count) = choice else {
+        panic!("General Jarkeld must require exactly two targets, got {choice:?}");
+    };
+    assert_eq!(count.min, 2);
+    assert_eq!(count.max, Some(2));
+    let ChooseSpec::Object(filter) = choice.base() else {
+        panic!("General Jarkeld targets must use an object filter, got {choice:?}");
+    };
+    assert!(
+        filter.attacking,
+        "General Jarkeld targets must be attacking creatures"
+    );
+    assert!(filter.blocked, "General Jarkeld targets must be blocked creatures");
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "General Jarkeld targets must be creatures"
+    );
+
+    let effects = activated.effects.flattened_default_effects();
+    let switch = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<SwitchBlockingAssignmentsEffect>())
+        .expect("General Jarkeld should lower to a blocker-switch effect");
+    assert!(switch.attackers.is_target());
 }
 
 fn assert_oracle_card_fails_strict(name: &str) {

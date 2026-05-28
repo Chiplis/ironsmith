@@ -10,6 +10,7 @@ pub enum ActivationTiming {
     AnyTime,
     SorcerySpeed,
     DuringCombat,
+    DuringDeclareBlockersStep,
     OncePerTurn,
     DuringYourTurn,
     DuringOpponentsTurn,

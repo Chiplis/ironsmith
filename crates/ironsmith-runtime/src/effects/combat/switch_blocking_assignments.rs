@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+use crate::combat_state::CombatState;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
@@ -123,6 +123,7 @@ fn switch_assignments(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combat_state::{AttackTarget, AttackerInfo};
     use crate::ability::{Ability, AbilityKind};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ResolvedTarget;

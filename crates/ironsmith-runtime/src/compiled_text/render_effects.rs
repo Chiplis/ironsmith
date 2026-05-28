@@ -31209,6 +31209,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&remove_from_combat.spec)
         );
     }
+    if let Some(switch_blockers) = effect
+        .downcast_ref::<crate::effects::SwitchBlockingAssignmentsEffect>()
+    {
+        let switch_clause = concat!(
+            "if each of those creatures could be blocked by all creatures that the other is blocked by, ",
+            "each creature that's blocking exactly one of those attacking creatures stops blocking it ",
+            "and is blocking the other attacking creature"
+        );
+        if switch_blockers.attackers.is_target() {
+            return format!("Choose two target blocked attacking creatures. {switch_clause}");
+        }
+        return concat!(
+            "If each of those creatures could be blocked by all creatures that the other is blocked by, ",
+            "each creature that's blocking exactly one of those attacking creatures stops blocking it ",
+            "and is blocking the other attacking creature"
+        )
+        .to_string();
+    }
     if let Some(renown) = effect.downcast_ref::<crate::effects::RenownEffect>() {
         return format!(
             "If this creature isn't renowned, put {} +1/+1 counter{} on it and it becomes renowned",
@@ -31375,6 +31393,9 @@ pub(super) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyTime => None,
         ActivationTiming::SorcerySpeed => Some("Activate only as a sorcery"),
         ActivationTiming::DuringCombat => Some("Activate only during combat"),
+        ActivationTiming::DuringDeclareBlockersStep => {
+            Some("Activate only during the declare blockers step")
+        }
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
@@ -35094,6 +35115,9 @@ pub(super) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::AnyTime => "Activate only as an instant".to_string(),
             ActivationTiming::SorcerySpeed => "Activate only as a sorcery".to_string(),
             ActivationTiming::DuringCombat => "Activate only during combat".to_string(),
+            ActivationTiming::DuringDeclareBlockersStep => {
+                "Activate only during the declare blockers step".to_string()
+            }
             ActivationTiming::OncePerTurn => "Activate only once each turn".to_string(),
             ActivationTiming::DuringYourTurn => "Activate only during your turn".to_string(),
             ActivationTiming::DuringOpponentsTurn => {

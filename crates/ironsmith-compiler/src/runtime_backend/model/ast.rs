@@ -1610,6 +1610,9 @@ pub(crate) enum SubjectVerbActionAst {
     RemoveFromCombat {
         target: TargetAst,
     },
+    SwitchBlockingAssignments {
+        attackers: TargetAst,
+    },
     Flip {
         target: TargetAst,
     },
@@ -3034,6 +3037,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RemoveFromCombat { target } => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
+            Self::SwitchBlockingAssignments { attackers } => f
+                .debug_tuple("SwitchBlockingAssignments")
+                .field(attackers)
+                .finish(),
             Self::Flip { target } => f.debug_tuple("Flip").field(target).finish(),
             Self::Regenerate { target } => f.debug_tuple("Regenerate").field(target).finish(),
             Self::RegenerateAll { filter } => f.debug_tuple("RegenerateAll").field(filter).finish(),
@@ -6097,6 +6104,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RemoveFromCombat { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_switch_blocking_assignments(attackers: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::SwitchBlockingAssignments { attackers },
         )
     }
 

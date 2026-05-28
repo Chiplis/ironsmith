@@ -5211,6 +5211,19 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::SwitchBlockingAssignments { attackers } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(attackers, &current_reference_env(ctx))?;
+            let effect = tag_object_target_effect(
+                Effect::new(crate::effects::SwitchBlockingAssignmentsEffect::new(
+                    spec.clone(),
+                )),
+                &spec,
+                ctx,
+                "switched_blocking_assignments",
+            );
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::Flip { target } => {
             compile_tagged_effect_for_target(target, ctx, "flipped", Effect::flip)
         }

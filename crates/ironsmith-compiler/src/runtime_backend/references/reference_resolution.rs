@@ -1681,6 +1681,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Suspect { .. }
             | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
+            | SubjectVerbActionAst::SwitchBlockingAssignments { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
             | SubjectVerbActionAst::RegenerateAll { .. }

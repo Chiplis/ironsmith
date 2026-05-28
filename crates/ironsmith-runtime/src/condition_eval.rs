@@ -132,6 +132,7 @@ mod tests {
     use crate::effects::ExecutionContext;
     use crate::events::cause::EventCause;
     use crate::events::{DamageEvent, DamageTarget, RawEvent};
+    use crate::game_state::{Phase, Step};
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
@@ -145,6 +146,33 @@ mod tests {
             .build();
         let owner = game.players[owner_index].id;
         game.create_object_from_card(&card, owner, Zone::Hand);
+    }
+
+    #[test]
+    fn evaluate_activation_timing_during_declare_blockers_step() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let condition = Condition::ActivationTiming(
+            crate::ability::ActivationTiming::DuringDeclareBlockersStep,
+        );
+        let ctx = ExternalEvaluationContext {
+            controller: alice,
+            source,
+            filter_source: Some(source),
+            ..Default::default()
+        };
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareBlockers);
+        assert!(evaluate_condition_external(&game, &condition, &ctx));
+
+        game.turn.step = Some(Step::DeclareAttackers);
+        assert!(!evaluate_condition_external(&game, &condition, &ctx));
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = Some(Step::DeclareBlockers);
+        assert!(!evaluate_condition_external(&game, &condition, &ctx));
     }
 
     #[test]
@@ -1613,6 +1641,10 @@ pub fn evaluate_condition_external(
                 crate::ability::ActivationTiming::AnyTime => true,
                 crate::ability::ActivationTiming::DuringCombat => {
                     matches!(game.turn.phase, crate::game_state::Phase::Combat)
+                }
+                crate::ability::ActivationTiming::DuringDeclareBlockersStep => {
+                    matches!(game.turn.phase, crate::game_state::Phase::Combat)
+                        && matches!(game.turn.step, Some(crate::game_state::Step::DeclareBlockers))
                 }
                 crate::ability::ActivationTiming::SorcerySpeed => {
                     game.turn.active_player == ctx.controller

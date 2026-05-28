@@ -1049,6 +1049,12 @@ where
             crate::effects::RemoveFromCombatEffect::with_spec(payload.target.clone()),
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SwitchBlockingAssignmentsEffect>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::SwitchBlockingAssignmentsEffect::new(
+            payload.attackers.clone(),
+        )));
+    }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachCounterKindPutOrRemoveEffect>(&effect)
     {

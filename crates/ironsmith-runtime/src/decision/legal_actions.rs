@@ -1111,6 +1111,10 @@ fn activation_timing_allows(
     match timing {
         crate::ability::ActivationTiming::AnyTime => true,
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
+        crate::ability::ActivationTiming::DuringDeclareBlockersStep => {
+            matches!(game.turn.phase, Phase::Combat)
+                && matches!(game.turn.step, Some(crate::game_state::Step::DeclareBlockers))
+        }
         crate::ability::ActivationTiming::SorcerySpeed => {
             if is_equip_ability(game, source, activated)
                 && player_may_activate_equip_abilities_any_time(game, controller, view)

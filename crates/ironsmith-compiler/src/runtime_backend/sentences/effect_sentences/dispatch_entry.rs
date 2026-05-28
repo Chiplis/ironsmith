@@ -2388,6 +2388,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Suspect { .. }
             | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
+            | SubjectVerbActionAst::SwitchBlockingAssignments { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
             | SubjectVerbActionAst::RegenerateAll { .. }

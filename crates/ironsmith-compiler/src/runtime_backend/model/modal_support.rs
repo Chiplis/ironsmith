@@ -377,6 +377,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Suspect { .. }
             | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
+            | SubjectVerbActionAst::SwitchBlockingAssignments { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
             | SubjectVerbActionAst::RegenerateAll { .. }

@@ -11,7 +11,7 @@ use super::super::permission_helpers::{
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::token_primitives::find_index;
-use super::super::util::{parse_subject, span_from_tokens, trim_commas, words};
+use super::super::util::{parse_subject, parse_target_phrase, span_from_tokens, trim_commas, words};
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
 use super::zone_handlers::parse_exile_top_library_clause;
 use crate::cards::builders::{
@@ -719,6 +719,75 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     });
     combined.extend(trailing_effects);
     Ok(Some(combined))
+}
+
+fn parse_choose_blocked_attackers_then_switch_blockers_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let mut normalized_first = first.to_vec();
+    for token in &mut normalized_first {
+        token.lowercase_word();
+    }
+
+    let Some((_player, filter, count)) = parse_you_choose_objects_clause(&normalized_first)? else {
+        return Ok(None);
+    };
+    if count.min != 2 || count.max != Some(2) || !filter.attacking || !filter.blocked {
+        return Ok(None);
+    }
+
+    let second_words = crate::runtime_backend::token_word_refs(second);
+    if second_words.as_slice()
+        != [
+            "if",
+            "each",
+            "of",
+            "those",
+            "creatures",
+            "could",
+            "be",
+            "blocked",
+            "by",
+            "all",
+            "creatures",
+            "that",
+            "the",
+            "other",
+            "is",
+            "blocked",
+            "by",
+            "each",
+            "creature",
+            "that's",
+            "blocking",
+            "exactly",
+            "one",
+            "of",
+            "those",
+            "attacking",
+            "creatures",
+            "stops",
+            "blocking",
+            "it",
+            "and",
+            "is",
+            "blocking",
+            "the",
+            "other",
+            "attacking",
+            "creature",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let Ok(target) = parse_target_phrase(trim_commas(&normalized_first[1..]).as_slice()) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::subject_verb_switch_blocking_assignments(
+        target,
+    )]))
 }
 
 fn parser_words(tokens: &[OwnedLexToken]) -> Vec<String> {
@@ -1866,6 +1935,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
             sentences[0],
             sentences[1],
             sentences[2],
+        )
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_choose_blocked_attackers_then_switch_blockers_bundle(
+            sentences[0],
+            sentences[1],
         )
     {
         return Some(effects);

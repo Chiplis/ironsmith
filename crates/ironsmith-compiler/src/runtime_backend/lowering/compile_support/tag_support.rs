@@ -624,6 +624,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Suspect { .. }
         | SubjectVerbActionAst::ClearSuspected { .. }
         | SubjectVerbActionAst::RemoveFromCombat { .. }
+        | SubjectVerbActionAst::SwitchBlockingAssignments { .. }
         | SubjectVerbActionAst::Flip { .. }
         | SubjectVerbActionAst::Regenerate { .. }
         | SubjectVerbActionAst::RegenerateAll { .. }
