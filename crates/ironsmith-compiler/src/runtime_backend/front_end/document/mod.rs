@@ -2405,11 +2405,10 @@ fn looks_like_ability_word_label(label: &str, preserve_as_choice_label: bool) ->
     if preserve_as_choice_label {
         return false;
     }
-    let trimmed = label.trim();
-    !trimmed.is_empty()
-        && !trimmed.contains('.')
-        && !trimmed.contains(':')
-        && trimmed.split_whitespace().count() <= 4
+    matches!(
+        label.trim().to_ascii_lowercase().as_str(),
+        "affirmative" | "negative"
+    )
 }
 
 fn rewrite_line_normalized(

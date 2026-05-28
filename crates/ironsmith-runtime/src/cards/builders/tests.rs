@@ -30523,6 +30523,27 @@ fn parse_windcrag_siege_full_text_compiles() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_named_choice_labels_remain_chosen_option_conditions() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Named Choice Siege")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "As this enchantment enters, choose Mardu or Jeskai.\nMardu — Creatures you control get +1/+1.\nJeskai — Creatures you control have flying.",
+        )
+        .expect("named choice labels should compile");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("SourceChosenOption(\\\"mardu\\\")"),
+        "expected Mardu label to remain a chosen-option condition, got {debug}"
+    );
+    assert!(
+        debug.contains("SourceChosenOption(\\\"jeskai\\\")"),
+        "expected Jeskai label to remain a chosen-option condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_as_long_as_its_enchanted_condition_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fledgling Osprey Variant")
         .card_types(vec![CardType::Creature])
