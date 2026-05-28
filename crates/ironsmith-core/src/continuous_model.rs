@@ -31,6 +31,7 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     AddSubtypes(Vec<Subtype>),
     AddAllSubtypesOfFamily(SubtypeFamily),
     RemoveAllSubtypesOfFamily(SubtypeFamily),
+    AddColors(ColorSet),
     SetColors(ColorSet),
     SetPowerToughness {
         power: Value,

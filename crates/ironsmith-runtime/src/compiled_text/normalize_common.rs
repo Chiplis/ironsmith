@@ -8291,6 +8291,18 @@ pub(super) fn describe_apply_continuous_clauses(
                 describe_token_color_words(*colors, false)
             ));
         }
+        crate::continuous::Modification::AddColors(colors) => {
+            let verb = if plural_target { "become" } else { "becomes" };
+            let other_colors = if plural_target {
+                "their other colors"
+            } else {
+                "its other colors"
+            };
+            clauses.push(format!(
+                "{verb} {} in addition to {other_colors}",
+                describe_token_color_words(*colors, false)
+            ));
+        }
         crate::continuous::Modification::AddCardTypes(card_types) => {
             let mut words: Vec<String> = card_types
                 .iter()
@@ -9063,6 +9075,60 @@ fn describe_attack_block_if_able_apply_continuous(
     }
 }
 
+fn describe_color_subtype_addition_pair(
+    first: &crate::effects::ApplyContinuousEffect,
+    second: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+    plural_target: bool,
+) -> Option<String> {
+    if !first.additional_modifications.is_empty()
+        || !second.additional_modifications.is_empty()
+        || !first.runtime_modifications.is_empty()
+        || !second.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+
+    let (colors, subtypes) = match (&first.modification, &second.modification) {
+        (
+            Some(crate::continuous::Modification::AddColors(colors)),
+            Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+        ) => (*colors, subtypes),
+        (
+            Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+            Some(crate::continuous::Modification::AddColors(colors)),
+        ) => (*colors, subtypes),
+        _ => return None,
+    };
+    if colors.is_empty() || subtypes.is_empty() {
+        return None;
+    }
+
+    let subtype_words = subtypes
+        .iter()
+        .map(|subtype| subtype.to_string().to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let descriptor = format!("{} {subtype_words}", describe_token_color_words(colors, false));
+    let descriptor = if plural_target {
+        pluralize_noun_phrase(&descriptor)
+    } else {
+        with_indefinite_article(&descriptor)
+    };
+    let verb = if plural_target { "become" } else { "becomes" };
+    let other = if plural_target {
+        "their other colors and types"
+    } else {
+        "its other colors and types"
+    };
+    let mut text = format!("{target} {verb} {descriptor} in addition to {other}");
+    if let Some(tail) = describe_apply_continuous_tail(first) {
+        text.push(' ');
+        text.push_str(&tail);
+    }
+    Some(text)
+}
+
 pub(super) fn describe_compact_apply_continuous_pair(
     first: &crate::effects::ApplyContinuousEffect,
     second: &crate::effects::ApplyContinuousEffect,
@@ -9078,6 +9144,9 @@ pub(super) fn describe_compact_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target) {
+        return Some(text);
+    }
     let mut clauses = describe_apply_continuous_clauses(first, plural_target);
     clauses.extend(describe_apply_continuous_clauses(second, plural_target));
     if clauses.is_empty() {
@@ -9134,6 +9203,9 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target) {
+        return Some(text);
+    }
     if tagged_apply_pair_preserves_animated_land(first, second)
         && (first.until == second.until || matches!(second.until, Until::Forever))
         && (first.condition == second.condition || second.condition.is_none())

@@ -2761,6 +2761,101 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         effect
     }
 
+    fn effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return Some(&tagged.tag);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return Some(&tag_all.tag);
+        }
+        None
+    }
+
+    fn tagged_apply_continuous(effect: &Effect) -> Option<&crate::effects::ApplyContinuousEffect> {
+        unwrap_wrapped_effect(effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()
+    }
+
+    fn apply_targets_tag(
+        apply: &crate::effects::ApplyContinuousEffect,
+        tag: &crate::TagKey,
+    ) -> bool {
+        matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(candidate)) if candidate == tag)
+    }
+
+    fn describe_move_then_color_subtype_addition(effects: &[&Effect]) -> Option<String> {
+        let [move_effect, color_effect, subtype_effect] = effects else {
+            return None;
+        };
+        let moved_tag = effect_tag(move_effect)?;
+        let move_to_zone = unwrap_wrapped_effect(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield {
+            return None;
+        }
+
+        let first_apply = tagged_apply_continuous(color_effect)?;
+        let second_apply = tagged_apply_continuous(subtype_effect)?;
+        if first_apply.until != second_apply.until
+            || first_apply.condition != second_apply.condition
+            || !apply_targets_tag(first_apply, moved_tag)
+            || !apply_targets_tag(second_apply, moved_tag)
+            || !first_apply.additional_modifications.is_empty()
+            || !second_apply.additional_modifications.is_empty()
+            || !first_apply.runtime_modifications.is_empty()
+            || !second_apply.runtime_modifications.is_empty()
+        {
+            return None;
+        }
+
+        let (colors, subtypes) = match (&first_apply.modification, &second_apply.modification) {
+            (
+                Some(crate::continuous::Modification::AddColors(colors)),
+                Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+            ) => (*colors, subtypes),
+            (
+                Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+                Some(crate::continuous::Modification::AddColors(colors)),
+            ) => (*colors, subtypes),
+            _ => return None,
+        };
+        if colors.is_empty() || subtypes.is_empty() {
+            return None;
+        }
+
+        let mut move_text =
+            describe_effect(move_effect).replace(" in a graveyard", " from a graveyard");
+        move_text = move_text.replace(" in your graveyard", " from your graveyard");
+        move_text = move_text.replace(
+            " in an opponent's graveyard",
+            " from an opponent's graveyard",
+        );
+        let lower_move = move_text.to_ascii_lowercase();
+        let followup_subject = if lower_move.contains("creature card") {
+            "That creature"
+        } else if lower_move.contains("permanent card") {
+            "That permanent"
+        } else {
+            "That card"
+        };
+        let subtype_words = subtypes
+            .iter()
+            .map(|subtype| subtype.to_string().to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let descriptor = with_indefinite_article(&format!(
+            "{} {subtype_words}",
+            describe_token_color_words(colors, false)
+        ));
+        let mut followup = format!(
+            "{followup_subject} is {descriptor} in addition to its other colors and types"
+        );
+        if !matches!(first_apply.until, Until::Forever) {
+            followup.push(' ');
+            followup.push_str(&describe_until(&first_apply.until));
+        }
+        Some(format!("{move_text}. {followup}"))
+    }
+
     fn describe_consult_reveal_put_battlefield_then_bottom(effects: &[&Effect]) -> Option<String> {
         let [consult_effect, move_effect, bottom_effect] = effects else {
             return None;
@@ -2852,6 +2947,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_consult_reveal_put_battlefield_then_bottom(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_move_then_color_subtype_addition(&raw_effects) {
         return compact;
     }
 
@@ -12294,6 +12392,18 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(cleanup_decompiled_text(&lowercase_first(
             compact_trimmed.trim_end_matches('.'),
         )));
+    }
+    if !compact_trimmed.is_empty()
+        && compact_trimmed.contains(". That ")
+        && compact_trimmed.contains(" in addition to its other colors and types")
+        && !compact_trimmed.starts_with("If ")
+        && !compact_trimmed.starts_with("When ")
+        && !compact_trimmed.starts_with("Whenever ")
+        && !compact_trimmed.starts_with("At ")
+    {
+        return Some(cleanup_decompiled_text(
+            compact_trimmed.trim_end_matches('.'),
+        ));
     }
     if !compact_trimmed.is_empty()
         && compact_trimmed.contains(" until ")
@@ -30230,6 +30340,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!(
             "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
             describe_choose_spec(&redirect_next_time.target)
+        );
+    }
+    if let Some(redirect_all) =
+        effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
+    {
+        let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
+            && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
+        {
+            "you and permanents you control".to_string()
+        } else {
+            let player = describe_player_filter(&redirect_all.player_filter);
+            let object = redirect_all.object_filter.description();
+            format!("{player} and {object}")
+        };
+        return format!(
+            "All damage that would be dealt this turn to {target_set} is dealt to {} instead",
+            describe_choose_spec(&redirect_all.target)
         );
     }
     if let Some(prevent_from) =

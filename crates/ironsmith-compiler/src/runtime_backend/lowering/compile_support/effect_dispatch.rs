@@ -1602,6 +1602,20 @@ fn compile_subject_verb_effect(
                 Effect::new(effect)
             })
         }
+        SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+            player_filter,
+            object_filter,
+            target,
+        } => {
+            let object_filter = resolve_it_tag(object_filter, &current_reference_env(ctx))?;
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                    player_filter.clone(),
+                    object_filter.clone(),
+                    spec,
+                ))
+            })
+        }
         SubjectVerbActionAst::PutOrRemoveCounters {
             put_counter_type,
             put_count,
@@ -2475,6 +2489,17 @@ fn compile_subject_verb_effect(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::AddColors {
+            target,
+            colors,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "colored", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::AddColors(*colors),
                 duration.clone(),
             ))
         }),

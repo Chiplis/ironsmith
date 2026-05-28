@@ -1137,6 +1137,11 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    AddColors {
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    },
     AddAllSubtypesOfFamily {
         target: TargetAst,
         family: SubtypeFamily,
@@ -1315,6 +1320,11 @@ pub(crate) enum SubjectVerbActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         all_this_turn: bool,
+    },
+    RedirectAllDamageThisTurnToTarget {
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
     },
     Meld {
         result_name: String,
@@ -2408,6 +2418,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("subtypes", subtypes)
                 .field("duration", duration)
                 .finish(),
+            Self::AddColors {
+                target,
+                colors,
+                duration,
+            } => f
+                .debug_struct("AddColors")
+                .field("target", target)
+                .field("colors", colors)
+                .field("duration", duration)
+                .finish(),
             Self::AddAllSubtypesOfFamily {
                 target,
                 family,
@@ -2649,6 +2669,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("source", source)
                 .field("target", target)
                 .field("all_this_turn", all_this_turn)
+                .finish(),
+            Self::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
+            } => f
+                .debug_struct("RedirectAllDamageThisTurnToTarget")
+                .field("player_filter", player_filter)
+                .field("object_filter", object_filter)
+                .field("target", target)
                 .finish(),
             Self::Meld {
                 result_name,
@@ -3967,6 +3997,22 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_add_colors(
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AddColors {
+                target,
+                colors,
+                duration,
+            },
+        )
+    }
+
     pub(crate) fn subject_verb_add_all_subtypes_of_family(
         target: TargetAst,
         family: SubtypeFamily,
@@ -4344,6 +4390,22 @@ impl EffectAst {
                 source,
                 target,
                 all_this_turn: true,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_target(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
             },
         )
     }

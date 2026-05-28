@@ -423,6 +423,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
@@ -471,6 +472,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }

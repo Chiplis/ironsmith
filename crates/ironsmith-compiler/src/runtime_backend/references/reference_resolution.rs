@@ -826,6 +826,9 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "subtyped")?;
                 }
+                SubjectVerbActionAst::AddColors { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "colored")?;
+                }
                 SubjectVerbActionAst::SetColors { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "set_colors")?;
                 }
@@ -1726,6 +1729,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
@@ -1772,6 +1776,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
@@ -2495,6 +2500,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                object_filter,
+                target,
+                ..
+            } => bind_unresolved_it_in_filter(object_filter, seed_tag)
+                + bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::PreventDamage {
                 amount, target, ..
             } => {
@@ -2613,6 +2624,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }

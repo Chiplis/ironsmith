@@ -1236,6 +1236,7 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
                 | SubjectVerbActionAst::AddCardTypes { duration, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
                 | SubjectVerbActionAst::AddSubtypes { duration, .. }
+                | SubjectVerbActionAst::AddColors { duration, .. }
                 | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
                 | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
                 | SubjectVerbActionAst::SetColors { duration, .. }
@@ -1299,6 +1300,10 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
                     ..
                 }
                 | SubjectVerbActionAst::AddSubtypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddColors {
                     duration: effect_duration,
                     ..
                 }

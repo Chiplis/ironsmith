@@ -3417,6 +3417,23 @@ impl RedirectNextTimeDamageToSourceEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RedirectAllDamageThisTurnToTargetEffect {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+    pub target: ChooseSpec,
+}
+
+impl RedirectAllDamageThisTurnToTargetEffect {
+    pub fn new(player_filter: PlayerFilter, object_filter: ObjectFilter, target: ChooseSpec) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+            target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrantPlayTaggedEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,

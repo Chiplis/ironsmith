@@ -5,12 +5,12 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
-use crate::events::damage::matchers::DamageSourceConstraint;
+use crate::events::damage::matchers::{DamageSourceConstraint, DamageToPlayerOrObjectMatcher};
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 /// Matches damage events from a constrained source to a specific object target.
 #[derive(Debug, Clone)]
@@ -65,6 +65,66 @@ pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: ChooseSpec,
     pub all_this_turn: bool,
+}
+
+/// "All damage that would be dealt this turn to [a player/permanent set] is dealt to [target] instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectAllDamageThisTurnToTargetEffect {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+    pub target: ChooseSpec,
+}
+
+impl RedirectAllDamageThisTurnToTargetEffect {
+    pub fn new(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: ChooseSpec,
+    ) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+            target,
+        }
+    }
+}
+
+impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let redirect_target = resolve_objects_for_effect(game, ctx, &self.target)?
+            .into_iter()
+            .next()
+            .ok_or(ExecutionError::InvalidTarget)?;
+
+        let replacement = ReplacementEffect::with_matcher(
+            ctx.source,
+            ctx.controller,
+            DamageToPlayerOrObjectMatcher::new(
+                self.player_filter.clone(),
+                self.object_filter.clone(),
+            ),
+            ReplacementAction::Redirect {
+                target: RedirectTarget::ToObject(redirect_target),
+                which: RedirectWhich::First,
+            },
+        );
+        game.effect_store
+            .replacement_effects
+            .add_until_end_of_turn_effect(replacement);
+        Ok(EffectOutcome::resolved())
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "damage redirection target"
+    }
 }
 
 impl RedirectNextTimeDamageToSourceEffect {

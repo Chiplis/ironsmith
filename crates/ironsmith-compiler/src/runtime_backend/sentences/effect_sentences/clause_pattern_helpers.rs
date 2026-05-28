@@ -5,7 +5,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
 
@@ -1256,6 +1256,54 @@ pub(crate) fn parse_redirect_next_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+    if word_slice_starts_with(
+        &clause_words,
+        &[
+            "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
+        ],
+    ) {
+        let target_start = 9usize;
+        let is_dealt_rel =
+            find_word_sequence_index(&clause_words[target_start..], &["is", "dealt", "to"])
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported redirected-all-damage destination (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?;
+        let is_dealt_idx = target_start + is_dealt_rel;
+        let protected_words = &clause_words[target_start..is_dealt_idx];
+        let object_filter = match protected_words {
+            ["you", "and", "permanents", "you", "control"]
+            | ["you", "and", "permanent", "you", "control"] => {
+                ObjectFilter::permanent().you_control()
+            }
+            ["you", "and", "other", "permanents", "you", "control"]
+            | ["you", "and", "other", "permanent", "you", "control"] => {
+                ObjectFilter::permanent().you_control().other()
+            }
+            _ => return Ok(None),
+        };
+
+        let redirect_words = &clause_words[is_dealt_idx + 3..];
+        if redirect_words.last().copied() != Some("instead") || redirect_words.len() < 2 {
+            return Ok(None);
+        }
+        let target_tokens = redirect_words[..redirect_words.len() - 1]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let target = parse_target_phrase(&target_tokens)?;
+
+        return Ok(Some(vec![
+            EffectAst::subject_verb_redirect_all_damage_this_turn_to_target(
+                PlayerFilter::You,
+                object_filter,
+                target,
+            ),
+        ]));
+    }
+
     if word_slice_starts_with(
         &clause_words,
         &["all", "damage", "that", "would", "be", "dealt", "to"],

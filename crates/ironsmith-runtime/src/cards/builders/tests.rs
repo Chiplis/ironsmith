@@ -37482,6 +37482,7 @@ strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_profane_memento, "Profane Memento");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
 strict_parse_card_test!(strict_parse_inviolability, "Inviolability");
+strict_parse_card_test!(strict_parse_saving_grace, "Saving Grace");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
 strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
@@ -37604,6 +37605,178 @@ fn inviolability_runtime_prevents_damage_to_enchanted_creature_only() {
     assert!(
         !other_prevented,
         "damage to unenchanted creature should remain unprevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn saving_grace_compiled_text_keeps_damage_redirection_clause() {
+    let def = parse_oracle_card_definition("Saving Grace");
+
+    assert_eq!(
+        def.aura_attach_filter,
+        Some(AuraAttachmentFilter::Object(ObjectFilter::creature().you_control())),
+        "Saving Grace should enchant only creatures you control"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "all damage that would be dealt this turn to you and permanents you control is dealt to enchanted creature instead"
+        ),
+        "expected Saving Grace compiled text to preserve the temporary enchanted-creature redirection clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn saving_grace_runtime_redirects_controller_and_permanent_damage_this_turn_only() {
+    let def = parse_oracle_card_definition("Saving Grace");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().to_ascii_lowercase().contains("enters") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Saving Grace should have an Aura-enters triggered ability");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let protected_creature = CardBuilder::new(CardId::from_raw(99_001), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id =
+        game.create_object_from_card(&protected_creature, alice, crate::zone::Zone::Battlefield);
+
+    let other_creature = CardBuilder::new(CardId::from_raw(99_002), "Other Alice Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_id = game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
+
+    let bob_creature = CardBuilder::new(CardId::from_raw(99_003), "Bob Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bob_creature_id = game.create_object_from_card(&bob_creature, bob, crate::zone::Zone::Battlefield);
+
+    let damage_source = CardBuilder::new(CardId::from_raw(99_004), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let source_id = game.create_object_from_card(&damage_source, bob, crate::zone::Zone::Battlefield);
+
+    let aura_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
+    game.object_mut(aura_id)
+        .expect("Saving Grace object should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(protected_id));
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .attachments
+        .push(aura_id);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(aura_id, alice);
+    for effect in &triggered.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Saving Grace ETB effect should resolve");
+    }
+
+    let damage_to_alice = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_alice.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(protected_id),
+            amount: 3,
+        }],
+        "damage to Saving Grace's controller should be redirected to enchanted creature"
+    );
+
+    let damage_to_other_permanent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(other_id),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_other_permanent.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(protected_id),
+            amount: 2,
+        }],
+        "damage to permanents controlled by Saving Grace's controller should be redirected"
+    );
+
+    let damage_to_opponent_permanent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(bob_creature_id),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_opponent_permanent.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(bob_creature_id),
+            amount: 4,
+        }],
+        "Saving Grace should not redirect damage to permanents controlled by another player"
+    );
+
+    let damage_to_bob = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_bob.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Player(bob),
+            amount: 4,
+        }],
+        "Saving Grace should not redirect damage to another player"
+    );
+
+    game.effect_store
+        .replacement_effects
+        .clear_until_end_of_turn_effects();
+    let after_turn_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Player(alice),
+        5,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        after_turn_damage.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Player(alice),
+            amount: 5,
+        }],
+        "Saving Grace's damage redirection should expire at end of turn"
     );
 }
 
@@ -39950,6 +40123,91 @@ fn parse_portal_to_phyrexia_subtype_followup_sentence() {
             "At the beginning of your upkeep, put target creature card from a graveyard onto the battlefield under your control. It's a Phyrexian in addition to its other types.",
         )
         .expect("implicit tagged subtype followup should parse");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_rise_from_the_grave_color_and_subtype_followup_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rise from the Grave")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black Zombie in addition to its other colors and types.",
+        )
+        .expect("Rise from the Grave should parse strictly");
+
+    let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
+    let effects = &spell_effect.segments[0].default_effects;
+    assert_eq!(effects.len(), 3, "expected return, color, and subtype effects");
+
+    let moved = effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .expect("returned creature should be tagged");
+    let move_to_battlefield = moved
+        .effect
+        .downcast_ref::<MoveToZoneEffect>()
+        .expect("first effect should return a creature card");
+    assert_eq!(move_to_battlefield.zone, Zone::Battlefield);
+    match move_to_battlefield.target.base() {
+        ChooseSpec::Object(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert!(filter.card_types.contains(&CardType::Creature));
+        }
+        other => panic!("Rise should target a creature card in a graveyard, got {other:?}"),
+    }
+
+    let color_effect = effects[1]
+        .downcast_ref::<TaggedEffect>()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        })
+        .expect("second effect should add black to the returned creature");
+    assert!(matches!(
+        color_effect.target_spec.as_ref(),
+        Some(ChooseSpec::Tagged(tag)) if tag == &moved.tag
+    ));
+    assert_eq!(
+        color_effect.modification,
+        Some(crate::continuous::Modification::AddColors(
+            crate::color::ColorSet::BLACK,
+        ))
+    );
+
+    let subtype_effect = effects[2]
+        .downcast_ref::<TaggedEffect>()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        })
+        .expect("third effect should add Zombie to the returned creature");
+    assert!(matches!(
+        subtype_effect.target_spec.as_ref(),
+        Some(ChooseSpec::Tagged(tag)) if tag == &moved.tag
+    ));
+    assert_eq!(
+        subtype_effect.modification,
+        Some(crate::continuous::Modification::AddSubtypes(vec![
+            Subtype::Zombie,
+        ]))
+    );
+
+    let score_path = crate::compiled_text::compile_effect_list(effects);
+    assert_eq!(
+        score_path,
+        "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black zombie in addition to its other colors and types"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("that creature is a black zombie in addition to its other colors and types"),
+        "expected combined color/type followup rendering, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

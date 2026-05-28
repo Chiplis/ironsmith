@@ -373,6 +373,145 @@ fn parse_exile_replacement_subject_verb_sentence(
     Ok(Some(vec![effect]))
 }
 
+fn passive_addition_tail_len(words: &[&str]) -> Option<(usize, bool)> {
+    for (tail, adds_colors) in [
+        (
+            &["in", "addition", "to", "its", "other", "colors", "and", "types"][..],
+            true,
+        ),
+        (
+            &["in", "addition", "to", "their", "other", "colors", "and", "types"][..],
+            true,
+        ),
+        (
+            &[
+                "in", "addition", "to", "its", "other", "colors", "and", "creature", "types",
+            ][..],
+            true,
+        ),
+        (
+            &[
+                "in", "addition", "to", "their", "other", "colors", "and", "creature", "types",
+            ][..],
+            true,
+        ),
+        (
+            &["in", "addition", "to", "its", "other", "types"][..],
+            false,
+        ),
+        (
+            &["in", "addition", "to", "their", "other", "types"][..],
+            false,
+        ),
+        (
+            &["in", "addition", "to", "its", "other", "creature", "types"][..],
+            false,
+        ),
+        (
+            &[
+                "in", "addition", "to", "their", "other", "creature", "types",
+            ][..],
+            false,
+        ),
+    ] {
+        if slice_ends_with(words, tail) {
+            return Some((tail.len(), adds_colors));
+        }
+    }
+    None
+}
+
+fn parse_passive_color_type_addition_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let Some((tail_len, adds_colors)) = passive_addition_tail_len(&words) else {
+        return Ok(None);
+    };
+    let Some(is_word_idx) = words.iter().position(|word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if is_word_idx + 1 >= words.len().saturating_sub(tail_len) {
+        return Ok(None);
+    }
+
+    let subject_tokens = &tokens[..token_index_for_word_index(tokens, is_word_idx).unwrap_or(0)];
+    let descriptor_start =
+        token_index_for_word_index(tokens, is_word_idx + 1).unwrap_or(tokens.len());
+    let descriptor_end_word_idx = words.len().saturating_sub(tail_len);
+    let descriptor_end =
+        token_index_for_word_index(tokens, descriptor_end_word_idx).unwrap_or(tokens.len());
+    let descriptor_tokens = &tokens[descriptor_start..descriptor_end];
+    let subject_words = TokenWordView::new(subject_tokens).to_word_refs();
+
+    let target = if matches!(
+        subject_words.as_slice(),
+        ["it"]
+            | ["that", "card"]
+            | ["that", "creature"]
+            | ["that", "permanent"]
+            | ["those", "cards"]
+            | ["each", "of", "them"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+    } else {
+        parse_target_phrase(subject_tokens)?
+    };
+
+    let mut colors = crate::color::ColorSet::new();
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::<Subtype>::new();
+    for word in TokenWordView::new(descriptor_tokens).to_word_refs() {
+        if matches!(word, "a" | "an" | "and") {
+            continue;
+        }
+        if let Some(color) = parse_color(word) {
+            colors = colors.union(color);
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            if !card_types.contains(&card_type) {
+                card_types.push(card_type);
+            }
+            continue;
+        }
+        if let Some(subtype) = super::parse_subtype_word(word) {
+            if !subtypes.contains(&subtype) {
+                subtypes.push(subtype);
+            }
+            continue;
+        }
+        return Ok(None);
+    }
+
+    let mut effects = Vec::new();
+    if !colors.is_empty() {
+        let color_effect = if adds_colors {
+            EffectAst::subject_verb_add_colors(target.clone(), colors, Until::Forever)
+        } else {
+            EffectAst::subject_verb_set_colors(target.clone(), colors, Until::Forever)
+        };
+        effects.push(color_effect);
+    }
+    if !card_types.is_empty() {
+        effects.push(EffectAst::subject_verb_add_card_types(
+            target.clone(),
+            card_types,
+            Until::Forever,
+        ));
+    }
+    if !subtypes.is_empty() {
+        effects.push(EffectAst::subject_verb_add_subtypes(
+            target,
+            subtypes,
+            Until::Forever,
+        ));
+    }
+
+    Ok((!effects.is_empty()).then_some(effects))
+}
+
 pub(crate) fn parse_subject_verb_extension_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -420,6 +559,10 @@ pub(crate) fn parse_subject_verb_extension_sentence(
     one!(
         "verb=Exile subject=implicit recognizer=instead-replacement",
         parse_zone_replacement_subject_verb(tokens)
+    );
+    many!(
+        "verb=Is subject=explicit recognizer=passive-color-type-addition",
+        parse_passive_color_type_addition_sentence(tokens)
     );
     many!(
         "verb=When subject=implicit recognizer=delayed-trigger-this-turn",

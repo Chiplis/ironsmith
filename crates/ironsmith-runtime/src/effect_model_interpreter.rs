@@ -995,6 +995,17 @@ where
         return Ok(Effect::new(effect));
     }
     if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::RedirectAllDamageThisTurnToTargetEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                payload.player_filter.clone(),
+                payload.object_filter.clone(),
+                payload.target.clone(),
+            ),
+        ));
+    }
+    if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ExecuteWithSourceEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::new(crate::effects::ExecuteWithSourceEffect::new(

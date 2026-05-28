@@ -91,6 +91,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
@@ -150,6 +151,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
@@ -669,6 +671,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
         | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+        | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
         | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
         | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
@@ -698,6 +701,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::AddCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
+        | SubjectVerbActionAst::AddColors { .. }
         | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
         | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
         | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
