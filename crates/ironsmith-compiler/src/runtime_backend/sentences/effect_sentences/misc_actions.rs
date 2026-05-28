@@ -1,9 +1,9 @@
 use super::*;
+use crate::TextSpan;
 use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
 use crate::runtime_backend::parse_counter_type_from_tokens;
-use crate::TextSpan;
 
 fn subject_verb_player_effect(
     role: SubjectVerbRoleAst,
@@ -374,10 +374,10 @@ pub(crate) fn parse_mill(
             {
                 count = for_each_count;
             } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mill clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mill clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
             }
         }
     } else {

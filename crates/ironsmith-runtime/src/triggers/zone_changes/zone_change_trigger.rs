@@ -348,9 +348,8 @@ impl ZoneChangeTrigger {
         }
 
         fn is_nontoken_card_subject_from_card_zones(trigger: &ZoneChangeTrigger) -> bool {
-            let card_subject_anywhere_filter =
-                trigger.object_filter == ObjectFilter::default()
-                    || trigger.object_filter == ObjectFilter::default().nontoken();
+            let card_subject_anywhere_filter = trigger.object_filter == ObjectFilter::default()
+                || trigger.object_filter == ObjectFilter::default().nontoken();
             if trigger.to != ZonePattern::Specific(Zone::Exile) {
                 return false;
             }

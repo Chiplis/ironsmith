@@ -13197,6 +13197,26 @@ fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction()
 }
 
 #[test]
+fn flamebreak_damage_this_way_regeneration_restriction_tracks_damaged_creatures()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Flamebreak")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Flamebreak deals 3 damage to each creature without flying and each player. Creatures dealt damage this way can't be regenerated this turn.".to_string(),
+        false,
+    )?;
+    let debug = format!("{definition:#?}");
+
+    assert!(debug.contains("CantEffect"), "{debug}");
+    assert!(debug.contains("restriction: BeRegenerated"), "{debug}");
+    assert!(debug.contains("\"damaged_0\""), "{debug}");
+    assert!(debug.contains("relation: IsTaggedObject"), "{debug}");
+
+    Ok(())
+}
+
+#[test]
 fn parse_subject_first_exile_top_library_then_play_permission_bundle() {
     let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Bundle Probe")
         .card_types(vec![CardType::Sorcery]);

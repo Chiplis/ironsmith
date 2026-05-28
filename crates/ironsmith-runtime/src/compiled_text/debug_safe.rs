@@ -183,22 +183,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Other than wall", "Other than Wall")
         .replace(" all auras or equipment ", " all Auras and Equipment ")
         .replace("All auras or equipment ", "All Auras and Equipment ")
-        .replace(
-            "The allagan eye — Whenever one or more other creature artifacts you control die, draw a card.",
-            "Whenever other creature artifact you control dies, you draw a card.",
-        )
-        .replace(
-            "the allagan eye — whenever one or more other creature artifacts you control die, draw a card.",
-            "Whenever other creature artifact you control dies, you draw a card.",
-        )
-        .replace(
-            "The allagan eye — Whenever one or more other creature artifacts you control die, draw a card.",
-            "Whenever other creature artifact you control dies, you draw a card.",
-        )
-        .replace(
-            "The allagan eye — Whenever one or more other creatures and/or artifacts you control die, draw a card.",
-            "Whenever other creature artifact you control dies, you draw a card.",
-        )
         .replace(": target ", ": Target ")
         .replace("card ins ", "cards in ")
         .replace("Card ins ", "Cards in ")

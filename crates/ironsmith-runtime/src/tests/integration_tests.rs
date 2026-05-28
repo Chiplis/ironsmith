@@ -1841,7 +1841,10 @@ mod tests {
             "Kydele, Chosen of Kruphix",
         )
         .card_types(vec![crate::types::CardType::Creature])
-        .subtypes(vec![crate::types::Subtype::Elf, crate::types::Subtype::Wizard])
+        .subtypes(vec![
+            crate::types::Subtype::Elf,
+            crate::types::Subtype::Wizard,
+        ])
         .power_toughness(crate::card::PowerToughness::fixed(2, 3))
         .parse_text("{T}: Add {C} for each card you've drawn this turn.")
         .expect("Kydele mana ability should parse");
@@ -1873,7 +1876,10 @@ mod tests {
         .expect("Kydele mana effect should resolve");
 
         assert_eq!(
-            game.player(alice).expect("Alice should exist").mana_pool.colorless,
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
             3,
             "Kydele should add one colorless for each card drawn this turn"
         );
@@ -1890,7 +1896,10 @@ mod tests {
             "Kydele, Chosen of Kruphix",
         )
         .card_types(vec![crate::types::CardType::Creature])
-        .subtypes(vec![crate::types::Subtype::Elf, crate::types::Subtype::Wizard])
+        .subtypes(vec![
+            crate::types::Subtype::Elf,
+            crate::types::Subtype::Wizard,
+        ])
         .power_toughness(crate::card::PowerToughness::fixed(2, 3))
         .parse_text("{T}: Add {C} for each card you've drawn this turn.")
         .expect("Kydele mana ability should parse");
@@ -1911,7 +1920,10 @@ mod tests {
         .expect("Kydele mana effect should resolve");
 
         assert_eq!(
-            game.player(alice).expect("Alice should exist").mana_pool.colorless,
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
             0,
             "Kydele should add no colorless when no cards were drawn this turn"
         );

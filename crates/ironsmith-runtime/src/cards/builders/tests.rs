@@ -3656,12 +3656,26 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
         .expect("Clown Car text should parse");
 
     let abilities_debug = format!("{:?}", def.abilities);
-    assert!(abilities_debug.contains("RepeatEffects"), "{abilities_debug}");
-    assert!(abilities_debug.contains("RollDieEffect"), "{abilities_debug}");
-    assert!(abilities_debug.contains("OneOf([1, 3, 5])"), "{abilities_debug}");
-    assert!(abilities_debug.contains("OneOf([2, 4, 6])"), "{abilities_debug}");
+    assert!(
+        abilities_debug.contains("RepeatEffects"),
+        "{abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("RollDieEffect"),
+        "{abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("OneOf([1, 3, 5])"),
+        "{abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("OneOf([2, 4, 6])"),
+        "{abilities_debug}"
+    );
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("roll") && rendered.contains("d6"),
         "expected roll clause in compiled text, got {rendered}"
@@ -7737,18 +7751,18 @@ fn eldrazi_guacamole_tightrope_sticker_marker_does_not_grant_graveyard_casting()
         "sticker marker text should not create an intrinsic graveyard-cast permission: {debug}"
     );
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let card_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
 
     assert!(
-        !game
-            .effect_store
-            .grant_registry
-            .card_can_play_from_zone(&game, card_id, Zone::Graveyard, alice),
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            card_id,
+            Zone::Graveyard,
+            alice
+        ),
         "sticker marker text should not grant cast-from-graveyard runtime permission"
     );
 }
@@ -10535,7 +10549,9 @@ fn test_parse_assign_damage_as_unblocked_with_enchanted_creature_controller() {
         )
         .expect("assign-as-unblocked wording with enchanted creature's controller should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("enchanted creature gets +3/+3"),
         "expected aura buff to be preserved, got {rendered}"
@@ -13055,7 +13071,9 @@ fn parse_war_elemental_strictly_parses_etb_sacrifice_unless_opponent_damage_clau
 #[test]
 fn living_artifact_oracle_parses_with_player_damage_trigger_and_upkeep_branch() {
     let def = parse_oracle_card_definition("Living Artifact");
-    let joined = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let joined = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         joined.contains("whenever you are dealt damage")
@@ -15538,11 +15556,14 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_fi
 #[test]
 fn take_the_fall_strict_parse_regression() {
     let def = parse_oracle_card_definition("Take the Fall");
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("target creature gets -1/-0 until end of turn")
-            && rendered.contains("it gets -4/-0 until end of turn instead if you control an outlaw")
+            && rendered
+                .contains("it gets -4/-0 until end of turn instead if you control an outlaw")
             && rendered.contains("draw a card"),
         "expected Take the Fall to keep its instead-if outlaw clause in compiled text, got {rendered}"
     );
@@ -15555,14 +15576,17 @@ fn take_the_fall_condition_fails_without_controlled_outlaw() {
         .spell_effect
         .as_ref()
         .and_then(|program| {
-            program
-                .segments
-                .iter()
-                .find_map(|segment| segment.self_replacements.first().map(|branch| branch.condition.clone()))
+            program.segments.iter().find_map(|segment| {
+                segment
+                    .self_replacements
+                    .first()
+                    .map(|branch| branch.condition.clone())
+            })
         })
         .expect("Take the Fall should lower an outlaw self-replacement clause");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = crate::PlayerId::from_index(0);
     let source = game.create_object_from_definition(&def, alice, crate::zone::Zone::Stack);
 
@@ -15572,12 +15596,8 @@ fn take_the_fall_condition_fails_without_controlled_outlaw() {
         .build();
     game.create_object_from_definition(&non_outlaw, alice, crate::zone::Zone::Battlefield);
 
-    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
-        &game,
-        &condition,
-        alice,
-        source,
-    );
+    let condition_matches =
+        crate::condition_eval::evaluate_condition_cast_time(&game, &condition, alice, source);
 
     assert!(
         !condition_matches,
@@ -15592,14 +15612,17 @@ fn take_the_fall_condition_matches_with_controlled_outlaw() {
         .spell_effect
         .as_ref()
         .and_then(|program| {
-            program
-                .segments
-                .iter()
-                .find_map(|segment| segment.self_replacements.first().map(|branch| branch.condition.clone()))
+            program.segments.iter().find_map(|segment| {
+                segment
+                    .self_replacements
+                    .first()
+                    .map(|branch| branch.condition.clone())
+            })
         })
         .expect("Take the Fall should lower an outlaw self-replacement clause");
 
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = crate::PlayerId::from_index(0);
     let source = game.create_object_from_definition(&def, alice, crate::zone::Zone::Stack);
 
@@ -15609,12 +15632,8 @@ fn take_the_fall_condition_matches_with_controlled_outlaw() {
         .build();
     game.create_object_from_definition(&outlaw, alice, crate::zone::Zone::Battlefield);
 
-    let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
-        &game,
-        &condition,
-        alice,
-        source,
-    );
+    let condition_matches =
+        crate::condition_eval::evaluate_condition_cast_time(&game, &condition, alice, source);
 
     assert!(
         condition_matches,
@@ -16569,7 +16588,8 @@ fn parse_auton_soldier_copy_exception_with_nonlegendary_artifact_and_myriad() {
         "expected copy-as-enters lowering to add myriad, got {debug}"
     );
     assert!(
-        !debug.contains("StaticAbilityId::KeywordMarker") || !debug.to_ascii_lowercase().contains("myriad"),
+        !debug.contains("StaticAbilityId::KeywordMarker")
+            || !debug.to_ascii_lowercase().contains("myriad"),
         "expected myriad to lower as functional triggered ability, got {debug}"
     );
     assert!(
@@ -21263,7 +21283,8 @@ fn parse_frontier_warmonger_trigger_and_menace_grant() {
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
         abilities_debug.contains("one_or_more: true")
-            && abilities_debug.contains("attacking_player_or_planeswalker_controlled_by: Some(Opponent)")
+            && abilities_debug
+                .contains("attacking_player_or_planeswalker_controlled_by: Some(Opponent)")
             && abilities_debug.contains("Some(Menace)"),
         "expected attack trigger with menace grant, got {abilities_debug}"
     );
@@ -21273,7 +21294,8 @@ fn parse_frontier_warmonger_trigger_and_menace_grant() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("one or more creature attacking")
-            && rendered.contains("attacking an opponent or a planeswalker controlled by an opponent")
+            && rendered
+                .contains("attacking an opponent or a planeswalker controlled by an opponent")
             && rendered.contains("gains menace until end of turn"),
         "expected compiled text to preserve Frontier Warmonger clause, got {rendered}"
     );
@@ -32208,13 +32230,13 @@ fn parse_oracle_roshan_hidden_magister_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "other creatures you control are assassins in addition to their other types"
-        ),
+        rendered
+            .contains("other creatures you control are assassins in addition to their other types"),
         "expected Roshan battlefield clause to render, got {rendered}"
     );
     assert!(
-        rendered.contains("creature spells you control are assassins in addition to their other types")
+        rendered
+            .contains("creature spells you control are assassins in addition to their other types")
             || rendered.contains("the same is true for creature spells you control"),
         "expected Roshan stack clause to render, got {rendered}"
     );
@@ -33347,10 +33369,9 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
     game.create_object_from_card(&alice_new_creature, alice, Zone::Library);
     game.create_object_from_card(&alice_new_instant, alice, Zone::Library);
 
-    let bob_new_enchantment =
-        CardBuilder::new(CardId::from_raw(32_005), "Bob New Enchantment")
-            .card_types(vec![CardType::Enchantment])
-            .build();
+    let bob_new_enchantment = CardBuilder::new(CardId::from_raw(32_005), "Bob New Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .build();
     let bob_new_sorcery = CardBuilder::new(CardId::from_raw(32_006), "Bob New Sorcery")
         .card_types(vec![CardType::Sorcery])
         .build();
@@ -33369,12 +33390,18 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
         .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
         .collect();
     assert!(
-        battlefield_names.iter().any(|name| name == "Alice New Creature"),
+        battlefield_names
+            .iter()
+            .any(|name| name == "Alice New Creature"),
         "expected Warp World to put at least one revealed permanent onto the battlefield, got {battlefield_names:?}"
     );
     assert!(
-        !battlefield_names.iter().any(|name| name == "Alice New Instant")
-            && !battlefield_names.iter().any(|name| name == "Bob New Sorcery"),
+        !battlefield_names
+            .iter()
+            .any(|name| name == "Alice New Instant")
+            && !battlefield_names
+                .iter()
+                .any(|name| name == "Bob New Sorcery"),
         "expected nonpermanent revealed cards to stay off the battlefield, got {battlefield_names:?}"
     );
 
@@ -33396,7 +33423,9 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
         alice_library_names
             .iter()
             .any(|name| name == "Alice New Instant")
-            && bob_library_names.iter().any(|name| name == "Bob New Sorcery"),
+            && bob_library_names
+                .iter()
+                .any(|name| name == "Bob New Sorcery"),
         "expected nonpermanent revealed cards on the bottom of their owners' libraries, got alice={alice_library_names:?}, bob={bob_library_names:?}"
     );
 
@@ -33418,7 +33447,9 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
         !alice_graveyard_names
             .iter()
             .any(|name| name == "Alice New Instant")
-            && !bob_graveyard_names.iter().any(|name| name == "Bob New Sorcery"),
+            && !bob_graveyard_names
+                .iter()
+                .any(|name| name == "Bob New Sorcery"),
         "expected Warp World leftovers to go to library bottom rather than graveyard, got alice={alice_graveyard_names:?}, bob={bob_graveyard_names:?}"
     );
 }
@@ -34852,10 +34883,8 @@ fn parse_sporeweb_weaver_strict_regression() {
 #[test]
 fn sporeweb_weaver_hexproof_from_blue_blocks_only_opposing_blue_sources() {
     let def = parse_oracle_card_definition("Sporeweb Weaver");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let weaver_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -34892,10 +34921,8 @@ fn sporeweb_weaver_hexproof_from_blue_blocks_only_opposing_blue_sources() {
 #[test]
 fn sporeweb_weaver_damage_trigger_gains_life_and_creates_saproling() {
     let def = parse_oracle_card_definition("Sporeweb Weaver");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let weaver_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -34951,10 +34978,8 @@ fn sporeweb_weaver_damage_trigger_gains_life_and_creates_saproling() {
 #[test]
 fn sporeweb_weaver_damage_trigger_ignores_other_damaged_creatures() {
     let def = parse_oracle_card_definition("Sporeweb Weaver");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -35043,7 +35068,13 @@ fn living_conundrum_empty_library_replacement_and_bonus_are_active() {
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-    assert_eq!(game.player(alice).expect("alice should exist").library.len(), 0);
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .library
+            .len(),
+        0
+    );
     game.update_replacement_effects();
     assert!(
         game.effect_store
@@ -35069,7 +35100,10 @@ fn living_conundrum_empty_library_replacement_and_bonus_are_active() {
         .execute(&mut game, &mut ctx)
         .expect("Living Conundrum draw replacement should resolve");
     assert_eq!(outcome.count_or_zero(), 0);
-    assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 0);
+    assert_eq!(
+        game.player(alice).expect("alice should exist").hand.len(),
+        0
+    );
 
     assert_eq!(game.calculated_power(source_id), Some(10));
     assert_eq!(game.calculated_toughness(source_id), Some(10));
@@ -35099,8 +35133,17 @@ fn living_conundrum_nonempty_library_does_not_skip_or_gain_bonus() {
         .execute(&mut game, &mut ctx)
         .expect("nonempty-library draw should proceed normally");
     assert_eq!(outcome.count_or_zero(), 1);
-    assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 1);
-    assert_eq!(game.player(alice).expect("alice should exist").library.len(), 0);
+    assert_eq!(
+        game.player(alice).expect("alice should exist").hand.len(),
+        1
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .library
+            .len(),
+        0
+    );
     assert_eq!(game.calculated_power(source_id), Some(10));
     assert_eq!(game.calculated_toughness(source_id), Some(10));
 }
@@ -35127,7 +35170,9 @@ fn parse_cephalid_vandal_strict_regression() {
 #[test]
 fn cephalid_vandal_compiled_text_keeps_shred_counter_mill_clause() {
     let def = parse_oracle_card_definition("Cephalid Vandal");
-    let rendered = canonical_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
 
     assert!(
         rendered.contains("at the beginning of your upkeep")
@@ -35161,7 +35206,11 @@ fn cephalid_vandal_upkeep_trigger_adds_shred_counter_then_mills_one() {
     for _ in 0..3 {
         game.create_object_from_definition(&library_card, alice, Zone::Library);
     }
-    let library_before = game.player(alice).expect("alice should exist").library.len();
+    let library_before = game
+        .player(alice)
+        .expect("alice should exist")
+        .library
+        .len();
 
     let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     for effect in effects {
@@ -35175,7 +35224,10 @@ fn cephalid_vandal_upkeep_trigger_adds_shred_counter_then_mills_one() {
         "Cephalid Vandal should gain one shred counter during upkeep"
     );
     assert_eq!(
-        game.player(alice).expect("alice should exist").library.len(),
+        game.player(alice)
+            .expect("alice should exist")
+            .library
+            .len(),
         library_before - 1,
         "Cephalid Vandal should mill one card after the first shred counter"
     );
@@ -35213,7 +35265,11 @@ fn cephalid_vandal_upkeep_trigger_mill_count_scales_with_existing_shred_counters
         None,
         None,
     );
-    let library_before = game.player(alice).expect("alice should exist").library.len();
+    let library_before = game
+        .player(alice)
+        .expect("alice should exist")
+        .library
+        .len();
 
     let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     for effect in effects {
@@ -35227,7 +35283,10 @@ fn cephalid_vandal_upkeep_trigger_mill_count_scales_with_existing_shred_counters
         "Cephalid Vandal should add a second shred counter during upkeep"
     );
     assert_eq!(
-        game.player(alice).expect("alice should exist").library.len(),
+        game.player(alice)
+            .expect("alice should exist")
+            .library
+            .len(),
         library_before - 2,
         "Cephalid Vandal should mill two cards when it has two shred counters"
     );
@@ -35777,7 +35836,8 @@ fn jetfire_ingenious_scientist_mana_ability_restricts_nonartifact_spells() {
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Activated(activated)
-                if activated.mana_output.is_some() && !activated.mana_usage_restrictions.is_empty() =>
+                if activated.mana_output.is_some()
+                    && !activated.mana_usage_restrictions.is_empty() =>
             {
                 Some(activated)
             }
@@ -35785,16 +35845,17 @@ fn jetfire_ingenious_scientist_mana_ability_restricts_nonartifact_spells() {
         })
         .expect("Jetfire should have a restricted mana ability");
 
-    let has_artifact_only_restriction = activated.mana_usage_restrictions.iter().any(|restriction| {
-        matches!(
-            restriction,
-            crate::ability::ManaUsageRestriction::CastSpellMatching {
-                filter,
-                restrict_to_matching_spell: true,
-                ..
-            } if filter.card_types == vec![CardType::Artifact]
-        )
-    });
+    let has_artifact_only_restriction =
+        activated.mana_usage_restrictions.iter().any(|restriction| {
+            matches!(
+                restriction,
+                crate::ability::ManaUsageRestriction::CastSpellMatching {
+                    filter,
+                    restrict_to_matching_spell: true,
+                    ..
+                } if filter.card_types == vec![CardType::Artifact]
+            )
+        });
     assert!(
         has_artifact_only_restriction,
         "expected Jetfire mana ability to allow only artifact spell casting"
@@ -36471,15 +36532,18 @@ fn inviolability_runtime_prevents_damage_to_enchanted_creature_only() {
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    let other_id = game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
+    let other_id =
+        game.create_object_from_card(&other_creature, alice, crate::zone::Zone::Battlefield);
 
     let source_creature = CardBuilder::new(CardId::from_raw(98_003), "Damage Source")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
-    let source_id = game.create_object_from_card(&source_creature, bob, crate::zone::Zone::Battlefield);
+    let source_id =
+        game.create_object_from_card(&source_creature, bob, crate::zone::Zone::Battlefield);
 
-    let aura_id = game.create_object_from_definition(&aura_def, alice, crate::zone::Zone::Battlefield);
+    let aura_id =
+        game.create_object_from_definition(&aura_def, alice, crate::zone::Zone::Battlefield);
     game.object_mut(aura_id)
         .expect("Inviolability object should exist")
         .attached_to = Some(crate::object::AttachmentTarget::Object(protected_id));

@@ -836,6 +836,7 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     } else {
         return Ok(None);
     };
+    let filter_words = crate::runtime_backend::token_word_refs(&action_tokens[..filter_end]);
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand = if reveal_chosen {
@@ -861,6 +862,89 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         && third_rest_words.contains(&"graveyard");
     if !puts_rest_graveyard {
         return Ok(None);
+    }
+
+    if filter.card_types.len() > 1
+        && filter_words.iter().any(|word| *word == "and/or")
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && filter.any_of.is_empty()
+    {
+        let looked_tag = helper_tag_for_tokens(
+            sentences[sentence_idx].lowered(),
+            if reveal_top { "revealed" } else { "looked" },
+        );
+        let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+        let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+            player,
+            count,
+            looked_tag.clone(),
+        )];
+        if reveal_top {
+            effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
+        }
+
+        for card_type in &filter.card_types {
+            let mut choice_filter = filter.clone();
+            choice_filter.card_types = vec![*card_type];
+            choice_filter.zone = Some(Zone::Library);
+            choice_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: looked_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            choice_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: chosen_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+            effects.push(EffectAst::ChooseObjects {
+                filter: choice_filter,
+                count: ChoiceCount::up_to(1),
+                count_value: None,
+                player: chooser,
+                tag: chosen_tag.clone(),
+            });
+        }
+
+        effects.push(EffectAst::ForEachTagged {
+            tag: chosen_tag.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        });
+        let mut in_chosen_filter = ObjectFilter::default();
+        in_chosen_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(crate::cards::builders::IT_TAG),
+                relation: TaggedOpbjectRelation::SameStableId,
+            });
+
+        effects.push(EffectAst::ForEachTagged {
+            tag: looked_tag.clone(),
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(chosen_tag, in_chosen_filter),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        });
+        return Ok(Some(effects));
     }
 
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(

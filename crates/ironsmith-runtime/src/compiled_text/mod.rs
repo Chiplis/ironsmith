@@ -56,27 +56,10 @@ pub fn ability_surface_text(ability: &Ability) -> String {
 }
 
 fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
-    let mut lines: Vec<String> = lines
+    let lines: Vec<String> = lines
         .into_iter()
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect();
-    let has_kain_control_chain = lines.iter().any(|line| {
-        let lower = line.to_ascii_lowercase();
-        lower.contains("that player gains control of this creature")
-            && lower.contains("lose that much life")
-    });
-    if has_kain_control_chain {
-        for line in &mut lines {
-            let lower = line.to_ascii_lowercase();
-            if lower == "this creature has flying as long as it's your turn."
-                || lower == "this creature has flying as long as it's your turn"
-                || lower == "during your turn, this creature has flying."
-                || lower == "during your turn, this creature has flying"
-            {
-                *line = "Kain has flying during your turn.".to_string();
-            }
-        }
-    }
     merge_ast_surface_lines(lines)
         .into_iter()
         .map(finalize_ast_surface_line)
@@ -122,13 +105,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "When this token dies: It deals 1 damage to any target",
             "When this token dies, it deals 1 damage to any target",
         );
-    if line.to_ascii_lowercase().trim_end_matches('.')
-        == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast that card. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
-        || line.to_ascii_lowercase().trim_end_matches('.')
-            == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
-    {
-        line = "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
-    }
     line = line
         .replace(
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
@@ -157,36 +133,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard.",
             "at the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.",
         );
-    }
-    if line
-        .to_ascii_lowercase()
-        .starts_with("this creature has flying as long as it's your turn.")
-        && line
-            .to_ascii_lowercase()
-            .contains("that player gains control of this creature")
-        && line.to_ascii_lowercase().contains("lose that much life")
-    {
-        line = line.replacen(
-            "This creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-            1,
-        );
-        line = line.replacen(
-            "this creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-            1,
-        );
-    }
-    if line.to_ascii_lowercase().contains("allagan eye")
-        && line
-            .to_ascii_lowercase()
-            .contains("one or more other creature artifacts you control die")
-        || line.to_ascii_lowercase().contains("allagan eye")
-            && line.to_ascii_lowercase().contains(
-                "one or more a creature or artifact you control other than this is put into a graveyard from the battlefield",
-            )
-    {
-        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }
     if line.to_ascii_lowercase().starts_with(
         "at the beginning of your upkeep, remove a time counter from it. when the last time counter is removed, sacrifice",
@@ -956,6 +902,50 @@ mod tests {
             ),
             "During your turn, prevent all damage that would be dealt to this creature."
         );
+    }
+
+    #[test]
+    fn compiled_text_cleanup_layers_reject_known_semantic_rescue_strings() {
+        let checked_sources = [
+            ("mod.rs", include_str!("mod.rs")),
+            ("normalize_common.rs", include_str!("normalize_common.rs")),
+            ("debug_safe.rs", include_str!("debug_safe.rs")),
+            ("surface_helpers.rs", include_str!("surface_helpers.rs")),
+        ];
+        let banned = [
+            concat!("K", "ain"),
+            concat!("allagan", " eye"),
+            concat!("Flame", "break"),
+            concat!(
+                "deals 3 damage to each creature without flying",
+                ", deal 3 damage to each player"
+            ),
+            concat!(
+                "Gain control of target creature until end of turn",
+                ", untap it, then it gains haste"
+            ),
+            concat!(
+                "Untap target creature, gain control of it until end of turn",
+                ", then it gains haste"
+            ),
+            concat!(
+                "You choose the top card in your library",
+                ", exile it, then you may play that card"
+            ),
+            concat!(
+                "for each card revealed this way",
+                ", unless it's a permanent, put that object"
+            ),
+        ];
+
+        for (source_name, source) in checked_sources {
+            for needle in banned {
+                assert!(
+                    !source.contains(needle),
+                    "{source_name} contains semantic rescue text that belongs in structural rendering: {needle}"
+                );
+            }
+        }
     }
 }
 

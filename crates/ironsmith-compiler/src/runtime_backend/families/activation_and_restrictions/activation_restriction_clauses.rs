@@ -1186,6 +1186,19 @@ pub(crate) fn parse_negated_object_restriction_clause(
             };
             (filter, None, None)
         };
+    if words
+        .windows(4)
+        .any(|window| window == ["dealt", "damage", "this", "way"])
+        && !filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == "damaged_0")
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("damaged_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
 
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
     if remainder_tokens.is_empty() {

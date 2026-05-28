@@ -1938,15 +1938,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.".to_string();
     }
     if lower_compact
-        == "the allagan eye — whenever one or more other creature artifacts you control die, draw a card. this ability triggers only once each turn."
-        || lower_compact
-            == "the allagan eye — whenever one or more other creatures and/or artifacts you control die, draw a card. this ability triggers only once each turn."
-        || lower_compact
-            == "the allagan eye — whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. this ability triggers only once each turn."
-    {
-        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
-    }
-    if lower_compact
         == "at the beginning of your upkeep, if you have the city's blessing, draw a card. otherwise, each player draws a card."
         || lower_compact
             == "at the beginning of your upkeep, each player draws a card. if you have the city's blessing, instead draw a card."
@@ -2002,21 +1993,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = normalized.replace(
             "fireblast variant deals 4 damage to any target",
             "deal 4 damage to any target",
-        );
-    }
-    if lower_compact.starts_with("this creature has flying as long as it's your turn.")
-        && lower_compact.contains("that player gains control of this creature")
-        && lower_compact.contains("lose that much life")
-    {
-        normalized = normalized.replacen(
-            "This creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-            1,
-        );
-        normalized = normalized.replacen(
-            "this creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-            1,
         );
     }
     if lower_compact == "if an opponent has cast a blue or black spell this turn, draw a card." {
@@ -2210,20 +2186,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         && effect.eq_ignore_ascii_case("Each player draws a card. Each player discards a card.")
     {
         return format!("{cost}: Each player draws a card, then discards a card.");
-    }
-    if normalized.eq_ignore_ascii_case(
-        "The allagan eye — Whenever one or more another creature artifacts you control die, you draw a card. This ability triggers only once each turn.",
-    ) || normalized.eq_ignore_ascii_case(
-        "The allagan eye — Whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn.",
-    ) {
-        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
-    }
-    if let Some((_, rest)) = normalized.split_once(" — ")
-        && rest.eq_ignore_ascii_case(
-            "Whenever one or more other creature artifacts you control die, draw a card. This ability triggers only once each turn.",
-        )
-    {
-        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
         normalized = rewritten;

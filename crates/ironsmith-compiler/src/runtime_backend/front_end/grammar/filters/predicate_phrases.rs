@@ -7,10 +7,7 @@ fn parse_outlaw_shorthand_filter(words: &[&str]) -> Option<ObjectFilter> {
     };
     if !matches!(
         trimmed,
-        ["outlaw"]
-            | ["outlaws"]
-            | ["outlaw", "creature"]
-            | ["outlaws", "creatures"]
+        ["outlaw"] | ["outlaws"] | ["outlaw", "creature"] | ["outlaws", "creatures"]
     ) {
         return None;
     }
@@ -3033,13 +3030,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         let other = control_tokens
             .first()
             .is_some_and(|token| token.is_word("another") || token.is_word("other"));
-        if let Ok(mut filter) = parse_object_filter(&control_tokens, other)
-            .or_else(|_| {
-                parse_outlaw_shorthand_filter(&control_words).ok_or_else(|| {
-                    CardTextError::ParseError("unsupported control filter".to_string())
-                })
-            })
-        {
+        if let Ok(mut filter) = parse_object_filter(&control_tokens, other).or_else(|_| {
+            parse_outlaw_shorthand_filter(&control_words)
+                .ok_or_else(|| CardTextError::ParseError("unsupported control filter".to_string()))
+        }) {
             filter.controller = Some(PlayerFilter::You);
             if let Some(count) = exact_count {
                 return Ok(PredicateAst::PlayerControlsExactly {

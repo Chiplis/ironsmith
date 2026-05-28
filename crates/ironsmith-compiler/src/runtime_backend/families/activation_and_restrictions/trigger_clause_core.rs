@@ -1239,14 +1239,8 @@ pub(crate) fn parse_trigger_clause_lexed(
     };
 
     for (tail, from_zones) in [
-        (
-            ["is", "put", "into", "exile"].as_slice(),
-            Vec::new(),
-        ),
-        (
-            ["are", "put", "into", "exile"].as_slice(),
-            Vec::new(),
-        ),
+        (["is", "put", "into", "exile"].as_slice(), Vec::new()),
+        (["are", "put", "into", "exile"].as_slice(), Vec::new()),
         (
             [
                 "is",
@@ -1378,7 +1372,8 @@ pub(crate) fn parse_trigger_clause_lexed(
             let subject_words = subject_view.to_word_refs();
             let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
-            let stripped_subject_words = ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
+            let stripped_subject_words =
+                ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
             let mut filter = if matches!(stripped_subject_words.as_slice(), ["card"] | ["cards"]) {
                 ObjectFilter::default()
             } else {
@@ -3106,39 +3101,45 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
-    let (words, attacked_player_filter, attacked_target_must_be_player) = if let Some(attacks_word_idx) =
-        find_index(&words, |word| matches!(*word, "attack" | "attacks"))
-    {
-        let tail = &words[attacks_word_idx + 1..];
-        if matches!(tail, ["a", "player"]) {
-            (
-                &words[..=attacks_word_idx],
-                Some(PlayerFilter::Any),
-                true,
-            )
-        } else if matches!(tail, ["the", "defending", "player"] | ["defending", "player"]) {
-            (
-                &words[..=attacks_word_idx],
-                Some(PlayerFilter::Any),
-                true,
-            )
-        } else if matches!(
-            tail,
-            ["one", "of", "your", "opponents", "or", "a", "planeswalker", "they", "control"]
-        ) {
-            (
-                &words[..=attacks_word_idx],
-                Some(PlayerFilter::Opponent),
-                false,
-            )
-        } else if matches!(tail, ["a", "planeswalker"] | ["a", "battle"]) {
-            (&words[..=attacks_word_idx], None, false)
+    let (words, attacked_player_filter, attacked_target_must_be_player) =
+        if let Some(attacks_word_idx) =
+            find_index(&words, |word| matches!(*word, "attack" | "attacks"))
+        {
+            let tail = &words[attacks_word_idx + 1..];
+            if matches!(tail, ["a", "player"]) {
+                (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
+            } else if matches!(
+                tail,
+                ["the", "defending", "player"] | ["defending", "player"]
+            ) {
+                (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
+            } else if matches!(
+                tail,
+                [
+                    "one",
+                    "of",
+                    "your",
+                    "opponents",
+                    "or",
+                    "a",
+                    "planeswalker",
+                    "they",
+                    "control"
+                ]
+            ) {
+                (
+                    &words[..=attacks_word_idx],
+                    Some(PlayerFilter::Opponent),
+                    false,
+                )
+            } else if matches!(tail, ["a", "planeswalker"] | ["a", "battle"]) {
+                (&words[..=attacks_word_idx], None, false)
+            } else {
+                (&words[..], None, false)
+            }
         } else {
             (&words[..], None, false)
-        }
-    } else {
-        (&words[..], None, false)
-    };
+        };
 
     let last = words
         .last()

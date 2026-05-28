@@ -29,18 +29,14 @@ impl EffectExecutor for RollDieEffect {
         }
         if let Some(forced) = game.take_forced_die_roll() {
             let clamped = forced.clamp(1, self.sides);
-            return Ok(
-                EffectOutcome::count(clamped as i32)
-                    .with_execution_fact(ExecutionFact::ChosenNumber(clamped)),
-            );
+            return Ok(EffectOutcome::count(clamped as i32)
+                .with_execution_fact(ExecutionFact::ChosenNumber(clamped)));
         }
 
         let mut faces: Vec<u32> = (1..=self.sides).collect();
         game.shuffle_slice(&mut faces);
-        Ok(
-            EffectOutcome::count(faces[0] as i32)
-                .with_execution_fact(ExecutionFact::ChosenNumber(faces[0])),
-        )
+        Ok(EffectOutcome::count(faces[0] as i32)
+            .with_execution_fact(ExecutionFact::ChosenNumber(faces[0])))
     }
 }
 

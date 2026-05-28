@@ -5749,14 +5749,8 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
     }
 
-    if slice_starts_with(
-        &filter_words,
-        &["card", "youve", "drawn", "this", "turn"],
-    )
-        || slice_starts_with(
-            &filter_words,
-            &["cards", "youve", "drawn", "this", "turn"],
-        )
+    if slice_starts_with(&filter_words, &["card", "youve", "drawn", "this", "turn"])
+        || slice_starts_with(&filter_words, &["cards", "youve", "drawn", "this", "turn"])
         || slice_starts_with(
             &filter_words,
             &["card", "you", "have", "drawn", "this", "turn"],
@@ -5794,20 +5788,16 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     if slice_starts_with(
         &filter_words,
         &["card", "an", "opponent", "has", "drawn", "this", "turn"],
-    )
-        || slice_starts_with(
-            &filter_words,
-            &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
-        )
-        || slice_starts_with(
-            &filter_words,
-            &["card", "opponents", "have", "drawn", "this", "turn"],
-        )
-        || slice_starts_with(
-            &filter_words,
-            &["cards", "opponents", "have", "drawn", "this", "turn"],
-        )
-    {
+    ) || slice_starts_with(
+        &filter_words,
+        &["cards", "an", "opponent", "has", "drawn", "this", "turn"],
+    ) || slice_starts_with(
+        &filter_words,
+        &["card", "opponents", "have", "drawn", "this", "turn"],
+    ) || slice_starts_with(
+        &filter_words,
+        &["cards", "opponents", "have", "drawn", "this", "turn"],
+    ) {
         return Ok(Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent)));
     }
     if has_cards_drawn_this_turn
@@ -6853,7 +6843,8 @@ pub(crate) fn parse_double_counters_replacement_line(
         ) || slice_ends_with(
             &line_words,
             &[
-                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "that", "creature", "instead",
+                "twice", "that", "many", "+1/+1", "counters", "are", "put", "on", "that",
+                "creature", "instead",
             ],
         ))
     {

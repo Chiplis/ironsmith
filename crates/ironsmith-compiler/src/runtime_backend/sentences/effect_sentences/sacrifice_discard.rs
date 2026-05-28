@@ -213,10 +213,9 @@ pub(crate) fn parse_sacrifice(
             normalized_words.join(" ")
         )));
     }
-    let for_each_idx = grammar::find_prefix(object_clause_tokens, || {
-        grammar::phrase(&["for", "each"])
-    })
-    .map(|(idx, _, _)| idx);
+    let for_each_idx =
+        grammar::find_prefix(object_clause_tokens, || grammar::phrase(&["for", "each"]))
+            .map(|(idx, _, _)| idx);
 
     let (object_tokens, for_each_filter) = if let Some(fe_idx) = for_each_idx {
         let fe_count_tokens = &object_clause_tokens[fe_idx..];
@@ -269,9 +268,8 @@ pub(crate) fn parse_sacrifice(
     }
     if let Some(among_filter) = greatest_mana_value_reference_filter {
         filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
-            Value::GreatestManaValue(
-            among_filter,
-        ))));
+            Value::GreatestManaValue(among_filter),
+        )));
     }
     if filter.source && count != 1 {
         return Err(CardTextError::ParseError(format!(

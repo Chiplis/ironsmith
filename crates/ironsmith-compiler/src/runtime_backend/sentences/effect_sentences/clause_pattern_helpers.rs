@@ -1,7 +1,7 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst,
-    TextSpan, Verb,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken,
+    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey,
+    TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
@@ -1789,7 +1789,9 @@ pub(crate) fn parse_keyword_mechanic_clause(
             clause_words.join(" ")
         )));
     }
-    if let Some((prefix, _)) = grammar::words_match_any_prefix(clause_tokens, ODD_EVEN_RESULT_PREFIXES) {
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(clause_tokens, ODD_EVEN_RESULT_PREFIXES)
+    {
         let predicate = if prefix == ODD_EVEN_RESULT_PREFIXES[0] {
             crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6)
         } else {

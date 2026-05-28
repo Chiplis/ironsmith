@@ -6,8 +6,8 @@ use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::emrakul_the_promised_end;
 use crate::combat_state::AttackTarget;
 use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionMaker};
-use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::effect::RestrictionExt as _;
+use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
@@ -29,7 +29,11 @@ fn setup_game() -> GameState {
 
 fn setup_three_player_game() -> GameState {
     GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     )
 }
@@ -223,8 +227,7 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
 
     apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
         .expect("attacker declaration should be legal");
-    put_triggers_on_stack(&mut game, &mut trigger_queue)
-        .expect("trigger should go on stack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("trigger should go on stack");
     assert!(
         game.stack.is_empty(),
         "attacking you should not create a Frontier Warmonger trigger"
@@ -244,8 +247,7 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
     }];
     apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
         .expect("attacker declaration should be legal");
-    put_triggers_on_stack(&mut game, &mut trigger_queue)
-        .expect("trigger should go on stack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("trigger should go on stack");
     resolve_stack_entry(&mut game).expect("trigger should resolve");
 
     assert!(
@@ -3000,7 +3002,8 @@ fn stonebinders_familiar_triggers_once_each_turn_and_only_during_your_turn() {
     let exiled_token_card = CardBuilder::new(CardId::from_raw(81_714), "Exiled Token")
         .card_types(vec![CardType::Creature])
         .build();
-    let exiled_token_id = game.create_object_from_card(&exiled_token_card, alice, Zone::Battlefield);
+    let exiled_token_id =
+        game.create_object_from_card(&exiled_token_card, alice, Zone::Battlefield);
     if let Some(token) = game.object_mut(exiled_token_id) {
         token.kind = ObjectKind::Token;
     }
@@ -3086,7 +3089,8 @@ fn stonebinders_familiar_triggers_once_each_turn_and_only_during_your_turn() {
     let opponent_exiled_card = CardBuilder::new(CardId::from_raw(81_713), "Opponent Exiled Card")
         .card_types(vec![CardType::Creature])
         .build();
-    let opponent_exiled_id = game.create_object_from_card(&opponent_exiled_card, bob, Zone::Graveyard);
+    let opponent_exiled_id =
+        game.create_object_from_card(&opponent_exiled_card, bob, Zone::Graveyard);
     let exile_on_opponents_turn = TriggerEvent::new_with_provenance(
         ZoneChangeEvent::with_cause(
             opponent_exiled_id,
@@ -3097,7 +3101,12 @@ fn stonebinders_familiar_triggers_once_each_turn_and_only_during_your_turn() {
         ),
         crate::provenance::ProvNodeId::default(),
     );
-    queue_triggers_from_event(&mut game, &mut trigger_queue, exile_on_opponents_turn, false);
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        exile_on_opponents_turn,
+        false,
+    );
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("opponent-turn exile event should be processed cleanly");
     assert!(
@@ -5051,15 +5060,19 @@ fn roshan_hidden_magister_applies_assassin_subtype_across_zones_for_you_only() {
     let ally_gy_id = game.create_object_from_card(&ally_gy_card, alice, Zone::Graveyard);
 
     assert!(
-        game.calculated_subtypes(ally_id).contains(&Subtype::Assassin),
+        game.calculated_subtypes(ally_id)
+            .contains(&Subtype::Assassin),
         "other creature you control should gain Assassin"
     );
     assert!(
-        game.calculated_subtypes(ally_gy_id).contains(&Subtype::Assassin),
+        game.calculated_subtypes(ally_gy_id)
+            .contains(&Subtype::Assassin),
         "creature card you own off battlefield should gain Assassin"
     );
     assert!(
-        !game.calculated_subtypes(opponent_id).contains(&Subtype::Assassin),
+        !game
+            .calculated_subtypes(opponent_id)
+            .contains(&Subtype::Assassin),
         "opponent creatures should not gain Assassin"
     );
 }
@@ -5107,9 +5120,12 @@ fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
     let bob_morph_id = game.create_object_from_card(&morph, bob, Zone::Battlefield);
     for id in [alice_morph_id, bob_morph_id] {
         if let Some(obj) = game.object_mut(id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
-                crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::morph(
+                    crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+                        ManaSymbol::Green,
+                    ]])),
+                )));
         }
         game.set_face_down(id);
     }
@@ -5141,7 +5157,8 @@ fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
         &mut dm,
     )
     .expect("turning your face-down permanent up should succeed");
-    resolve_stack_entry(&mut game).expect("Roshan trigger should resolve after your permanent turns up");
+    resolve_stack_entry(&mut game)
+        .expect("Roshan trigger should resolve after your permanent turns up");
 
     assert_eq!(
         game.player(alice).expect("alice exists").hand.len(),
@@ -9505,9 +9522,12 @@ fn elven_riders_only_walls_or_fliers_can_block() {
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Elf])
             .power_toughness(PowerToughness::fixed(3, 3))
-            .parse_text("This creature can't be blocked except by Walls and/or creatures with flying.")
+            .parse_text(
+                "This creature can't be blocked except by Walls and/or creatures with flying.",
+            )
             .expect("Elven Riders should parse for combat test");
-        let attacker = game.create_object_from_definition(&elven_riders_def, alice, Zone::Battlefield);
+        let attacker =
+            game.create_object_from_definition(&elven_riders_def, alice, Zone::Battlefield);
 
         let blocker = match blocker_kind {
             "wall" => {
@@ -9550,7 +9570,10 @@ fn elven_riders_only_walls_or_fliers_can_block() {
     };
 
     let legal_with_wall = can_block("wall");
-    assert!(legal_with_wall, "Wall blocker should be legal against Elven Riders");
+    assert!(
+        legal_with_wall,
+        "Wall blocker should be legal against Elven Riders"
+    );
 
     let legal_with_flying = can_block("flying");
     assert!(
@@ -15398,12 +15421,11 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
     game.object_mut(clown_car_id)
         .expect("Clown Car permanent should exist")
         .x_value = Some(3);
-    let mut source_snapshot =
-        crate::snapshot::ObjectSnapshot::from_object(
-            game.object(clown_car_id)
-                .expect("Clown Car permanent should exist"),
-            &game,
-        );
+    let mut source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(clown_car_id)
+            .expect("Clown Car permanent should exist"),
+        &game,
+    );
     source_snapshot.x_value = Some(3);
 
     let etb_event = TriggerEvent::new_with_provenance(
@@ -15417,7 +15439,11 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
         crate::provenance::ProvNodeId::default(),
     );
     queue_triggers_from_event(&mut game, &mut trigger_queue, etb_event, false);
-    assert_eq!(trigger_queue.entries.len(), 1, "Clown Car should trigger once");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Clown Car should trigger once"
+    );
 
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Clown Car ETB trigger should go on stack");
@@ -15611,7 +15637,11 @@ fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_ties() {
             _game: &GameState,
             ctx: &crate::decisions::context::SelectObjectsContext,
         ) -> Vec<ObjectId> {
-            self.seen_candidates = ctx.candidates.iter().map(|candidate| candidate.id).collect();
+            self.seen_candidates = ctx
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id)
+                .collect();
             vec![self.desired]
         }
     }
@@ -15653,7 +15683,8 @@ fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_ties() {
 
     let low_id = game.create_object_from_card(&low_creature, bob, Zone::Battlefield);
     let tie_creature_id = game.create_object_from_card(&tie_creature, bob, Zone::Battlefield);
-    let tie_planeswalker_id = game.create_object_from_card(&tie_planeswalker, bob, Zone::Battlefield);
+    let tie_planeswalker_id =
+        game.create_object_from_card(&tie_planeswalker, bob, Zone::Battlefield);
 
     let spell_id = game.create_object_from_definition(&riveteers_charm, alice, Zone::Hand);
     let mut state = PriorityLoopState::new(game.players_in_game());
@@ -15809,13 +15840,27 @@ fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window()
         .find_map(|(id, name)| (*name == "Charm Spell").then_some(*id))
         .expect("Riveteers Charm should exile the top spell card");
 
-    assert_eq!(game.exile.len(), 3, "Riveteers Charm should exile three cards");
+    assert_eq!(
+        game.exile.len(),
+        3,
+        "Riveteers Charm should exile three cards"
+    );
     assert!(
-        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_land_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_land_id,
+            Zone::Exile,
+            alice
+        ),
         "Riveteers Charm should let you play exiled lands during the window"
     );
     assert!(
-        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice
+        ),
         "Riveteers Charm should let you cast exiled spells during the window"
     );
 
@@ -15838,7 +15883,12 @@ fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window()
     game.turn.turn_number = game.turn.turn_number.saturating_add(1);
     game.turn.active_player = PlayerId::from_index(1);
     assert!(
-        game.effect_store.grant_registry.card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice
+        ),
         "Riveteers Charm play window should still exist before your next end step"
     );
 

@@ -2367,7 +2367,9 @@ pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     let trimmed_trailing_punctuation = word.trim_end_matches(|ch: char| !ch.is_ascii_digit());
     if trimmed_trailing_punctuation.len() < word.len()
         && !trimmed_trailing_punctuation.is_empty()
-        && trimmed_trailing_punctuation.chars().all(|ch| ch.is_ascii_digit())
+        && trimmed_trailing_punctuation
+            .chars()
+            .all(|ch| ch.is_ascii_digit())
     {
         if let Ok(value) = trimmed_trailing_punctuation.parse::<u32>() {
             return Some((value, 1));
@@ -2466,7 +2468,8 @@ mod tests {
     #[test]
     fn parse_number_accepts_numeric_word_with_trailing_period() {
         let tokens = lex_line("2.", 0).unwrap();
-        let (value, used) = parse_number(&tokens).expect("number with trailing period should parse");
+        let (value, used) =
+            parse_number(&tokens).expect("number with trailing period should parse");
         assert_eq!(value, 2);
         assert_eq!(used, 1);
     }

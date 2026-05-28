@@ -2331,7 +2331,410 @@ fn describe_choose_then_put_counter_on_each(effects: &[&Effect]) -> Option<Strin
     }
 }
 
+fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<String> {
+    if let [first, rest @ ..] = effects
+        && first
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+    {
+        return describe_structural_multisentence_effect_list(rest);
+    }
+
+    describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects)
+        .or_else(|| describe_gain_control_untap_haste_structural(effects))
+        .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn join_or_list(items: &[String]) -> Option<String> {
+    match items {
+        [] => None,
+        [one] => Some(one.clone()),
+        [first, second] => Some(format!("{first} or {second}")),
+        _ => {
+            let (last, rest) = items.split_last()?;
+            Some(format!("{}, or {last}", rest.join(", ")))
+        }
+    }
+}
+
+fn structural_revealed_choice_label(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<String> {
+    if choose.filter.card_types.len() == 1
+        && choose.filter.static_abilities.is_empty()
+        && choose.filter.any_of.is_empty()
+    {
+        return Some(format!(
+            "{} card",
+            describe_card_type_word_local(choose.filter.card_types[0])
+        ));
+    }
+
+    if choose.filter.card_types.is_empty()
+        && choose.filter.static_abilities.is_empty()
+        && !choose.filter.any_of.is_empty()
+    {
+        let mut type_words = Vec::new();
+        for candidate in &choose.filter.any_of {
+            if candidate.card_types.len() != 1
+                || !candidate.all_card_types.is_empty()
+                || !candidate.subtypes.is_empty()
+                || !candidate.static_abilities.is_empty()
+                || !candidate.any_of.is_empty()
+            {
+                return None;
+            }
+            type_words.push(describe_card_type_word_local(candidate.card_types[0]).to_string());
+        }
+        return Some(format!("{} card", join_or_list(&type_words)?));
+    }
+
+    None
+}
+
+fn choose_references_tag(
+    choose: &crate::effects::ChooseObjectsEffect,
+    tag: &crate::TagKey,
+) -> bool {
+    choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    })
+}
+
+fn for_each_moves_tagged_iterated_to_hand(effect: &Effect, tag: &crate::TagKey) -> bool {
+    let Some((_, for_each)) = for_each_tagged_for_compaction(effect) else {
+        return false;
+    };
+    if for_each.tag != *tag || for_each.effects.len() != 1 {
+        return false;
+    }
+    let inner = structural_unwrap_render_wrappers(&for_each.effects[0]);
+    matches!(
+        inner.downcast_ref::<crate::effects::MoveToZoneEffect>(),
+        Some(move_to_zone)
+            if move_to_zone.zone == Zone::Hand
+                && !move_to_zone.to_top
+                && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+    ) || matches!(
+        inner.downcast_ref::<crate::effects::ReturnToHandEffect>(),
+        Some(return_to_hand) if matches!(return_to_hand.spec.base(), ChooseSpec::Iterated)
+    )
+}
+
+fn structural_unwrap_render_wrappers(effect: &Effect) -> &Effect {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return structural_unwrap_render_wrappers(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return structural_unwrap_render_wrappers(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return structural_unwrap_render_wrappers(&tag_all.effect);
+    }
+    effect
+}
+
+fn for_each_moves_unchosen_iterated_to_zone(
+    effect: &Effect,
+    revealed_tag: &crate::TagKey,
+    chosen_tag: &crate::TagKey,
+    zone: Zone,
+) -> bool {
+    let Some((_, for_each)) = for_each_tagged_for_compaction(effect) else {
+        return false;
+    };
+    for_each_moves_unselected_to_zone(for_each, revealed_tag.as_str(), chosen_tag.as_str(), zone)
+}
+
+fn describe_reveal_top_choice_to_hand_rest_graveyard_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    if effects.len() < 5 {
+        return None;
+    }
+    let look = effects[0].downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let reveal = effects[1].downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if look.player != PlayerFilter::You || look.reveal || reveal.tag != look.tag {
+        return None;
+    }
+
+    let mut labels = Vec::new();
+    let mut chosen_tag: Option<TagKey> = None;
+    let mut idx = 2usize;
+    while let Some(choose) = effects
+        .get(idx)
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+    {
+        if choose.chooser != PlayerFilter::You
+            || choose.is_search
+            || choose.count.min != 0
+            || choose.count.max != Some(1)
+            || choose_primary_zone(choose) != Some(Zone::Library)
+            || !choose_references_tag(choose, &look.tag)
+        {
+            return None;
+        }
+        if let Some(existing) = &chosen_tag {
+            if choose.tag != *existing {
+                return None;
+            }
+        } else {
+            chosen_tag = Some(choose.tag.clone());
+        }
+        labels.push(structural_revealed_choice_label(choose)?);
+        idx += 1;
+    }
+    let chosen_tag = chosen_tag?;
+    if labels.is_empty()
+        || effects.len() != idx + 2
+        || !for_each_moves_tagged_iterated_to_hand(&effects[idx], &chosen_tag)
+        || !for_each_moves_unchosen_iterated_to_zone(
+            &effects[idx + 1],
+            &look.tag,
+            &chosen_tag,
+            Zone::Graveyard,
+        )
+    {
+        return None;
+    }
+
+    let owner = describe_possessive_player_filter(&look.player);
+    let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
+    let choice = if labels.len() == 1 {
+        with_indefinite_article(&labels[0])
+    } else {
+        labels
+            .iter()
+            .map(|label| with_indefinite_article(label))
+            .collect::<Vec<_>>()
+            .join(" and/or ")
+    };
+    Some(format!(
+        "Reveal the top {count_text} {noun} of {owner} library. You may put {choice} from among them into your hand. Put the rest into your graveyard"
+    ))
+}
+
+fn tagged_apply_continuous_view(
+    effect: &Effect,
+) -> Option<(&TagKey, &crate::effects::ApplyContinuousEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let apply = tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    Some((&tagged.tag, apply))
+}
+
+fn tagged_untap_effect_view(effect: &Effect) -> Option<(&TagKey, &crate::effects::UntapEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let untap = tagged
+        .effect
+        .downcast_ref::<crate::effects::UntapEffect>()?;
+    Some((&tagged.tag, untap))
+}
+
+fn is_gain_control_until_eot(apply: &crate::effects::ApplyContinuousEffect) -> bool {
+    apply.target == crate::continuous::EffectTarget::Source
+        && apply.until == Until::EndOfTurn
+        && apply.condition.is_none()
+        && apply.modification.is_none()
+        && apply.additional_modifications.is_empty()
+        && matches!(
+            apply.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+        )
+}
+
+fn is_haste_until_eot_for_tag(
+    apply: &crate::effects::ApplyContinuousEffect,
+    tag: &crate::TagKey,
+) -> bool {
+    apply.target == crate::continuous::EffectTarget::Source
+        && apply.until == Until::EndOfTurn
+        && apply.condition.is_none()
+        && apply.additional_modifications.is_empty()
+        && apply.runtime_modifications.is_empty()
+        && matches!(&apply.target_spec, Some(ChooseSpec::Tagged(target_tag)) if target_tag == tag)
+        && matches!(
+            &apply.modification,
+            Some(crate::continuous::Modification::AddAbility(ability))
+                if ability.id() == crate::static_abilities::StaticAbilityId::Haste
+        )
+}
+
+fn describe_gain_control_untap_haste_structural(effects: &[Effect]) -> Option<String> {
+    let [first, second, third] = effects else {
+        return None;
+    };
+
+    if let (Some((controlled_tag, control)), Some((_, untap)), Some((_, haste))) = (
+        tagged_apply_continuous_view(first),
+        tagged_untap_effect_view(second),
+        tagged_apply_continuous_view(third),
+    ) && is_gain_control_until_eot(control)
+        && matches!(&untap.target, ChooseSpec::Tagged(tag) if tag == controlled_tag)
+        && is_haste_until_eot_for_tag(haste, controlled_tag)
+    {
+        let target = control
+            .target_spec
+            .as_ref()
+            .map(describe_choose_spec)
+            .unwrap_or_else(|| "target creature".to_string());
+        let untap_target = if target == "target creature" {
+            "that creature"
+        } else {
+            "it"
+        };
+        return Some(format!(
+            "Gain control of {target} until end of turn. Untap {untap_target}. It gains haste until end of turn"
+        ));
+    }
+
+    if let (Some((controlled_tag, untap)), Some((_, control)), Some((_, haste))) = (
+        tagged_untap_effect_view(first),
+        tagged_apply_continuous_view(second),
+        tagged_apply_continuous_view(third),
+    ) && is_gain_control_until_eot(control)
+        && matches!(&control.target_spec, Some(ChooseSpec::Tagged(tag)) if tag == controlled_tag)
+        && is_haste_until_eot_for_tag(haste, controlled_tag)
+    {
+        let target = describe_choose_spec(&untap.target);
+        let followup_subject = if target == "target creature" {
+            "That creature"
+        } else {
+            "It"
+        };
+        return Some(format!(
+            "Untap {target} and gain control of it until end of turn. {followup_subject} gains haste until end of turn"
+        ));
+    }
+
+    None
+}
+
+fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, exile_effect, grant_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || !choose.top_only
+        || choose_exact_count(choose) != Some(1)
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || exile.face_down
+        || grant.tag != choose.tag
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+    {
+        return None;
+    }
+
+    let verb = if grant.allow_land { "play" } else { "cast" };
+    Some(format!(
+        "Exile the top card of your library. You may {verb} that card this turn"
+    ))
+}
+
+fn tagged_damage_view(effect: &Effect) -> Option<(&TagKey, &crate::effects::DealDamageEffect)> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let damage = tagged
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()?;
+        return Some((&tagged.tag, damage));
+    }
+    None
+}
+
+fn damage_each_creature_filter_text(filter: &ObjectFilter) -> Option<String> {
+    if filter.zone != Some(Zone::Battlefield)
+        || filter.card_types != vec![CardType::Creature]
+        || filter.controller.is_some()
+        || !filter.static_abilities.is_empty()
+        || !filter.any_of.is_empty()
+    {
+        return None;
+    }
+    if filter.excluded_static_abilities == vec![crate::static_abilities::StaticAbilityId::Flying] {
+        return Some("each creature without flying".to_string());
+    }
+    if filter.excluded_static_abilities.is_empty() {
+        return Some("each creature".to_string());
+    }
+    None
+}
+
+fn filter_references_tag(filter: &ObjectFilter, tag: &TagKey) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::SameStableId
+            )
+    })
+}
+
+fn describe_each_creature_and_player_damage_cant_regenerate_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    let [for_each_effect, for_players_effect, cant_effect] = effects else {
+        return None;
+    };
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    if for_each.effects.len() != 1 {
+        return None;
+    }
+    let (damaged_tag, creature_damage) = tagged_damage_view(&for_each.effects[0])?;
+    if !matches!(creature_damage.target, ChooseSpec::Iterated) {
+        return None;
+    }
+    let creature_text = damage_each_creature_filter_text(&for_each.filter)?;
+
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 1 {
+        return None;
+    }
+    let player_damage =
+        for_players.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if player_damage.amount != creature_damage.amount
+        || !matches!(
+            player_damage.target,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+    {
+        return None;
+    }
+
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::BeRegenerated(cant_filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn
+        || cant_filter.card_types != vec![CardType::Creature]
+        || !filter_references_tag(cant_filter, damaged_tag)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Deal {} damage to {creature_text} and each player. Creatures dealt damage this way can't be regenerated this turn",
+        describe_value(&creature_damage.amount)
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
+        return compact;
+    }
+
     let raw_effects = effects.iter().collect::<Vec<_>>();
     fn unwrap_wrapped_effect(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -8795,6 +9198,27 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                     describe_card_type_word_local(choose.filter.card_types[0])
                 ));
             }
+            if choose.filter.card_types.is_empty()
+                && choose.filter.static_abilities.is_empty()
+                && !choose.filter.any_of.is_empty()
+            {
+                let mut card_type_words = Vec::new();
+                for candidate in &choose.filter.any_of {
+                    if candidate.card_types.len() != 1
+                        || !candidate.all_card_types.is_empty()
+                        || !candidate.subtypes.is_empty()
+                        || !candidate.static_abilities.is_empty()
+                        || !candidate.any_of.is_empty()
+                    {
+                        return None;
+                    }
+                    card_type_words
+                        .push(describe_card_type_word_local(candidate.card_types[0]).to_string());
+                }
+                if !card_type_words.is_empty() {
+                    return Some(format!("{} card", join_with_or(&card_type_words)));
+                }
+            }
             if choose.filter.card_types.is_empty() && choose.filter.static_abilities.len() == 1 {
                 return Some(format!(
                     "card with {}",
@@ -9381,6 +9805,24 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             let labels_are_keyword_cards =
                 labels.iter().all(|label| label.starts_with("card with "));
 
+            if labels.len() == 1
+                && idx + 1 < effects.len()
+                && for_each_returns_iterated_to_hand(effects[idx], &chosen_tag)
+                && for_each_moves_any_remainder_to_zone(
+                    effects[idx + 1],
+                    &look.tag,
+                    Zone::Graveyard,
+                )
+            {
+                return Some((
+                    format!(
+                        "{look_text}. Reveal them. You may put {} from among them into your hand. Put the rest into your graveyard",
+                        with_indefinite_article(&labels[0])
+                    ),
+                    idx + 2,
+                ));
+            }
+
             if idx + 1 < effects.len()
                 && for_each_returns_iterated_to_hand(effects[idx], &chosen_tag)
                 && let Some(remainder) = effects[idx + 1]
@@ -9573,6 +10015,53 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 "Reveal the top card of your library. Put it into your hand".to_string(),
                 consumed,
             ))
+        }
+
+        fn render_look_reveal_choice_to_hand_rest_graveyard(
+            effects: &[&Effect],
+        ) -> Option<(String, usize)> {
+            let look = effects
+                .first()?
+                .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+            let reveal = effects
+                .get(1)?
+                .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+            let choose = effects
+                .get(2)?
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            if look.player != PlayerFilter::You
+                || reveal.tag != look.tag
+                || choose.chooser != PlayerFilter::You
+                || choose.is_search
+                || choose.count.min != 0
+                || choose.count.max != Some(1)
+                || choose_primary_zone(choose) != Some(Zone::Library)
+                || !choose_references_revealed_tag(choose, &look.tag)
+                || !for_each_returns_iterated_to_hand(effects.get(3)?, &choose.tag)
+                || !for_each_moves_any_remainder_to_zone(
+                    effects.get(4)?,
+                    &look.tag,
+                    Zone::Graveyard,
+                )
+            {
+                return None;
+            }
+            Some((
+                format!(
+                    "{}. Reveal them. You may put {} from among them into your hand. Put the rest into your graveyard",
+                    describe_effect(effects[0]),
+                    with_indefinite_article(&revealed_choice_label(choose)?)
+                ),
+                5,
+            ))
+        }
+
+        if let Some((rendered, consumed)) =
+            render_look_reveal_choice_to_hand_rest_graveyard(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
         }
 
         if let Some((rendered, consumed)) = render_look_reveal_repeated_choices(&filtered[idx..]) {
@@ -11715,6 +12204,10 @@ fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
 pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
     if effects.len() < 2 {
         return None;
+    }
+
+    if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
+        return Some(compact);
     }
 
     let compact = describe_effect_list(effects);
@@ -14882,6 +15375,209 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Search your library for two cards. Put one into your hand and the other into your graveyard. Then shuffle"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_reveal_top_choice_rest_graveyard_structurally() {
+        let looked = TagKey::from("looked");
+        let chosen = TagKey::from("chosen");
+        let mut choice_filter = ObjectFilter::default()
+            .match_tagged(looked.clone(), TaggedOpbjectRelation::IsTaggedObject);
+        choice_filter.any_of = vec![
+            ObjectFilter::default().with_type(CardType::Creature),
+            ObjectFilter::default().with_type(CardType::Land),
+        ];
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            choice_filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            chosen.clone(),
+        )
+        .in_zone(Zone::Library);
+        let return_chosen = crate::effects::ForEachTaggedEffect::new(
+            chosen.clone(),
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            ))],
+        );
+        let move_rest = crate::effects::ForEachTaggedEffect::new(
+            looked.clone(),
+            vec![Effect::new(crate::effects::ConditionalEffect::new(
+                Condition::TaggedObjectMatches(
+                    chosen,
+                    ObjectFilter::default().same_stable_id_as_tagged(TagKey::from("__it__")),
+                ),
+                vec![],
+                vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Graveyard,
+                    false,
+                ))],
+            ))],
+        );
+        let effects = vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                PlayerFilter::You,
+                Value::Fixed(5),
+                looked.clone(),
+            )),
+            Effect::new(crate::effects::RevealTaggedEffect::new(looked)),
+            Effect::new(choose),
+            Effect::new(return_chosen),
+            Effect::new(move_rest),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Reveal the top five cards of your library. You may put a creature or land card from among them into your hand. Put the rest into your graveyard"
+        );
+    }
+
+    #[test]
+    fn structural_provoke_keyword_uses_trigger_and_effect_shape() {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::Defending),
+        ));
+        let mut must_block = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::must_block(),
+            ),
+            Until::EndOfCombat,
+        );
+        must_block.target_spec = Some(target.clone());
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_attacks(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::new(crate::effects::UntapEffect::with_spec(target.clone())),
+                Effect::new(must_block),
+            ]),
+            choices: vec![target],
+            intervening_if: None,
+            presentation_label: None,
+        };
+
+        assert_eq!(
+            describe_structural_provoke_keyword(&triggered),
+            Some("Provoke".to_string())
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_gain_control_untap_haste_structurally() {
+        let controlled = TagKey::from("controlled");
+        let mut control = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::haste(),
+            ),
+            Until::EndOfTurn,
+        );
+        control.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature(),
+        )));
+        control.modification = None;
+        control.runtime_modifications = vec![
+            crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+        ];
+
+        let mut haste = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::haste(),
+            ),
+            Until::EndOfTurn,
+        );
+        haste.target_spec = Some(ChooseSpec::Tagged(controlled.clone()));
+
+        let effects = vec![
+            Effect::new(crate::effects::TaggedEffect::new(
+                controlled.clone(),
+                Effect::new(control),
+            )),
+            Effect::new(crate::effects::TaggedEffect::new(
+                "untapped",
+                Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
+                    controlled.clone(),
+                ))),
+            )),
+            Effect::new(crate::effects::TaggedEffect::new(
+                "granted",
+                Effect::new(haste),
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_damage_this_way_regeneration_structurally() {
+        let damaged = TagKey::from("damaged_0");
+        let mut creature_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        creature_filter
+            .excluded_static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Flying);
+
+        let cant_filter = ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(damaged.clone(), TaggedOpbjectRelation::IsTaggedObject);
+        let effects = vec![
+            Effect::for_each(
+                creature_filter,
+                vec![Effect::deal_damage(Value::Fixed(3), ChooseSpec::Iterated).tag(damaged)],
+            ),
+            Effect::new(crate::effects::ForPlayersEffect::new(
+                PlayerFilter::Any,
+                vec![Effect::deal_damage(
+                    Value::Fixed(3),
+                    ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+                )],
+            )),
+            Effect::new(crate::effects::CantEffect::until_end_of_turn(
+                crate::effect::Restriction::be_regenerated(cant_filter),
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Deal 3 damage to each creature without flying and each player. Creatures dealt damage this way can't be regenerated this turn"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_choose_top_exile_play_structurally() {
+        let exiled = TagKey::from("exiled");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default().owned_by(PlayerFilter::You),
+            1,
+            PlayerFilter::You,
+            exiled.clone(),
+        )
+        .in_zone(Zone::Library)
+        .top_only();
+        let effects = vec![
+            Effect::new(choose),
+            Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(
+                exiled.clone(),
+            ))),
+            Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                exiled,
+                PlayerFilter::You,
+                crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+                true,
+                false,
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Exile the top card of your library. You may play that card this turn"
         );
     }
 
@@ -22238,7 +22934,8 @@ fn describe_with_id_if_clause(
     {
         if let EffectPredicate::Value(cmp) = &if_effect.predicate {
             if repeat.effects.len() == 1
-                && let Some(roll_die) = repeat.effects[0].downcast_ref::<crate::effects::RollDieEffect>()
+                && let Some(roll_die) =
+                    repeat.effects[0].downcast_ref::<crate::effects::RollDieEffect>()
             {
                 let player = describe_player_filter(&roll_die.player);
                 let result_text = describe_roll_result_comparison(cmp)?;
@@ -22387,7 +23084,11 @@ fn describe_roll_result_comparison(cmp: &Comparison) -> Option<String> {
                 0 => return None,
                 1 => nums[0].clone(),
                 2 => format!("{} or {}", nums[0], nums[1]),
-                _ => format!("{}, or {}", nums[..nums.len() - 1].join(", "), nums[nums.len() - 1]),
+                _ => format!(
+                    "{}, or {}",
+                    nums[..nums.len() - 1].join(", "),
+                    nums[nums.len() - 1]
+                ),
             };
             Some(list)
         }
@@ -24690,7 +25391,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_players_collision_of_realms(for_players) {
             return compact;
         }
-        if let Some(compact) = describe_for_players_shuffle_reveal_permanents_put_rest_bottom(for_players)
+        if let Some(compact) =
+            describe_for_players_shuffle_reveal_permanents_put_rest_bottom(for_players)
         {
             return compact;
         }
@@ -31088,6 +31790,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     {
         return Some(enlist);
     }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(provoke) = describe_structural_provoke_keyword(triggered)
+    {
+        return Some(provoke);
+    }
 
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
@@ -32319,6 +33026,10 @@ fn trigger_is_this_attacks(trigger: &crate::triggers::Trigger) -> bool {
     trigger
         .downcast_ref::<crate::triggers::ThisAttacksTrigger>()
         .is_some()
+        || trigger
+            .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
+            .is_some()
+        || trigger.display() == "Whenever this creature attacks"
 }
 
 fn describe_structural_enlist_keyword(
@@ -32386,6 +33097,58 @@ fn describe_structural_enlist_keyword(
     }
 
     Some("Enlist".to_string())
+}
+
+fn describe_structural_provoke_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !trigger_is_this_attacks(&triggered.trigger)
+        || triggered.choices.len() != 1
+    {
+        return None;
+    }
+    let ChooseSpec::Target(target) = &triggered.choices[0] else {
+        return None;
+    };
+    let ChooseSpec::Object(choice_filter) = target.as_ref() else {
+        return None;
+    };
+    if choice_filter.controller != Some(PlayerFilter::Defending)
+        || choice_filter.card_types != vec![CardType::Creature]
+    {
+        return None;
+    }
+
+    let flattened = triggered.effects.flattened_default_effects();
+    let effects = if flattened.is_empty() && triggered.effects.segments.len() == 1 {
+        triggered.effects.segments[0].default_effects.as_slice()
+    } else {
+        flattened
+    };
+    let Some(untap_effect) = effects.first() else {
+        return None;
+    };
+    let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+    if !matches!(untap.target, ChooseSpec::Target(_)) {
+        return None;
+    }
+
+    effects
+        .iter()
+        .skip(1)
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+        .any(|apply| {
+            apply.until == Until::EndOfCombat
+                && matches!(apply.target, crate::continuous::EffectTarget::Source)
+                && matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Target(_)))
+                && matches!(
+                    &apply.modification,
+                    Some(crate::continuous::Modification::AddAbility(ability))
+                        if ability.id() == crate::static_abilities::StaticAbilityId::MustBlock
+                )
+        })
+        .then(|| "Provoke".to_string())
 }
 
 fn describe_structural_soulshift_keyword(

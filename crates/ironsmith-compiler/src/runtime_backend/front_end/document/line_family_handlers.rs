@@ -307,8 +307,7 @@ pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    let phrase =
-        "enchanted creature's controller may have it assign its combat damage as though it weren't blocked";
+    let phrase = "enchanted creature's controller may have it assign its combat damage as though it weren't blocked";
     if lower.trim_end_matches('.') != phrase {
         return Ok(None);
     }

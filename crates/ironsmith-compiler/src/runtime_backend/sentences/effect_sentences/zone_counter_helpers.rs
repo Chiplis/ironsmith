@@ -335,8 +335,9 @@ fn parse_put_counter_count_value(
         }
     }
 
-    parse_value(tokens)
-        .ok_or_else(|| CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause)))
+    parse_value(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause))
+    })
 }
 
 fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {

@@ -99,8 +99,9 @@ impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
             PlayerFilter::You => {
                 "When you would draw a card while your library has no cards in it".to_string()
             }
-            _ => "When a player would draw a card while their library has no cards in it"
-                .to_string(),
+            _ => {
+                "When a player would draw a card while their library has no cards in it".to_string()
+            }
         }
     }
 }

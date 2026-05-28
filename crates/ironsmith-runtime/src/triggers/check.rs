@@ -2833,7 +2833,11 @@ mod tests {
                 crate::provenance::ProvNodeId::default(),
             ),
         );
-        assert_eq!(to_controller.len(), 1, "expected trigger on controller damage");
+        assert_eq!(
+            to_controller.len(),
+            1,
+            "expected trigger on controller damage"
+        );
 
         let to_opponent = check_triggers(
             &game,
