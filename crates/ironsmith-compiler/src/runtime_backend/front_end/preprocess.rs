@@ -903,6 +903,41 @@ fn expand_borrow_ability_line(text: &str) -> String {
 }
 
 fn rewrite_vote_count_followups_line(text: &str) -> String {
+    fn rewrite_two_vote_count_tails(trimmed: &str, lower: &str) -> Option<String> {
+        let first_marker = " for each ";
+        let first_idx = str_find(lower, first_marker)?;
+        let after_first_idx = first_idx + first_marker.len();
+        let after_first = &lower[after_first_idx..];
+        let (first_vote_rel_idx, first_vote_marker) = str_find(after_first, " vote and ")
+            .map(|idx| (idx, " vote and "))
+            .or_else(|| str_find(after_first, " votes and ").map(|idx| (idx, " votes and ")))?;
+        let second_effect_idx = after_first_idx + first_vote_rel_idx + first_vote_marker.len();
+        let second_marker_rel_idx = str_find(&lower[second_effect_idx..], first_marker)?;
+        let second_marker_idx = second_effect_idx + second_marker_rel_idx;
+
+        let first_effect = trimmed[..first_idx].trim();
+        let first_option = trimmed[after_first_idx..after_first_idx + first_vote_rel_idx].trim();
+        let second_effect = trimmed[second_effect_idx..second_marker_idx].trim();
+        let second_tail = trimmed[second_marker_idx + first_marker.len()..].trim();
+        let second_tail_words = second_tail.split_whitespace().collect::<Vec<_>>();
+        let second_option = second_tail_words
+            .last()
+            .is_some_and(|word| matches!(*word, "vote" | "votes"))
+            .then(|| second_tail_words[..second_tail_words.len().saturating_sub(1)].join(" "))?;
+
+        if first_effect.is_empty()
+            || first_option.is_empty()
+            || second_effect.is_empty()
+            || second_option.is_empty()
+        {
+            return None;
+        }
+
+        Some(format!(
+            "For each {first_option} vote, {first_effect}. For each {second_option} vote, {second_effect}"
+        ))
+    }
+
     fn rewrite_vote_count_sentence(sentence: &str) -> String {
         let trimmed = sentence.trim();
 
@@ -935,6 +970,10 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
             }
         }
 
+        if let Some(rewritten) = rewrite_two_vote_count_tails(trimmed, lower.as_str()) {
+            return rewritten;
+        }
+
         if let Some(marker_idx) = lower.match_indices(" for each ").last().map(|(idx, _)| idx) {
             let head = trimmed[..marker_idx].trim();
             let tail = trimmed[marker_idx + " for each ".len()..].trim();
@@ -950,12 +989,45 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
         trimmed.to_string()
     }
 
+    fn rewrite_vote_draw_discard_this_way(text: String) -> String {
+        let suffix = " vote, draw a card. for each card drawn this way, discard a card";
+        let mut remaining = text.as_str();
+        let mut rewritten = String::new();
+        loop {
+            let lower = remaining.to_ascii_lowercase();
+            let Some(marker_idx) = str_find(lower.as_str(), "for each ") else {
+                rewritten.push_str(remaining);
+                break;
+            };
+            let option_start = marker_idx + "for each ".len();
+            let Some(suffix_rel_idx) = str_find(&lower[option_start..], suffix) else {
+                rewritten.push_str(&remaining[..option_start]);
+                remaining = &remaining[option_start..];
+                continue;
+            };
+            let option_end = option_start + suffix_rel_idx;
+            let option = remaining[option_start..option_end].trim();
+            if option.is_empty() {
+                rewritten.push_str(&remaining[..option_start]);
+                remaining = &remaining[option_start..];
+                continue;
+            }
+            rewritten.push_str(&remaining[..marker_idx]);
+            rewritten.push_str(&format!(
+                "For each {option} vote, draw a card, then discard a card"
+            ));
+            remaining = &remaining[option_end + suffix.len()..];
+        }
+        rewritten
+    }
+
     let had_period = str_ends_with(text.trim_end(), ".");
     let rewritten = split_period_sentences(text)
         .into_iter()
         .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
         .collect::<Vec<_>>()
         .join(". ");
+    let rewritten = rewrite_vote_draw_discard_this_way(rewritten);
     if had_period && !rewritten.is_empty() {
         format!("{rewritten}.")
     } else {

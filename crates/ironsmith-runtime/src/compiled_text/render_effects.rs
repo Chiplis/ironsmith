@@ -31401,9 +31401,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 choices, suffix
             );
         }
-        return format!("Each player votes for {}{}", choices, suffix);
+        return format!("Starting with you, each player votes for {}{}", choices, suffix);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        if let Value::VoteCount(option) = &repeat.count
+            && repeat.effects.len() == 2
+            && let Some(draw) = repeat.effects[0].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(discard) = repeat.effects[1].downcast_ref::<crate::effects::DiscardEffect>()
+            && draw.player == PlayerFilter::You
+            && discard.player == PlayerFilter::You
+            && draw.count == Value::Fixed(1)
+            && discard.count == Value::Fixed(1)
+            && !discard.random
+            && !discard.any_number
+        {
+            return format!(
+                "Draw a card for each {} vote. For each card drawn this way, discard a card",
+                option.to_ascii_lowercase()
+            );
+        }
         let repeated = describe_effect_list(&repeat.effects);
         let repeated = repeated.trim();
         if repeated.is_empty() {

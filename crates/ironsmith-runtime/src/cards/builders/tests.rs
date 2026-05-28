@@ -38380,9 +38380,143 @@ fn strict_parse_vote_regression_cards() {
         "Brago's Representative",
         "Tivit, Seller of Secrets",
         "Elrond of the White Council",
+        "Messenger Jays",
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[test]
+fn messenger_jays_regression_compiles_councils_dilemma_vote_text() {
+    let def = parse_oracle_card_definition("Messenger Jays");
+    let lines = unprocessed_compiled_lines(&def);
+    let expected_trigger = concat!(
+        "Council's dilemma — When this creature enters, starting with you, ",
+        "each player votes for feather or quill. For each feather vote, ",
+        "put a +1/+1 counter on this creature. Draw a card for each quill vote. ",
+        "For each card drawn this way, discard a card."
+    );
+
+    assert_eq!(
+        lines,
+        vec!["Flying".to_string(), expected_trigger.to_string()],
+        "expected Messenger Jays to render its council vote trigger without unsupported text"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("VoteEffect")
+            && debug.contains("VoteCount(\"feather\")")
+            && debug.contains("VoteCount(\"quill\")")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("DiscardEffect"),
+        "expected Messenger Jays to lower both vote branches structurally, got {debug}"
+    );
+}
+
+fn messenger_jays_etb_effects(def: &CardDefinition) -> Vec<Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.effects.segments[0].default_effects.clone())
+            }
+            _ => None,
+        })
+        .expect("Messenger Jays should have an enters-the-battlefield trigger")
+}
+
+#[test]
+fn messenger_jays_runtime_feather_votes_put_counters_without_drawing() {
+    let def = parse_oracle_card_definition("Messenger Jays");
+    let effects = messenger_jays_etb_effects(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let jays_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let filler = CardDefinitionBuilder::new(CardId::from_raw(383_840), "Filler")
+        .card_types(vec![CardType::Creature])
+        .build();
+    for _ in 0..2 {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(jays_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Messenger Jays feather branch should resolve");
+    }
+
+    let jays = game.object(jays_id).expect("Messenger Jays should remain");
+    assert_eq!(
+        jays.counters.get(&crate::CounterType::PlusOnePlusOne),
+        Some(&2),
+        "two feather votes should put two +1/+1 counters on Messenger Jays"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        2,
+        "feather votes should not draw cards"
+    );
+}
+
+#[test]
+fn messenger_jays_runtime_quill_votes_draw_then_discard() {
+    struct ChooseQuillVotes;
+
+    impl crate::decision::DecisionMaker for ChooseQuillVotes {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.description.eq_ignore_ascii_case("quill"))
+                .map(|option| vec![option.index])
+                .unwrap_or_else(|| vec![1])
+        }
+    }
+
+    let def = parse_oracle_card_definition("Messenger Jays");
+    let effects = messenger_jays_etb_effects(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let jays_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let filler = CardDefinitionBuilder::new(CardId::from_raw(383_841), "Filler")
+        .card_types(vec![CardType::Creature])
+        .build();
+    for _ in 0..2 {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+
+    let mut dm = ChooseQuillVotes;
+    let mut ctx = crate::effects::ExecutionContext::new(jays_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Messenger Jays quill branch should resolve");
+    }
+
+    let alice_state = game.player(alice).expect("alice exists");
+    assert_eq!(
+        alice_state.library.len(),
+        0,
+        "two quill votes should draw two cards"
+    );
+    assert_eq!(
+        alice_state.graveyard.len(),
+        2,
+        "each card drawn for quill votes should be discarded"
+    );
+    assert_eq!(
+        game.object(jays_id)
+            .expect("Messenger Jays should remain")
+            .counters
+            .get(&crate::CounterType::PlusOnePlusOne),
+        None,
+        "quill votes should not put feather counters on Messenger Jays"
+    );
 }
 
 #[test]
