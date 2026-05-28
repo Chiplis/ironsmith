@@ -5109,6 +5109,11 @@ pub(crate) fn parse_cast_this_spell_only_line(
             crate::static_abilities::ThisSpellCastRestrictionKind::during_combat(),
             "Cast this spell only during combat.",
         ))
+    } else if tail == ["during", "combat", "on", "your", "turn"] {
+        Some((
+            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_on_your_turn(),
+            "Cast this spell only during combat on your turn.",
+        ))
     } else if tail == ["during", "combat", "before", "blockers", "are", "declared"] {
         Some((
             crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_before_blockers_are_declared(),

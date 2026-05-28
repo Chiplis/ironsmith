@@ -11367,6 +11367,301 @@ fn full_throttle_inserts_two_additional_combats_and_reaches_normal_next_main() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn savage_beating_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(272_001), "Savage Beating")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Cast this spell only during combat on your turn.\n\
+Choose one —\n\
+• Creatures you control gain double strike until end of turn.\n\
+• Untap all creatures you control. After this phase, there is an additional combat phase.\n\
+Entwine {1}{R} (Choose both if you pay the entwine cost.)",
+        )
+        .expect("Savage Beating should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_savage_beating_mana(game: &mut GameState, player: PlayerId) {
+    let player = game.player_mut(player).expect("player should exist");
+    player.mana_pool.add(ManaSymbol::Colorless, 4);
+    player.mana_pool.add(ManaSymbol::Red, 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn savage_beating_cast_action_available(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+) -> bool {
+    crate::decision::compute_legal_actions(game, player)
+        .iter()
+        .any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *action_spell_id == spell_id
+        ))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn savage_beating_cast_restriction_allows_only_combat_on_your_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let savage_beating = savage_beating_definition();
+    let spell_id = game.create_object_from_definition(&savage_beating, alice, Zone::Hand);
+    add_savage_beating_mana(&mut game, alice);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    assert!(
+        !savage_beating_cast_action_available(&game, alice, spell_id),
+        "Savage Beating should not be castable before combat"
+    );
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    assert!(
+        savage_beating_cast_action_available(&game, alice, spell_id),
+        "Savage Beating should be castable during combat on its controller's turn"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        !savage_beating_cast_action_available(&game, alice, spell_id),
+        "Savage Beating should not be castable during an opponent's combat"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn savage_beating_entwine_optional_cost_marks_both_modes_chosen() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let savage_beating = savage_beating_definition();
+    let spell_id = game.create_object_from_definition(&savage_beating, alice, Zone::Hand);
+    add_savage_beating_mana(&mut game, alice);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Savage Beating should reach mode selection");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            assert_eq!(ctx.spec.min_modes, 1);
+            assert_eq!(ctx.spec.max_modes, 1);
+            assert_eq!(ctx.spec.modes.len(), 2);
+        }
+        other => panic!("expected Savage Beating mode prompt, got {other:?}"),
+    }
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing one Savage Beating mode should reach optional costs");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => {
+            assert!(ctx.description.contains("Savage Beating"));
+            assert_eq!(ctx.options.len(), 1);
+            assert_eq!(ctx.options[0].index, 0);
+            assert!(ctx.options[0].description.contains("Entwine"));
+            assert!(ctx.options[0].legal, "entwine should be affordable");
+        }
+        other => panic!("expected Savage Beating optional cost prompt, got {other:?}"),
+    }
+
+    let _ = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![(0, 1)]),
+    )
+    .expect("paying entwine should continue the cast");
+
+    if let Some(pending) = state.pending_cast.as_ref() {
+        assert_eq!(pending.chosen_modes.as_deref(), Some(&[0, 1][..]));
+        let spell = game.object(spell_id).expect("Savage Beating should exist");
+        assert!(
+            spell.optional_costs_paid.was_entwined(),
+            "the Entwine paid label should be recorded on the pending spell"
+        );
+    } else {
+        let entry = game
+            .stack
+            .last()
+            .expect("Savage Beating should be on the stack after costs are paid");
+        assert_eq!(entry.chosen_modes.as_deref(), Some(&[0, 1][..]));
+        assert!(
+            entry.optional_costs_paid.was_entwined(),
+            "the Entwine paid label should be recorded on the stack entry"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn savage_beating_double_strike_mode_grants_only_until_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let savage_beating = savage_beating_definition();
+    let alice_creature = create_creature(&mut game, "Alice Attacker", alice, 2, 2);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    game.tap(alice_creature);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let spell_id = game.create_object_from_definition(&savage_beating, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_chosen_modes(Some(vec![0])));
+    resolve_stack_entry(&mut game).expect("Savage Beating first mode should resolve");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_static_ability_id(
+            alice_creature,
+            crate::static_abilities::StaticAbilityId::DoubleStrike
+        ),
+        "creatures Alice controls should gain double strike"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            bob_creature,
+            crate::static_abilities::StaticAbilityId::DoubleStrike
+        ),
+        "creatures Alice does not control should not gain double strike"
+    );
+    assert!(
+        game.is_tapped(alice_creature),
+        "choosing only the double-strike mode should not untap creatures"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    assert!(
+        !game.object_has_static_ability_id(
+            alice_creature,
+            crate::static_abilities::StaticAbilityId::DoubleStrike
+        ),
+        "Savage Beating's double strike grant should expire at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn savage_beating_untap_mode_untaps_controlled_creatures_and_adds_combat() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let savage_beating = savage_beating_definition();
+    let alice_creature = create_creature(&mut game, "Alice Attacker", alice, 2, 2);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    game.tap(alice_creature);
+    game.tap(bob_creature);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::EndCombat);
+
+    let spell_id = game.create_object_from_definition(&savage_beating, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_chosen_modes(Some(vec![1])));
+    resolve_stack_entry(&mut game).expect("Savage Beating second mode should resolve");
+
+    assert!(
+        !game.is_tapped(alice_creature),
+        "Savage Beating should untap creatures Alice controls"
+    );
+    assert!(
+        game.is_tapped(bob_creature),
+        "Savage Beating should not untap creatures Alice does not control"
+    );
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to the added combat phase");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn savage_beating_entwined_resolution_applies_both_modes() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let savage_beating = savage_beating_definition();
+    let alice_creature = create_creature(&mut game, "Alice Attacker", alice, 2, 2);
+    game.tap(alice_creature);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::EndCombat);
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&savage_beating.optional_costs);
+    paid.pay(0);
+    let spell_id = game.create_object_from_definition(&savage_beating, alice, Zone::Stack);
+    game.object_mut(spell_id)
+        .expect("Savage Beating should exist")
+        .optional_costs_paid = paid.clone();
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_optional_costs_paid(paid)
+            .with_chosen_modes(Some(vec![0, 1])),
+    );
+
+    resolve_stack_entry(&mut game).expect("entwined Savage Beating should resolve");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_static_ability_id(
+            alice_creature,
+            crate::static_abilities::StaticAbilityId::DoubleStrike
+        ),
+        "entwined Savage Beating should apply the double-strike mode"
+    );
+    assert!(
+        !game.is_tapped(alice_creature),
+        "entwined Savage Beating should apply the untap mode"
+    );
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance to the entwined added combat phase");
+    assert_eq!(game.turn.phase, Phase::Combat);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_resolve_stack_entry_uses_self_replacement_branch_when_condition_is_true() {
     let mut game = setup_game();

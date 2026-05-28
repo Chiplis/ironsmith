@@ -74,6 +74,10 @@ impl ThisSpellCastRestrictionKind {
         Self::named("during combat")
     }
 
+    pub fn during_combat_on_your_turn() -> Self {
+        Self::named("during combat on your turn")
+    }
+
     pub fn during_combat_before_blockers_are_declared() -> Self {
         Self::named("during combat before blockers")
     }

@@ -738,6 +738,9 @@ pub(crate) fn this_spell_cast_timing_allows(
                 && game.turn.step == Some(Step::DeclareAttackers)
         }
         ThisSpellCastTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
+        ThisSpellCastTiming::DuringCombatOnYourTurn => {
+            game.turn.active_player == player && matches!(game.turn.phase, Phase::Combat)
+        }
         ThisSpellCastTiming::DuringCombatBeforeBlockersAreDeclared => {
             matches!(game.turn.phase, Phase::Combat)
                 && matches!(

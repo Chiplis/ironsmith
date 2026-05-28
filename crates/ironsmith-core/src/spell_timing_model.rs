@@ -2,6 +2,7 @@
 pub enum ThisSpellCastTiming {
     DuringDeclareAttackersStep,
     DuringCombat,
+    DuringCombatOnYourTurn,
     DuringCombatBeforeBlockersAreDeclared,
     DuringCombatAfterBlockersAreDeclared,
     DuringCombatOnYourTurnBeforeBlockersAreDeclared,

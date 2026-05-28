@@ -6276,6 +6276,71 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn savage_beating_strict_parse_and_compiled_text_cover_combat_restriction_and_entwine() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(272_001), "Savage Beating")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Cast this spell only during combat on your turn.\n\
+Choose one —\n\
+• Creatures you control gain double strike until end of turn.\n\
+• Untap all creatures you control. After this phase, there is an additional combat phase.\n\
+Entwine {1}{R} (Choose both if you pay the entwine cost.)",
+        )
+        .expect("Savage Beating should parse strictly");
+
+    assert_eq!(def.name(), "Savage Beating");
+    assert_eq!(def.optional_costs.len(), 1);
+    assert_eq!(def.optional_costs[0].label, "Entwine");
+    assert_eq!(
+        def.optional_costs[0]
+            .cost
+            .mana_cost()
+            .expect("entwine should preserve mana cost")
+            .to_oracle(),
+        "{1}{R}"
+    );
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::ThisSpellCastRestriction
+                    && static_ability.display() == "Cast this spell only during combat on your turn."
+        )),
+        "Savage Beating should compile the combat-on-your-turn restriction as a static cast restriction"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Entwine {1}{R}"),
+        "compiled text should include entwine cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Creatures you control gain double strike until end of turn"),
+        "compiled text should include the double-strike mode, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("Untap all creatures you control. After this phase, there is an additional combat phase"),
+        "compiled text should include the untap/additional-combat mode, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Cast this spell only during combat on your turn"),
+        "compiled text should include the new timing restriction, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("UnsupportedParserLine"),
+        "Savage Beating should not rely on unsupported parser fallback: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_replicate_keyword_line_compiles_to_repeatable_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Replicate Probe")
         .card_types(vec![CardType::Instant])

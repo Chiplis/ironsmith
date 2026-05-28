@@ -734,6 +734,9 @@ impl StaticAbilityModelInterpreter {
                 super::ThisSpellCastRestrictionKind::during_declare_attackers_step_if_you_were_attacked_this_step()
             }
             "during combat" => super::ThisSpellCastRestrictionKind::during_combat(),
+            "during combat on your turn" => {
+                super::ThisSpellCastRestrictionKind::during_combat_on_your_turn()
+            }
             "during combat before blockers" => {
                 super::ThisSpellCastRestrictionKind::during_combat_before_blockers_are_declared()
             }

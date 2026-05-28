@@ -154,6 +154,10 @@ impl ThisSpellCastRestrictionKind {
         Self::timing(ThisSpellCastTiming::DuringCombat)
     }
 
+    pub fn during_combat_on_your_turn() -> Self {
+        Self::timing(ThisSpellCastTiming::DuringCombatOnYourTurn)
+    }
+
     pub fn during_combat_before_blockers_are_declared() -> Self {
         Self::timing(ThisSpellCastTiming::DuringCombatBeforeBlockersAreDeclared)
     }
