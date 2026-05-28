@@ -1226,6 +1226,21 @@ pub(crate) fn parse_put_into_hand(
             .is_some_and(|token| token.is_word("all") || token.is_word("each"))
         {
             let mut filter = parse_object_filter(&target_tokens[1..], false)?;
+            if grammar::words_find_phrase(&target_tokens[1..], &["exiled", "with", "this"])
+                .is_some()
+            {
+                filter.zone = Some(Zone::Exile);
+                if grammar::contains_word(&target_tokens[1..], "permanent") {
+                    filter.card_types = vec![
+                        CardType::Artifact,
+                        CardType::Creature,
+                        CardType::Enchantment,
+                        CardType::Land,
+                        CardType::Planeswalker,
+                        CardType::Battle,
+                    ];
+                }
+            }
             if grammar::words_find_phrase(&target_tokens[1..], &["from", "it"]).is_some() {
                 filter.zone = Some(Zone::Hand);
                 if filter.owner.is_none() {
@@ -1259,6 +1274,21 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let mut target = parse_target_phrase(&target_tokens)?;
+        if grammar::words_find_phrase(&target_tokens, &["among", "those", "cards"]).is_some()
+            && let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+        {
+            filter.zone = Some(Zone::Exile);
+            if !filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG)
+            {
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            }
+        }
         if let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
         {
             crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);

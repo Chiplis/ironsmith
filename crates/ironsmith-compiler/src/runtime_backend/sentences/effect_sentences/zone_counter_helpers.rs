@@ -576,7 +576,26 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                 } else if tokens_reference_objects_this_way(&count_filter_tokens) {
                     this_way_object_count_value()
                 } else {
-                    Value::Count(parse_object_filter(&count_filter_tokens, false)?)
+                    let mut filter = parse_object_filter(&count_filter_tokens, false)?;
+                    if grammar::words_find_phrase(
+                        &count_filter_tokens,
+                        &["among", "those", "cards"],
+                    )
+                    .is_some()
+                    {
+                        filter.zone = Some(Zone::Exile);
+                        if !filter
+                            .tagged_constraints
+                            .iter()
+                            .any(|constraint| constraint.tag.as_str() == IT_TAG)
+                        {
+                            filter.tagged_constraints.push(TaggedObjectConstraint {
+                                tag: TagKey::from(IT_TAG),
+                                relation: TaggedOpbjectRelation::IsTaggedObject,
+                            });
+                        }
+                    }
+                    Value::Count(filter)
                 };
             if let Value::Fixed(multiplier) = count_value.clone()
                 && multiplier > 1

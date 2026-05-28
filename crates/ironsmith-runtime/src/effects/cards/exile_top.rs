@@ -76,6 +76,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let mut moved_ids = Vec::new();
         for card_id in top_cards {
             if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+                game.add_exiled_with_source_link(ctx.source, exiled_id);
                 if (!self.moved_tags.is_empty() || !self.accumulated_tags.is_empty())
                     && let Some(obj) = game.object(exiled_id)
                 {

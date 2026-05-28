@@ -66,6 +66,34 @@ fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
 }
 
+fn source_exiled_move_followed_by_sacrifice_it(
+    previous: &[OwnedLexToken],
+    current: &[OwnedLexToken],
+) -> bool {
+    let current_words = token_word_refs(current);
+    if current_words.as_slice() != ["sacrifice", "it"] {
+        return false;
+    }
+
+    grammar::words_find_phrase(previous, &["exiled", "with", "this"]).is_some()
+        && grammar::contains_word(previous, "battlefield")
+}
+
+fn rewrite_sacrifice_it_as_source(segment: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let span = segment
+        .first()
+        .map(|token| token.span())
+        .unwrap_or_else(TextSpan::synthetic);
+    vec![
+        segment
+            .first()
+            .cloned()
+            .unwrap_or_else(|| OwnedLexToken::word("sacrifice", span)),
+        OwnedLexToken::word("this", span),
+        OwnedLexToken::word("source", span),
+    ]
+}
+
 fn parse_choose_land_of_each_basic_land_type_segment(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -986,6 +1014,11 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             && let Some(expanded) = expand_gain_lose_followup_segment_lexed(previous, &segment)
         {
             segment = expanded;
+        }
+        if let Some(previous) = &previous_segment
+            && source_exiled_move_followed_by_sacrifice_it(previous, &segment)
+        {
+            segment = rewrite_sacrifice_it_as_source(&segment);
         }
 
         let carry_gain_duration = find_verb_lexed(&segment).is_some_and(|(verb, verb_idx)| {

@@ -530,10 +530,16 @@ fn tokens_after_non_keyword_label_prefix(line: &PreprocessedLine) -> Option<&[Ow
 }
 
 fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
+    if !matches!(
         tokens.first().map(|token| token.kind),
         Some(TokenKind::Number)
-    ) && matches!(
+    ) {
+        return false;
+    }
+    if matches!(tokens.get(1).map(|token| token.kind), Some(TokenKind::Pipe)) {
+        return true;
+    }
+    matches!(
         tokens.get(1).map(|token| token.kind),
         Some(TokenKind::Dash | TokenKind::EmDash)
     ) && matches!(

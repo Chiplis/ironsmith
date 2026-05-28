@@ -1195,19 +1195,27 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
     let first = tokens.first()?;
-    let second = tokens.get(1)?;
-    let third = tokens.get(2)?;
     let pipe_idx = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Pipe)?;
-    if pipe_idx < 3 {
-        return None;
-    }
-
     let min = match first.kind {
         TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
         _ => return None,
     };
+
+    if pipe_idx == 1 {
+        let trailing_tokens = trim_lexed_commas(&tokens[pipe_idx + 1..]);
+        if trailing_tokens.is_empty() {
+            return None;
+        }
+        return Some((IfResultPredicate::Value(Comparison::Equal(min)), trailing_tokens));
+    }
+
+    let second = tokens.get(1)?;
+    let third = tokens.get(2)?;
+    if pipe_idx < 3 {
+        return None;
+    }
     if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
         return None;
     }

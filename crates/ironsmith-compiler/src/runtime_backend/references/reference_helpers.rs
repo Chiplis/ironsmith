@@ -273,7 +273,22 @@ pub(crate) fn resolve_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
-    if let Some(tag) = refs.known_last_object_tag()
+    let preserves_source_exiled_permanents = filter.zone == Some(Zone::Exile)
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+        && [
+            crate::types::CardType::Artifact,
+            crate::types::CardType::Creature,
+            crate::types::CardType::Enchantment,
+            crate::types::CardType::Land,
+            crate::types::CardType::Planeswalker,
+            crate::types::CardType::Battle,
+        ]
+        .iter()
+        .all(|card_type| filter.card_types.contains(card_type));
+    if !preserves_source_exiled_permanents
+        && let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
     {
         for constraint in &mut resolved.tagged_constraints {
