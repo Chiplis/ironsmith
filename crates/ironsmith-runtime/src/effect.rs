@@ -987,6 +987,31 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::AttackPlayer { attackers, player } => {
+                let players = game
+                    .players
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.is_in_game()
+                            && player_matches_restriction_filter(candidate.id, player)
+                    })
+                    .map(|candidate| candidate.id)
+                    .collect::<Vec<_>>();
+                if players.is_empty() {
+                    return;
+                }
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker
+                            .cant_attack_players
+                            .entry(obj_id)
+                            .or_default()
+                            .extend(players.iter().copied());
+                    }
+                }
+            }
             Restriction::AttackAlone(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

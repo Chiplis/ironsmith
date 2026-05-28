@@ -514,6 +514,10 @@ pub struct CantEffectTracker {
     /// Example: Pacifism, Propaganda (if unpaid), Maze of Ith
     pub cant_attack: HashSet<ObjectId>,
 
+    /// Creature -> players that creature can't attack directly.
+    /// Example: "Creatures that player controls can't attack you this turn."
+    pub cant_attack_players: HashMap<ObjectId, HashSet<PlayerId>>,
+
     /// Creatures that can't attack alone.
     /// Example: "This creature can't attack alone."
     pub cant_attack_alone: HashSet<ObjectId>,
@@ -809,6 +813,12 @@ impl CantEffectTracker {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
         self.cant_attack.extend(other.cant_attack);
+        for (creature, players) in other.cant_attack_players {
+            self.cant_attack_players
+                .entry(creature)
+                .or_default()
+                .extend(players);
+        }
         self.cant_attack_alone.extend(other.cant_attack_alone);
         self.cant_block.extend(other.cant_block);
         for (blocker, attackers) in other.cant_block_specific_attackers {
@@ -879,6 +889,7 @@ impl CantEffectTracker {
         self.cant_gain_life.clear();
         self.cant_search.clear();
         self.cant_attack.clear();
+        self.cant_attack_players.clear();
         self.cant_attack_alone.clear();
         self.cant_block.clear();
         self.cant_block_specific_attackers.clear();
@@ -938,6 +949,15 @@ impl CantEffectTracker {
     /// Check if a creature can attack.
     pub fn can_attack(&self, creature: ObjectId) -> bool {
         !self.cant_attack.contains(&creature)
+    }
+
+    /// Check if a creature can attack a player directly.
+    pub fn can_attack_player(&self, creature: ObjectId, player: PlayerId) -> bool {
+        self.can_attack(creature)
+            && self
+                .cant_attack_players
+                .get(&creature)
+                .is_none_or(|players| !players.contains(&player))
     }
 
     /// Check if a creature can attack alone (as the only attacker).

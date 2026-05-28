@@ -104,6 +104,11 @@ fn can_declare_attack_target_preview(
     ) {
         return false;
     }
+    if let AttackTarget::Player(player_id) = target
+        && !game.can_attack_player(attacker.id, *player_id)
+    {
+        return false;
+    }
 
     let abilities = static_abilities_for_attack_preview(view, attacker);
     if abilities.iter().any(|ability| {

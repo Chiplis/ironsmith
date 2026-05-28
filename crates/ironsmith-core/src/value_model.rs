@@ -272,6 +272,10 @@ pub enum Restriction {
     BecomeMonarch(PlayerFilter),
     PreventDamage,
     Attack(ObjectFilter),
+    AttackPlayer {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
     AttackAlone(ObjectFilter),
     Block(ObjectFilter),
     BlockSpecificAttacker {
@@ -487,6 +491,10 @@ impl Restriction {
 
     pub fn attack(filter: ObjectFilter) -> Self {
         Self::Attack(filter)
+    }
+
+    pub fn attack_player(attackers: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::AttackPlayer { attackers, player }
     }
 
     pub fn attack_alone(filter: ObjectFilter) -> Self {

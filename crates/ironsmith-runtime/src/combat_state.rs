@@ -444,6 +444,11 @@ pub fn declare_attackers(
         {
             return Err(CombatError::CreatureCannotAttack(*creature_id));
         }
+        if let AttackTarget::Player(player_id) = target
+            && !game.can_attack_player(*creature_id, *player_id)
+        {
+            return Err(CombatError::CreatureCannotAttack(*creature_id));
+        }
 
         let abilities = static_abilities_for_object(game, creature.id, &all_effects);
         for ability in &abilities {
