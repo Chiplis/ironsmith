@@ -962,6 +962,7 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
             chooser,
             filter,
             reveal_chosen,
+            false,
             Vec::new(),
         ),
     );

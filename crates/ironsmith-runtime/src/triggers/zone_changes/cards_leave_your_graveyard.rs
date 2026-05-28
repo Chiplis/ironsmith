@@ -41,22 +41,16 @@ impl CardsLeaveYourGraveyardTrigger {
             return 0;
         }
 
-        // move_object emits single-object zone changes with a pre-move snapshot.
-        if zc.objects.len() == 1
-            && let Some(snapshot) = zc.snapshot.as_ref()
-        {
-            if snapshot.owner != ctx.controller {
-                return 0;
-            }
-
-            return if self
-                .filter
-                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-            {
-                1
-            } else {
-                0
-            };
+        let snapshots = zc.snapshots();
+        if !snapshots.is_empty() {
+            return snapshots
+                .iter()
+                .filter(|snapshot| snapshot.owner == ctx.controller)
+                .filter(|snapshot| {
+                    self.filter
+                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                })
+                .count() as u32;
         }
 
         let mut count = 0u32;
@@ -135,6 +129,16 @@ impl TriggerMatcher for CardsLeaveYourGraveyardTrigger {
         event
             .downcast::<ZoneChangeEvent>()
             .map(|zc| zc.count() as u32)
+            .unwrap_or(1)
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        if self.one_or_more {
+            return 1;
+        }
+        event
+            .downcast::<ZoneChangeEvent>()
+            .map(|zc| self.matching_count(zc, ctx))
             .unwrap_or(1)
     }
 

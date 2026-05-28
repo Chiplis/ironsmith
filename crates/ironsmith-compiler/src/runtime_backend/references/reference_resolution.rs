@@ -1141,6 +1141,39 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
     }
 }
 
+fn effects_need_prior_object_tag(effects: &[EffectAst]) -> bool {
+    effects.iter().any(effect_needs_prior_object_tag)
+}
+
+fn effect_needs_prior_object_tag(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+            action,
+            SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
+                | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
+        ),
+        EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::UnlessPays { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::WhenResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. } => effects_need_prior_object_tag(effects),
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => effects_need_prior_object_tag(if_true) || effects_need_prior_object_tag(if_false),
+        _ => false,
+    }
+}
+
 fn annotate_effect_sequence_with_env_internal(
     effects: &[EffectAst],
     mut current_env: ReferenceEnv,
@@ -1169,6 +1202,7 @@ fn annotate_effect_sequence_with_env_internal(
             effects_reference_it_tag(remaining)
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(remaining, "damaged_0")
+                || effects_need_prior_object_tag(remaining)
         };
         let assigned_effect_id =
             maybe_assign_effect_result_id(effects, idx, id_gen, in_env.allow_life_event_value);

@@ -35031,6 +35031,179 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_dredgers_insight_strict_regression() {
+    assert_oracle_card_parses_strict("Dredger's Insight");
+    let def = parse_oracle_card_definition("Dredger's Insight");
+    let rendered_lines = canonical_compiled_lines(&def);
+
+    assert!(
+        rendered_lines.iter().any(|line| {
+            line
+                == "Whenever one or more artifact and/or creature cards leave your graveyard, you gain 1 life."
+        }),
+        "expected Dredger's Insight graveyard-leave trigger text, got {rendered_lines:?}"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| {
+            line.to_ascii_lowercase().contains("mill four cards")
+                && line.contains("artifact")
+                && line.contains("creature")
+                && line.contains("land card from among the milled cards")
+                && line.contains("into your hand")
+        }),
+        "expected Dredger's Insight mill choice text, got {rendered_lines:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dredgers_insight_trigger_matches_only_own_artifact_or_creature_cards_and_gains_life() {
+    let def = parse_oracle_card_definition("Dredger's Insight");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .display()
+                .contains("leave your graveyard")
+                .then_some(triggered),
+            _ => None,
+        })
+        .expect("Dredger's Insight should have a graveyard-leave triggered ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_id = ObjectId::from_raw(910_001);
+    let ctx = crate::triggers::TriggerContext::for_source(source_id, alice, &game);
+
+    let leave_event = |snapshot: crate::snapshot::ObjectSnapshot| {
+        crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                snapshot.object_id,
+                Zone::Graveyard,
+                Zone::Exile,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        )
+    };
+    let snapshot = |id, owner, name, card_types| {
+        crate::snapshot::ObjectSnapshot::for_testing(ObjectId::from_raw(id), owner, name)
+            .with_card_types(card_types)
+    };
+
+    let artifact_event = leave_event(snapshot(
+        910_010,
+        alice,
+        "Milled Bauble",
+        vec![CardType::Artifact],
+    ));
+    assert!(
+        triggered.trigger.matches(&artifact_event, &ctx),
+        "Dredger's Insight should trigger when your artifact card leaves your graveyard"
+    );
+    assert_eq!(
+        triggered.trigger.trigger_count_with_context(&artifact_event, &ctx),
+        1,
+        "Dredger's Insight is a one-or-more trigger"
+    );
+
+    let creature_event = leave_event(snapshot(
+        910_011,
+        alice,
+        "Milled Creature",
+        vec![CardType::Creature],
+    ));
+    assert!(
+        triggered.trigger.matches(&creature_event, &ctx),
+        "Dredger's Insight should trigger when your creature card leaves your graveyard"
+    );
+
+    let batch_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::batch_with_snapshots(
+            vec![ObjectId::from_raw(910_020), ObjectId::from_raw(910_021)],
+            Zone::Graveyard,
+            Zone::Exile,
+            crate::events::cause::EventCause::effect(),
+            vec![
+                snapshot(910_020, alice, "Batch Bauble", vec![CardType::Artifact]),
+                snapshot(910_021, alice, "Batch Creature", vec![CardType::Creature]),
+            ],
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        triggered.trigger.matches(&batch_event, &ctx),
+        "Dredger's Insight should trigger when one or more matching cards leave together"
+    );
+    assert_eq!(
+        triggered.trigger.trigger_count_with_context(&batch_event, &ctx),
+        1,
+        "Dredger's Insight should trigger only once for a batch of matching cards"
+    );
+
+    let land_event = leave_event(snapshot(910_012, alice, "Milled Land", vec![CardType::Land]));
+    assert!(
+        !triggered.trigger.matches(&land_event, &ctx),
+        "Dredger's Insight should not trigger when only a land card leaves your graveyard"
+    );
+
+    let opponent_artifact_event = leave_event(snapshot(
+        910_013,
+        bob,
+        "Opponent Bauble",
+        vec![CardType::Artifact],
+    ));
+    assert!(
+        !triggered.trigger.matches(&opponent_artifact_event, &ctx),
+        "Dredger's Insight should not trigger for an opponent's graveyard"
+    );
+
+    let gain_life = triggered.effects.segments[0].default_effects[0]
+        .downcast_ref::<GainLifeEffect>()
+        .expect("Dredger's Insight trigger should gain life");
+    let mut exec_ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    gain_life
+        .execute(&mut game, &mut exec_ctx)
+        .expect("Dredger's Insight life gain should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        21,
+        "Dredger's Insight should gain exactly 1 life when its trigger resolves"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dredgers_insight_etb_choice_is_limited_to_milled_artifact_creature_or_land_cards() {
+    let def = parse_oracle_card_definition("Dredger's Insight");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().contains("enters") => Some(triggered),
+            _ => None,
+        })
+        .expect("Dredger's Insight should have an enters trigger");
+    let effects = &triggered.effects.segments[0].default_effects;
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("MillEffect"), "{debug}");
+    assert!(debug.contains("Fixed") && debug.contains("4"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("min: 0"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("Land"), "{debug}");
+    assert!(debug.contains("milled_") && debug.contains("IsTaggedObject"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sporeweb_weaver_strict_regression() {
     assert_oracle_card_parses_strict("Sporeweb Weaver");
     let def = parse_oracle_card_definition("Sporeweb Weaver");

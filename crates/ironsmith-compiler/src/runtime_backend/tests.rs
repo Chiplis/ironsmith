@@ -9059,6 +9059,40 @@ fn rewrite_lexed_triggered_line_parses_ketramose_exile_trigger() {
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_parses_dredgers_insight_graveyard_leave_trigger() {
+    let text = "Whenever one or more artifact and/or creature cards leave your graveyard, you gain 1 life.";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify Dredger's Insight triggered line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Dredger's Insight graveyard-leave triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("CardsLeaveYourGraveyard"), "{debug}");
+    assert!(debug.contains("one_or_more: true"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("GainLife"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_dredgers_insight_milled_card_choice() {
+    let text = "When this enchantment enters, mill four cards. You may put an artifact, creature, or land card from among the milled cards into your hand.";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify Dredger's Insight enters triggered line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Dredger's Insight mill-and-choose triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("Mill"), "{debug}");
+    assert!(debug.contains("ChooseFromLookedCardsIntoHandRestIntoGraveyard"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("Land"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_parses_stonebinders_familiar_trigger() {
     let text = "Whenever one or more cards are put into exile during your turn, put a +1/+1 counter on this creature. This ability triggers only once each turn.";
     let tokens = lex_line(text, 0)

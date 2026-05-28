@@ -3551,6 +3551,7 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
             filter,
             reveal,
+            from_among_milled_cards_surface,
             if_not_chosen,
         } => {
             use crate::effect::Condition;
@@ -3577,15 +3578,17 @@ fn compile_subject_verb_effect(
 
             let chosen_tag = ctx.next_tag("chosen");
             let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-            let choose = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    choose_filter,
-                    ChoiceCount::up_to(1),
-                    chooser,
-                    chosen_tag_key.clone(),
-                )
-                .in_zone(source_zone),
-            );
+            let mut choose_objects = crate::effects::ChooseObjectsEffect::new(
+                choose_filter,
+                ChoiceCount::up_to(1),
+                chooser,
+                chosen_tag_key.clone(),
+            )
+            .in_zone(source_zone);
+            if *from_among_milled_cards_surface {
+                choose_objects = choose_objects.with_description("from among the milled cards");
+            }
+            let choose = Effect::new(choose_objects);
 
             let mut compiled = vec![choose];
             if *reveal {

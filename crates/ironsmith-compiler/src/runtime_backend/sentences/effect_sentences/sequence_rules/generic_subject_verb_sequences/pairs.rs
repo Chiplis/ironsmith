@@ -1000,7 +1000,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
     zone: Zone,
-) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
+) -> Result<Option<(PlayerAst, ObjectFilter, bool)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
     let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["put"], true)
     else {
@@ -1019,6 +1019,9 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     else {
         return Ok(None);
     };
+    let from_among_milled_cards_surface = action_word_refs
+        .get(from_among_word_idx..from_among_word_idx + from_among_len)
+        == Some(["from", "among", "the", "milled", "cards"].as_slice());
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
@@ -1040,7 +1043,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
         return Ok(None);
     }
 
-    Ok(Some((chooser, filter)))
+    Ok(Some((chooser, filter, from_among_milled_cards_surface)))
 }
 
 fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
@@ -1410,7 +1413,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
         return Ok(None);
     };
 
-    let Some((chooser, filter)) =
+    let Some((chooser, filter, from_among_milled_cards_surface)) =
         parse_may_put_filtered_card_from_among_into_hand(second, *player, Zone::Graveyard)?
     else {
         return Ok(None);
@@ -1422,6 +1425,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
             chooser,
             filter,
             false,
+            from_among_milled_cards_surface,
             Vec::new(),
         ),
     ]))

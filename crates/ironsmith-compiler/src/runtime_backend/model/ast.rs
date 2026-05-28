@@ -247,6 +247,11 @@ pub(crate) enum TriggerSpec {
         one_or_more: bool,
         during_turn: Option<PlayerFilter>,
     },
+    CardsLeaveYourGraveyard {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    },
     CounterPutOn {
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
@@ -1340,6 +1345,7 @@ pub(crate) enum SubjectVerbActionAst {
     ChooseFromLookedCardsIntoHandRestIntoGraveyard {
         filter: ObjectFilter,
         reveal: bool,
+        from_among_milled_cards_surface: bool,
         if_not_chosen: Vec<EffectAst>,
     },
     ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
@@ -2682,11 +2688,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
                 reveal,
+                from_among_milled_cards_surface,
                 if_not_chosen,
             } => f
                 .debug_struct("ChooseFromLookedCardsIntoHandRestIntoGraveyard")
                 .field("filter", filter)
                 .field("reveal", reveal)
+                .field(
+                    "from_among_milled_cards_surface",
+                    from_among_milled_cards_surface,
+                )
                 .field("if_not_chosen", if_not_chosen)
                 .finish(),
             Self::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
@@ -4415,6 +4426,7 @@ impl EffectAst {
         player: PlayerAst,
         filter: ObjectFilter,
         reveal: bool,
+        from_among_milled_cards_surface: bool,
         if_not_chosen: Vec<EffectAst>,
     ) -> Self {
         Self::subject_verb(
@@ -4423,6 +4435,7 @@ impl EffectAst {
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
                 reveal,
+                from_among_milled_cards_surface,
                 if_not_chosen,
             },
         )

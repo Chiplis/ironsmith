@@ -20149,6 +20149,30 @@ pub(super) fn describe_choose_filter_from_looked_cards(
         return Some("a card".to_string());
     }
 
+    if base_filter.card_types.is_empty()
+        && base_filter.all_card_types.is_empty()
+        && base_filter.subtypes.is_empty()
+        && base_filter.static_abilities.is_empty()
+        && !base_filter.any_of.is_empty()
+    {
+        let mut type_words = Vec::new();
+        for candidate in &base_filter.any_of {
+            if candidate.card_types.len() != 1
+                || !candidate.all_card_types.is_empty()
+                || !candidate.subtypes.is_empty()
+                || !candidate.static_abilities.is_empty()
+                || !candidate.any_of.is_empty()
+            {
+                type_words.clear();
+                break;
+            }
+            type_words.push(describe_card_type_word_local(candidate.card_types[0]).to_string());
+        }
+        if let Some(joined) = join_or_list(&type_words) {
+            return Some(with_indefinite_article(&format!("{joined} card")));
+        }
+    }
+
     let filter_text = base_filter.description();
     let mut card_desc = filter_text
         .split(" in ")
@@ -21798,6 +21822,14 @@ fn describe_tagged_mill_clause(mill: &crate::effects::MillEffect) -> String {
     }
 }
 
+fn describe_milled_cards_reference(choose: &crate::effects::ChooseObjectsEffect) -> &'static str {
+    if choose.description == "from among the milled cards" {
+        "from among the milled cards"
+    } else {
+        "from among the cards milled this way"
+    }
+}
+
 pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand(
     tagged_mill: &crate::effects::TaggedEffect,
     mill: &crate::effects::MillEffect,
@@ -21813,8 +21845,9 @@ pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand(
     let mill_clause = describe_tagged_mill_clause(mill);
     let hand = describe_possessive_player_filter(&choose.chooser);
     let may = if choose.count.min == 0 { " may" } else { "" };
+    let milled_cards_reference = describe_milled_cards_reference(choose);
     Some(format!(
-        "{mill_clause}. You{may} put {chosen} from among the cards milled this way into {hand} hand"
+        "{mill_clause}. You{may} put {chosen} {milled_cards_reference} into {hand} hand"
     ))
 }
 
@@ -21850,8 +21883,9 @@ pub(super) fn describe_tagged_mill_then_may_put_milled_card_into_hand(
     let chosen = describe_choose_filter_from_tagged_cards(choose, tagged_mill.tag.as_str())?;
     let mill_clause = describe_tagged_mill_clause(mill);
     let hand = describe_possessive_player_filter(&choose.chooser);
+    let milled_cards_reference = describe_milled_cards_reference(choose);
     Some(format!(
-        "{mill_clause}. You may put {chosen} from among the cards milled this way into {hand} hand"
+        "{mill_clause}. You may put {chosen} {milled_cards_reference} into {hand} hand"
     ))
 }
 

@@ -409,6 +409,11 @@ pub(super) fn find_from_among_looked_cards_phrase(
         })
         .or_else(|| {
             word_view
+                .find_phrase_start(&["from", "among", "the", "milled", "cards"])
+                .map(|idx| (idx, 5usize))
+        })
+        .or_else(|| {
+            word_view
                 .find_phrase_start(&["from", "among", "them"])
                 .map(|idx| (idx, 3usize))
         })

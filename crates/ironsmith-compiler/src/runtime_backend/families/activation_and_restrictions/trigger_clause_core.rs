@@ -1459,6 +1459,55 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    for (tail, during_your_turn) in [
+        (
+            ["leaves", "your", "graveyard", "during", "your", "turn"].as_slice(),
+            true,
+        ),
+        (
+            ["leave", "your", "graveyard", "during", "your", "turn"].as_slice(),
+            true,
+        ),
+        (["leaves", "your", "graveyard"].as_slice(), false),
+        (["leave", "your", "graveyard"].as_slice(), false),
+    ] {
+        if slice_ends_with(&words, tail) {
+            let subject_word_len = words.len().saturating_sub(tail.len());
+            let mut subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            let mut filter = if matches!(subject_words.as_slice(), ["card"] | ["cards"]) {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported card filter in cards-leave-your-graveyard trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
+            filter.zone = None;
+            filter.controller = None;
+            filter.owner = None;
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(TriggerSpec::CardsLeaveYourGraveyard {
+                filter,
+                one_or_more,
+                during_your_turn,
+            });
+        }
+    }
+
     for tail in [
         ["is", "put", "into", "a", "graveyard", "from", "anywhere"].as_slice(),
         ["are", "put", "into", "a", "graveyard", "from", "anywhere"].as_slice(),
