@@ -35371,13 +35371,21 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn trystan_callous_cultivator_strict_parser_and_text_regression() {
-    let def = parse_oracle_card_definition(
-        "Trystan, Callous Cultivator // Trystan, Penitent Culler",
-    );
+    let oracle = oracle_text_by_name()
+        .get("Trystan, Callous Cultivator")
+        .expect("Trystan oracle text should be indexed")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Trystan, Callous Cultivator")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Trystan, Callous Cultivator should parse strictly");
 
     let rendered = canonical_compiled_lines(&def).join("\n");
     assert!(
-        rendered.contains("Whenever this creature enters or transforms into Trystan")
+        rendered.contains(
+            "Whenever this creature enters or transforms into Trystan, Callous Cultivator"
+        )
             && rendered.contains("mill three cards")
             && rendered.contains("Then if there is an Elf card in your graveyard, you gain 2 life"),
         "expected Trystan's enter-or-transform trigger and Elf-card graveyard condition, got {rendered}"

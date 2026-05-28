@@ -239,6 +239,55 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
     text.to_string()
 }
 
+fn should_lowercase_trigger_effect_tail(tail: &str) -> bool {
+    let Some(first) = tail.split_whitespace().next() else {
+        return false;
+    };
+    let first = first.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    matches!(
+        first,
+        "A" | "An"
+            | "The"
+            | "This"
+            | "That"
+            | "Those"
+            | "It"
+            | "They"
+            | "If"
+            | "Then"
+            | "You"
+            | "Add"
+            | "Attach"
+            | "Cast"
+            | "Choose"
+            | "Copy"
+            | "Counter"
+            | "Create"
+            | "Destroy"
+            | "Discard"
+            | "Draw"
+            | "Exile"
+            | "Fight"
+            | "Gain"
+            | "Lose"
+            | "Mill"
+            | "Pay"
+            | "Play"
+            | "Put"
+            | "Regenerate"
+            | "Reveal"
+            | "Return"
+            | "Sacrifice"
+            | "Scry"
+            | "Search"
+            | "Shuffle"
+            | "Surveil"
+            | "Tap"
+            | "Transform"
+            | "Untap"
+    )
+}
+
 pub(super) fn describe_mana_pool_owner(filter: &PlayerFilter) -> String {
     let player = describe_player_filter(filter);
     if player == "you" || player == "target you" {
@@ -5534,6 +5583,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_uppercase())
+        && should_lowercase_trigger_effect_tail(tail)
     {
         normalized = format!("{head}, {}", lowercase_first(tail));
     }

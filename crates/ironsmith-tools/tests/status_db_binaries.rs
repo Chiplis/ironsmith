@@ -1024,7 +1024,7 @@ fn compile_oracle_text_strictly_compiles_trystan_callous_cultivator_from_workspa
     assert!(stdout.contains("Name: Trystan, Callous Cultivator"), "{stdout}");
     assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
     assert!(
-        stdout.contains("enters or transforms into Trystan")
+        stdout.contains("enters or transforms into Trystan, Callous Cultivator")
             && stdout.contains("if there is an Elf card in your graveyard, you gain 2 life"),
         "expected Trystan transform trigger and Elf-card graveyard clause, got {stdout}"
     );
