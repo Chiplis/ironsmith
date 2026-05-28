@@ -8,6 +8,7 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_e
 use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::object::Object;
 #[cfg(test)]
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -45,6 +46,58 @@ pub(crate) fn remaining_token_slots(game: &GameState, controller: PlayerId) -> u
         })
         .count();
     TOKEN_PER_PLAYER_LIMIT.saturating_sub(existing)
+}
+
+pub(crate) fn create_replacement_additional_tokens(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    controller_id: PlayerId,
+    additional_tokens: &[(ironsmith_core::AdditionalTokenKind, u32)],
+    events: &mut Vec<TriggerEvent>,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let mut created_ids = Vec::new();
+    for (token_kind, requested_count) in additional_tokens {
+        let token_definition = match token_kind {
+            ironsmith_core::AdditionalTokenKind::Treasure => {
+                crate::cards::tokens::treasure_token_definition()
+            }
+        };
+        let count = (*requested_count as usize).min(remaining_token_slots(game, controller_id));
+        for _ in 0..count {
+            let id = game.new_object_id();
+            let mut token_obj = Object::from_token_definition(id, &token_definition, controller_id);
+            token_obj.zone = Zone::Command;
+            let token_is_creature = token_obj.is_creature();
+
+            game.add_object(token_obj);
+            let Some(entry_result) =
+                game.move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut ctx.decision_maker)
+            else {
+                game.remove_object(id);
+                continue;
+            };
+            let entered_id = entry_result.new_id;
+            created_ids.push(entered_id);
+
+            if game
+                .object(entered_id)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield)
+            {
+                apply_token_battlefield_entry(
+                    game,
+                    ctx,
+                    entered_id,
+                    controller_id,
+                    token_is_creature,
+                    TokenEntryOptions::default(),
+                    Zone::Command,
+                    entry_result.enters_tapped,
+                    events,
+                )?;
+            }
+        }
+    }
+    Ok(created_ids)
 }
 
 /// Apply common post-create entry processing for a token that entered the battlefield.

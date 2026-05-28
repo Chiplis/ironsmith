@@ -161,6 +161,14 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::Additionally(_effects) => TraitApplyResult::Modified(event),
 
+        ReplacementAction::AddTokens { token, count } => {
+            let modified = apply_trait_add_tokens(&event, *token, *count);
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,
@@ -437,6 +445,20 @@ pub(super) fn find_matching_cards_in_hand(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn apply_trait_add_tokens(
+    event: &Event,
+    token: ironsmith_core::AdditionalTokenKind,
+    count: u32,
+) -> Option<Event> {
+    use crate::events::{CreateTokensEvent, downcast_event};
+
+    if event.kind() != EventKind::CreateTokens || count == 0 {
+        return None;
+    }
+    let create_tokens = downcast_event::<CreateTokensEvent>(event.inner())?;
+    Some(event.rewrap(create_tokens.with_additional_tokens(token, count)))
 }
 
 fn apply_trait_modification(

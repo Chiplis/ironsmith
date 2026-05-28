@@ -2532,25 +2532,56 @@ pub fn process_token_creation_with_event(
     cause: crate::events::cause::EventCause,
     dm: &mut (impl DecisionMaker + ?Sized),
 ) -> u32 {
+    process_token_creation_for_token_with_event(game, controller, count, None, cause, dm).count
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenCreationReplacementResult {
+    pub count: u32,
+    pub additional_tokens: Vec<(ironsmith_core::AdditionalTokenKind, u32)>,
+}
+
+/// Process a token creation event with known token characteristics.
+///
+/// Returns the final original-token count and any separately defined tokens added by replacements.
+pub fn process_token_creation_for_token_with_event(
+    game: &mut GameState,
+    controller: PlayerId,
+    count: u32,
+    token: Option<crate::object::Object>,
+    cause: crate::events::cause::EventCause,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> TokenCreationReplacementResult {
     use crate::events::{CreateTokensEvent, downcast_event};
 
     if count == 0 {
-        return 0;
+        return TokenCreationReplacementResult::default();
     }
 
-    let event = Event::create_tokens(controller, count, cause);
+    let event = if let Some(token) = token {
+        Event::create_tokens_with_token(controller, count, token, cause)
+    } else {
+        Event::create_tokens(controller, count, cause)
+    };
     let result = process_with_dm(game, event, dm);
 
-    match result {
+    let count = match result {
         TraitEventResult::Prevented => 0,
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
             if let Some(create_tokens) = downcast_event::<CreateTokensEvent>(e.inner()) {
-                create_tokens.count
+                return TokenCreationReplacementResult {
+                    count: create_tokens.count,
+                    additional_tokens: create_tokens.additional_tokens.clone(),
+                };
             } else {
                 count
             }
         }
         _ => count,
+    };
+    TokenCreationReplacementResult {
+        count,
+        additional_tokens: Vec::new(),
     }
 }
 

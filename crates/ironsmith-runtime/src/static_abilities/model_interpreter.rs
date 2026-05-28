@@ -1291,6 +1291,19 @@ impl StaticAbilityModelInterpreter {
                 controller.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
+                display,
+            } => StaticAbility::add_token_creation_replacement(
+                controller.clone(),
+                token_filter.clone(),
+                *additional_token,
+                *additional,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,

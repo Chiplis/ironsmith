@@ -31,6 +31,11 @@ pub struct ConditionalSpellKeywordSpec {
     pub threshold: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdditionalTokenKind {
+    Treasure,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
@@ -408,6 +413,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     DoubleTokenCreationReplacement {
         controller: PlayerFilter,
+        display: String,
+    },
+    AddTokenCreationReplacement {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional_token: AdditionalTokenKind,
+        additional: i32,
         display: String,
     },
     KeywordActionReplacement {
@@ -1255,6 +1267,19 @@ where
                 display,
             } => StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
+                display,
+            },
+            StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
+                display,
+            } => StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
                 display,
             },
             StaticAbilityPayload::KeywordActionReplacement {
@@ -3502,6 +3527,27 @@ impl<
             label: display.clone(),
             payload: StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
+                display,
+            },
+        }
+    }
+
+    pub fn add_token_creation_replacement(
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional_token: AdditionalTokenKind,
+        additional: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional_token,
+                additional,
                 display,
             },
         }

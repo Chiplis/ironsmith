@@ -224,6 +224,7 @@ pub enum StaticAbilityId {
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
     DoubleTokenCreationReplacement,
+    AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     SuppressMatchingTriggeredAbilities,
@@ -469,6 +470,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
             | DoubleTokenCreationReplacement
+            | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | SuppressMatchingTriggeredAbilities

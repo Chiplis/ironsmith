@@ -159,10 +159,10 @@ pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
-    ActivatedAbilityCostCondition, Anthem, AttachedAbilityGrant, AttachedChosenLandwalkGrant,
-    AttackCostCondition, AttackingGroupAttackCondition, CantAttackUnlessConditionSpec,
-    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, CopyActivatedAbilities,
-    CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
+    ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem, AttachedAbilityGrant,
+    AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
+    CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
+    CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
     CostReductionManaCost, DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec, GrantAbility,
     GrantObjectAbilityForFilter, GraveyardCountMetric, LandwalkKind, PregameActionKind,
     PregameBeginOnBattlefieldSpec, RemoveCardTypesForFilter, SetColorsForFilter, StaticAbility,
