@@ -14091,12 +14091,10 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_is_self_replacement() {
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert!(
-        rendered.contains("Prevent all combat damage that would be dealt this turn")
-            && rendered.contains("If you control a creature with power 4 or greater")
-            && rendered.contains("instead")
-            && rendered.contains("by creatures your opponents control"),
-        "expected Winds of Qal Sisma compiled text to preserve the ferocious instead prevention clause, got {rendered}"
+    assert_eq!(
+        rendered,
+        "Prevent all combat damage that would be dealt this turn. If you control a creature with power 4 or greater, prevent all combat damage that would be dealt this turn by creatures your opponents control instead.",
+        "Winds of Qal Sisma compiled text should preserve the complete ferocious instead prevention clause"
     );
     assert!(
         !rendered.to_ascii_lowercase().contains("unsupported"),
