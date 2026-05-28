@@ -268,6 +268,9 @@ pub enum RedirectTarget {
 
     /// Redirect to the source of the effect
     ToSource,
+
+    /// Redirect to the controller of the event source.
+    ToSourceController,
 }
 
 /// Which target to redirect in a multi-target event.

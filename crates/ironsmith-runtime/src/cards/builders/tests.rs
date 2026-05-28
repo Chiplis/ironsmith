@@ -21284,6 +21284,41 @@ fn parse_damage_redirect_to_source_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn harsh_judgment_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Harsh Judgment");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::ChooseColorAsEnters),
+        "expected Harsh Judgment to choose a color as it enters, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&StaticAbilityId::RedirectDamageToSourceController),
+        "expected Harsh Judgment damage redirect replacement, got {ids:?}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("As this enchantment enters, choose a color."),
+        "expected choose-color clause in compiled text, got {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "If an instant or sorcery spell of the chosen color would deal damage to you, it deals that damage to its controller instead."
+        ),
+        "expected Harsh Judgment redirect clause in compiled text, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_red_noncombat_damage_minimum_replacement_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deepest Might Variant")
         .card_types(vec![CardType::Creature])

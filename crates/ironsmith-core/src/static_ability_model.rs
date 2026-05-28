@@ -351,6 +351,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         toughness: i32,
     },
     DoubleDamageFromSourcesYouControlOfChosenType(String),
+    RedirectDamageToSourceController {
+        source_filter: ObjectFilter,
+        target_player_filter: PlayerFilter,
+        display: String,
+    },
     AdditionalLandPlays(u32),
     RevealFirstCardYouDrawEachTurn {
         optional: bool,
@@ -1132,6 +1137,15 @@ where
             StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display) => {
                 StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display)
             }
+            StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            } => StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            },
             StaticAbilityPayload::AdditionalLandPlays(count) => {
                 StaticAbilityPayload::AdditionalLandPlays(count)
             }
@@ -2852,6 +2866,23 @@ impl<
             id: Some(StaticAbilityId::DoubleDamageFromSourcesYouControlOfChosenType),
             label: display.clone(),
             payload: StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display),
+        }
+    }
+
+    pub fn redirect_damage_to_source_controller(
+        source_filter: ObjectFilter,
+        target_player_filter: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RedirectDamageToSourceController),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RedirectDamageToSourceController {
+                source_filter,
+                target_player_filter,
+                display,
+            },
         }
     }
     pub fn with_enter_as_copy_as_enters(

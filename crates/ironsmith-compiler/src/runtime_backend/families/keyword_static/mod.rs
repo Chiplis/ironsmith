@@ -601,6 +601,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
+        single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
         single_static_ability_ast_rule!(
             parse_no_more_than_creatures_can_attack_or_block_each_combat_line
@@ -3496,6 +3497,52 @@ pub(crate) fn parse_damage_redirect_to_source_line(
         ));
     }
     Ok(None)
+}
+
+pub(crate) fn parse_damage_redirect_to_source_controller_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.first() != Some(&"if") {
+        return Ok(None);
+    }
+
+    let Some(would_idx) = find_window_by(&words, 5, |window| {
+        window == ["would", "deal", "damage", "to", "you"]
+    }) else {
+        return Ok(None);
+    };
+    let tail = &words[would_idx + 5..];
+    if tail != [
+        "it",
+        "deals",
+        "that",
+        "damage",
+        "to",
+        "its",
+        "controller",
+        "instead",
+    ] {
+        return Ok(None);
+    }
+    if would_idx <= 1 {
+        return Ok(None);
+    }
+
+    let source_start = token_index_for_word_index(tokens, 1).unwrap_or(0);
+    let source_end = token_index_for_word_index(tokens, would_idx).unwrap_or(tokens.len());
+    let source_tokens = trim_lexed_commas(&tokens[source_start..source_end]);
+    let source_filter = parse_object_filter_lexed(source_tokens, false)?;
+    let mut display = render_token_slice(tokens).trim().to_string();
+    if !display.ends_with('.') {
+        display.push('.');
+    }
+
+    Ok(Some(StaticAbility::redirect_damage_to_source_controller(
+        source_filter,
+        PlayerFilter::You,
+        display,
+    )))
 }
 
 pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(

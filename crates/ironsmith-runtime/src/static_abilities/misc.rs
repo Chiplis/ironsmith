@@ -2774,6 +2774,60 @@ impl StaticAbilityKind for DoubleDamageFromSourcesYouControlOfChosenType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RedirectDamageToSourceController {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: PlayerFilter,
+    pub display: String,
+}
+
+impl RedirectDamageToSourceController {
+    pub fn new(
+        source_filter: ObjectFilter,
+        target_player_filter: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            target_player_filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for RedirectDamageToSourceController {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RedirectDamageToSourceController
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.source_filter.clone(),
+                target_player_filter: Some(self.target_player_filter.clone()),
+                target_object_filter: None,
+                condition: None,
+                noncombat_only: false,
+                amount_less_than: None,
+            },
+            ReplacementAction::Redirect {
+                target: RedirectTarget::ToSourceController,
+                which: RedirectWhich::First,
+            },
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModifyDamageAmountReplacement {
     pub source_filter: ObjectFilter,
     pub target_player_filter: Option<PlayerFilter>,
@@ -2854,15 +2908,27 @@ impl DamageAmountReplacementMatcher {
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
         let current = ctx.game.object(damage.source).is_some_and(|source| {
+            let filter_ctx = if source.zone == Zone::Stack {
+                ctx.filter_ctx
+                    .clone()
+                    .with_caster(ctx.game.current_controller(damage.source))
+            } else {
+                ctx.filter_ctx.clone()
+            };
             self.source_filter
-                .matches(source, &ctx.filter_ctx, ctx.game)
+                .matches(source, &filter_ctx, ctx.game)
         });
         let lki = ctx
             .event_source_snapshot
             .filter(|snapshot| snapshot.object_id == damage.source)
             .is_some_and(|snapshot| {
+                let filter_ctx = if snapshot.zone == Zone::Stack {
+                    ctx.filter_ctx.clone().with_caster(Some(snapshot.controller))
+                } else {
+                    ctx.filter_ctx.clone()
+                };
                 self.source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                    .matches_snapshot(snapshot, &filter_ctx, ctx.game)
             });
         current || lki
     }
@@ -5016,6 +5082,164 @@ mod tests {
             EventCause::from_effect(source, alice),
         );
         assert_eq!(permanent_damage.assignments[0].amount, 5);
+    }
+
+    #[test]
+    fn harsh_judgment_redirects_chosen_color_spell_damage_to_source_controller() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+        let harsh_judgment = CardBuilder::new(CardId::from_raw(19001), "Harsh Judgment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let harsh_judgment_id =
+            game.create_object_from_card(&harsh_judgment, alice, Zone::Battlefield);
+        game.set_chosen_color(harsh_judgment_id, Color::White);
+
+        let white_spell = CardBuilder::new(CardId::from_raw(19002), "White Instant")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::White,
+            ]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let white_spell_id = game.create_object_from_card(&white_spell, bob, Zone::Stack);
+        assert_eq!(game.current_controller(white_spell_id), Some(bob));
+
+        let ability = RedirectDamageToSourceController::new(
+            ObjectFilter::instant_or_sorcery().of_chosen_color(),
+            PlayerFilter::You,
+            "If instant or sorcery spell of the chosen color would deal damage to you, it deals that damage to its controller instead.",
+        );
+        let replacement = ability
+            .generate_replacement_effect(harsh_judgment_id, alice)
+            .expect("Harsh Judgment should generate a replacement effect");
+        let matching_event = DamageEvent::with_cause(
+            white_spell_id,
+            DamageTarget::Player(alice),
+            4,
+            false,
+            EventCause::from_effect(white_spell_id, bob),
+        );
+        let matching_ctx = EventContext::for_replacement_effect(alice, harsh_judgment_id, &game);
+        assert!(
+            replacement
+                .matcher
+                .as_ref()
+                .expect("replacement should have a matcher")
+                .matches_event(&matching_event, &matching_ctx),
+            "Harsh Judgment replacement should match chosen-color spell damage to you"
+        );
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(replacement);
+
+        let damage = process_damage_assignments_with_event(
+            &mut game,
+            white_spell_id,
+            DamageTarget::Player(alice),
+            4,
+            false,
+            EventCause::from_effect(white_spell_id, bob),
+        );
+
+        assert_eq!(damage.assignments.len(), 1);
+        assert_eq!(damage.assignments[0].target, DamageTarget::Player(bob));
+        assert_eq!(damage.assignments[0].amount, 4);
+    }
+
+    #[test]
+    fn harsh_judgment_handles_sorcery_nonchosen_color_and_other_target_branches() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+        let harsh_judgment = CardBuilder::new(CardId::from_raw(19003), "Harsh Judgment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let harsh_judgment_id =
+            game.create_object_from_card(&harsh_judgment, alice, Zone::Battlefield);
+        game.set_chosen_color(harsh_judgment_id, Color::White);
+
+        let red_spell = CardBuilder::new(CardId::from_raw(19004), "Red Instant")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::Red,
+            ]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let red_spell_id = game.create_object_from_card(&red_spell, bob, Zone::Stack);
+
+        let white_spell = CardBuilder::new(CardId::from_raw(19005), "White Sorcery")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::White,
+            ]]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let white_spell_id = game.create_object_from_card(&white_spell, bob, Zone::Stack);
+
+        let target_creature = CardBuilder::new(CardId::from_raw(19006), "Target Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let target_creature_id =
+            game.create_object_from_card(&target_creature, alice, Zone::Battlefield);
+
+        let ability = RedirectDamageToSourceController::new(
+            ObjectFilter::instant_or_sorcery().of_chosen_color(),
+            PlayerFilter::You,
+            "If instant or sorcery spell of the chosen color would deal damage to you, it deals that damage to its controller instead.",
+        );
+        let replacement = ability
+            .generate_replacement_effect(harsh_judgment_id, alice)
+            .expect("Harsh Judgment should generate a replacement effect");
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(replacement);
+
+        let nonchosen_damage = process_damage_assignments_with_event(
+            &mut game,
+            red_spell_id,
+            DamageTarget::Player(alice),
+            3,
+            false,
+            EventCause::from_effect(red_spell_id, bob),
+        );
+        assert_eq!(nonchosen_damage.assignments.len(), 1);
+        assert_eq!(
+            nonchosen_damage.assignments[0].target,
+            DamageTarget::Player(alice)
+        );
+        assert_eq!(nonchosen_damage.assignments[0].amount, 3);
+
+        let other_target_damage = process_damage_assignments_with_event(
+            &mut game,
+            white_spell_id,
+            DamageTarget::Object(target_creature_id),
+            2,
+            false,
+            EventCause::from_effect(white_spell_id, bob),
+        );
+        assert_eq!(other_target_damage.assignments.len(), 1);
+        assert_eq!(
+            other_target_damage.assignments[0].target,
+            DamageTarget::Object(target_creature_id)
+        );
+        assert_eq!(other_target_damage.assignments[0].amount, 2);
+
+        let chosen_sorcery_damage = process_damage_assignments_with_event(
+            &mut game,
+            white_spell_id,
+            DamageTarget::Player(alice),
+            5,
+            false,
+            EventCause::from_effect(white_spell_id, bob),
+        );
+        assert_eq!(chosen_sorcery_damage.assignments.len(), 1);
+        assert_eq!(
+            chosen_sorcery_damage.assignments[0].target,
+            DamageTarget::Player(bob)
+        );
+        assert_eq!(chosen_sorcery_damage.assignments[0].amount, 5);
     }
 
     #[test]

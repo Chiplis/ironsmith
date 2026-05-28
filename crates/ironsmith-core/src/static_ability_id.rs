@@ -163,6 +163,7 @@ pub enum StaticAbilityId {
     AddChosenCreatureType,
     SetChosenColor,
     RedirectDamageToSource,
+    RedirectDamageToSourceController,
     PreventAllDamageDealtByThisPermanent,
     PreventAllCombatDamageDealtByThisPermanent,
     PreventAllDamageDealtToCreatures,
@@ -404,6 +405,7 @@ impl StaticAbilityId {
             | AddChosenCreatureType
             | SetChosenColor
             | RedirectDamageToSource
+            | RedirectDamageToSourceController
             | PreventAllDamageDealtByThisPermanent
             | PreventAllCombatDamageDealtByThisPermanent
             | PreventAllDamageDealtToCreatures
