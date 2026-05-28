@@ -18,8 +18,8 @@ use super::super::token_primitives::{
     str_contains as string_contains,
 };
 use super::super::util::{
-    is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    span_from_tokens, token_index_for_word_index, trim_commas,
+    is_article, is_source_reference_words, mana_pips_from_token, parse_mana_symbol,
+    parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas,
 };
 use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
@@ -558,6 +558,57 @@ pub(crate) fn parse_simple_ability_duration(
         ));
     }
     None
+}
+
+fn grant_duration_from_until(duration: &Until) -> Option<crate::grant::GrantDuration> {
+    match duration {
+        Until::Forever => Some(crate::grant::GrantDuration::Forever),
+        Until::EndOfTurn => Some(crate::grant::GrantDuration::UntilEndOfTurn),
+        Until::YourNextTurn | Until::YourNextTurnEnd => {
+            Some(crate::grant::GrantDuration::UntilYourNextTurnEnd)
+        }
+        _ => None,
+    }
+}
+
+fn parse_explicit_flashback_grant_to_target(
+    subject_tokens: &[OwnedLexToken],
+    ability_tokens: &[OwnedLexToken],
+    duration: &Until,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let ability_tokens = trim_edge_punctuation(ability_tokens);
+    if ability_tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        != Some("flashback")
+    {
+        return Ok(None);
+    }
+
+    let mut pips = Vec::new();
+    for token in trim_commas(&ability_tokens[1..]) {
+        if let Some(group) = mana_pips_from_token(&token) {
+            pips.extend(group);
+        } else {
+            return Ok(None);
+        }
+    }
+    if pips.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(grant_duration) = grant_duration_from_until(duration) else {
+        return Ok(None);
+    };
+    let target = parse_target_phrase(subject_tokens)?;
+    let total_cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![pips]));
+    Ok(Some(EffectAst::subject_verb_grant_to_target(
+        target,
+        crate::grant::Grantable::AlternativeCast(
+            crate::alternative_cast::AlternativeCastingMethod::Flashback { total_cost },
+        ),
+        grant_duration,
+    )))
 }
 
 fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {
@@ -1272,6 +1323,15 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(None);
     }
     let ability_tokens = trim_commas(&tokens[ability_start_token_idx..ability_end_token_idx]);
+
+    if !losing {
+        let subject_tokens = trim_commas(&tokens[subject_start_token_idx..gain_token_idx]);
+        if let Some(effect) =
+            parse_explicit_flashback_grant_to_target(&subject_tokens, &ability_tokens, &duration)?
+        {
+            return Ok(Some(vec![effect]));
+        }
+    }
 
     let (mut abilities, grant_is_choice) =
         parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, !losing)?;

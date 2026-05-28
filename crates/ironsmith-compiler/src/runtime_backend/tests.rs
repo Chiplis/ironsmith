@@ -5267,6 +5267,25 @@ fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_grammar_entryp
 }
 
 #[test]
+fn target_gains_explicit_flashback_cost_until_end_of_turn_parses_as_grant() {
+    let tokens = lex_line(
+        "target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn",
+        0,
+    )
+    .expect("explicit flashback grant should lex");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("explicit flashback grant should parse as an effect sentence");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("GrantToTarget"), "{debug}");
+    assert!(debug.contains("Flashback"), "{debug}");
+    assert!(debug.contains("Generic(2)"), "{debug}");
+    assert!(debug.contains("Red"), "{debug}");
+    assert!(debug.contains("Green"), "{debug}");
+}
+
+#[test]
 fn rewrite_anthem_grant_static_parses_flashback_tail_without_word_view() {
     let tokens = lex_line(
         "During your turn, each instant and sorcery card in your graveyard has flashback. Its flashback cost is equal to its mana cost.",
