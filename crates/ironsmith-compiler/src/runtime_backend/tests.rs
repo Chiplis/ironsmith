@@ -8796,6 +8796,50 @@ fn rewrite_grammar_chosen_type_static_line_probes_match_keyword_static_shapes() 
 }
 
 #[test]
+fn rewrite_static_line_supports_painters_servant_chosen_color_clause() {
+    let tokens = lex_line(
+        "All cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors.",
+        0,
+    )
+    .expect("rewrite lexer should classify Painter's Servant chosen-color line");
+
+    assert_eq!(
+        super::lexer::parser_token_word_refs(&tokens),
+        vec![
+            "all",
+            "cards",
+            "that",
+            "arent",
+            "on",
+            "the",
+            "battlefield",
+            "spells",
+            "and",
+            "permanents",
+            "are",
+            "the",
+            "chosen",
+            "color",
+            "in",
+            "addition",
+            "to",
+            "their",
+            "other",
+            "colors",
+        ]
+    );
+
+    let parsed =
+        super::keyword_static::parse_all_cards_spells_permanents_add_chosen_color_line(&tokens)
+            .expect("Painter's Servant chosen-color line should parse");
+
+    assert!(matches!(
+        parsed,
+        Some(ability) if ability.id() == crate::static_abilities::StaticAbilityId::AddChosenColor
+    ));
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_supports_tivit_vote_trigger_body() {
     let triggered_tokens = lex_line(
         "Whenever this creature enters the battlefield or deals combat damage to a player, starting with you, each player votes for evidence or bribery. For each evidence vote, investigate. For each bribery vote, create a Treasure token. You may vote an additional time.",

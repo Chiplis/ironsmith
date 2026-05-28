@@ -245,6 +245,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         display: String,
     },
+    AddChosenColor {
+        filter: ObjectFilter,
+        display: String,
+    },
     SetChosenColor {
         filter: ObjectFilter,
         display: String,
@@ -936,6 +940,9 @@ where
             }
             StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
                 StaticAbilityPayload::AddChosenCreatureType { filter, display }
+            }
+            StaticAbilityPayload::AddChosenColor { filter, display } => {
+                StaticAbilityPayload::AddChosenColor { filter, display }
             }
             StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbilityPayload::SetChosenColor { filter, display }
@@ -2860,6 +2867,14 @@ impl<
             id: Some(StaticAbilityId::AddChosenCreatureType),
             label: display.clone(),
             payload: StaticAbilityPayload::AddChosenCreatureType { filter, display },
+        }
+    }
+    pub fn add_chosen_color(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddChosenColor),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddChosenColor { filter, display },
         }
     }
     pub fn set_chosen_color(filter: ObjectFilter, display: impl Into<String>) -> Self {
