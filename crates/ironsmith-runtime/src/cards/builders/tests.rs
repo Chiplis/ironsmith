@@ -2695,6 +2695,137 @@ fn test_chosen_creature_type_static_adds_selected_subtype() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn painters_servant_definition() -> CardDefinition {
+    parse_oracle_card_definition("Painter's Servant")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn painters_servant_strict_parse_and_compiled_text_regression() {
+    let def = painters_servant_definition();
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(ids.contains(&StaticAbilityId::ChooseColorAsEnters));
+    assert!(ids.contains(&StaticAbilityId::AddChosenColor));
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleFallbackText)
+            && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
+        "expected strict Painter's Servant static abilities, got {ids:?}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "As this creature enters, choose a color.\nAll cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn painters_servant_adds_chosen_color_to_permanents_spells_and_nonbattlefield_cards() {
+    let def = painters_servant_definition();
+    let red_creature = CardDefinitionBuilder::new(CardId::from_raw(391), "Red Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("")
+        .expect("red creature definition");
+    let green_spell = CardDefinitionBuilder::new(CardId::from_raw(392), "Green Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw a card.")
+        .expect("green spell definition");
+    let colorless_artifact =
+        CardDefinitionBuilder::new(CardId::from_raw(393), "Colorless Artifact")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text("")
+            .expect("colorless artifact definition");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let servant_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_chosen_color(servant_id, Color::Blue);
+    let permanent_id = game.create_object_from_definition(&red_creature, alice, Zone::Battlefield);
+    let hand_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Hand);
+    let graveyard_card_id =
+        game.create_object_from_definition(&green_spell, alice, Zone::Graveyard);
+    let exile_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Exile);
+    let library_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Library);
+    let spell_id = game.create_object_from_definition(&green_spell, alice, Zone::Stack);
+    let colorless_id =
+        game.create_object_from_definition(&colorless_artifact, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let permanent_colors = game.current_colors(permanent_id).expect("permanent colors");
+    assert!(permanent_colors.contains(Color::Red));
+    assert!(permanent_colors.contains(Color::Blue));
+
+    let hand_card_colors = game.current_colors(hand_card_id).expect("hand card colors");
+    assert!(hand_card_colors.contains(Color::Green));
+    assert!(hand_card_colors.contains(Color::Blue));
+
+    let graveyard_card_colors = game
+        .current_colors(graveyard_card_id)
+        .expect("graveyard card colors");
+    assert!(graveyard_card_colors.contains(Color::Green));
+    assert!(graveyard_card_colors.contains(Color::Blue));
+
+    let exile_card_colors = game.current_colors(exile_card_id).expect("exile card colors");
+    assert!(exile_card_colors.contains(Color::Green));
+    assert!(exile_card_colors.contains(Color::Blue));
+
+    let library_card_colors = game
+        .current_colors(library_card_id)
+        .expect("library card colors");
+    assert!(library_card_colors.contains(Color::Green));
+    assert!(library_card_colors.contains(Color::Blue));
+
+    let spell_colors = game.current_colors(spell_id).expect("spell colors");
+    assert!(spell_colors.contains(Color::Green));
+    assert!(spell_colors.contains(Color::Blue));
+
+    let artifact_colors = game.current_colors(colorless_id).expect("artifact colors");
+    assert!(artifact_colors.contains(Color::Blue));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn painters_servant_does_not_add_color_without_a_chosen_color() {
+    let def = painters_servant_definition();
+    let red_creature = CardDefinitionBuilder::new(CardId::from_raw(394), "Red Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("")
+        .expect("red creature definition");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let permanent_id = game.create_object_from_definition(&red_creature, alice, Zone::Battlefield);
+    let hand_card_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+    game.refresh_continuous_state();
+
+    let colors = game.current_colors(permanent_id).expect("permanent colors");
+    assert!(colors.contains(Color::Red));
+    assert!(!colors.contains(Color::Blue));
+
+    let hand_colors = game.current_colors(hand_card_id).expect("hand card colors");
+    assert!(hand_colors.contains(Color::Red));
+    assert!(!hand_colors.contains(Color::Blue));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_roaming_throne_variant_duplicates_matching_creature_triggers() {
     let throne_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Roaming Throne Variant")

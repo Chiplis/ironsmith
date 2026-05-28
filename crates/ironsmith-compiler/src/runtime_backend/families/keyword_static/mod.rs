@@ -6184,15 +6184,14 @@ pub(crate) fn parse_all_cards_spells_permanents_colorless_line(
 pub(crate) fn parse_all_cards_spells_permanents_add_chosen_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if matches!(
         words.as_slice(),
         [
             "all",
             "cards",
             "that",
-            "aren",
-            "t",
+            "arent",
             "on",
             "the",
             "battlefield",
@@ -6213,7 +6212,7 @@ pub(crate) fn parse_all_cards_spells_permanents_add_chosen_color_line(
     ) {
         return Ok(Some(StaticAbility::add_chosen_color(
             ObjectFilter::default(),
-            "All cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors.",
+            render_token_slice(tokens),
         )));
     }
 
