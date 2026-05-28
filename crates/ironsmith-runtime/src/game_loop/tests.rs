@@ -166,6 +166,30 @@ fn coalition_victory_does_not_win_without_each_creature_color() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn coalition_victory_only_counts_its_controllers_lands_and_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_coalition_victory_lands(&mut game, bob, true);
+    put_coalition_victory_creatures(&mut game, bob, true);
+
+    let coalition_victory = coalition_victory_definition();
+    let spell_id = game.create_object_from_definition(&coalition_victory, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("Coalition Victory should resolve");
+
+    assert!(
+        !game.player(alice).expect("alice exists").has_lost,
+        "Coalition Victory should not make the controller lose when only an opponent satisfies its gates"
+    );
+    assert!(
+        !game.player(bob).expect("bob exists").has_lost,
+        "Coalition Victory should only count permanents controlled by its controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn open_the_way_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_900), "Open the Way")
         .mana_cost(ManaCost::from_pips(vec![
