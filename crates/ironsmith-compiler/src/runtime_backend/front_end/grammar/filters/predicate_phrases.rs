@@ -1248,6 +1248,38 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if let Some(has_idx) = find_index(&filtered, |word| *word == "has" || *word == "have")
+        && has_idx > 0
+        && has_idx + 1 < filtered.len()
+    {
+        let subject_words = &filtered[..has_idx];
+        let is_source_subject = is_source_reference_words(subject_words)
+            || matches!(subject_words, ["it"] | ["its"]);
+        if is_source_subject
+            && let Some((constraint, consumed)) =
+                parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
+            && has_idx + 1 + consumed == filtered.len()
+        {
+            let mut filter = if matches!(subject_words, ["this" | "thiss" | "it" | "its"])
+            {
+                ObjectFilter::default()
+            } else if let Some(descriptor_words) = subject_words
+                .strip_prefix(&["this"])
+                .or_else(|| subject_words.strip_prefix(&["thiss"]))
+            {
+                let descriptor_tokens = descriptor_words
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                parse_object_filter(&descriptor_tokens, false).unwrap_or_default()
+            } else {
+                ObjectFilter::default()
+            };
+            apply_filter_keyword_constraint(&mut filter, constraint, false);
+            return Ok(PredicateAst::SourceMatches(filter));
+        }
+    }
+
     if matches!(
         filtered.as_slice(),
         [
@@ -3891,6 +3923,25 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::SourcePowerAtLeast(7));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_source_has_keyword() -> Result<(), CardTextError> {
+        let tokens = lex_line("If this creature has defender", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        let mut expected_filter = ObjectFilter::creature();
+        expected_filter
+            .static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Defender);
+        assert_eq!(parsed, PredicateAst::SourceMatches(expected_filter));
         Ok(())
     }
 }
