@@ -661,6 +661,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
+        single_static_ability_ast_rule!(parse_double_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_minimum_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
@@ -2917,6 +2918,122 @@ pub(crate) fn parse_damage_amount_replacement_line(
         delta,
         display,
     )))
+}
+
+pub(crate) fn parse_double_damage_amount_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    if !words.starts_with(&["if"]) {
+        return Ok(None);
+    }
+
+    let Some(would_idx) = find_window_by(&words, 4, |window| {
+        window == ["would", "deal", "damage", "to"]
+    })
+    else {
+        return Ok(None);
+    };
+    let Some(source_idx) = words[..would_idx]
+        .iter()
+        .position(|word| *word == "source")
+    else {
+        return Ok(None);
+    };
+    if source_idx <= 1 {
+        return Ok(None);
+    }
+
+    let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
+        window == ["it", "deals", "double", "that", "damage", "to"]
+    }) else {
+        return Ok(None);
+    };
+    let replacement_start = would_idx + 4 + tail_idx;
+    let damaged_words = &words[would_idx + 4..replacement_start];
+    let replacement_target_words = &words[replacement_start + 6..];
+    if damaged_words.is_empty()
+        || replacement_target_words.len() < 2
+        || replacement_target_words.first() != Some(&"that")
+        || replacement_target_words.last() != Some(&"instead")
+    {
+        return Ok(None);
+    }
+
+    let (target_player_filter, target_object_filter) =
+        parse_damage_amount_replacement_target_filters(damaged_words)?;
+    if target_player_filter.is_none() && target_object_filter.is_none() {
+        return Ok(None);
+    }
+
+    let source_start = token_index_for_word_index(&tokens, 1).unwrap_or(0);
+    let source_end = token_index_for_word_index(&tokens, source_idx).unwrap_or(tokens.len());
+    let source_tokens = trim_lexed_commas(&tokens[source_start..source_end]);
+    let mut source_filter = if source_tokens.is_empty()
+        || parser_token_word_refs(source_tokens).as_slice() == ["a"]
+        || parser_token_word_refs(source_tokens).as_slice() == ["an"]
+    {
+        ObjectFilter::default()
+    } else {
+        parse_object_filter_lexed(source_tokens, false)?
+    };
+
+    match &words[source_idx + 1..would_idx] {
+        ["you", "control"] => source_filter = source_filter.you_control(),
+        ["an", "opponent", "controls"] | ["opponent", "controls"] => {
+            source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
+        }
+        [] => {}
+        _ => return Ok(None),
+    }
+
+    let mut display = render_token_slice(&tokens).trim().to_string();
+    if !display.ends_with('.') {
+        display.push('.');
+    }
+
+    Ok(Some(StaticAbility::double_damage_amount_replacement(
+        source_filter,
+        target_player_filter,
+        target_object_filter,
+        display,
+    )))
+}
+
+fn parse_damage_amount_replacement_target_filters(
+    words: &[&str],
+) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    let words = strip_leading_article_words(words);
+    match words {
+        ["you"] => Ok((Some(PlayerFilter::You), None)),
+        ["opponent"] => Ok((Some(PlayerFilter::Opponent), None)),
+        ["player"] => Ok((Some(PlayerFilter::Any), None)),
+        ["enchanted", "player"] => Ok((
+            Some(PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))),
+            None,
+        )),
+        ["permanent"] => Ok((None, Some(ObjectFilter::permanent()))),
+        ["permanent", "or", "player"] | ["permanent", "or", "a", "player"] => {
+            Ok((Some(PlayerFilter::Any), Some(ObjectFilter::permanent())))
+        }
+        ["player", "or", "permanent"] | ["player", "or", "a", "permanent"] => {
+            Ok((Some(PlayerFilter::Any), Some(ObjectFilter::permanent())))
+        }
+        ["opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+        | ["opponent", "or", "permanent", "an", "opponent", "controls"] => Ok((
+            Some(PlayerFilter::Opponent),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+        )),
+        _ => Ok((None, None)),
+    }
+}
+
+fn strip_leading_article_words<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
+    match words {
+        ["a", rest @ ..] | ["an", rest @ ..] => rest,
+        _ => words,
+    }
 }
 
 pub(crate) fn parse_minimum_damage_amount_replacement_line(
