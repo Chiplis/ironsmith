@@ -2343,7 +2343,40 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects)
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_vote_with_drawn_count_followup_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_vote_with_drawn_count_followup_structural(effects: &[Effect]) -> Option<String> {
+    effects
+        .first()?
+        .downcast_ref::<crate::effects::VoteEffect>()?;
+
+    let mut saw_drawn_count_followup = false;
+    let mut sentences = vec![describe_effect(&effects[0])];
+    let mut idx = 1usize;
+    while idx < effects.len() {
+        if idx + 1 < effects.len()
+            && let Some(with_id) = effects[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(discard) = effects[idx + 1].downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(compact) = describe_draw_for_each_vote_then_discard_drawn(with_id, discard)
+        {
+            saw_drawn_count_followup = true;
+            sentences.push(compact);
+            idx += 2;
+            continue;
+        }
+
+        let rendered = describe_effect(&effects[idx]);
+        let trimmed = rendered.trim().trim_end_matches('.');
+        if trimmed.is_empty() || trimmed.contains(": ") {
+            return None;
+        }
+        sentences.push(trimmed.to_string());
+        idx += 1;
+    }
+
+    saw_drawn_count_followup.then(|| cleanup_decompiled_text(&sentences.join(". ")))
 }
 
 fn join_or_list(items: &[String]) -> Option<String> {
@@ -11971,6 +12004,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) = describe_choose_then_cant_pile_restriction(choose, cant)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(discard) = filtered[idx + 1].downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(compact) = describe_draw_for_each_vote_then_discard_drawn(with_id, discard)
         {
             parts.push(compact);
             idx += 2;
@@ -21611,6 +21653,37 @@ pub(super) fn describe_draw_then_discard(
         text.push_str(" at random");
     }
     Some(text)
+}
+
+fn describe_draw_for_each_vote_then_discard_drawn(
+    with_id: &crate::effects::WithIdEffect,
+    discard: &crate::effects::DiscardEffect,
+) -> Option<String> {
+    let repeat = with_id
+        .effect
+        .downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
+    let Value::VoteCount(option) = &repeat.count else {
+        return None;
+    };
+    let [draw_effect] = repeat.effects.as_slice() else {
+        return None;
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You
+        || discard.player != PlayerFilter::You
+        || draw.count != Value::Fixed(1)
+        || discard.count != Value::EffectValue(with_id.id)
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Draw a card for each {} vote. For each card drawn this way, discard a card",
+        option.to_ascii_lowercase()
+    ))
 }
 
 fn shared_draw_partner(filter: &PlayerFilter) -> String {
@@ -31404,22 +31477,6 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Starting with you, each player votes for {}{}", choices, suffix);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
-        if let Value::VoteCount(option) = &repeat.count
-            && repeat.effects.len() == 2
-            && let Some(draw) = repeat.effects[0].downcast_ref::<crate::effects::DrawCardsEffect>()
-            && let Some(discard) = repeat.effects[1].downcast_ref::<crate::effects::DiscardEffect>()
-            && draw.player == PlayerFilter::You
-            && discard.player == PlayerFilter::You
-            && draw.count == Value::Fixed(1)
-            && discard.count == Value::Fixed(1)
-            && !discard.random
-            && !discard.any_number
-        {
-            return format!(
-                "Draw a card for each {} vote. For each card drawn this way, discard a card",
-                option.to_ascii_lowercase()
-            );
-        }
         let repeated = describe_effect_list(&repeat.effects);
         let repeated = repeated.trim();
         if repeated.is_empty() {

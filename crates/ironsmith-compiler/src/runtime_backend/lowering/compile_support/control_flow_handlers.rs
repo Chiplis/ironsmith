@@ -937,10 +937,15 @@ pub(crate) fn compile_vote_sequence(
                         push_choice(&mut choices, choice);
                     }
                 } else {
-                    post_vote_effects.push(Effect::repeat_effects(
+                    let repeat_effect = Effect::repeat_effects(
                         Value::VoteCount(option.clone()),
                         repeat_effects,
-                    ));
+                    );
+                    post_vote_effects.push(if let Some(id) = annotated.assigned_effect_id {
+                        Effect::with_id(id.0, repeat_effect)
+                    } else {
+                        repeat_effect
+                    });
                     for choice in repeat_choices {
                         push_choice(&mut choices, choice);
                     }

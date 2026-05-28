@@ -1014,7 +1014,7 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
             }
             rewritten.push_str(&remaining[..marker_idx]);
             rewritten.push_str(&format!(
-                "For each {option} vote, draw a card, then discard a card"
+                "For each {option} vote, draw a card. Then discard that many cards"
             ));
             remaining = &remaining[option_end + suffix.len()..];
         }
