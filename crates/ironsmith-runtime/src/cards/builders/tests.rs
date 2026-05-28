@@ -35874,6 +35874,70 @@ fn essence_channeler_dies_trigger_moves_counters_to_controlled_creature() {
 }
 
 #[test]
+fn essence_channeler_dies_trigger_needs_a_controlled_creature_target() {
+    let def = parse_oracle_card_definition("Essence Channeler");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let channeler_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_303), "Opposing Bat")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.add_counters(channeler_id, crate::object::CounterType::PlusOnePlusOne, 2)
+        .expect("add counters to Essence Channeler");
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(channeler_id)
+            .expect("Essence Channeler should be on the battlefield"),
+        &game,
+    );
+    game.move_object_by_effect(channeler_id, Zone::Graveyard);
+
+    let dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            channeler_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &dies_event)
+        .into_iter()
+        .filter(|entry| entry.source == channeler_id)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Essence Channeler should still trigger when it dies before target selection"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("attempt to put Essence Channeler dies trigger on stack");
+
+    assert!(
+        game.stack_is_empty(),
+        "Essence Channeler's dies trigger should not go on the stack without a controlled creature target"
+    );
+    assert_eq!(
+        game.counter_count(bob_creature, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Essence Channeler should not move counters to an opponent's creature when no legal target exists"
+    );
+}
+
+#[test]
 fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
 

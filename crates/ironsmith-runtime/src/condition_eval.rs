@@ -762,13 +762,14 @@ fn evaluate_condition_shared_core(
             }))
         }
         Condition::PlayerLostLifeThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player) else {
-                return Some(false);
-            };
             Some(
-                game.turn_store
-                    .turn_history
-                    .player_lost_life_this_turn(player_id),
+                matching_condition_players_simple(game, ctx.controller, player)
+                    .into_iter()
+                    .any(|player_id| {
+                        game.turn_store
+                            .turn_history
+                            .player_lost_life_this_turn(player_id)
+                    }),
             )
         }
         Condition::PermanentLeftBattlefieldThisTurn => Some(
@@ -2441,12 +2442,13 @@ fn evaluate_condition_simple(
                 >= *count
         }
         Condition::PlayerLostLifeThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_lost_life_this_turn(player_id)
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    game.turn_store
+                        .turn_history
+                        .player_lost_life_this_turn(player_id)
+                })
         }
         Condition::CreatureDiedThisTurnOrMore(count) => {
             game.turn_store
@@ -3100,11 +3102,13 @@ fn evaluate_condition(
                 >= *count)
         }
         Condition::PlayerLostLifeThisTurn { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            Ok(game
-                .turn_store
-                .turn_history
-                .player_lost_life_this_turn(player_id))
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    game.turn_store
+                        .turn_history
+                        .player_lost_life_this_turn(player_id)
+                }))
         }
         Condition::CreatureDiedThisTurnOrMore(count) => Ok(game
             .turn_store
