@@ -182,7 +182,11 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
                 }
             }
             crate::alternative_cast::AlternativeCastingMethod::Flashback { .. } => {
-                CastingMethod::GrantedFlashback
+                CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone: Zone::Graveyard,
+                    use_alternative: Some(base_alt_idx + offset),
+                }
             }
             crate::alternative_cast::AlternativeCastingMethod::FromZone {
                 zone: Zone::Graveyard,

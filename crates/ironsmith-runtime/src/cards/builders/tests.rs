@@ -45919,6 +45919,133 @@ fn the_fugitive_doctor_runtime_grants_exact_flashback_cost_to_target_card() {
 }
 
 #[test]
+fn the_fugitive_doctor_granted_flashback_cast_uses_granted_cost_and_exiles() {
+    let def = parse_oracle_card_definition("The Fugitive Doctor");
+    let (_condition, _reflexive, grant) = the_fugitive_doctor_reflexive_flashback_grant(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_def =
+        CardDefinitionBuilder::new(CardId::new(), "The Fugitive Doctor Cost Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+    let target_id = game.create_object_from_definition(&target_def, alice, Zone::Graveyard);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    ctx.targets = vec![crate::effects::ResolvedTarget::Object(target_id)];
+    grant
+        .execute(&mut game, &mut ctx)
+        .expect("The Fugitive Doctor grant effect should resolve");
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let printed_cost_only_actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        !printed_cost_only_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                ..
+            } if *spell_id == target_id
+        )),
+        "granted flashback should not be castable for the target card's printed {{U}} cost"
+    );
+
+    let mana_pool = &mut game
+        .player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool;
+    mana_pool.empty();
+    mana_pool.add(ManaSymbol::Colorless, 2);
+    mana_pool.add(ManaSymbol::Red, 1);
+    mana_pool.add(ManaSymbol::Green, 1);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let cast_action = actions
+        .iter()
+        .find_map(|action| match action {
+            crate::decision::LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method,
+            } if *spell_id == target_id => Some(casting_method.clone()),
+            _ => None,
+        })
+        .expect("granted flashback should be castable for {2}{R}{G}");
+    assert!(
+        matches!(
+            cast_action,
+            crate::alternative_cast::CastingMethod::PlayFrom {
+                zone: Zone::Graveyard,
+                use_alternative: Some(_),
+                ..
+            }
+        ),
+        "granted flashback should preserve the granted method index, got {cast_action:?}"
+    );
+    let spell = game
+        .object(target_id)
+        .expect("target spell should still be in the graveyard");
+    let payable_cost = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        spell,
+        &cast_action,
+        Zone::Graveyard,
+    )
+    .expect("granted flashback should have a payable mana cost");
+    assert_eq!(
+        payable_cost,
+        ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ])
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::PriorityLoopState::new(game.players_in_game());
+    crate::apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id: target_id,
+            from_zone: Zone::Graveyard,
+            casting_method: cast_action,
+        }),
+    )
+    .expect("casting the granted flashback spell should succeed");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "casting through granted flashback should pay {{2}}{{R}}{{G}}"
+    );
+    crate::resolve_stack_entry(&mut game).expect("granted flashback spell should resolve");
+    assert!(
+        game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "The Fugitive Doctor Cost Probe")
+        }),
+        "the granted flashback spell should be exiled after resolving"
+    );
+}
+
+#[test]
 fn the_fugitive_doctor_flashback_target_legality_requires_your_graveyard_instant_or_sorcery() {
     let def = parse_oracle_card_definition("The Fugitive Doctor");
     let (_condition, _reflexive, grant) = the_fugitive_doctor_reflexive_flashback_grant(&def);
