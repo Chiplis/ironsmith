@@ -7765,6 +7765,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Opponent => {
                 "the total life your opponents lost this turn".to_string()
             }
+            PlayerFilter::Any => "the total life lost by all players this turn".to_string(),
             _ => format!(
                 "the total life {} lost this turn",
                 describe_player_filter(filter)

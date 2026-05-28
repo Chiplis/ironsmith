@@ -764,6 +764,24 @@ pub(crate) fn parse_life_equal_to_value(
     if matches!(
         amount_words.as_slice(),
         [
+            "equal", "to", "the", "total", "life", "lost", "by", "all", "players", "this",
+            "turn"
+        ] | [
+            "equal", "to", "total", "life", "lost", "by", "all", "players", "this",
+            "turn"
+        ] | [
+            "equal", "to", "the", "total", "amount", "of", "life", "lost", "by", "all",
+            "players", "this", "turn"
+        ] | [
+            "equal", "to", "total", "amount", "of", "life", "lost", "by", "all", "players",
+            "this", "turn"
+        ]
+    ) {
+        return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::Any)));
+    }
+    if matches!(
+        amount_words.as_slice(),
+        [
             "equal", "to", "the", "life", "that", "player", "lost", "this", "turn"
         ] | [
             "equal", "to", "life", "that", "player", "lost", "this", "turn"

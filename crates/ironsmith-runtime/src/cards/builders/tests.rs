@@ -9653,6 +9653,29 @@ fn parse_each_opponent_loses_life_equal_to_that_players_life_lost_this_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_tainted_sigil_strictly_parses_and_renders_total_life_lost() {
+    assert_oracle_card_parses_strict("Tainted Sigil");
+
+    let def = parse_oracle_card_definition("Tainted Sigil");
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "{T}, Sacrifice this artifact: You gain life equal to the total life lost by all players this turn."
+                .to_string(),
+        ],
+        "expected Tainted Sigil to render the all-players life-lost amount"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LifeLostThisTurn") && debug.contains("Any"),
+        "expected Tainted Sigil to structurally use all players' life lost this turn, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_one_or_more_etb_trigger_binds_that_much_to_zone_change_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Artillerist Variant")
         .card_types(vec![CardType::Creature])

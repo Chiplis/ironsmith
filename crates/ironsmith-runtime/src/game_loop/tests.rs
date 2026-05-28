@@ -12615,6 +12615,177 @@ fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn tainted_sigil_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Tainted Sigil")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{T}, Sacrifice this artifact: You gain life equal to the total life lost by all players this turn. (Damage causes loss of life.)",
+        )
+        .expect("Tainted Sigil should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_tainted_sigil_after_life_losses(
+    life_losses: &[(PlayerId, u32, bool)],
+) -> (GameState, crate::ids::StableId) {
+    use crate::decision::LegalAction;
+    use crate::decisions::context::DecisionContext;
+    use crate::events::{LifeLossEvent, RawEvent};
+    use crate::provenance::ProvNodeId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    for (player_id, amount, from_damage) in life_losses {
+        game.player_mut(*player_id)
+            .expect("life-loss player should exist")
+            .life -= *amount as i32;
+        let event = RawEvent::new(
+            LifeLossEvent::new(*player_id, *amount, *from_damage),
+            ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+    }
+
+    let sigil = tainted_sigil_definition();
+    let sigil_id = game.create_object_from_definition(&sigil, alice, Zone::Battlefield);
+    let sigil_stable_id = game
+        .object(sigil_id)
+        .expect("Tainted Sigil should exist")
+        .stable_id;
+    let ability_index = game
+        .object(sigil_id)
+        .expect("Tainted Sigil should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Tainted Sigil should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: sigil_id,
+            ability_index,
+        }),
+        &mut dm,
+    )
+    .expect("Tainted Sigil activation should start");
+
+    for _ in 0..4 {
+        if game.stack.len() == 1 {
+            resolve_stack_entry(&mut game).expect("Tainted Sigil ability should resolve");
+            return (game, sigil_stable_id);
+        }
+
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        let description = option.description.to_ascii_lowercase();
+                        description.contains("tap") || description.contains("sacrifice")
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("expected a tap or sacrifice cost option, got {ctx:?}")
+                    });
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("Tainted Sigil cost choice should apply")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                DecisionContext::SelectObjects(_),
+            ) => {
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::SacrificeTarget(sigil_id),
+                    &mut dm,
+                )
+                .expect("Tainted Sigil sacrifice choice should apply")
+            }
+            other => {
+                panic!("expected Tainted Sigil activation to advance through costs, got {other:?}")
+            }
+        };
+    }
+
+    panic!("Tainted Sigil activation did not reach the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_tainted_sigil_gains_total_life_lost_by_all_players_this_turn() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let (game, sigil_stable_id) =
+        activate_tainted_sigil_after_life_losses(&[(alice, 3, false), (bob, 4, true)]);
+    let graveyard_sigil_id = game
+        .find_object_by_stable_id(sigil_stable_id)
+        .expect("Tainted Sigil should remain tracked after sacrifice");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        24,
+        "Alice should gain the 7 total life lost by all players this turn, including damage-caused life loss"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        16,
+        "Tainted Sigil should not change the opponent's life total"
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(&graveyard_sigil_id),
+        "Tainted Sigil should be sacrificed as an activation cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_tainted_sigil_gains_no_life_when_no_player_lost_life_this_turn() {
+    let alice = PlayerId::from_index(0);
+
+    let (game, sigil_stable_id) = activate_tainted_sigil_after_life_losses(&[]);
+    let graveyard_sigil_id = game
+        .find_object_by_stable_id(sigil_stable_id)
+        .expect("Tainted Sigil should remain tracked after sacrifice");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        20,
+        "Tainted Sigil should gain 0 life when no player lost life this turn"
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(&graveyard_sigil_id),
+        "Tainted Sigil should still be sacrificed when the dynamic amount is zero"
+    );
+}
+
 #[test]
 fn test_source_lki_refreshes_when_exile_source_moves_it() {
     let mut game = setup_game();
