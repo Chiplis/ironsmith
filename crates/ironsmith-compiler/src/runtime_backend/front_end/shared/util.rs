@@ -544,7 +544,9 @@ pub(crate) fn classify_instead_followup_text(
         return crate::cards::builders::InsteadSemantics::NonReplacement;
     }
 
-    if str_contains(normalized.as_str(), " would ")
+    let first_instead = normalized.find("instead");
+    let first_would = normalized.find(" would ");
+    if first_would.is_some_and(|would| first_instead.is_none_or(|instead| would < instead))
         || str_contains(normalized.as_str(), "the next time")
     {
         return crate::cards::builders::InsteadSemantics::FutureReplacement;

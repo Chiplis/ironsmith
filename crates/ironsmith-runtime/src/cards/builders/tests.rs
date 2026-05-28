@@ -14056,6 +14056,168 @@ fn parse_prevent_all_combat_damage_requires_supported_tail() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_winds_of_qal_sisma_ferocious_is_self_replacement() {
+    let def = parse_oracle_card_definition("Winds of Qal Sisma");
+
+    let program = def.spell_effect.as_ref().expect("expected spell effects");
+    assert_eq!(
+        program.segments.len(),
+        1,
+        "Winds of Qal Sisma should lower the ferocious instead clause into the base prevention segment"
+    );
+    assert_eq!(
+        program.segments[0].default_effects.len(),
+        1,
+        "Winds of Qal Sisma should keep the non-ferocious prevention as the default branch"
+    );
+    assert_eq!(
+        program.segments[0].self_replacements.len(),
+        1,
+        "Winds of Qal Sisma should model ferocious as a spell self-replacement"
+    );
+
+    let debug = format!("{program:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("preventallcombatdamageeffect")
+            && debug.contains("target: all")
+            && debug.contains("preventalldamageeffect")
+            && debug.contains("combat_only: true")
+            && debug.contains("controller: some(")
+            && debug.contains("opponent")
+            && debug.contains("creature")
+            && debug.contains("greaterthanorequal")
+            && debug.contains("4"),
+        "expected Winds of Qal Sisma to keep default fog and ferocious opponent-creature prevention branches, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Prevent all combat damage that would be dealt this turn. If you control a creature with power 4 or greater, prevent all combat damage that would be dealt this turn by creatures your opponents control instead.",
+        "Winds of Qal Sisma compiled text should preserve the complete ferocious instead prevention clause"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "Winds of Qal Sisma should parse strictly without unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_winds_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_winds_of_qal_sisma(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+) {
+    let winds = parse_oracle_card_definition("Winds of Qal Sisma");
+    let spell_id = game.create_object_from_definition(&winds, controller, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, controller));
+    crate::game_loop::resolve_stack_entry_with(
+        game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Winds of Qal Sisma should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_winds_of_qal_sisma_without_ferocious_prevents_all_combat_damage() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let bob_attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
+
+    resolve_winds_of_qal_sisma(&mut game, alice);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bob_attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(bob_attacker, Vec::new());
+
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+
+    assert_eq!(events.len(), 1, "Bob's attacker should assign combat damage");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        20,
+        "without ferocious, Winds of Qal Sisma should prevent all combat damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_damage() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    create_winds_test_creature(&mut game, "Ferocious Creature", alice, 4, 4);
+    let alice_attacker = create_winds_test_creature(&mut game, "Alice Attacker", alice, 3, 3);
+    let bob_attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
+
+    resolve_winds_of_qal_sisma(&mut game, alice);
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(
+        shields.len(),
+        1,
+        "ferocious Winds of Qal Sisma should create only the narrowed prevention shield"
+    );
+    assert!(
+        shields[0].damage_filter.combat_only && shields[0].damage_filter.from_source.is_some(),
+        "ferocious Winds of Qal Sisma should prevent combat damage from a source filter, got {:?}",
+        shields[0]
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bob_attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: alice_attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(bob_attacker, Vec::new());
+    combat.blockers.insert(alice_attacker, Vec::new());
+
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+
+    assert_eq!(events.len(), 2, "both attackers should assign combat damage");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        20,
+        "ferocious Winds of Qal Sisma should prevent opposing creature combat damage"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        17,
+        "ferocious Winds of Qal Sisma should not prevent its controller's creature combat damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_prevent_next_damage_to_any_target_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Amulet of Kroog Variant")
         .parse_text(
