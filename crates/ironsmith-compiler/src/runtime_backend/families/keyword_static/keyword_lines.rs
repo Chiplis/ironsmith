@@ -1,13 +1,3 @@
-fn parser_text_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    tokens
-        .iter()
-        .filter_map(|token| match token.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Tilde => Some(token.parser_text()),
-            _ => None,
-        })
-        .collect()
-}
-
 pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
@@ -69,7 +59,8 @@ pub(crate) fn reject_unimplemented_keyword_actions(
 }
 
 pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let words = parser_text_words(tokens);
+    let words_view = crate::runtime_backend::lexer::TokenWordView::new(tokens);
+    let words = words_view.word_refs();
     let first_word_idx = if words.first().copied() == Some("and") {
         1
     } else {
@@ -87,6 +78,16 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
+        if value == "each"
+            && words.get(idx + 2).copied() == Some("mana")
+            && words.get(idx + 3).copied() == Some("value")
+            && words.get(idx + 4).copied() == Some("among")
+        {
+            let filter_start = words_view.token_index_for_word_index(idx + 5)?;
+            let filter_tokens = trim_commas(&tokens[filter_start..]);
+            let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+            return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
+        }
         if matches!(value, "permanent" | "permanents")
             && words.get(idx + 2).copied() == Some("with")
         {

@@ -35368,6 +35368,30 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
     );
 }
 
+#[test]
+fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Artifacts you control have protection from each mana value among artifacts you control."
+                .to_string(),
+            "Partner".to_string(),
+        ],
+        "Rebbec, Architect of Ascension should render mana-value protection exactly"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("GrantAbility")
+            && ability_debug.contains("EachManaValueAmong")
+            && ability_debug.contains("Artifact"),
+        "Rebbec, Architect of Ascension should structurally grant artifact mana-value protection, got {ability_debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_sporeweb_weaver_strict_regression() {

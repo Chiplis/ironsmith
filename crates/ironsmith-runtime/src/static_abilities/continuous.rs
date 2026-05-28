@@ -1995,6 +1995,9 @@ impl StaticAbilityKind for GrantAbility {
             grant_subject_text(&self.filter)
         };
         let mut ability_text = self.ability.display();
+        if self.ability.is_keyword() {
+            ability_text = lowercase_first_ascii(&ability_text);
+        }
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
@@ -4083,6 +4086,9 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         }
 
         let filter_desc = self.filter.description();
+        if matches!(&self.ability.kind, AbilityKind::Static(static_ability) if static_ability.is_keyword()) {
+            ability_text = lowercase_first_ascii(&ability_text);
+        }
         let rendered_ability = match self.ability.kind {
             AbilityKind::Activated(_) | AbilityKind::Triggered(_) => {
                 if !ability_text.ends_with('.') {

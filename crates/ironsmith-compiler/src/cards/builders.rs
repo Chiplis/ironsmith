@@ -417,6 +417,13 @@ impl CardDefinitionBuilder {
                 ))
             }
             KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
+            KeywordAction::ProtectionFromEachManaValueAmong(filter) => self.with_ability(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::protection(
+                        crate::ability::ProtectionFrom::EachManaValueAmong(filter),
+                    ),
+                ),
+            ),
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
