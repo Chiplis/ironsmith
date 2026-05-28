@@ -27512,6 +27512,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(mill) = effect.downcast_ref::<crate::effects::MillEffect>() {
+        if mill.player == PlayerFilter::You {
+            if mill.count == Value::X {
+                return "Mill X cards".to_string();
+            }
+            if value_prefers_where_x(&mill.count)
+                && let Some(where_x) = describe_where_x_basis(&mill.count)
+            {
+                return format!("Mill X cards, where X is {where_x}");
+            }
+            let count_text = describe_card_count(&mill.count);
+            if let Some(rest) = count_text.strip_prefix("the number of ") {
+                let basis = singularize_for_each_basis(rest.strip_suffix(" cards").unwrap_or(rest));
+                return format!("Mill a card for each {basis}");
+            }
+            return format!("Mill {count_text}");
+        }
         let player = describe_player_filter(&mill.player);
         if mill.count == Value::X {
             return format!(

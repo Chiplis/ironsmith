@@ -658,6 +658,40 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
     ))
 }
 
+fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 6 || words[0] != "there" || words[1] != "is" {
+        return None;
+    }
+
+    let in_idx = words
+        .iter()
+        .enumerate()
+        .skip(2)
+        .find_map(|(idx, word)| (*word == "in").then_some(idx))?;
+    if in_idx <= 2 {
+        return None;
+    }
+    if !matches!(
+        &words[in_idx..],
+        ["in", "your", "graveyard"] | ["in", "graveyard"] | ["in", "the", "graveyard"]
+    ) {
+        return None;
+    }
+
+    let descriptor_tokens = words[2..in_idx]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let mut filter = parse_object_filter(&descriptor_tokens, false).ok()?;
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+
+    Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    })
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -790,6 +824,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_card_in_your_graveyard_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -3864,6 +3902,31 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_card_in_your_graveyard_existence() -> Result<(), CardTextError> {
+        let tokens = lex_line("If there is an Elf card in your graveyard", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        let mut expected_filter = ObjectFilter::default()
+            .with_subtype(parse_subtype_word("elf").expect("elf subtype"))
+            .in_zone(Zone::Graveyard);
+        expected_filter.owner = Some(PlayerFilter::You);
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: expected_filter,
+            }
         );
         Ok(())
     }

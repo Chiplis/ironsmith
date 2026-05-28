@@ -68,6 +68,37 @@ fn desmond_miles_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn trystan_callous_cultivator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(
+        CardId::from_raw(72_920),
+        "Trystan, Callous Cultivator // Trystan, Penitent Culler",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(2)],
+        vec![ManaSymbol::Green],
+    ]))
+    .supertypes(vec![Supertype::Legendary])
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Elf, Subtype::Druid])
+    .power_toughness(PowerToughness::fixed(3, 4))
+    .parse_text(
+        "Deathtouch\n\
+         Whenever this creature enters or transforms into Trystan, Callous Cultivator, mill three cards. Then if there is an Elf card in your graveyard, you gain 2 life.\n\
+         At the beginning of your first main phase, you may pay {B}. If you do, transform Trystan.",
+    )
+    .expect("Trystan, Callous Cultivator should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn trystan_test_card(name: &str, subtypes: Vec<Subtype>) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(subtypes)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_930), "Merfolk Cave-Diver")
         .mana_cost(ManaCost::from_pips(vec![
@@ -192,6 +223,111 @@ fn desmond_miles_counts_other_assassins_and_assassin_cards_in_your_graveyard() {
         game.calculated_power(desmond_id),
         Some(3),
         "an Assassin card in your graveyard should add another +1/+0"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_callous_cultivator_enters_gains_life_when_elf_card_is_in_your_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let trystan = trystan_callous_cultivator_definition();
+    let trystan_id = game.create_object_from_definition(&trystan, alice, Zone::Hand);
+    let elf = trystan_test_card("Trystan Test Elf", vec![Subtype::Elf]);
+    let non_elf = trystan_test_card("Trystan Test Soldier", vec![Subtype::Soldier]);
+    game.create_object_from_definition(&elf, alice, Zone::Graveyard);
+    for _ in 0..3 {
+        game.create_object_from_definition(&non_elf, alice, Zone::Library);
+    }
+
+    assert!(
+        game.move_object_by_effect(trystan_id, Zone::Battlefield)
+            .is_some(),
+        "Trystan should enter the battlefield"
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Trystan trigger should stack");
+    assert_eq!(game.stack.len(), 1, "expected Trystan enter trigger");
+    resolve_stack_entry(&mut game).expect("Trystan enter trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        22,
+        "Trystan should gain 2 life when an Elf card is in your graveyard"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        4,
+        "Trystan should mill three cards before checking the Elf-card condition"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_callous_cultivator_enters_does_not_gain_life_without_elf_card_in_your_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let trystan = trystan_callous_cultivator_definition();
+    let trystan_id = game.create_object_from_definition(&trystan, alice, Zone::Hand);
+    let non_elf = trystan_test_card("Trystan Test Soldier", vec![Subtype::Soldier]);
+    for _ in 0..3 {
+        game.create_object_from_definition(&non_elf, alice, Zone::Library);
+    }
+
+    assert!(
+        game.move_object_by_effect(trystan_id, Zone::Battlefield)
+            .is_some(),
+        "Trystan should enter the battlefield"
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Trystan trigger should stack");
+    resolve_stack_entry(&mut game).expect("Trystan enter trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "Trystan should not gain life without an Elf card in your graveyard"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        3,
+        "Trystan should still mill three cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_callous_cultivator_transform_trigger_uses_same_elf_graveyard_condition() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let trystan = trystan_callous_cultivator_definition();
+    let trystan_id = game.create_object_from_definition(&trystan, alice, Zone::Battlefield);
+    let elf = trystan_test_card("Trystan Test Elf", vec![Subtype::Elf]);
+    let non_elf = trystan_test_card("Trystan Test Soldier", vec![Subtype::Soldier]);
+    game.create_object_from_definition(&elf, alice, Zone::Graveyard);
+    for _ in 0..3 {
+        game.create_object_from_definition(&non_elf, alice, Zone::Library);
+    }
+
+    let transformed = TriggerEvent::new_with_provenance(
+        crate::events::other::TransformedEvent::new(trystan_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &transformed) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Trystan transform trigger should stack");
+    assert_eq!(game.stack.len(), 1, "expected Trystan transform trigger");
+    resolve_stack_entry(&mut game).expect("Trystan transform trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        22,
+        "Trystan should gain 2 life from the transform trigger when an Elf card is in your graveyard"
     );
 }
 

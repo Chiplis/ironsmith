@@ -35370,6 +35370,30 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn trystan_callous_cultivator_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition(
+        "Trystan, Callous Cultivator // Trystan, Penitent Culler",
+    );
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Whenever this creature enters or transforms into Trystan")
+            && rendered.contains("mill three cards")
+            && rendered.contains("Then if there is an Elf card in your graveyard, you gain 2 life"),
+        "expected Trystan's enter-or-transform trigger and Elf-card graveyard condition, got {rendered}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().contains("enters or transforms")
+        )),
+        "expected Trystan to compile an enter-or-transform triggered ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sporeweb_weaver_strict_regression() {
     assert_oracle_card_parses_strict("Sporeweb Weaver");
     let def = parse_oracle_card_definition("Sporeweb Weaver");

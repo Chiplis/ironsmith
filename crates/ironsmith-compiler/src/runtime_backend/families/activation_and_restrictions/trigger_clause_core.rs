@@ -1041,6 +1041,22 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
 
         let subject_tokens = &tokens[..enters_token_idx];
+        if words.get(enters_word_idx + 1..enters_word_idx + 4)
+            == Some(&["or", "transforms", "into"][..])
+            || words.get(enters_word_idx + 1..enters_word_idx + 4)
+                == Some(&["or", "transform", "into"][..])
+        {
+            let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_word_view.to_word_refs();
+            if is_source_reference_words(&subject_words) {
+                return Ok(TriggerSpec::Either(
+                    Box::new(this_enters_battlefield_trigger_spec(
+                        source_reference_surface_for_trigger_subject(subject_tokens),
+                    )),
+                    Box::new(TriggerSpec::ThisTransforms),
+                ));
+            }
+        }
         if let Some(or_idx) =
             find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
         {

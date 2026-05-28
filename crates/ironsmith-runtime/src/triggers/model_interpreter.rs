@@ -386,6 +386,7 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::DayNightChanged => crate::triggers::Trigger::day_night_changed(),
         TriggerKind::ThisEntersBattlefield => crate::triggers::Trigger::this_enters_battlefield(),
+        TriggerKind::ThisTransforms => crate::triggers::Trigger::transforms(),
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {
             action,

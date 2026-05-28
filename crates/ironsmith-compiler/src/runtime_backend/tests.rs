@@ -8945,6 +8945,11 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     .expect("rewrite lexer should classify exile zone-change trigger probe");
     let dealt_combat_damage_tokens = lex_line("this creature is dealt combat damage", 0)
         .expect("rewrite lexer should classify dealt-combat-damage trigger probe");
+    let enters_or_transforms_tokens = lex_line(
+        "this creature enters or transforms into Trystan, Callous Cultivator",
+        0,
+    )
+    .expect("rewrite lexer should classify enter-or-transform trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -8986,6 +8991,19 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
+    let enters_or_transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &enters_or_transforms_tokens,
+        );
+    assert!(
+        matches!(
+            enters_or_transforms,
+            Ok(crate::cards::builders::TriggerSpec::Either(left, right))
+                if matches!(*left, crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
+                    && matches!(*right, crate::cards::builders::TriggerSpec::ThisTransforms)
+        ),
+        "expected enter-or-transform trigger pair, got {enters_or_transforms:?}"
+    );
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &spell_tokens,

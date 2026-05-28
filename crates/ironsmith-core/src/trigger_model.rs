@@ -262,6 +262,7 @@ pub enum TriggerKind {
     },
     DayNightChanged,
     ThisEntersBattlefield,
+    ThisTransforms,
     YouCastThisSpell,
     KeywordActionMatchingObject {
         action: KeywordActionKind,
@@ -920,6 +921,9 @@ impl Trigger {
             "this_enters_battlefield",
             TriggerKind::ThisEntersBattlefield,
         )
+    }
+    pub fn transforms() -> Self {
+        Self::typed("this_transforms", TriggerKind::ThisTransforms)
     }
     pub fn you_cast_this_spell() -> Self {
         Self::typed("you_cast_this_spell", TriggerKind::YouCastThisSpell)

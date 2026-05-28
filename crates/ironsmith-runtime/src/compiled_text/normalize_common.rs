@@ -10216,6 +10216,25 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if matches!(
+                filter.zone,
+                Some(
+                    Zone::Graveyard
+                        | Zone::Hand
+                        | Zone::Library
+                        | Zone::Exile
+                        | Zone::Command
+                )
+            ) {
+                let mut described_filter = filter.clone();
+                if described_filter.owner.is_none() {
+                    described_filter.owner = Some(player.clone());
+                }
+                return format!(
+                    "there is {}",
+                    with_indefinite_article(&described_filter.description())
+                );
+            }
             if is_owned_player_zone(filter.zone) {
                 let object_text = with_indefinite_article(&describe_owned_player_zone_filter(
                     player, filter,
@@ -10234,23 +10253,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 .is_some_and(|controller| controller == player)
             {
                 described_filter.controller = None;
-            }
-            if matches!(
-                described_filter.zone,
-                Some(
-                    Zone::Graveyard
-                        | Zone::Hand
-                        | Zone::Library
-                        | Zone::Exile
-                        | Zone::Command
-                )
-            ) {
-                // For non-battlefield zones, the condition is about card presence rather than
-                // "control". Prefer oracle-style existential phrasing.
-                if described_filter.owner.is_none() {
-                    described_filter.owner = Some(player.clone());
-                }
-                return format!("there is {}", described_filter.description());
             }
             if described_filter.could_be_targeted_by.is_some() {
                 let described =

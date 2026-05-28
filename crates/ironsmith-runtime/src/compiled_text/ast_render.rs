@@ -752,6 +752,9 @@ fn substitute_legendary_source_reference(
     }
 
     let lower = line.to_ascii_lowercase();
+    if lower.contains("transforms into this creature") {
+        return line.replace("transforms into this creature", &format!("transforms into {}", card.name));
+    }
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")

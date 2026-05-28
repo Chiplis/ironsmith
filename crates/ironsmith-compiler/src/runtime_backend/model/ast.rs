@@ -311,6 +311,7 @@ pub(crate) enum TriggerSpec {
         from: Zone,
         owner: Option<PlayerFilter>,
     },
+    ThisTransforms,
     ThisDealsCombatDamageToPlayer,
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
