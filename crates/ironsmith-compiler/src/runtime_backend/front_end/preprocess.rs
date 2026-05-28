@@ -459,6 +459,8 @@ fn replace_names_with_map(
                         | b"deals"
                         | b"enter"
                         | b"enters"
+                        | b"leave"
+                        | b"leaves"
                         | b"power"
                         | b"toughness"
                 )

@@ -346,6 +346,7 @@ pub struct ObjectFilter {
     pub zone: Option<Zone>,
     pub controller: Option<PlayerFilter>,
     pub cast_by: Option<PlayerFilter>,
+    pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
     pub owner: Option<PlayerFilter>,
     pub single_graveyard: bool,
@@ -1212,6 +1213,9 @@ impl ObjectFilter {
 
         if let Some(cast_by) = &self.cast_by {
             post_noun_qualifiers.push(format!("cast by {}", describe_player_filter(cast_by)));
+        }
+        if self.cast_this_turn {
+            post_noun_qualifiers.push("cast this turn".to_string());
         }
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());

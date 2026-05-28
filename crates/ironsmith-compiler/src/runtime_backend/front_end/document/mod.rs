@@ -925,6 +925,11 @@ fn normalize_named_source_trigger_for_builder(
     let trimmed = text.trim();
     let lower = trimmed.to_ascii_lowercase();
     if let Some((trigger_head, effect_body)) = str_split_once(lower.as_str(), ",") {
+        if trigger_head.contains(" leaves the battlefield")
+            && normalized_line_mentions_source_alias(builder, trigger_head)
+        {
+            return None;
+        }
         let rewritten_head =
             normalize_named_source_trigger_head_for_builder(builder, trigger_head)?;
         let names = source_name_aliases_for_builder(builder);

@@ -190,6 +190,17 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
+        if value == "spells" || value == "spell" {
+            return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
+        }
+        if matches!(value, "permanent" | "permanents")
+            && words.get(idx + 2..idx + 7)
+                == Some(&["that", "were", "cast", "this", "turn"][..])
+        {
+            let mut filter = ObjectFilter::permanent();
+            filter.cast_this_turn = true;
+            return Some(KeywordAction::ProtectionFromFilter(filter));
+        }
         if matches!(value, "permanent" | "permanents")
             && words.get(idx + 2).copied() == Some("with")
         {
@@ -540,6 +551,17 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
         let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
             let value = *words.get(idx + 1)?;
+            if value == "spells" || value == "spell" {
+                return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
+            }
+            if matches!(value, "permanent" | "permanents")
+                && words.get(idx + 2..idx + 7)
+                    == Some(&["that", "were", "cast", "this", "turn"][..])
+            {
+                let mut filter = ObjectFilter::permanent();
+                filter.cast_this_turn = true;
+                return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
             if matches!(value, "permanent" | "permanents")
                 && words.get(idx + 2).copied() == Some("with")
             {

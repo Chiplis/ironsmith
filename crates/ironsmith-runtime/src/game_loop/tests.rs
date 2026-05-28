@@ -12091,6 +12091,197 @@ fn test_resolution_target_validation_uses_source_lki_for_protection() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn emrakul_the_world_anew_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(124_010), "Emrakul, the World Anew")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(12)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .power_toughness(PowerToughness::fixed(12, 12))
+        .parse_text(
+            "When you cast this spell, gain control of all creatures target player controls.\n\
+             Flying, protection from spells and from permanents that were cast this turn\n\
+             When Emrakul leaves the battlefield, sacrifice all creatures you control.\n\
+             Madness—Pay six {C}.",
+        )
+        .expect("Emrakul, the World Anew should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stage_spell_cast_for_test(game: &mut GameState, object_id: ObjectId, caster: PlayerId) {
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(object_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.stage_turn_history_event(&event);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn emrakul_the_world_anew_cast_trigger_gains_control_of_target_players_creatures() {
+    #[derive(Debug)]
+    struct ChoosePlayerDecisionMaker {
+        player: PlayerId,
+    }
+
+    impl DecisionMaker for ChoosePlayerDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            ctx.requirements
+                .iter()
+                .map(|requirement| {
+                    let target = Target::Player(self.player);
+                    assert!(
+                        requirement.legal_targets.contains(&target),
+                        "chosen Emrakul target player should be legal"
+                    );
+                    target
+                })
+                .collect()
+        }
+    }
+
+    let mut game = setup_three_player_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let bob_first = create_creature(&mut game, "Bob Creature One", bob, 2, 2);
+    let bob_second = create_creature(&mut game, "Bob Creature Two", bob, 3, 3);
+    let charlie_creature = create_creature(&mut game, "Charlie Creature", charlie, 4, 4);
+    let alice_creature = create_creature(&mut game, "Alice Creature", alice, 1, 1);
+
+    let emrakul = emrakul_the_world_anew_definition();
+    let emrakul_id = game.create_object_from_definition(&emrakul, alice, Zone::Stack);
+    let (emrakul_stable_id, emrakul_name) = game
+        .object(emrakul_id)
+        .map(|object| (object.stable_id, object.name.clone()))
+        .expect("Emrakul spell should exist on the stack");
+    game.push_to_stack(
+        StackEntry::new(emrakul_id, alice).with_source_info(emrakul_stable_id, emrakul_name),
+    );
+
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(emrakul_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut ChoosePlayerDecisionMaker { player: bob },
+    )
+    .expect("Emrakul's cast trigger should go on the stack");
+
+    resolve_stack_entry(&mut game).expect("Emrakul's cast trigger should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(game.current_controller(bob_first), Some(alice));
+    assert_eq!(game.current_controller(bob_second), Some(alice));
+    assert_eq!(game.current_controller(charlie_creature), Some(charlie));
+    assert_eq!(game.current_controller(alice_creature), Some(alice));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn emrakul_the_world_anew_leaves_trigger_sacrifices_only_your_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let emrakul = emrakul_the_world_anew_definition();
+    let emrakul_id = game.create_object_from_definition(&emrakul, alice, Zone::Battlefield);
+    let alice_first = create_creature(&mut game, "Alice Creature One", alice, 2, 2);
+    let alice_second = create_creature(&mut game, "Alice Creature Two", alice, 3, 3);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 4, 4);
+
+    game.move_object_by_effect(emrakul_id, Zone::Graveyard)
+        .expect("Emrakul should move to the graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Emrakul's leaves trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Emrakul's leaves trigger should resolve");
+
+    assert!(!game.battlefield.contains(&alice_first));
+    assert!(!game.battlefield.contains(&alice_second));
+    assert!(game.battlefield.contains(&bob_creature));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn emrakul_the_world_anew_protection_rejects_spell_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let emrakul = emrakul_the_world_anew_definition();
+    let emrakul_id = game.create_object_from_definition(&emrakul, bob, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let spell = CardDefinitionBuilder::new(CardId::from_raw(124_011), "Targeting Spell")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature.")
+        .expect("targeted spell should parse");
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    assert!(
+        crate::targeting::has_protection_from_source(&game, emrakul_id, spell_id),
+        "Emrakul should have protection from spell sources"
+    );
+    let entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(emrakul_id)]);
+
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    assert!(valid_targets.is_empty(), "Emrakul should have protection from spells");
+    assert!(all_targets_invalid, "a spell with only Emrakul as target should fizzle");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let emrakul = emrakul_the_world_anew_definition();
+    let emrakul_id = game.create_object_from_definition(&emrakul, bob, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let cast_source = create_creature(&mut game, "Fresh Ability Source", alice, 2, 2);
+    stage_spell_cast_for_test(&mut game, cast_source, alice);
+    let cast_entry = StackEntry::ability(
+        cast_source,
+        alice,
+        vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+    )
+    .with_targets(vec![Target::Object(emrakul_id)]);
+    let (cast_valid_targets, _, cast_all_invalid) = validate_stack_entry_targets(&game, &cast_entry);
+    assert!(
+        cast_valid_targets.is_empty(),
+        "Emrakul should have protection from permanents that were cast this turn"
+    );
+    assert!(cast_all_invalid);
+
+    let old_source = create_creature(&mut game, "Old Ability Source", alice, 2, 2);
+    let old_entry = StackEntry::ability(
+        old_source,
+        alice,
+        vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+    )
+    .with_targets(vec![Target::Object(emrakul_id)]);
+    let (old_valid_targets, _, old_all_invalid) = validate_stack_entry_targets(&game, &old_entry);
+    assert_eq!(
+        old_valid_targets,
+        vec![crate::effects::ResolvedTarget::Object(emrakul_id)],
+        "Emrakul should not have protection from permanents that were not cast this turn"
+    );
+    assert!(!old_all_invalid);
+}
+
 #[test]
 fn test_resolution_player_target_validation_uses_source_lki_for_source_filter() {
     let mut game = setup_game();

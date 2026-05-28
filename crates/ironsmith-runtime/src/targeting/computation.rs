@@ -321,8 +321,11 @@ pub(crate) fn source_matches_protection_with_view(
         ProtectionFrom::CardType(card_type) => view.object_has_card_type(source.id, *card_type),
         // Protection from permanents matching a filter
         ProtectionFrom::Permanents(filter) => {
-            // Use active player for context since we don't have a specific controller
-            let filter_ctx = game.filter_context_for(game.turn.active_player, None);
+            let controller = game.controller_of(source);
+            let mut filter_ctx = game.filter_context_for(controller, Some(source.id));
+            if source.zone == Zone::Stack {
+                filter_ctx.caster = Some(controller);
+            }
             filter.matches(source, &filter_ctx, game)
         }
         // Protection from everything
@@ -347,7 +350,10 @@ fn source_snapshot_matches_protection(
         ProtectionFrom::ChosenColor => false,
         ProtectionFrom::CardType(card_type) => source.card_types.contains(card_type),
         ProtectionFrom::Permanents(filter) => {
-            let filter_ctx = game.filter_context_for(game.turn.active_player, None);
+            let mut filter_ctx = game.filter_context_for(source.controller, Some(source.object_id));
+            if source.zone == Zone::Stack {
+                filter_ctx.caster = Some(source.controller);
+            }
             filter.matches_snapshot(source, &filter_ctx, game)
         }
         ProtectionFrom::Everything => true,

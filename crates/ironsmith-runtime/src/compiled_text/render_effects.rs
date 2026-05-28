@@ -17685,7 +17685,11 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
         } else if let Some(rest) = noun.strip_prefix("an ") {
             noun = rest.to_string();
         }
-        return format!("{player} {verb} all {}", pluralize_noun_phrase(&noun));
+        let subject = pluralize_noun_phrase(&noun);
+        if matches!(sacrifice.player, PlayerFilter::You) {
+            return format!("Sacrifice all {subject}");
+        }
+        return format!("{player} {verb} all {subject}");
     }
     if matches!(sacrifice.count, Value::Fixed(value) if *value == 1) {
         let description = sacrifice.filter.description();

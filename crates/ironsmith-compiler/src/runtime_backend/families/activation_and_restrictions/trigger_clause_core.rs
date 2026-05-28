@@ -31,6 +31,15 @@ fn this_enters_battlefield_trigger_spec(
     }
 }
 
+fn this_leaves_battlefield_trigger_spec(
+    surface: Option<crate::target::SourceReferenceSurface>,
+) -> TriggerSpec {
+    match surface {
+        Some(surface) => TriggerSpec::ThisLeavesBattlefieldWithSurface(surface),
+        None => TriggerSpec::ThisLeavesBattlefield,
+    }
+}
+
 pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         if !token.is_word("or") {
@@ -927,6 +936,12 @@ pub(crate) fn parse_trigger_clause_lexed(
             .token_index_for_word_index(leaves_word_idx)
             .unwrap_or(tokens.len());
         let subject_tokens = &tokens[..leaves_token_idx];
+
+        if let Some(surface) =
+            source_reference_surface_for_trigger_subject(strip_leading_trigger_intro(subject_tokens))
+        {
+            return Ok(this_leaves_battlefield_trigger_spec(Some(surface)));
+        }
 
         if let Some(or_idx) =
             find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))

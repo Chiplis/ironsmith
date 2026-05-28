@@ -13143,6 +13143,34 @@ fn parse_protection_from_spells_that_are_one_or_more_colors() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_emrakul_the_world_anew_strict_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(124_001), "Emrakul, the World Anew")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(12)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .power_toughness(PowerToughness::fixed(12, 12))
+        .parse_text(
+            "When you cast this spell, gain control of all creatures target player controls.\n\
+             Flying, protection from spells and from permanents that were cast this turn\n\
+             When Emrakul leaves the battlefield, sacrifice all creatures you control.\n\
+             Madness—Pay six {C}.",
+        )
+        .expect("Emrakul, the World Anew should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "When you cast this spell, gain control of all creatures target player controls.\n\
+         Flying, protection from spells and from permanents that were cast this turn\n\
+         When Emrakul leaves the battlefield, sacrifice all creatures you control.\n\
+         Madness—Pay six {C}.",
+        "Emrakul's strict parser output should preserve every oracle clause"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Ghastly Conscription Variant")
         .parse_text(

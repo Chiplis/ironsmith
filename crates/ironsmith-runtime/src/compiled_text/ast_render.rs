@@ -1818,7 +1818,7 @@ pub(super) fn describe_alternative_cast_line(
             }
             line
         }
-        AlternativeCastingMethod::Madness { cost } => format!("Madness {}", cost.to_oracle()),
+        AlternativeCastingMethod::Madness { cost } => render_madness_cost(cost),
         AlternativeCastingMethod::Miracle { cost } => format!("Miracle {}", cost.to_oracle()),
         AlternativeCastingMethod::FlashWithAdditionalCost {
             additional_cost, ..
@@ -1918,6 +1918,19 @@ pub(super) fn describe_alternative_cast_line(
             }
         }
     }
+}
+
+fn render_madness_cost(cost: &crate::mana::ManaCost) -> String {
+    let pips = cost.pips();
+    if !pips.is_empty()
+        && pips
+            .iter()
+            .all(|pip| matches!(pip.as_slice(), [crate::mana::ManaSymbol::Colorless]))
+    {
+        let amount = small_number_word(pips.len() as u32).unwrap_or_else(|| pips.len().to_string());
+        return format!("Madness—Pay {amount} {{C}}");
+    }
+    format!("Madness {}", cost.to_oracle())
 }
 
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {

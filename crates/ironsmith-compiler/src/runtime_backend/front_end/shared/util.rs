@@ -4055,11 +4055,15 @@ pub(crate) fn parse_madness_line(
         .enumerate()
         .find_map(|(idx, token)| token.is_comma().then_some(idx))
         .unwrap_or(cost_tokens.len());
-    let cost_tokens = &cost_tokens[..cost_end];
+    let cost_tokens = strip_leading_keyword_cost_separator(&cost_tokens[..cost_end]);
     if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "madness keyword missing mana cost".to_string(),
         ));
+    }
+
+    if let Some(mana_cost) = parse_pay_repeated_mana_symbol_cost(cost_tokens) {
+        return Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }));
     }
 
     let total_cost = parse_activation_cost(cost_tokens)?;
@@ -4074,6 +4078,42 @@ pub(crate) fn parse_madness_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_madness_line(tokens)
+}
+
+fn strip_leading_keyword_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if matches!(tokens.first().map(|token| token.kind), Some(TokenKind::Dash | TokenKind::EmDash)) {
+        tokens.get(1..).unwrap_or_default()
+    } else {
+        tokens
+    }
+}
+
+fn parse_pay_repeated_mana_symbol_cost(tokens: &[OwnedLexToken]) -> Option<ManaCost> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].kind == TokenKind::Period {
+        end -= 1;
+    }
+    let tokens = &tokens[..end];
+    if tokens.len() != 3 || !tokens[0].is_word("pay") {
+        return None;
+    }
+
+    let count = tokens[1]
+        .parser_text()
+        .parse::<u8>()
+        .ok()
+        .or_else(|| {
+            ironsmith_core::parse_cardinal_word(tokens[1].parser_text())
+                .and_then(|value| value.try_into().ok())
+        })?;
+    let pip = mana_pips_from_token(&tokens[2])?;
+    if pip.len() != 1 {
+        return None;
+    }
+
+    Some(ManaCost::from_pips(
+        (0..count).map(|_| pip.clone()).collect(),
+    ))
 }
 
 pub(crate) fn parse_buyback_line(
