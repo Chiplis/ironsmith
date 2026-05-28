@@ -485,10 +485,12 @@ fn parse_if_you_dont_remainder_inner<'a>(
                 grammar::phrase(&["if", "you", "dont"]),
                 grammar::phrase(&["if", "you", "don't"]),
                 grammar::phrase(&["if", "you", "do", "not"]),
+                grammar::phrase(&["if", "you", "put", "no", "card", "into", "your", "hand", "this", "way"]),
+                grammar::phrase(&["if", "you", "put", "no", "cards", "into", "your", "hand", "this", "way"]),
             ))
             .context(StrContext::Label("if-you-don't prefix"))
             .context(StrContext::Expected(StrContextValue::Description(
-                "if you don't",
+                "if you don't or if you put no cards into your hand this way",
             ))),
             cut_err(grammar::comma())
                 .context(StrContext::Label("if-you-don't separator"))

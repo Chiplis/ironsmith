@@ -1000,7 +1000,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
     zone: Zone,
-) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
+) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
     let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["put"], true)
     else {
@@ -1025,8 +1025,16 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     if looks_like_keyword_bundle_choice_filter(&action_tokens[..filter_end]) {
         return Ok(None);
     }
+    let (filter_start, count) = if action_word_refs.starts_with(&["any", "number", "of"]) {
+        (
+            action_words.token_index_for_word_index(3).unwrap_or(filter_end),
+            ChoiceCount::any_number(),
+        )
+    } else {
+        (0, ChoiceCount::up_to(1))
+    };
     let mut filter =
-        if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
+        if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[filter_start..filter_end]) {
             filter
         } else {
             return Ok(None);
@@ -1040,7 +1048,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
         return Ok(None);
     }
 
-    Ok(Some((chooser, filter)))
+    Ok(Some((chooser, filter, count)))
 }
 
 fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
@@ -1410,7 +1418,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
         return Ok(None);
     };
 
-    let Some((chooser, filter)) =
+    let Some((chooser, filter, count)) =
         parse_may_put_filtered_card_from_among_into_hand(second, *player, Zone::Graveyard)?
     else {
         return Ok(None);
@@ -1421,6 +1429,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
         EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
             chooser,
             filter,
+            count,
             false,
             Vec::new(),
         ),

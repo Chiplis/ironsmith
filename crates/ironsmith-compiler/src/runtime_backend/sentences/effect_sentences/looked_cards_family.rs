@@ -442,7 +442,8 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
         .enumerate()
         .any(|(idx, token)| token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
     for (idx, token) in tokens.iter().enumerate() {
-        let is_separator = (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx))
+        let is_separator = ((token.is_word("or") || token.is_word("and/or"))
+            && !is_comparison_or_delimiter(tokens, idx))
             || (has_noncomparison_or && token.is_comma());
         if is_separator {
             while current.last().is_some_and(|entry| entry.is_word("and")) {
@@ -568,7 +569,8 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     }
 
     let has_noncomparison_or = filter_tokens.iter().enumerate().any(|(idx, token)| {
-        token.is_word("or") && !is_comparison_or_delimiter(&filter_tokens, idx)
+        (token.is_word("or") || token.is_word("and/or"))
+            && !is_comparison_or_delimiter(&filter_tokens, idx)
     });
     if has_noncomparison_or {
         let shared_card_suffix = matches!(words_all_refs.last().copied(), Some("card" | "cards"));

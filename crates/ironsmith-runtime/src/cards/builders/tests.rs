@@ -35031,6 +35031,199 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_nashi_searcher_in_the_dark_strict_regression() {
+    assert_oracle_card_parses_strict("Nashi, Searcher in the Dark");
+    let def = parse_oracle_card_definition("Nashi, Searcher in the Dark");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Whenever this creature deals combat damage to a player, you mill that many cards. You may put any number of legendary and/or enchantment cards from among them into your hand. If you put no cards into your hand this way, put a +1/+1 counter on Nashi."),
+        "expected Nashi's mill-choice/counter branch to render from structured effects, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nashi_searcher_in_the_dark_lowers_any_number_legendary_or_enchantment_choice() {
+    let def = parse_oracle_card_definition("Nashi, Searcher in the Dark");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("max: None")
+            && debug.contains("Legendary")
+            && debug.contains("Enchantment")
+            && debug.contains("DidNotHappen"),
+        "expected Nashi to choose any number of milled legendary and/or enchantment cards and branch if none moved, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct NashiChooseNamedCards {
+    names: Vec<&'static str>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for NashiChooseNamedCards {
+    fn decide_objects(
+        &mut self,
+        game: &crate::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .filter_map(|candidate| {
+                let object = game.object(candidate.id)?;
+                self.names
+                    .iter()
+                    .any(|name| object.name == *name)
+                    .then_some(candidate.id)
+            })
+            .take(ctx.max.unwrap_or(ctx.candidates.len()))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn nashi_runtime_fixture() -> (
+    crate::GameState,
+    PlayerId,
+    ObjectId,
+    crate::ids::StableId,
+    crate::ids::StableId,
+    crate::ids::StableId,
+    crate::resolution::ResolutionProgram,
+) {
+    let def = parse_oracle_card_definition("Nashi, Searcher in the Dark");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Nashi should have a combat-damage triggered ability");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let nashi = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let legendary_sorcery = CardDefinitionBuilder::new(CardId::new(), "The Elderspell")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let enchantment = CardDefinitionBuilder::new(CardId::new(), "Omen of the Sea")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Elite Vanguard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let legendary_id = game.create_object_from_definition(&legendary_sorcery, alice, Zone::Library);
+    let enchantment_id = game.create_object_from_definition(&enchantment, alice, Zone::Library);
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Library);
+    let legendary_stable = game.object(legendary_id).expect("legendary card exists").stable_id;
+    let enchantment_stable = game
+        .object(enchantment_id)
+        .expect("enchantment card exists")
+        .stable_id;
+    let creature_stable = game.object(creature_id).expect("creature card exists").stable_id;
+
+    (
+        game,
+        alice,
+        nashi,
+        legendary_stable,
+        enchantment_stable,
+        creature_stable,
+        triggered.effects.clone(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zone_for_stable_id(game: &crate::GameState, stable_id: crate::ids::StableId) -> Option<Zone> {
+    game.find_object_by_stable_id(stable_id)
+        .and_then(|id| game.object(id))
+        .map(|object| object.zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nashi_searcher_in_the_dark_puts_chosen_milled_cards_into_hand_without_counter() {
+    let (mut game, alice, nashi, legendary_stable, enchantment_stable, creature_stable, effects) =
+        nashi_runtime_fixture();
+    let mut dm = NashiChooseNamedCards {
+        names: vec!["The Elderspell", "Omen of the Sea"],
+    };
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            nashi,
+            crate::events::DamageTarget::Player(PlayerId::from_index(1)),
+            3,
+            true,
+            crate::events::cause::EventCause::from_combat_damage(nashi, alice),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new(nashi, alice, &mut dm)
+        .with_triggering_event(damage_event)
+        .with_event_value_amount(3);
+
+    crate::game_loop::execute_resolution_program(&mut game, &mut ctx, alice, nashi, &effects, None, &[])
+        .expect("Nashi trigger should resolve when cards are chosen");
+
+    assert_eq!(zone_for_stable_id(&game, legendary_stable), Some(Zone::Hand));
+    assert_eq!(zone_for_stable_id(&game, enchantment_stable), Some(Zone::Hand));
+    assert_eq!(
+        zone_for_stable_id(&game, creature_stable),
+        Some(Zone::Graveyard),
+        "nonlegendary nonenchantment milled card should remain in the graveyard"
+    );
+    assert_eq!(
+        game.counter_count(nashi, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Nashi should not get a counter when at least one card is put into hand this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nashi_searcher_in_the_dark_gets_counter_when_no_milled_cards_are_chosen() {
+    let (mut game, alice, nashi, legendary_stable, enchantment_stable, creature_stable, effects) =
+        nashi_runtime_fixture();
+    let mut dm = NashiChooseNamedCards { names: Vec::new() };
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            nashi,
+            crate::events::DamageTarget::Player(PlayerId::from_index(1)),
+            3,
+            true,
+            crate::events::cause::EventCause::from_combat_damage(nashi, alice),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new(nashi, alice, &mut dm)
+        .with_triggering_event(damage_event)
+        .with_event_value_amount(3);
+
+    crate::game_loop::execute_resolution_program(&mut game, &mut ctx, alice, nashi, &effects, None, &[])
+        .expect("Nashi trigger should resolve when no cards are chosen");
+
+    for stable_id in [legendary_stable, enchantment_stable, creature_stable] {
+        assert_eq!(
+            zone_for_stable_id(&game, stable_id),
+            Some(Zone::Graveyard),
+            "unchosen milled cards should stay in the graveyard"
+        );
+    }
+    assert_eq!(
+        game.counter_count(nashi, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Nashi should get a +1/+1 counter when no cards are put into hand this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sporeweb_weaver_strict_regression() {
     assert_oracle_card_parses_strict("Sporeweb Weaver");
     let def = parse_oracle_card_definition("Sporeweb Weaver");

@@ -12033,6 +12033,29 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(mill) = tagged_mill
+                .effect
+                .downcast_ref::<crate::effects::MillEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((Some(move_to_hand_with_id), move_to_hand)) =
+                for_each_tagged_for_compaction(filtered[idx + 2])
+            && let Some(if_effect) = filtered[idx + 3].downcast_ref::<crate::effects::IfEffect>()
+            && let Some(compact) = describe_tagged_mill_then_put_milled_card_into_hand_then_if_not(
+                tagged_mill,
+                mill,
+                choose,
+                move_to_hand_with_id,
+                move_to_hand,
+                if_effect,
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(mill) = tagged_mill
@@ -21740,12 +21763,18 @@ fn describe_choose_filter_from_tagged_cards(
         Some(Zone::Library | Zone::Graveyard)
     ) || choose.is_search
         || choose.count.min > 1
-        || choose.count.max != Some(1)
         || choose.count.dynamic_x
         || choose.count.random
     {
         return None;
     }
+    let count_prefix = if choose.count.min == 0 && choose.count.max.is_none() {
+        "any number of "
+    } else if choose.count.max == Some(1) {
+        ""
+    } else {
+        return None;
+    };
     let references_source = choose.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
             constraint.relation,
@@ -21765,7 +21794,31 @@ fn describe_choose_filter_from_tagged_cards(
         ) && constraint.tag.as_str() == source_tag)
     });
     if base_filter == ObjectFilter::default() {
-        return Some("a card".to_string());
+        return Some(format!("{count_prefix}a card"));
+    }
+    if !count_prefix.is_empty() && !base_filter.any_of.is_empty() {
+        let mut without_branches = base_filter.clone();
+        let branches = std::mem::take(&mut without_branches.any_of);
+        if without_branches == ObjectFilter::default() {
+            let mut parts = Vec::new();
+            for branch in branches {
+                let mut branch_text = branch.description();
+                branch_text = strip_leading_article(&branch_text).to_string();
+                if let Some(rest) = branch_text.strip_suffix(" permanent") {
+                    branch_text = rest.to_string();
+                }
+                if let Some(rest) = branch_text.strip_suffix(" cards") {
+                    branch_text = rest.to_string();
+                } else if let Some(rest) = branch_text.strip_suffix(" card") {
+                    branch_text = rest.to_string();
+                }
+                if branch_text.is_empty() {
+                    return None;
+                }
+                parts.push(branch_text);
+            }
+            return Some(format!("{count_prefix}{} cards", parts.join(" and/or ")));
+        }
     }
 
     let filter_text = base_filter.description();
@@ -21782,12 +21835,16 @@ fn describe_choose_filter_from_tagged_cards(
     if !card_desc.contains(" card") {
         card_desc = format!("{card_desc} card");
     }
-    Some(with_indefinite_article(&card_desc))
+    if count_prefix.is_empty() {
+        Some(with_indefinite_article(&card_desc))
+    } else {
+        Some(format!("{count_prefix}{card_desc}"))
+    }
 }
 
 fn describe_tagged_mill_clause(mill: &crate::effects::MillEffect) -> String {
     if matches!(mill.player, PlayerFilter::You) {
-        format!("Mill {}", describe_card_count(&mill.count))
+        format!("You mill {}", describe_card_count(&mill.count))
     } else {
         let player = describe_player_filter(&mill.player);
         format!(
@@ -21814,8 +21871,50 @@ pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand(
     let hand = describe_possessive_player_filter(&choose.chooser);
     let may = if choose.count.min == 0 { " may" } else { "" };
     Some(format!(
-        "{mill_clause}. You{may} put {chosen} from among the cards milled this way into {hand} hand"
+        "{mill_clause}. You{may} put {chosen} from among them into {hand} hand"
     ))
+}
+
+pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand_then_if_not(
+    tagged_mill: &crate::effects::TaggedEffect,
+    mill: &crate::effects::MillEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_hand_with_id: &crate::effects::WithIdEffect,
+    move_to_hand: &crate::effects::ForEachTaggedEffect,
+    if_effect: &crate::effects::IfEffect,
+) -> Option<String> {
+    let base = describe_tagged_mill_then_put_milled_card_into_hand(
+        tagged_mill,
+        mill,
+        choose,
+        move_to_hand,
+    )?;
+    let follow_up = if choose.count.min == 0 && choose.count.max.is_none() {
+        if if_effect.condition != move_to_hand_with_id.id
+            || if_effect.predicate != EffectPredicate::DidNotHappen
+            || !if_effect.else_.is_empty()
+        {
+            return None;
+        }
+        let then_text = describe_effect_list(&if_effect.then);
+        if then_text.is_empty() {
+            return None;
+        }
+        if choose.chooser == PlayerFilter::You {
+            format!("If you put no cards into your hand this way, {then_text}")
+        } else {
+            let who = describe_player_filter(&choose.chooser);
+            let hand = describe_possessive_player_filter(&choose.chooser);
+            format!("If {who} put no cards into {hand} hand this way, {then_text}")
+        }
+    } else {
+        describe_if_didnt_put_card_into_hand_this_way(
+            &choose.chooser,
+            move_to_hand_with_id.id,
+            if_effect,
+        )?
+    };
+    Some(format!("{base}. {follow_up}"))
 }
 
 pub(super) fn describe_tagged_mill_then_may_put_milled_card_into_hand(

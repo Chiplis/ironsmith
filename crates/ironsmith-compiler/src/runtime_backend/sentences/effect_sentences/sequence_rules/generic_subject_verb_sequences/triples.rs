@@ -961,6 +961,7 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
             chooser,
             filter,
+            ChoiceCount::up_to(1),
             reveal_chosen,
             Vec::new(),
         ),

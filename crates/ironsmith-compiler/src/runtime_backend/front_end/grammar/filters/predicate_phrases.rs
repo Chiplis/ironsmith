@@ -3208,6 +3208,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             | ["you", "dont", "put", "it", "into", "your", "hand"]
             | ["you", "didnt", "put", "it", "into", "your", "hand"]
             | ["you", "did", "not", "put", "it", "into", "your", "hand"]
+            | ["you", "put", "no", "card", "into", "your", "hand", "this", "way"]
+            | ["you", "put", "no", "cards", "into", "your", "hand", "this", "way"]
     );
     if didnt_put_into_hand {
         return Ok(PredicateAst::Not(Box::new(
@@ -3629,6 +3631,29 @@ mod tests {
     #[test]
     fn parse_predicate_supports_if_you_dont_put_it_into_your_hand() -> Result<(), CardTextError> {
         let tokens = lex_line("If you don't put it into your hand", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter: ObjectFilter::default().in_zone(Zone::Hand),
+            }))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_if_you_put_no_cards_into_your_hand_this_way()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line("If you put no cards into your hand this way", 0)?;
         let predicate_tokens = tokens
             .iter()
             .filter(|token| !token.is_word("if"))

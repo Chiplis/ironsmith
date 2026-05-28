@@ -67,6 +67,7 @@ fn first_word_look(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
 
 fn first_word_mill(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "mill")
+        || sentence_head_is(sentences, sentence_idx, ("you", Some("mill")))
 }
 
 fn first_word_search(sentences: &[SentenceInput], sentence_idx: usize) -> bool {

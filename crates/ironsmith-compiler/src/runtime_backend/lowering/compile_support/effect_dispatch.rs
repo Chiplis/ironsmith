@@ -3550,6 +3550,7 @@ fn compile_subject_verb_effect(
         }
         SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
             filter,
+            count,
             reveal,
             if_not_chosen,
         } => {
@@ -3580,7 +3581,7 @@ fn compile_subject_verb_effect(
             let choose = Effect::new(
                 crate::effects::ChooseObjectsEffect::new(
                     choose_filter,
-                    ChoiceCount::up_to(1),
+                    *count,
                     chooser,
                     chosen_tag_key.clone(),
                 )

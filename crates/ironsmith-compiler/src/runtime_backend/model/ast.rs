@@ -1339,6 +1339,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     ChooseFromLookedCardsIntoHandRestIntoGraveyard {
         filter: ObjectFilter,
+        count: ChoiceCount,
         reveal: bool,
         if_not_chosen: Vec<EffectAst>,
     },
@@ -2681,11 +2682,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
+                count,
                 reveal,
                 if_not_chosen,
             } => f
                 .debug_struct("ChooseFromLookedCardsIntoHandRestIntoGraveyard")
                 .field("filter", filter)
+                .field("count", count)
                 .field("reveal", reveal)
                 .field("if_not_chosen", if_not_chosen)
                 .finish(),
@@ -4414,6 +4417,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
         player: PlayerAst,
         filter: ObjectFilter,
+        count: ChoiceCount,
         reveal: bool,
         if_not_chosen: Vec<EffectAst>,
     ) -> Self {
@@ -4422,6 +4426,7 @@ impl EffectAst {
             player,
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
+                count,
                 reveal,
                 if_not_chosen,
             },
