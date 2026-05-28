@@ -902,6 +902,9 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
         )),
+        KeywordAction::ProtectionFromEachManaValueAmong(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::EachManaValueAmong(filter),
+        )),
         KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),
         )),

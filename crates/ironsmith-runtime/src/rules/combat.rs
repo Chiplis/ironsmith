@@ -382,6 +382,25 @@ fn protection_prevents_blocking_with_view(
             let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
             filter.matches(blocker, &ctx, game)
         }
+        ProtectionFrom::EachManaValueAmong(filter) => {
+            let blocker_mana_value = blocker
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value() as i32);
+            let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
+            let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
+            game.objects_in_zone(zone).into_iter().any(|object_id| {
+                let Some(object) = game.object(object_id) else {
+                    return false;
+                };
+                filter.matches(object, &ctx, game)
+                    && object
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32)
+                        == blocker_mana_value
+            })
+        }
         ProtectionFrom::Everything => true,
         ProtectionFrom::Colorless => blocker_colors.is_empty(),
         ProtectionFrom::ChosenPlayer => game
@@ -670,7 +689,9 @@ mod tests {
     use crate::cost::OptionalCostsPaid;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId, StableId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
+    use crate::target::PlayerFilter;
     use crate::zone::Zone;
     use std::collections::HashMap;
 
@@ -729,6 +750,10 @@ mod tests {
 
     fn add_ability(obj: &mut Object, static_ability: StaticAbility) {
         obj.abilities.push(Ability::static_ability(static_ability));
+    }
+
+    fn set_mana_value(obj: &mut Object, mana_value: u8) {
+        obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]));
     }
 
     #[test]
@@ -1295,6 +1320,58 @@ mod tests {
 
         // Blue can block protection from red
         assert!(can_block(&protected, &blue_blocker, &game));
+    }
+
+    #[test]
+    fn rebbec_architect_of_ascension_mana_value_protection_blocks_only_matching_values_you_control() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Rebbec-protected artifact creature", 2, 2);
+        attacker.id = ObjectId::from_raw(2100);
+        attacker.owner = alice;
+        attacker.card_types.push(CardType::Artifact);
+        set_mana_value(&mut attacker, 2);
+        add_ability(
+            &mut attacker,
+            StaticAbility::protection(ProtectionFrom::EachManaValueAmong(
+                crate::target::ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            )),
+        );
+
+        let mut matching_blocker = make_creature("Matching Mana Value Blocker", 2, 2);
+        matching_blocker.id = ObjectId::from_raw(2101);
+        matching_blocker.owner = bob;
+        set_mana_value(&mut matching_blocker, 2);
+
+        let mut nonmatching_blocker = make_creature("Different Mana Value Blocker", 3, 3);
+        nonmatching_blocker.id = ObjectId::from_raw(2102);
+        nonmatching_blocker.owner = bob;
+        set_mana_value(&mut nonmatching_blocker, 3);
+
+        let mut opponents_artifact_with_nonmatching_value =
+            make_creature("Opponent Artifact With Mana Value Three", 0, 1);
+        opponents_artifact_with_nonmatching_value.id = ObjectId::from_raw(2103);
+        opponents_artifact_with_nonmatching_value.owner = bob;
+        opponents_artifact_with_nonmatching_value
+            .card_types
+            .push(CardType::Artifact);
+        set_mana_value(&mut opponents_artifact_with_nonmatching_value, 3);
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(matching_blocker.clone());
+        game.add_object(nonmatching_blocker.clone());
+        game.add_object(opponents_artifact_with_nonmatching_value);
+
+        assert!(
+            !can_block(&attacker, &matching_blocker, &game),
+            "Rebbec, Architect of Ascension should stop blockers whose mana value is among artifacts the attacker controller controls"
+        );
+        assert!(
+            can_block(&attacker, &nonmatching_blocker, &game),
+            "Rebbec, Architect of Ascension should not count artifacts controlled by the defending player for the attacker's mana-value set"
+        );
     }
 
     #[test]

@@ -592,6 +592,7 @@ pub(crate) enum KeywordAction {
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
     ProtectionFromFilter(ObjectFilter),
+    ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -697,6 +698,7 @@ impl KeywordAction {
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
                 | Self::ProtectionFromFilter(_)
+                | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -854,6 +856,9 @@ impl KeywordAction {
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
             Self::ProtectionFromFilter(filter) => {
                 format!("Protection from {}", filter.description())
+            }
+            Self::ProtectionFromEachManaValueAmong(filter) => {
+                format!("Protection from each mana value among {}", filter.description())
             }
             Self::ProtectionFromCardType(card_type) => format!(
                 "Protection from {}",
@@ -1755,6 +1760,11 @@ impl CardDefinitionBuilder {
                 StaticAbility::protection(crate::ability::ProtectionFrom::ChosenColor),
             )),
             KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
+            KeywordAction::ProtectionFromEachManaValueAmong(filter) => self.with_ability(
+                Ability::static_ability(StaticAbility::protection(
+                    crate::ability::ProtectionFrom::EachManaValueAmong(filter),
+                )),
+            ),
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }

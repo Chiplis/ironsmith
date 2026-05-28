@@ -138,6 +138,7 @@ pub enum KeywordAction {
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
     ProtectionFromFilter(ObjectFilter),
+    ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -244,6 +245,7 @@ impl KeywordAction {
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
                 | Self::ProtectionFromFilter(_)
+                | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -408,6 +410,9 @@ impl KeywordAction {
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
             Self::ProtectionFromFilter(filter) => {
                 format!("Protection from {}", filter.description())
+            }
+            Self::ProtectionFromEachManaValueAmong(filter) => {
+                format!("Protection from each mana value among {}", filter.description())
             }
             Self::ProtectionFromCardType(card_type) => {
                 format!(

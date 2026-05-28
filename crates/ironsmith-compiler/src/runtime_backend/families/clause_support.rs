@@ -12,6 +12,7 @@ use super::activation_and_restrictions::keyword_action_costs::maybe_strip_leadin
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
+use super::object_filters::parse_object_filter_lexed;
 use super::grammar::primitives::{
     TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
 };
@@ -69,6 +70,21 @@ fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction
     let mut filter = ObjectFilter::spell();
     filter.colors = Some(all_colors);
     Some(KeywordAction::ProtectionFromFilter(filter))
+}
+
+fn protection_from_each_mana_value_among_action(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> Option<KeywordAction> {
+    let prefix = ["protection", "from", "each", "mana", "value", "among"];
+    if !word_slice_starts_with(words, &prefix) || words.len() == prefix.len() {
+        return None;
+    }
+    let words_view = TokenWordView::new(tokens);
+    let filter_start = words_view.token_index_for_word_index(prefix.len())?;
+    let filter_tokens = trim_commas(&tokens[filter_start..]);
+    let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+    Some(KeywordAction::ProtectionFromEachManaValueAmong(filter))
 }
 
 fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
@@ -190,6 +206,16 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
+        if value == "each"
+            && words.get(idx + 2).copied() == Some("mana")
+            && words.get(idx + 3).copied() == Some("value")
+            && words.get(idx + 4).copied() == Some("among")
+        {
+            let filter_start = words_view.token_index_for_word_index(idx + 5)?;
+            let filter_tokens = trim_commas(&tokens[filter_start..]);
+            let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+            return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
+        }
         if matches!(value, "permanent" | "permanents")
             && words.get(idx + 2).copied() == Some("with")
         {
@@ -526,6 +552,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = protection_from_colored_spells_action(&words) {
             return Some(vec![action]);
         }
+        if let Some(action) = protection_from_each_mana_value_among_action(&words, tokens) {
+            return Some(vec![action]);
+        }
         let first_word_idx = if words.first().copied() == Some("and") {
             1
         } else {
@@ -540,6 +569,16 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
         let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
             let value = *words.get(idx + 1)?;
+            if value == "each"
+                && words.get(idx + 2).copied() == Some("mana")
+                && words.get(idx + 3).copied() == Some("value")
+                && words.get(idx + 4).copied() == Some("among")
+            {
+                let filter_start = words_view.token_index_for_word_index(idx + 5)?;
+                let filter_tokens = trim_commas(&tokens[filter_start..]);
+                let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+                return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
+            }
             if matches!(value, "permanent" | "permanents")
                 && words.get(idx + 2).copied() == Some("with")
             {

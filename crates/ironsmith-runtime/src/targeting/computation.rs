@@ -236,6 +236,9 @@ pub(crate) fn has_protection_from_source_with_view(
                 crate::ability::ProtectionFrom::ChosenColor => game
                     .chosen_color(target_id)
                     .is_some_and(|chosen| view.object_colors(source_id).contains(chosen)),
+                crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
+                    source_mana_value_matches_scope(game, target_id, source, filter)
+                }
                 _ => source_matches_protection_with_view(source, protection_from, game, view),
             };
             if matches {
@@ -272,6 +275,9 @@ fn has_protection_from_source_snapshot_with_view(
                 crate::ability::ProtectionFrom::ChosenColor => game
                     .chosen_color(target_id)
                     .is_some_and(|chosen| source_snapshot.colors.contains(chosen)),
+                crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
+                    source_snapshot_mana_value_matches_scope(game, target_id, source_snapshot, filter)
+                }
                 _ => source_snapshot_matches_protection(source_snapshot, protection_from, game),
             };
             if matches {
@@ -325,6 +331,7 @@ pub(crate) fn source_matches_protection_with_view(
             let filter_ctx = game.filter_context_for(game.turn.active_player, None);
             filter.matches(source, &filter_ctx, game)
         }
+        ProtectionFrom::EachManaValueAmong(_) => false,
         // Protection from everything
         ProtectionFrom::Everything => true,
         // Protection from colorless (sources with no colors)
@@ -350,9 +357,62 @@ fn source_snapshot_matches_protection(
             let filter_ctx = game.filter_context_for(game.turn.active_player, None);
             filter.matches_snapshot(source, &filter_ctx, game)
         }
+        ProtectionFrom::EachManaValueAmong(_) => false,
         ProtectionFrom::Everything => true,
         ProtectionFrom::Colorless => source.colors.is_empty(),
     }
+}
+
+fn source_mana_value_matches_scope(
+    game: &GameState,
+    protected_id: ObjectId,
+    source: &Object,
+    scope: &ObjectFilter,
+) -> bool {
+    object_mana_value(source)
+        .is_some_and(|mana_value| mana_value_matches_scope(game, protected_id, mana_value, scope))
+}
+
+fn source_snapshot_mana_value_matches_scope(
+    game: &GameState,
+    protected_id: ObjectId,
+    source: &ObjectSnapshot,
+    scope: &ObjectFilter,
+) -> bool {
+    snapshot_mana_value(source)
+        .is_some_and(|mana_value| mana_value_matches_scope(game, protected_id, mana_value, scope))
+}
+
+fn mana_value_matches_scope(
+    game: &GameState,
+    protected_id: ObjectId,
+    mana_value: i32,
+    scope: &ObjectFilter,
+) -> bool {
+    let Some(protected) = game.object(protected_id) else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(game.controller_of(protected), Some(protected_id));
+    let zone = scope.zone.unwrap_or(Zone::Battlefield);
+    game.objects_in_zone(zone).into_iter().any(|object_id| {
+        let Some(object) = game.object(object_id) else {
+            return false;
+        };
+        scope.matches(object, &filter_ctx, game) && object_mana_value(object) == Some(mana_value)
+    })
+}
+
+fn object_mana_value(object: &Object) -> Option<i32> {
+    Some(object.mana_cost.as_ref().map_or(0, |cost| cost.mana_value() as i32))
+}
+
+fn snapshot_mana_value(snapshot: &ObjectSnapshot) -> Option<i32> {
+    Some(
+        snapshot
+            .mana_cost
+            .as_ref()
+            .map_or(0, |cost| cost.mana_value() as i32),
+    )
 }
 
 /// Compute all legal targets for a target specification.
@@ -863,6 +923,20 @@ mod tests {
         obj
     }
 
+    fn create_artifact(id: u32, name: &str, controller: PlayerId, mana_value: u8) -> Object {
+        let card = CardBuilder::new(CardId::from_raw(id), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+
+        Object::from_card(
+            ObjectId::from_raw(id as u64),
+            &card,
+            controller,
+            Zone::Battlefield,
+        )
+    }
+
     fn create_battle(id: u32, name: &str, controller: PlayerId) -> Object {
         let card = CardBuilder::new(CardId::from_raw(id), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
@@ -1361,6 +1435,46 @@ mod tests {
             result,
             TargetingResult::Invalid(TargetingInvalidReason::HasProtection)
         ));
+    }
+
+    #[test]
+    fn rebbec_architect_of_ascension_mana_value_protection_targets_only_matching_values_you_control() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut protected = create_artifact(1, "Rebbec-protected artifact", bob, 2);
+        add_static_ability(
+            &mut protected,
+            StaticAbility::protection(ProtectionFrom::EachManaValueAmong(
+                ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            )),
+        );
+        let protected_id = protected.id;
+
+        let matching_source = create_artifact(2, "Mana Value Two Source", alice, 2);
+        let matching_source_id = matching_source.id;
+        let nonmatching_source = create_artifact(3, "Mana Value Three Source", alice, 3);
+        let nonmatching_source_id = nonmatching_source.id;
+        let opponent_artifact_same_as_nonmatching =
+            create_artifact(4, "Opponent Artifact With Mana Value Three", alice, 3);
+
+        game.add_object(protected);
+        game.add_object(matching_source);
+        game.add_object(nonmatching_source);
+        game.add_object(opponent_artifact_same_as_nonmatching);
+
+        let result = can_target_object(&game, protected_id, matching_source_id, alice);
+        assert!(
+            matches!(result, TargetingResult::Invalid(TargetingInvalidReason::HasProtection)),
+            "Rebbec, Architect of Ascension should make the artifact illegal to target from a source whose mana value is among artifacts its controller controls"
+        );
+
+        let result = can_target_object(&game, protected_id, nonmatching_source_id, alice);
+        assert!(
+            result.is_legal(),
+            "Rebbec, Architect of Ascension should not count artifacts controlled by another player for the protected artifact's mana-value set"
+        );
     }
 
     #[test]

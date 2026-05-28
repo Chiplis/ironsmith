@@ -74,6 +74,7 @@ pub enum ProtectionFrom {
     Creatures,
     CardType(CardType),
     Permanents(ObjectFilter),
+    EachManaValueAmong(ObjectFilter),
     ChosenPlayer,
     ChosenColor,
     Everything,
