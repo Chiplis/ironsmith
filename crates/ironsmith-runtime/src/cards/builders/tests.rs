@@ -35183,16 +35183,7 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[test]
 fn guardian_of_the_ages_strict_parser_and_text_regression() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Guardian of the Ages")
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
-        .card_types(vec![CardType::Artifact, CardType::Creature])
-        .subtypes(vec![Subtype::Golem])
-        .power_toughness(PowerToughness::fixed(7, 7))
-        .parse_text(
-            "Defender\n\
-             When a creature attacks you or a planeswalker you control, if this creature has defender, it loses defender and gains trample.",
-        )
-        .expect("Guardian of the Ages should parse strictly");
+    let def = parse_oracle_card_definition("Guardian of the Ages");
 
     let rendered_lines = canonical_compiled_lines(&def);
     assert_eq!(
@@ -35216,7 +35207,7 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
         matches!(
             triggered.intervening_if.as_ref(),
             Some(crate::ConditionExpr::SourceMatches(filter))
-                if filter.card_types.as_slice() == [CardType::Creature]
+                if filter.card_types.is_empty()
                     && filter.static_abilities.as_slice() == [StaticAbilityId::Defender]
         ),
         "Guardian of the Ages should gate the trigger on the source having defender, got {:?}",

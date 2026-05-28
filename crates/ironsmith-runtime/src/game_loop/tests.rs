@@ -623,6 +623,150 @@ fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     );
 }
 
+#[test]
+fn guardian_of_the_ages_source_defender_condition_is_not_type_gated() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let guardian = CardDefinitionBuilder::new(CardId::from_raw(72_143), "Guardian of the Ages")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Defender\n\
+             When a creature attacks you or a planeswalker you control, if this creature has defender, it loses defender and gains trample.",
+        )
+        .expect("Guardian of the Ages should parse");
+    let guardian_id = game.create_object_from_definition(&guardian, alice, Zone::Battlefield);
+
+    let attacker = create_creature(&mut game, "Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(attacker);
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attacking Guardian's controller should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Guardian of the Ages trigger should go on stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "self-reference should check whether the source has defender, not whether it is currently a creature"
+    );
+    resolve_stack_entry(&mut game).expect("Guardian of the Ages trigger should resolve");
+
+    assert!(
+        !game.object_has_ability(guardian_id, &StaticAbility::defender()),
+        "Guardian of the Ages should lose defender after its trigger resolves"
+    );
+    assert!(
+        game.object_has_ability(guardian_id, &StaticAbility::trample()),
+        "Guardian of the Ages should gain trample after its trigger resolves"
+    );
+}
+
+#[test]
+fn guardian_of_the_ages_triggers_for_planeswalker_you_control_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let guardian = CardDefinitionBuilder::new(CardId::from_raw(72_144), "Guardian of the Ages")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Defender\n\
+             When a creature attacks you or a planeswalker you control, if this creature has defender, it loses defender and gains trample.",
+        )
+        .expect("Guardian of the Ages should parse");
+    let guardian_id = game.create_object_from_definition(&guardian, alice, Zone::Battlefield);
+
+    let alice_planeswalker = CardBuilder::new(CardId::from_raw(72_145), "Alice Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .build();
+    let alice_planeswalker_id =
+        game.create_object_from_card(&alice_planeswalker, alice, Zone::Battlefield);
+    let bob_planeswalker = CardBuilder::new(CardId::from_raw(72_146), "Bob Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .build();
+    let bob_planeswalker_id =
+        game.create_object_from_card(&bob_planeswalker, bob, Zone::Battlefield);
+
+    let alice_attacker = create_creature(&mut game, "Alice Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(alice_attacker);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: alice_attacker,
+            target: AttackTarget::Planeswalker(bob_planeswalker_id),
+        }],
+    )
+    .expect("attacking an opponent's planeswalker should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("empty trigger queue should process");
+    assert!(
+        game.stack.is_empty(),
+        "Guardian of the Ages should not trigger for attacks at an opponent's planeswalker"
+    );
+
+    let bob_attacker = create_creature(&mut game, "Bob Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(bob_attacker);
+    game.turn.active_player = bob;
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: bob_attacker,
+            target: AttackTarget::Planeswalker(alice_planeswalker_id),
+        }],
+    )
+    .expect("attacking Guardian's controller's planeswalker should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Guardian of the Ages planeswalker attack trigger should go on stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Guardian should trigger for attacks at a planeswalker its controller controls"
+    );
+    resolve_stack_entry(&mut game).expect("Guardian of the Ages trigger should resolve");
+
+    assert!(
+        !game.object_has_ability(guardian_id, &StaticAbility::defender()),
+        "Guardian of the Ages should lose defender after a planeswalker attack trigger resolves"
+    );
+    assert!(
+        game.object_has_ability(guardian_id, &StaticAbility::trample()),
+        "Guardian of the Ages should gain trample after a planeswalker attack trigger resolves"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
