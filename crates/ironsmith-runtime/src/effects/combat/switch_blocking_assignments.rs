@@ -2,13 +2,12 @@
 
 use std::collections::HashMap;
 
-use crate::combat_state::CombatState;
+use crate::combat_state::{CombatState, declare_blockers};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::rules::combat::can_block;
 use crate::target::ChooseSpec;
 
 pub use ironsmith_core::SwitchBlockingAssignmentsEffect;
@@ -33,8 +32,8 @@ impl EffectExecutor for SwitchBlockingAssignmentsEffect {
 
         let first_blockers = combat.blockers.get(first).cloned().unwrap_or_default();
         let second_blockers = combat.blockers.get(second).cloned().unwrap_or_default();
-        if !blockers_can_block_attacker(game, *first, &second_blockers)
-            || !blockers_can_block_attacker(game, *second, &first_blockers)
+        if !blockers_can_block_attacker(game, combat, *first, &second_blockers)
+            || !blockers_can_block_attacker(game, combat, *second, &first_blockers)
         {
             return Ok(EffectOutcome::count(0));
         }
@@ -86,14 +85,30 @@ fn is_blocked_attacker(combat: &CombatState, attacker: ObjectId) -> bool {
             .is_some_and(|blockers| !blockers.is_empty())
 }
 
-fn blockers_can_block_attacker(game: &GameState, attacker: ObjectId, blockers: &[ObjectId]) -> bool {
-    let Some(attacker) = game.object(attacker) else {
+fn blockers_can_block_attacker(
+    game: &GameState,
+    combat: &CombatState,
+    attacker: ObjectId,
+    blockers: &[ObjectId],
+) -> bool {
+    let Some(attacker_info) = combat
+        .attackers
+        .iter()
+        .find(|info| info.creature == attacker)
+        .cloned()
+    else {
         return false;
     };
-    blockers.iter().all(|blocker| {
-        game.object(*blocker)
-            .is_some_and(|blocker| can_block(attacker, blocker, game))
-    })
+
+    let mut test_combat = CombatState::default();
+    test_combat.attackers.push(attacker_info);
+    test_combat.blockers.insert(attacker, Vec::new());
+    let declarations = blockers
+        .iter()
+        .copied()
+        .map(|blocker| (blocker, attacker))
+        .collect();
+    declare_blockers(game, &mut test_combat, declarations).is_ok()
 }
 
 fn switch_assignments(
@@ -143,6 +158,20 @@ mod tests {
 
     fn create_creature(game: &mut GameState, id: u32, name: &str, controller: PlayerId) -> ObjectId {
         game.create_object_from_card(&creature_card(id, name), controller, Zone::Battlefield)
+    }
+
+    fn grant_static_ability(
+        game: &mut GameState,
+        object: ObjectId,
+        static_ability: StaticAbility,
+    ) {
+        game.object_mut(object)
+            .expect("object exists")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Static(static_ability),
+                functional_zones: vec![Zone::Battlefield],
+            });
     }
 
     fn tag_attackers(game: &GameState, attackers: &[ObjectId]) -> Vec<ObjectSnapshot> {
@@ -282,5 +311,146 @@ mod tests {
         let combat = game.combat.as_ref().expect("combat should remain active");
         assert_eq!(combat.blockers.get(&ground_attacker), Some(&vec![ground_blocker]));
         assert_eq!(combat.blockers.get(&flying_attacker), Some(&vec![flying_blocker]));
+    }
+
+    #[test]
+    fn general_jarkeld_effect_does_not_switch_when_other_blocker_group_exceeds_maximum() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let jarkeld = create_creature(&mut game, 21, "General Jarkeld", alice);
+        let capped_attacker = create_creature(&mut game, 22, "Capped Attacker", alice);
+        let other_attacker = create_creature(&mut game, 23, "Other Attacker", alice);
+        grant_static_ability(
+            &mut game,
+            capped_attacker,
+            StaticAbility::cant_be_blocked_by_more_than(1),
+        );
+        let capped_blocker = create_creature(&mut game, 24, "Capped Blocker", bob);
+        let first_other_blocker = create_creature(&mut game, 25, "First Other Blocker", bob);
+        let second_other_blocker = create_creature(&mut game, 26, "Second Other Blocker", bob);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: capped_attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: other_attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(capped_attacker, vec![capped_blocker]);
+        combat.blockers.insert(
+            other_attacker,
+            vec![first_other_blocker, second_other_blocker],
+        );
+        combat
+            .damage_assignment_order
+            .insert(capped_attacker, vec![capped_blocker]);
+        combat.damage_assignment_order.insert(
+            other_attacker,
+            vec![first_other_blocker, second_other_blocker],
+        );
+        game.combat = Some(combat);
+
+        let tag = TagKey::from("general_jarkeld_targets");
+        let mut ctx = ExecutionContext::new_default(jarkeld, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(capped_attacker),
+                ResolvedTarget::Object(other_attacker),
+            ])
+            .with_tagged_objects(
+                [(
+                    tag.clone(),
+                    tag_attackers(&game, &[capped_attacker, other_attacker]),
+                )]
+                .into(),
+            );
+        let effect = SwitchBlockingAssignmentsEffect::new(ChooseSpec::Tagged(tag));
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("General Jarkeld condition should resolve as no-op");
+
+        assert_eq!(outcome.value.as_count(), Some(0));
+        let combat = game.combat.as_ref().expect("combat should remain active");
+        assert_eq!(combat.blockers.get(&capped_attacker), Some(&vec![capped_blocker]));
+        assert_eq!(
+            combat.blockers.get(&other_attacker),
+            Some(&vec![first_other_blocker, second_other_blocker])
+        );
+    }
+
+    #[test]
+    fn general_jarkeld_effect_does_not_switch_when_other_blocker_group_is_too_small() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let jarkeld = create_creature(&mut game, 31, "General Jarkeld", alice);
+        let guarded_attacker = create_creature(&mut game, 32, "Guarded Attacker", alice);
+        let other_attacker = create_creature(&mut game, 33, "Other Attacker", alice);
+        grant_static_ability(
+            &mut game,
+            guarded_attacker,
+            StaticAbility::cant_be_blocked_except_by_n_or_more(2),
+        );
+        let first_guard = create_creature(&mut game, 34, "First Guard", bob);
+        let second_guard = create_creature(&mut game, 35, "Second Guard", bob);
+        let lone_other_blocker = create_creature(&mut game, 36, "Lone Other Blocker", bob);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: guarded_attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: other_attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat
+            .blockers
+            .insert(guarded_attacker, vec![first_guard, second_guard]);
+        combat
+            .blockers
+            .insert(other_attacker, vec![lone_other_blocker]);
+        combat
+            .damage_assignment_order
+            .insert(guarded_attacker, vec![first_guard, second_guard]);
+        combat
+            .damage_assignment_order
+            .insert(other_attacker, vec![lone_other_blocker]);
+        game.combat = Some(combat);
+
+        let tag = TagKey::from("general_jarkeld_targets");
+        let mut ctx = ExecutionContext::new_default(jarkeld, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(guarded_attacker),
+                ResolvedTarget::Object(other_attacker),
+            ])
+            .with_tagged_objects(
+                [(
+                    tag.clone(),
+                    tag_attackers(&game, &[guarded_attacker, other_attacker]),
+                )]
+                .into(),
+            );
+        let effect = SwitchBlockingAssignmentsEffect::new(ChooseSpec::Tagged(tag));
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("General Jarkeld condition should resolve as no-op");
+
+        assert_eq!(outcome.value.as_count(), Some(0));
+        let combat = game.combat.as_ref().expect("combat should remain active");
+        assert_eq!(
+            combat.blockers.get(&guarded_attacker),
+            Some(&vec![first_guard, second_guard])
+        );
+        assert_eq!(
+            combat.blockers.get(&other_attacker),
+            Some(&vec![lone_other_blocker])
+        );
     }
 }
