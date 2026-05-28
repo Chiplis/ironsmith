@@ -4646,6 +4646,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return Some(apply);
         }
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && is_implicit_reference_tag(tagged.tag.as_str())
             && let Some(apply) = tagged
                 .effect
                 .downcast_ref::<crate::effects::ApplyContinuousEffect>()

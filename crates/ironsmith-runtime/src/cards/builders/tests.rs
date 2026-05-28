@@ -39486,13 +39486,60 @@ fn parse_rise_from_the_grave_color_and_subtype_followup_sentence() {
 
     let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
     let effects = &spell_effect.segments[0].default_effects;
-    let debug = format!("{spell_effect:#?}");
-    assert!(
-        debug.contains("MoveToZoneEffect")
-            && debug.contains("AddColors")
-            && debug.contains("AddSubtypes")
-            && debug.contains("Zombie"),
-        "expected return, add-black, and add-Zombie effects, got {debug}"
+    assert_eq!(effects.len(), 3, "expected return, color, and subtype effects");
+
+    let moved = effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .expect("returned creature should be tagged");
+    let move_to_battlefield = moved
+        .effect
+        .downcast_ref::<MoveToZoneEffect>()
+        .expect("first effect should return a creature card");
+    assert_eq!(move_to_battlefield.zone, Zone::Battlefield);
+    match move_to_battlefield.target.base() {
+        ChooseSpec::Object(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert!(filter.card_types.contains(&CardType::Creature));
+        }
+        other => panic!("Rise should target a creature card in a graveyard, got {other:?}"),
+    }
+
+    let color_effect = effects[1]
+        .downcast_ref::<TaggedEffect>()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        })
+        .expect("second effect should add black to the returned creature");
+    assert!(matches!(
+        color_effect.target_spec.as_ref(),
+        Some(ChooseSpec::Tagged(tag)) if tag == &moved.tag
+    ));
+    assert_eq!(
+        color_effect.modification,
+        Some(crate::continuous::Modification::AddColors(
+            crate::color::ColorSet::BLACK,
+        ))
+    );
+
+    let subtype_effect = effects[2]
+        .downcast_ref::<TaggedEffect>()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        })
+        .expect("third effect should add Zombie to the returned creature");
+    assert!(matches!(
+        subtype_effect.target_spec.as_ref(),
+        Some(ChooseSpec::Tagged(tag)) if tag == &moved.tag
+    ));
+    assert_eq!(
+        subtype_effect.modification,
+        Some(crate::continuous::Modification::AddSubtypes(vec![
+            Subtype::Zombie,
+        ]))
     );
 
     let score_path = crate::compiled_text::compile_effect_list(effects);
