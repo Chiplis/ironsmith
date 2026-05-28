@@ -16,7 +16,9 @@ use crate::color::Color;
 use crate::compiled_text::describe_value;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
 use crate::events::cards::DiscardEvent;
-use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
+use crate::events::cards::matchers::{
+    WouldDiscardMatcher, WouldDrawCardMatcher, WouldDrawCardWhileLibraryEmptyMatcher,
+};
 use crate::events::cause::CauseType;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
@@ -3789,6 +3791,34 @@ impl StaticAbilityKind for DrawReplacementDouble {
             controller,
             WouldDrawCardMatcher::you(),
             ReplacementAction::Instead(vec![Effect::new(crate::effects::DrawCardsEffect::you(2))]),
+        ))
+    }
+}
+
+/// "If you would draw a card while your library has no cards in it, skip that draw instead."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DrawReplacementSkipEmptyLibrary;
+
+impl StaticAbilityKind for DrawReplacementSkipEmptyLibrary {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementSkipEmptyLibrary
+    }
+
+    fn display(&self) -> String {
+        "If you would draw a card while your library has no cards in it, skip that draw instead."
+            .to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawCardWhileLibraryEmptyMatcher::you(),
+            ReplacementAction::Skip,
         ))
     }
 }

@@ -3209,6 +3209,14 @@ impl<
         }
     }
 
+    pub fn draw_replacement_skip_empty_library() -> Self {
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementSkipEmptyLibrary),
+            label: "draw replacement skip empty library".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::DrawReplacementExileTopAndPlay),

@@ -2703,6 +2703,10 @@ impl StaticAbility {
         Self::new(DrawReplacementDouble)
     }
 
+    pub fn draw_replacement_skip_empty_library() -> Self {
+        Self::new(DrawReplacementSkipEmptyLibrary)
+    }
+
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
         Self::new(DrawReplacementExileTopAndPlay::new(count))
     }

@@ -1597,6 +1597,17 @@ pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) ->
         ]
 }
 
+pub(crate) fn is_draw_replacement_skip_empty_library_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    words
+        == [
+            "if", "you", "would", "draw", "a", "card", "while", "your", "library", "has",
+            "no", "cards", "in", "it", "skip", "that", "draw", "instead",
+        ]
+}
+
 pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

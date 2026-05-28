@@ -59,6 +59,52 @@ impl ReplacementMatcher for WouldDrawCardMatcher {
     }
 }
 
+/// Matches when a player would draw a card while that player's library is empty.
+#[derive(Debug, Clone)]
+pub struct WouldDrawCardWhileLibraryEmptyMatcher {
+    pub player_filter: PlayerFilter,
+}
+
+impl WouldDrawCardWhileLibraryEmptyMatcher {
+    pub fn new(player_filter: PlayerFilter) -> Self {
+        Self { player_filter }
+    }
+
+    /// Matches when you (the controller) would draw from an empty library.
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Draw {
+            return false;
+        }
+
+        let Some(draw) = downcast_event::<DrawEvent>(event) else {
+            return false;
+        };
+
+        self.player_filter
+            .matches_player(draw.player, &ctx.filter_ctx)
+            && ctx
+                .game
+                .player(draw.player)
+                .is_some_and(|player| player.library.is_empty())
+    }
+
+    fn display(&self) -> String {
+        match &self.player_filter {
+            PlayerFilter::You => {
+                "When you would draw a card while your library has no cards in it".to_string()
+            }
+            _ => "When a player would draw a card while their library has no cards in it"
+                .to_string(),
+        }
+    }
+}
+
 /// Matches when a player would draw their first card each turn.
 #[derive(Debug, Clone)]
 pub struct WouldDrawFirstCardMatcher {

@@ -17,6 +17,7 @@ use super::grammar::abilities::{
     is_discard_or_redirect_replacement_line_lexed, is_doctors_companion_marker_line_lexed,
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
     is_draw_replace_exile_top_face_down_line_lexed, is_draw_replacement_double_line_lexed,
+    is_draw_replacement_skip_empty_library_line_lexed,
     is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
@@ -613,6 +614,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_exile_top_and_play_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
+        single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
@@ -8198,6 +8200,16 @@ pub(crate) fn parse_draw_replacement_double_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_draw_replacement_double_line_lexed(tokens) {
         return Ok(Some(StaticAbility::draw_replacement_double()));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn parse_draw_replacement_skip_empty_library_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_draw_replacement_skip_empty_library_line_lexed(tokens) {
+        return Ok(Some(StaticAbility::draw_replacement_skip_empty_library()));
     }
 
     Ok(None)

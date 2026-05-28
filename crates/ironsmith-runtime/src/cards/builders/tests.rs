@@ -34738,6 +34738,105 @@ fn parse_xanthic_statue_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_living_conundrum_strict_regression() {
+    assert_oracle_card_parses_strict("Living Conundrum");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn living_conundrum_compiled_text_keeps_empty_library_clauses() {
+    let def = parse_oracle_card_definition("Living Conundrum");
+    let lines = canonical_compiled_lines(&def);
+
+    assert!(
+        lines.iter().any(|line| {
+            line == "If you would draw a card while your library has no cards in it, skip that draw instead."
+        }),
+        "Living Conundrum should render the empty-library draw-skip replacement, got {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("base power and toughness 10/10")
+                && line.contains("flying")
+                && line.contains("vigilance")
+                && line.contains("no cards in your library")
+        }),
+        "Living Conundrum should render the empty-library characteristic bonus, got {lines:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn living_conundrum_empty_library_replacement_and_bonus_are_active() {
+    let def = parse_oracle_card_definition("Living Conundrum");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(game.player(alice).expect("alice should exist").library.len(), 0);
+    game.update_replacement_effects();
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == source_id
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Skip
+                    )
+                    && replacement
+                        .matcher
+                        .as_ref()
+                        .is_some_and(|matcher| matcher.display().contains("no cards in it"))
+            }),
+        "Living Conundrum should register an empty-library draw-skip replacement"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    let outcome = crate::effects::DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("Living Conundrum draw replacement should resolve");
+    assert_eq!(outcome.count_or_zero(), 0);
+    assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 0);
+
+    assert_eq!(game.calculated_power(source_id), Some(10));
+    assert_eq!(game.calculated_toughness(source_id), Some(10));
+    assert!(game.object_has_static_ability_id(source_id, StaticAbilityId::Flying));
+    assert!(game.object_has_static_ability_id(source_id, StaticAbilityId::Vigilance));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn living_conundrum_nonempty_library_does_not_skip_or_gain_bonus() {
+    let def = parse_oracle_card_definition("Living Conundrum");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_definition(&library_card, alice, Zone::Library);
+
+    assert_ne!(game.calculated_power(source_id), Some(10));
+    assert_ne!(game.calculated_toughness(source_id), Some(10));
+    assert!(!game.object_has_static_ability_id(source_id, StaticAbilityId::Flying));
+    assert!(!game.object_has_static_ability_id(source_id, StaticAbilityId::Vigilance));
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    let outcome = crate::effects::DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("nonempty-library draw should proceed normally");
+    assert_eq!(outcome.count_or_zero(), 1);
+    assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 1);
+    assert_eq!(game.player(alice).expect("alice should exist").library.len(), 0);
+    assert_eq!(game.calculated_power(source_id), Some(10));
+    assert_eq!(game.calculated_toughness(source_id), Some(10));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_wave_of_rats_strict_regression() {
     assert_oracle_card_parses_strict("Wave of Rats");
 }
