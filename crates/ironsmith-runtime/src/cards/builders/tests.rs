@@ -35414,6 +35414,13 @@ fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents
         bob,
         Zone::Battlefield,
     );
+    let controller_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_304), "Controller Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
 
     let player_damage = crate::events::processing::process_damage_assignments_with_event(
         &mut game,
@@ -35426,6 +35433,17 @@ fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents
     assert_eq!(player_damage.assignments.len(), 1);
     assert_eq!(player_damage.assignments[0].amount, 6);
 
+    let controller_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        giant_source,
+        crate::events::DamageTarget::Player(alice),
+        1,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(controller_damage.assignments.len(), 1);
+    assert_eq!(controller_damage.assignments[0].amount, 2);
+
     let permanent_damage = crate::events::processing::process_damage_assignments_with_event(
         &mut game,
         giant_source,
@@ -35436,6 +35454,18 @@ fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents
     );
     assert_eq!(permanent_damage.assignments.len(), 1);
     assert_eq!(permanent_damage.assignments[0].amount, 4);
+
+    let controller_permanent_damage =
+        crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            giant_source,
+            crate::events::DamageTarget::Object(controller_permanent),
+            1,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(controller_permanent_damage.assignments.len(), 1);
+    assert_eq!(controller_permanent_damage.assignments[0].amount, 2);
 }
 
 #[test]
