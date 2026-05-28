@@ -3006,6 +3006,10 @@ pub(crate) fn parse_anthem_for_each_expression(
         });
     }
 
+    if let Some(filter) = parse_compound_anthem_count_filter(rest) {
+        return Ok(AnthemCountExpression::MatchingFilter(filter));
+    }
+
     let rest_words = crate::runtime_backend::token_word_refs(rest);
     if let Some(counter_word_idx) =
         anthem_find_word_index(&rest_words, |word| matches!(word, "counter" | "counters"))
@@ -3031,6 +3035,61 @@ pub(crate) fn parse_anthem_for_each_expression(
         ))
     })?;
     Ok(AnthemCountExpression::MatchingFilter(filter))
+}
+
+fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let filter_words = crate::runtime_backend::token_word_refs(tokens);
+    let should_try_split = filter_words.iter().any(|word| *word == "and")
+        && filter_words.iter().any(|word| *word == "graveyard")
+        && filter_words
+            .iter()
+            .any(|word| matches!(*word, "control" | "controls" | "own" | "owns"));
+    if !should_try_split {
+        return None;
+    }
+
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.is_word("and")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("each") || next.is_word("every"))
+        {
+            if start == idx {
+                return None;
+            }
+            segments.push(&tokens[start..idx]);
+            start = idx + 1;
+        }
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    segments.push(&tokens[start..]);
+
+    let mut branches = Vec::new();
+    for segment in segments {
+        let mut segment = trim_commas(segment);
+        if segment
+            .first()
+            .is_some_and(|token| token.is_word("each") || token.is_word("every"))
+        {
+            segment.drain(..1);
+        }
+        if segment.is_empty() {
+            return None;
+        }
+        branches.push(parse_object_filter(&segment, false).ok()?);
+    }
+
+    if branches.len() < 2 {
+        return None;
+    }
+
+    let mut combined = ObjectFilter::default();
+    combined.any_of = branches;
+    Some(combined)
 }
 
 pub(crate) fn parse_anthem_prefix_condition(

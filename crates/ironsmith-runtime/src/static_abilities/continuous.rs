@@ -647,6 +647,36 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
 }
 
 fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Option<String> {
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && !filter.any_of.is_empty()
+        && filter
+            .any_of
+            .iter()
+            .any(|branch| branch.zone == Some(Zone::Graveyard))
+    {
+        let parts: Vec<String> = filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                let mut text = strip_article(branch.description());
+                if let Some(rest) = text.strip_prefix("another ") {
+                    text = format!("other {rest}");
+                }
+                text
+            })
+            .collect();
+        let mut iter = parts.into_iter();
+        let first = iter.next()?;
+        let rest = iter
+            .map(|part| format!("each {part}"))
+            .collect::<Vec<_>>()
+            .join(" and ");
+        if rest.is_empty() {
+            return Some(first);
+        }
+        return Some(format!("{first} and {rest}"));
+    }
+
     match expr {
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))

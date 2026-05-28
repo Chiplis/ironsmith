@@ -739,6 +739,36 @@ fn substitute_pregame_card_self_reference(line: &str, subject: &str, card_name: 
         .replace(&capitalized, card_name)
 }
 
+fn substitute_legendary_source_reference(
+    line: &str,
+    card: &crate::card::Card,
+    subject: &str,
+) -> String {
+    if subject != "this creature"
+        || !card.supertypes.contains(&Supertype::Legendary)
+        || card.name.contains(" // ")
+    {
+        return line.to_string();
+    }
+
+    let lower = line.to_ascii_lowercase();
+    let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || lower.starts_with("whenever this creature deals combat damage to a player")
+        || lower.contains(": this creature gets ")
+        || lower.contains(": whenever this creature deals combat damage to a player");
+    if !uses_named_source_surface {
+        return line.to_string();
+    }
+
+    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
+    if source_name.is_empty() {
+        return line.to_string();
+    }
+
+    line.replace("This creature", source_name)
+        .replace("this creature", source_name)
+}
+
 fn capitalize_first_ascii(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
@@ -2200,6 +2230,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 for line in &mut ability_lines {
                     *line = substitute_pregame_card_self_reference(line, subject, &def.card.name);
                 }
+            }
+            for line in &mut ability_lines {
+                *line = substitute_legendary_source_reference(line, &def.card, subject);
             }
             output.extend(ability_lines);
             ability_idx += 1;

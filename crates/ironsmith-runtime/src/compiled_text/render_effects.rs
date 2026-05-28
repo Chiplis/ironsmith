@@ -13270,6 +13270,23 @@ fn describe_triggered_resolution_text(
         return Some("discover again for the same value".to_string());
     }
 
+    if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
+        .is_some()
+        && let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let [effect] = segment.default_effects.as_slice()
+        && let Some(surveil) = effect.downcast_ref::<crate::effects::SurveilEffect>()
+        && surveil.player == PlayerFilter::You
+        && value_prefers_where_x(&surveil.count)
+        && matches!(surveil.count.unhinted(), Value::EventValue(EventValueSpec::Amount))
+    {
+        return Some(
+            "surveil X, where X is the amount of damage it dealt to that player".to_string(),
+        );
+    }
+
     if triggered.effects.is_empty() {
         return None;
     }
