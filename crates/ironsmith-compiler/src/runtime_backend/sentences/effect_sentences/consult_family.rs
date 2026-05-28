@@ -179,6 +179,13 @@ pub(crate) fn parse_consult_traversal_sentence(
             }
             filter_tokens = remaining;
             LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
+        } else if let Some((value, used)) = parse_value_from_lexed(&filter_tokens) {
+            let remaining = trim_commas(&filter_tokens[used..]).to_vec();
+            if remaining.is_empty() {
+                return Ok(None);
+            }
+            filter_tokens = remaining;
+            LibraryConsultStopRuleAst::MatchCount(value)
         } else {
             LibraryConsultStopRuleAst::FirstMatch
         };
@@ -281,13 +288,17 @@ fn parse_passive_consult_stop_rule_and_filter(
     mode: LibraryConsultModeAst,
 ) -> Result<Option<(LibraryConsultStopRuleAst, ObjectFilter)>, CardTextError> {
     let tokens = trim_commas(tokens);
-    let Some((count, used)) = parse_number(&tokens).or_else(|| {
-        TokenWordView::new(&tokens)
-            .word_refs()
-            .first()
-            .is_some_and(|word| matches!(*word, "a" | "an"))
-            .then_some((1, 1))
-    }) else {
+    let Some((count, used)) = parse_number(&tokens)
+        .map(|(count, used)| (Value::Fixed(count as i32), used))
+        .or_else(|| parse_value_from_lexed(&tokens))
+        .or_else(|| {
+            TokenWordView::new(&tokens)
+                .word_refs()
+                .first()
+                .is_some_and(|word| matches!(*word, "a" | "an"))
+                .then_some((Value::Fixed(1), 1))
+        })
+    else {
         return Ok(None);
     };
 
@@ -335,10 +346,7 @@ fn parse_passive_consult_stop_rule_and_filter(
     apply_consult_relative_mana_value_filter(&filter_tokens, &mut filter);
     filter.zone = None;
 
-    Ok(Some((
-        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32)),
-        filter,
-    )))
+    Ok(Some((LibraryConsultStopRuleAst::MatchCount(count), filter)))
 }
 
 fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {

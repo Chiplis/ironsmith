@@ -58,6 +58,7 @@ pub enum StaticAbilityId {
     Unleash,
     ConditionalSpellKeyword,
     ThisSpellCastRestriction,
+    ThisSpellXMaximum,
     Unblockable,
     FlyingRestriction,
     FlyingOnlyRestriction,
@@ -299,6 +300,7 @@ impl StaticAbilityId {
             | Unleash
             | ConditionalSpellKeyword
             | ThisSpellCastRestriction
+            | ThisSpellXMaximum
             | Unblockable
             | FlyingRestriction
             | FlyingOnlyRestriction

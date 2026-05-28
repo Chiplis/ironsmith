@@ -174,6 +174,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         kind: ThisSpellCastRestrictionKind,
         display: String,
     },
+    ThisSpellXMaximum {
+        maximum: Value,
+        display: String,
+    },
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
@@ -790,6 +794,9 @@ where
             }
             StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
                 StaticAbilityPayload::ThisSpellCastRestriction { kind, display }
+            }
+            StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -1534,6 +1541,15 @@ impl<
             id: Some(StaticAbilityId::ThisSpellCastRestriction),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellCastRestriction { kind, display },
+        }
+    }
+
+    pub fn this_spell_x_maximum(maximum: Value, text: impl Into<String>) -> Self {
+        let display = text.into();
+        Self {
+            id: Some(StaticAbilityId::ThisSpellXMaximum),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
         }
     }
 

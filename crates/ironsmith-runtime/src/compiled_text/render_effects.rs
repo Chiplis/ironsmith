@@ -7810,9 +7810,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             };
             let selection = describe_search_selection_with_cards(&consult.filter.description());
             let stop_text = match &consult.stop_rule {
-                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-                    selection
+                    selection.clone()
                 }
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
                     "{} {}",
@@ -7885,15 +7885,29 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             };
             let selection = describe_search_selection_with_cards(&consult.filter.description());
             let stop_text = match &consult.stop_rule {
-                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-                    selection
+                    selection.clone()
                 }
                 crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
                     "{} {}",
                     describe_value(count),
                     pluralize_noun_phrase(&selection)
                 ),
+            };
+            let moved_phrase = match &consult.stop_rule {
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                    "that card".to_string()
+                }
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(_) => {
+                    format!("those {}", pluralize_noun_phrase(&selection))
+                }
+            };
+            let tapped_suffix = if move_to_zone.enters_tapped {
+                " tapped"
+            } else {
+                ""
             };
             let order_text = match remainder.order {
                 crate::effects::consult_helpers::LibraryBottomOrder::Random => {
@@ -7907,11 +7921,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
             if player == "you" {
                 Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card onto the battlefield, then put the rest on the bottom of {library_owner} library{order_text}"
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of {library_owner} library{order_text}"
                 ))
             } else {
                 Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} {moved_phrase} onto the battlefield{tapped_suffix} and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
                 ))
             }
         }

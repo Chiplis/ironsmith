@@ -887,6 +887,15 @@ fn parse_static_ability_ast_line_early_lexed(
         .replace("you ve", "youve")
         .replace("'", "");
     let rendered = rendered.trim().trim_end_matches('.').to_string();
+    if rendered == "x cant be greater than the number of players in the game" {
+        return Ok(Some(vec![
+            StaticAbility::this_spell_x_maximum(
+                Value::CountPlayers(PlayerFilter::Any),
+                "X can't be greater than the number of players in the game.",
+            )
+            .into(),
+        ]));
+    }
     if rendered == "this creature cant attack unless youve cast a creature spell this turn"
         || rendered == "this cant attack unless youve cast a creature spell this turn"
     {

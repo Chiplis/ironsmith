@@ -110,6 +110,11 @@ impl StaticAbilityModelInterpreter {
                     display
                 )
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                format!(
+                    "ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}"
+                )
+            }
             payload => format!("{payload:?}"),
         }
     }
@@ -1131,6 +1136,9 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 )
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+                StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
@@ -1913,6 +1921,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_kind(&self) -> Option<super::ThisSpellCastRestrictionKind> {
         self.leaf_static_ability()?
             .this_spell_cast_restriction_kind()
+    }
+
+    fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        self.leaf_static_ability()?.this_spell_x_maximum_value()
     }
 
     fn generic_attack_tax_per_attacker_against_you(

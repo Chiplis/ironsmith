@@ -891,6 +891,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the maximum legal value for X while casting this spell, if any.
+    fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        None
+    }
+
     /// Return a pregame-action descriptor, if this ability creates one.
     fn pregame_action_kind(&self) -> Option<PregameActionKind> {
         None
@@ -1075,6 +1080,10 @@ impl StaticAbility {
 
     pub fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
         self.0.this_spell_cast_restriction_kind()
+    }
+
+    pub fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        self.0.this_spell_x_maximum_value()
     }
 
     pub fn pregame_action_kind(&self) -> Option<PregameActionKind> {
@@ -2475,6 +2484,13 @@ impl StaticAbility {
         display: impl Into<String>,
     ) -> Self {
         Self::new(ThisSpellCastRestriction::new(kind, display))
+    }
+
+    pub fn this_spell_x_maximum(
+        maximum: crate::effect::Value,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ThisSpellXMaximum::new(maximum, display))
     }
 
     pub fn damage_not_removed_during_cleanup() -> Self {

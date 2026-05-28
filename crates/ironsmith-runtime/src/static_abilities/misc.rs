@@ -3629,6 +3629,36 @@ impl StaticAbilityKind for ThisSpellCastRestriction {
     }
 }
 
+/// "X can't be greater than ..." spell-casting X restriction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThisSpellXMaximum {
+    pub maximum: crate::effect::Value,
+    pub display: String,
+}
+
+impl ThisSpellXMaximum {
+    pub fn new(maximum: crate::effect::Value, display: impl Into<String>) -> Self {
+        Self {
+            maximum,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ThisSpellXMaximum {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ThisSpellXMaximum
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
+        Some(self.maximum.clone())
+    }
+}
+
 /// "Each opponent's maximum hand size is equal to seven minus the number of card types in your graveyard."
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaximumHandSizeSevenMinusYourGraveyardCardTypes {
