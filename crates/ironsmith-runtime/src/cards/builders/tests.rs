@@ -7655,6 +7655,43 @@ fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn open_the_way_parses_x_cap_and_reveal_x_lands() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Open the Way")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "X can't be greater than the number of players in the game.\n\
+             Reveal cards from the top of your library until you reveal X land cards. Put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Open the Way should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("X can't be greater than the number of players in the game")
+            && rendered.contains("until you reveal X land cards")
+            && rendered.contains("Put those land cards onto the battlefield tapped")
+            && rendered.contains("the rest on the bottom of your library in a random order"),
+        "expected Open the Way X cap and reveal/battlefield/bottom text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def);
+    assert!(
+        debug.contains("ThisSpellXMaximum")
+            && debug.contains("CountPlayers")
+            && debug.contains("MatchCount(X)")
+            && debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("enters_tapped: true")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Open the Way to lower to an X cap plus X-count consult/move/bottom effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn costume_shop_keeps_visit_sticker_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Costume Shop")
         .card_types(vec![CardType::Artifact])

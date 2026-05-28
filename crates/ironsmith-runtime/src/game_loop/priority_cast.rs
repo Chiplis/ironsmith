@@ -398,6 +398,29 @@ pub(super) fn max_x_from_non_mana_costs(
     max_x
 }
 
+fn max_x_from_static_abilities(game: &GameState, caster: PlayerId, source: ObjectId) -> Option<u32> {
+    let spell = game.object(source)?;
+    let mut max_x = None;
+    for ability in &spell.abilities {
+        if !ability.functional_zones.contains(&Zone::Stack) {
+            continue;
+        }
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(value) = static_ability.this_spell_x_maximum_value() else {
+            continue;
+        };
+        let ctx = crate::effects::ExecutionContext::new_default(source, caster);
+        let Ok(resolved) = crate::effects::helpers::resolve_value(game, &value, &ctx) else {
+            continue;
+        };
+        let resolved = resolved.max(0) as u32;
+        max_x = Some(max_x.map_or(resolved, |prev: u32| prev.min(resolved)));
+    }
+    max_x
+}
+
 pub(super) fn activation_cost_steps_reference_x(steps: &[ActivationCostStep]) -> bool {
     steps.iter().any(|step| match step {
         ActivationCostStep::Cost(cost) => cost_references_x(cost),
@@ -464,6 +487,10 @@ pub(super) fn compute_spell_cast_x_bounds(
 
     if let Some(max_cost) = max_x_from_non_mana_costs(game, caster, stack_id, &non_mana_costs) {
         max_x = Some(max_x.map_or(max_cost, |prev| prev.min(max_cost)));
+    }
+
+    if let Some(max_static) = max_x_from_static_abilities(game, caster, stack_id) {
+        max_x = Some(max_x.map_or(max_static, |prev| prev.min(max_static)));
     }
 
     (true, max_x.unwrap_or(0))

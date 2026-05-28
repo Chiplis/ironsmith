@@ -34,6 +34,123 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn open_the_way_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_900), "Open the Way")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "X can't be greater than the number of players in the game.\n\
+             Reveal cards from the top of your library until you reveal X land cards. Put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Open the Way should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn open_the_way_x_choice_is_capped_by_players_in_game() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let charlie = PlayerId::from_index(2);
+
+    let forest = crate::cards::definitions::basic_forest();
+    for _ in 0..8 {
+        game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    }
+
+    let open_the_way = open_the_way_definition();
+    let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
+    let mana_cost = game.object(spell_id).unwrap().mana_cost.clone();
+
+    let (needs_x, max_x) = compute_spell_cast_x_bounds(
+        &game,
+        alice,
+        spell_id,
+        &CastingMethod::Normal,
+        mana_cost.as_ref(),
+    );
+    assert!(needs_x, "Open the Way should ask for X while being cast");
+    assert_eq!(max_x, 3, "three players in game should cap X at 3");
+
+    game.player_mut(charlie).unwrap().has_lost = true;
+    let (_, max_x_after_player_lost) = compute_spell_cast_x_bounds(
+        &game,
+        alice,
+        spell_id,
+        &CastingMethod::Normal,
+        mana_cost.as_ref(),
+    );
+    assert_eq!(
+        max_x_after_player_lost, 2,
+        "players no longer in the game should stop increasing Open the Way's X cap"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let open_the_way = open_the_way_definition();
+    let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
+    game.object_mut(spell_id).unwrap().x_value = Some(2);
+    let spell_stable = game.object(spell_id).unwrap().stable_id;
+
+    let forest = crate::cards::definitions::basic_forest();
+    let second_land = game.create_object_from_definition(&forest, alice, Zone::Library);
+    let filler = CardBuilder::new(CardId::from_raw(72_901), "Filler Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let filler_id = game.create_object_from_card(&filler, alice, Zone::Library);
+    let top_land = game.create_object_from_definition(&forest, alice, Zone::Library);
+    let second_land_stable = game.object(second_land).unwrap().stable_id;
+    let filler_stable = game.object(filler_id).unwrap().stable_id;
+    let top_land_stable = game.object(top_land).unwrap().stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_x(2)
+            .with_source_info(
+                game.object(spell_id).unwrap().stable_id,
+                "Open the Way".to_string(),
+            ),
+    );
+    resolve_stack_entry(&mut game).expect("Open the Way should resolve");
+
+    for stable_id in [top_land_stable, second_land_stable] {
+        let land_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed land should still exist after changing zones");
+        assert!(
+            game.battlefield.contains(&land_id),
+            "revealed land {land_id:?} should be on the battlefield"
+        );
+        assert!(
+            game.is_tapped(land_id),
+            "revealed land {land_id:?} should enter tapped"
+        );
+    }
+    let filler_id = game
+        .find_object_by_stable_id(filler_stable)
+        .expect("filler card should still exist after bottoming");
+    assert!(
+        game.player(alice).unwrap().library.contains(&filler_id),
+        "nonmatching revealed cards should be put on the bottom of the library"
+    );
+    let resolved_spell_id = game
+        .find_object_by_stable_id(spell_stable)
+        .expect("Open the Way should still exist after resolving");
+    assert!(
+        game.player(alice).unwrap().graveyard.contains(&resolved_spell_id),
+        "Open the Way should move to its owner's graveyard after resolving"
+    );
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();
