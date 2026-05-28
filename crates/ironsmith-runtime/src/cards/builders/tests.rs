@@ -2760,10 +2760,14 @@ fn painters_servant_adds_chosen_color_to_permanents_spells_and_nonbattlefield_ca
         game.create_object_from_definition(&green_spell, alice, Zone::Graveyard);
     let exile_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Exile);
     let library_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Library);
+    let command_card_id = game.create_object_from_definition(&green_spell, alice, Zone::Command);
     let spell_id = game.create_object_from_definition(&green_spell, alice, Zone::Stack);
     let colorless_id =
         game.create_object_from_definition(&colorless_artifact, alice, Zone::Battlefield);
     game.refresh_continuous_state();
+
+    let servant_colors = game.current_colors(servant_id).expect("servant colors");
+    assert!(servant_colors.contains(Color::Blue));
 
     let permanent_colors = game.current_colors(permanent_id).expect("permanent colors");
     assert!(permanent_colors.contains(Color::Red));
@@ -2788,6 +2792,12 @@ fn painters_servant_adds_chosen_color_to_permanents_spells_and_nonbattlefield_ca
         .expect("library card colors");
     assert!(library_card_colors.contains(Color::Green));
     assert!(library_card_colors.contains(Color::Blue));
+
+    let command_card_colors = game
+        .current_colors(command_card_id)
+        .expect("command card colors");
+    assert!(command_card_colors.contains(Color::Green));
+    assert!(command_card_colors.contains(Color::Blue));
 
     let spell_colors = game.current_colors(spell_id).expect("spell colors");
     assert!(spell_colors.contains(Color::Green));
