@@ -11217,6 +11217,55 @@ fn test_guard_dogs_keeps_color_sharing_prevention_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_heroism_parses_for_each_attacking_red_prevention_unless_pays() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Heroism")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Sacrifice a white creature: For each attacking red creature, prevent all combat \
+             damage that would be dealt by that creature this turn unless its controller pays {2}{R}.",
+        )
+        .expect("Heroism should parse strictly");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Heroism should compile to an activated ability"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ForEachObject")
+            && ability_debug.contains("attacking: true")
+            && ability_debug.contains("UnlessPaysEffect")
+            && ability_debug.contains("PreventAllCombatDamageEffect")
+            && ability_debug.contains("ControllerOf")
+            && ability_debug.contains("__it__"),
+        "expected per-attacking-creature unless-pays prevention structure, got {ability_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each")
+            && (rendered.contains("red attacking creature")
+                || rendered.contains("attacking red creature"))
+            && rendered.contains(
+                "prevent all combat damage that would be dealt by that creature this turn"
+            )
+            && rendered.contains("unless its controller pays {2}{r}")
+            && !rendered.contains("creature sources"),
+        "expected Heroism prevention/unless text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_static_prevent_all_combat_damage_to_this_creature_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Everdawn Champion Variant")
         .card_types(vec![CardType::Creature])

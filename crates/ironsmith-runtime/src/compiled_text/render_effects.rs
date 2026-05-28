@@ -18138,6 +18138,78 @@ pub(super) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
     base
 }
 
+fn describe_for_each_prevent_combat_damage_unless_pays(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    let [effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let unless_pays = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let [prevent_effect] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    let prevents_iterated_until_eot = prevent_effect
+        .downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
+        .is_some_and(|prevent_from| {
+            matches!(prevent_from.source, ChooseSpec::Iterated)
+                && matches!(prevent_from.until, Until::EndOfTurn)
+        })
+        || prevent_effect
+            .downcast_ref::<crate::effects::PreventAllCombatDamageEffect>()
+            .is_some_and(|prevent_combat| {
+                matches!(
+                    prevent_combat.target,
+                    crate::effects::CombatDamagePreventionTarget::From(ChooseSpec::Iterated)
+                )
+                    && matches!(prevent_combat.until, Until::EndOfTurn)
+            });
+    if !prevents_iterated_until_eot {
+        return None;
+    }
+
+    let filter_text = strip_indefinite_article(&for_each.filter.description()).to_string();
+    let source_text = if for_each
+        .filter
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+    {
+        "that creature"
+    } else {
+        "that object"
+    };
+    let payer = describe_player_filter(&unless_pays.player);
+    let payment = describe_total_cost_payment(&unless_pays.cost);
+    Some(format!(
+        "For each {filter_text}, prevent all combat damage that would be dealt by {source_text} this turn unless {payer} pays {payment}"
+    ))
+}
+
+fn filter_is_tagged_it(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == "__it__"
+    })
+}
+
+fn describe_tagged_it_damage_source(filter: &ObjectFilter) -> Option<&'static str> {
+    if !filter_is_tagged_it(filter) {
+        return None;
+    }
+    if filter.card_types.contains(&crate::types::CardType::Creature) {
+        return Some("that creature");
+    }
+    if filter.card_types.contains(&crate::types::CardType::Artifact) {
+        return Some("that artifact");
+    }
+    if filter.card_types.contains(&crate::types::CardType::Enchantment) {
+        return Some("that enchantment");
+    }
+    if filter.card_types.contains(&crate::types::CardType::Land) {
+        return Some("that land");
+    }
+    Some("that object")
+}
+
 pub(super) fn describe_tagged_this_way_action(filter: &ObjectFilter) -> Option<&'static str> {
     filter.tagged_constraints.iter().find_map(|constraint| {
         if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
@@ -25333,6 +25405,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_each_devotion_damage(for_each) {
             return compact;
         }
+        if let Some(compact) = describe_for_each_prevent_combat_damage_unless_pays(for_each) {
+            return compact;
+        }
         if for_each.effects.len() == 1
             && let Some(put) =
                 for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
@@ -30134,6 +30209,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if matches!(prevent_all.until, Until::EndOfTurn) {
             if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
+                if prevent_all.damage_filter.combat_only
+                    && let Some(source_filter) = &prevent_all.damage_filter.from_source
+                    && let Some(source_text) = describe_tagged_it_damage_source(source_filter)
+                {
+                    return format!(
+                        "Prevent all combat damage that would be dealt by {source_text} this turn"
+                    );
+                }
                 if let Some(source_phrase) = damage_type
                     .strip_prefix("all damage from ")
                     .and_then(|rest| rest.strip_suffix(" sources"))

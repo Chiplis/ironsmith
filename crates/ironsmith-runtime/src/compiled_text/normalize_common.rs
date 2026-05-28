@@ -98,6 +98,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         {
             "equipped creature's controller".to_string()
         }
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == "__it__" =>
+        {
+            "its controller".to_string()
+        }
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
             "its controller".to_string()
         }

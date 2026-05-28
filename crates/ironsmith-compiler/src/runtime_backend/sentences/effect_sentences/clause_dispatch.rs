@@ -36,7 +36,8 @@ use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_thr
 use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
 use super::dispatch_inner::{
-    parse_additional_phase_sentence, parse_take_extra_turn_sentence, trim_edge_punctuation,
+    parse_additional_phase_sentence, parse_prevent_damage_sentence, parse_take_extra_turn_sentence,
+    trim_edge_punctuation,
 };
 use super::for_each_helpers::{
     has_demonstrative_object_reference, is_mana_replacement_clause_words,
@@ -365,6 +366,41 @@ fn clause_may_contain_cast_or_play_permission(tokens: &[OwnedLexToken]) -> bool 
         })
 }
 
+fn parse_for_each_prevent_damage_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(prevent_idx) = find_token_index(tokens, |token| token.is_word("prevent")) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..prevent_idx]);
+    let Some(filter) = parse_for_each_object_subject(&subject_tokens)? else {
+        return Ok(None);
+    };
+
+    let unless_idx = tokens[prevent_idx..]
+        .iter()
+        .position(|token| token.is_word("unless"))
+        .map(|idx| prevent_idx + idx);
+    let prevent_tokens = trim_commas(match unless_idx {
+        Some(idx) => &tokens[prevent_idx..idx],
+        None => &tokens[prevent_idx..],
+    });
+    let Some(prevent_effect) = parse_prevent_damage_sentence(&prevent_tokens)? else {
+        return Ok(None);
+    };
+
+    let effects = if let Some(idx) = unless_idx {
+        if let Some(unless_effect) = try_build_unless(vec![prevent_effect.clone()], tokens, idx)? {
+            vec![unless_effect]
+        } else {
+            vec![prevent_effect]
+        }
+    } else {
+        vec![prevent_effect]
+    };
+    Ok(Some(EffectAst::ForEachObject { filter, effects }))
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -406,6 +442,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+
+    if let Some(effect) = parse_for_each_prevent_damage_clause(tokens)? {
+        return Ok(effect);
+    }
 
     if word_slice_starts_with(&clause_words, &["cast", "any", "number", "of", "spells"])
         && find_word_sequence_index(
