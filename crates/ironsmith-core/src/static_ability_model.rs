@@ -401,6 +401,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         controller: PlayerFilter,
         display: String,
     },
+    AddTokenCreationReplacement {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional: i32,
+        display: String,
+    },
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
@@ -1225,6 +1231,17 @@ where
                 display,
             } => StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
+                display,
+            },
+            StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional,
+                display,
+            } => StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional,
                 display,
             },
             StaticAbilityPayload::KeywordActionReplacement {
@@ -3409,6 +3426,25 @@ impl<
             label: display.clone(),
             payload: StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
+                display,
+            },
+        }
+    }
+
+    pub fn add_token_creation_replacement(
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddTokenCreationReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddTokenCreationReplacement {
+                controller,
+                token_filter,
+                additional,
                 display,
             },
         }

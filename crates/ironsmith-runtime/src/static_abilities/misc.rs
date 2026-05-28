@@ -3251,6 +3251,56 @@ impl StaticAbilityKind for DoubleTokenCreationReplacement {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddTokenCreationReplacement {
+    pub controller: PlayerFilter,
+    pub token_filter: ObjectFilter,
+    pub additional: i32,
+    pub display: String,
+}
+
+impl AddTokenCreationReplacement {
+    pub fn new(
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        additional: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            controller,
+            token_filter,
+            additional,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for AddTokenCreationReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddTokenCreationReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(
+                self.controller.clone(),
+            )
+            .with_token_filter(self.token_filter.clone()),
+            ReplacementAction::Modify(crate::replacement::EventModification::Add(self.additional)),
+        ))
+    }
+}
+
 /// Can be your commander.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CanBeCommander;

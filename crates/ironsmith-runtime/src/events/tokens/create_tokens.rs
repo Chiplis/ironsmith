@@ -6,6 +6,7 @@ use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
+use crate::object::Object;
 
 /// An event representing one effect creating one or more tokens for a player.
 #[derive(Debug, Clone)]
@@ -16,6 +17,8 @@ pub struct CreateTokensEvent {
     pub count: u32,
     /// What caused the token creation.
     pub cause: EventCause,
+    /// Characteristics of the token being created, when known before creation.
+    pub token: Option<Object>,
 }
 
 impl CreateTokensEvent {
@@ -24,6 +27,21 @@ impl CreateTokensEvent {
             controller,
             count,
             cause,
+            token: None,
+        }
+    }
+
+    pub fn with_token_cause(
+        controller: PlayerId,
+        count: u32,
+        token: Object,
+        cause: EventCause,
+    ) -> Self {
+        Self {
+            controller,
+            count,
+            cause,
+            token: Some(token),
         }
     }
 

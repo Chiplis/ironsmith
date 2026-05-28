@@ -6900,6 +6900,48 @@ pub(crate) fn parse_double_token_creation_replacement_line(
         )));
     }
 
+    let add_one_prefix = ["if", "you", "would", "create", "one", "or", "more"];
+    if slice_starts_with(&line_words, &add_one_prefix)
+        && let Some(token_idx) = line_words[add_one_prefix.len()..]
+            .iter()
+            .position(|word| matches!(*word, "token" | "tokens"))
+            .map(|idx| idx + add_one_prefix.len())
+    {
+        let descriptor = &line_words[add_one_prefix.len()..token_idx];
+        let additional_prefix = [
+            "instead",
+            "create",
+            "those",
+            "tokens",
+            "plus",
+            "an",
+            "additional",
+        ];
+        let after_token = &line_words[token_idx + 1..];
+        if !descriptor.is_empty()
+            && slice_starts_with(after_token, &additional_prefix)
+            && after_token.last() == Some(&"token")
+            && &after_token[additional_prefix.len()..after_token.len() - 1] == descriptor
+        {
+            let mut token_filter = ObjectFilter::default().token();
+            for word in descriptor {
+                if let Some(card_type) = parse_card_type(word) {
+                    token_filter = token_filter.with_type(card_type);
+                } else if let Some(subtype) = parse_subtype_flexible(word) {
+                    token_filter = token_filter.with_subtype(subtype);
+                } else {
+                    return Ok(None);
+                }
+            }
+            return Ok(Some(StaticAbility::add_token_creation_replacement(
+                PlayerFilter::You,
+                token_filter,
+                1,
+                display_text_for_tokens(tokens, true),
+            )));
+        }
+    }
+
     Ok(None)
 }
 

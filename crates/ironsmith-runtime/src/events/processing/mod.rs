@@ -2532,13 +2532,31 @@ pub fn process_token_creation_with_event(
     cause: crate::events::cause::EventCause,
     dm: &mut (impl DecisionMaker + ?Sized),
 ) -> u32 {
+    process_token_creation_for_token_with_event(game, controller, count, None, cause, dm)
+}
+
+/// Process a token creation event with known token characteristics.
+///
+/// Returns the final number of tokens to create.
+pub fn process_token_creation_for_token_with_event(
+    game: &mut GameState,
+    controller: PlayerId,
+    count: u32,
+    token: Option<crate::object::Object>,
+    cause: crate::events::cause::EventCause,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> u32 {
     use crate::events::{CreateTokensEvent, downcast_event};
 
     if count == 0 {
         return 0;
     }
 
-    let event = Event::create_tokens(controller, count, cause);
+    let event = if let Some(token) = token {
+        Event::create_tokens_with_token(controller, count, token, cause)
+    } else {
+        Event::create_tokens(controller, count, cause)
+    };
     let result = process_with_dm(game, event, dm);
 
     match result {

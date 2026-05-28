@@ -6,6 +6,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::object::Object;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -70,10 +71,13 @@ impl EffectExecutor for CreateTokenEffect {
         let controller_id =
             crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let replaced_count = crate::events::processing::process_token_creation_with_event(
+        let token_preview =
+            Object::from_token_definition(ObjectId::from_raw(0), &self.token, controller_id);
+        let replaced_count = crate::events::processing::process_token_creation_for_token_with_event(
             game,
             controller_id,
             base_count,
+            Some(token_preview),
             ctx.cause.clone(),
             &mut ctx.decision_maker,
         ) as usize;
@@ -204,7 +208,9 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::tayam_luminous_enigma;
+    use crate::cards::tokens::treasure_token_definition;
     use crate::color::{Color, ColorSet};
+    use crate::compiled_text::canonical_compiled_lines;
     use crate::ids::{CardId, PlayerId};
     use crate::object::{CounterType, ObjectKind};
     use crate::static_abilities::StaticAbility;
@@ -261,6 +267,27 @@ mod tests {
             .subtypes(vec![Subtype::Spirit])
             .power_toughness(PowerToughness::fixed(1, 1))
             .build()
+    }
+
+    fn xorn_definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Xorn")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental])
+            .parse_text(
+                "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
+            )
+            .expect("Xorn should parse strictly")
+    }
+
+    #[test]
+    fn xorn_strict_parser_and_compiled_text_regression() {
+        let def = xorn_definition();
+        let rendered = canonical_compiled_lines(&def).join(" ");
+
+        assert_eq!(
+            rendered,
+            "If you would create one or more treasure tokens, instead create those tokens plus an additional treasure token."
+        );
     }
 
     #[test]
@@ -392,6 +419,84 @@ mod tests {
         assert_eq!(ids.len(), 1);
         let token = game.object(ids[0]).expect("token should exist");
         assert_eq!(game.controller_of(token), bob);
+    }
+
+    #[test]
+    fn xorn_adds_one_treasure_token_to_your_treasure_creation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let xorn = xorn_definition();
+        game.create_object_from_definition(&xorn, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::you(treasure_token_definition(), 2)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 3, "Xorn should add exactly one Treasure token");
+        assert!(ids.iter().all(|id| {
+            game.object(*id).is_some_and(|token| {
+                token.name == "Treasure" && token.subtypes.contains(&Subtype::Treasure)
+            })
+        }));
+    }
+
+    #[test]
+    fn xorn_does_not_add_tokens_to_non_treasure_token_creation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let xorn = xorn_definition();
+        game.create_object_from_definition(&xorn, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::you(soldier_token(), 2)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 2, "Xorn should ignore non-Treasure tokens");
+    }
+
+    #[test]
+    fn xorn_does_not_add_tokens_to_other_players_treasure_creation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let xorn = xorn_definition();
+        game.create_object_from_definition(&xorn, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::new(
+            treasure_token_definition(),
+            2,
+            PlayerFilter::Specific(bob),
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(
+            ids.len(),
+            2,
+            "Xorn should only affect its controller's Treasure creation"
+        );
+        assert!(ids.iter().all(|id| {
+            game.object(*id)
+                .is_some_and(|token| game.controller_of(token) == bob)
+        }));
     }
 
     #[test]

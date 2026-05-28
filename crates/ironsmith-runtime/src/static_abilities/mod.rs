@@ -2677,6 +2677,20 @@ impl StaticAbility {
         Self::new(DoubleTokenCreationReplacement::new(controller, display))
     }
 
+    pub fn add_token_creation_replacement(
+        controller: crate::target::PlayerFilter,
+        token_filter: crate::target::ObjectFilter,
+        additional: i32,
+        display: String,
+    ) -> Self {
+        Self::new(AddTokenCreationReplacement::new(
+            controller,
+            token_filter,
+            additional,
+            display,
+        ))
+    }
+
     pub fn effect_discard_to_library_replacement() -> Self {
         Self::new(EffectDiscardToLibraryReplacement)
     }
