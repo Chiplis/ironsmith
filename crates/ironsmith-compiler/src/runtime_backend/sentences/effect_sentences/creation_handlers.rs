@@ -1329,6 +1329,15 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
                 .with_surface_hint(ValueSurfaceHint::ForEach),
         );
     }
+    if grammar::words_match_prefix(tokens, &["card", "type", "among"]).is_some()
+        || grammar::words_match_prefix(tokens, &["card", "types", "among"]).is_some()
+    {
+        let after_among_token_idx = token_index_for_word_index(tokens, 3)?;
+        let scope_tokens = trim_commas(&tokens[after_among_token_idx..]);
+        if let Ok(filter) = parse_object_filter(&scope_tokens, false) {
+            return Some(Value::CardTypesAmong(filter).with_surface_hint(ValueSurfaceHint::ForEach));
+        }
+    }
     None
 }
 

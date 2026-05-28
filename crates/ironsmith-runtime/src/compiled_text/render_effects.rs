@@ -2340,10 +2340,22 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
-    describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects)
+    describe_draw_discard_then_create_structural(effects)
+        .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_draw_discard_then_create_structural(effects: &[Effect]) -> Option<String> {
+    let [draw_effect, discard_effect, create_effect] = effects else {
+        return None;
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    let draw_discard = describe_draw_then_discard(draw, discard)?;
+    let create = describe_effect(create_effect);
+    Some(format!("{}. {}", capitalize_first(&draw_discard), create))
 }
 
 fn join_or_list(items: &[String]) -> Option<String> {
@@ -21598,6 +21610,17 @@ pub(super) fn describe_draw_then_discard(
 ) -> Option<String> {
     if draw.player != discard.player {
         return None;
+    }
+    if draw.player == PlayerFilter::You {
+        let mut text = format!(
+            "Draw {}, then discard {}",
+            describe_card_count(&draw.count),
+            describe_discard_count(&discard.count, discard.card_filter.as_ref())
+        );
+        if discard.random {
+            text.push_str(" at random");
+        }
+        return Some(text);
     }
     let player = describe_player_filter(&draw.player);
     let mut text = format!(
