@@ -518,6 +518,14 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
             crate::effect::Comparison::GreaterThan(0),
         ));
     }
+    if words.len() == 3
+        && words[0] == "result"
+        && matches!(words[1], "is" | "was")
+        && let Some(value) = ironsmith_core::parse_cardinal_word(words[2])
+            .and_then(|value| i32::try_from(value).ok())
+    {
+        return Some(IfResultPredicate::Value(Comparison::Equal(value)));
+    }
     if words.len() >= 3
         && words[0] == "you"
         && (words[1] == "win" || words[1] == "won")

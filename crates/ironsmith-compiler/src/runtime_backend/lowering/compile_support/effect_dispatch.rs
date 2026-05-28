@@ -572,9 +572,13 @@ fn compile_subject_verb_effect(
                 Effect::flip_coin(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::RollDie { sides } => {
+        SubjectVerbActionAst::RollDie { sides, die_text } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::roll_die(*sides, subject.into_player_filter())
+                Effect::roll_die_with_die_text(
+                    *sides,
+                    subject.into_player_filter(),
+                    die_text.clone(),
+                )
             })
         }
         SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary => {

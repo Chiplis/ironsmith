@@ -1219,6 +1219,16 @@ impl Effect {
         Self::new(crate::effects::RollDieEffect::new(player, sides))
     }
 
+    pub fn roll_die_with_die_text(
+        sides: u32,
+        player: crate::target::PlayerFilter,
+        die_text: Option<String>,
+    ) -> Self {
+        Self::new(crate::effects::RollDieEffect::new_with_die_text(
+            player, sides, die_text,
+        ))
+    }
+
     pub fn fight(a: crate::target::ChooseSpec, b: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::FightEffect::new(a, b))
     }

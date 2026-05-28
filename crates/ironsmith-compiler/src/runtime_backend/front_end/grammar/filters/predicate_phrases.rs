@@ -718,21 +718,47 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     for (phrase, zone) in [
+        (["this", "is", "in", "your", "hand"].as_slice(), Zone::Hand),
         (
             ["this", "card", "is", "in", "your", "hand"].as_slice(),
             Zone::Hand,
+        ),
+        (
+            ["this", "is", "in", "your", "graveyard"].as_slice(),
+            Zone::Graveyard,
         ),
         (
             ["this", "card", "is", "in", "your", "graveyard"].as_slice(),
             Zone::Graveyard,
         ),
         (
-            ["this", "card", "is", "in", "your", "library"].as_slice(),
+            ["this", "creature", "is", "in", "your", "graveyard"].as_slice(),
+            Zone::Graveyard,
+        ),
+        (
+            ["this", "permanent", "is", "in", "your", "graveyard"].as_slice(),
+            Zone::Graveyard,
+        ),
+        (
+            ["this", "object", "is", "in", "your", "graveyard"].as_slice(),
+            Zone::Graveyard,
+        ),
+        (
+            ["this", "is", "in", "your", "library"].as_slice(),
             Zone::Library,
         ),
         (
+            ["this", "card", "is", "in", "your", "library"].as_slice(),
+            Zone::Library,
+        ),
+        (["this", "is", "in", "exile"].as_slice(), Zone::Exile),
+        (
             ["this", "card", "is", "in", "exile"].as_slice(),
             Zone::Exile,
+        ),
+        (
+            ["this", "is", "in", "the", "command", "zone"].as_slice(),
+            Zone::Command,
         ),
         (
             ["this", "card", "is", "in", "the", "command", "zone"].as_slice(),

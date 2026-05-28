@@ -741,6 +741,7 @@ pub(crate) enum SubjectVerbActionAst {
     FlipCoin,
     RollDie {
         sides: u32,
+        die_text: Option<String>,
     },
     ShuffleHandAndGraveyardIntoLibrary,
     ShuffleGraveyardIntoLibrary,
@@ -1727,7 +1728,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             }
             Self::Clash { opponent } => f.debug_tuple("Clash").field(opponent).finish(),
             Self::FlipCoin => f.write_str("FlipCoin"),
-            Self::RollDie { sides } => f.debug_tuple("RollDie").field(sides).finish(),
+            Self::RollDie { sides, die_text } => {
+                if let Some(die_text) = die_text {
+                    f.debug_struct("RollDie")
+                        .field("sides", sides)
+                        .field("die_text", die_text)
+                        .finish()
+                } else {
+                    f.debug_tuple("RollDie").field(sides).finish()
+                }
+            }
             Self::ShuffleHandAndGraveyardIntoLibrary => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")
             }
@@ -5315,10 +5325,18 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_roll_die(player: PlayerAst, sides: u32) -> Self {
+        Self::subject_verb_roll_die_with_die_text(player, sides, None)
+    }
+
+    pub(crate) fn subject_verb_roll_die_with_die_text(
+        player: PlayerAst,
+        sides: u32,
+        die_text: Option<String>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::RollDie { sides },
+            SubjectVerbActionAst::RollDie { sides, die_text },
         )
     }
 

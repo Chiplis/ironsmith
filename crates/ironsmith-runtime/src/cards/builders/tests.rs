@@ -3767,6 +3767,44 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_arden_angel_rolls_four_sided_die_and_returns_itself_from_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Arden Angel")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\nAt the beginning of your upkeep, if Arden Angel is in your graveyard, roll a four-sided die. If the result is 1, return Arden Angel from your graveyard to the battlefield.",
+        )
+        .expect("Arden Angel should parse strictly");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(debug.contains("RollDieEffect"), "{debug}");
+    assert!(debug.contains("sides: 4"), "{debug}");
+    assert!(debug.contains("SourceIsInZone(Graveyard)"), "{debug}");
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("FullName(\"Arden Angel\")")
+            && !debug.contains("ChooseObjectsEffect"),
+        "expected Arden Angel to return itself, not choose an Angel card, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("if Arden Angel is in your graveyard"),
+        "expected named graveyard intervening-if condition, got {rendered}"
+    );
+    assert!(
+        rendered.contains("roll a four-sided die") && rendered.contains("If the result is 1"),
+        "expected four-sided die and exact-result branch wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("return Arden Angel from your graveyard to the battlefield"),
+        "expected named self-return wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Clown Car")
         .card_types(vec![CardType::Artifact, CardType::Creature])
