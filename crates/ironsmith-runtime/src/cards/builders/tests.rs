@@ -471,6 +471,38 @@ fn happily_ever_after_keeps_life_draw_and_win_gate() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn coalition_victory_parses_and_renders_domain_and_color_win_condition() {
+    let oracle = "You win the game if you control a land of each basic land type and a creature of each color.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Coalition Victory")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("Coalition Victory should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("PlayerControlsBasicLandTypesAmongLandsOrMore")
+            && debug.contains("ColorsAmong")
+            && debug.contains("WinTheGameEffect"),
+        "expected Coalition Victory to lower to a conditional win effect gated by basic land types and creature colors, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "If you control a land of each basic land type and you control a creature of each color, you win the game."
+    );
+}
+
 #[test]
 fn test_creature_with_etb() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "ETB Creature")

@@ -39,6 +39,133 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn coalition_victory_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_303), "Coalition Victory")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You win the game if you control a land of each basic land type and a creature of each color.",
+        )
+        .expect("Coalition Victory should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_coalition_victory_lands(game: &mut GameState, controller: PlayerId, include_forest: bool) {
+    let lands = [
+        ("Plains", Subtype::Plains),
+        ("Island", Subtype::Island),
+        ("Swamp", Subtype::Swamp),
+        ("Mountain", Subtype::Mountain),
+    ];
+    for (name, subtype) in lands {
+        let land = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![subtype])
+            .build();
+        game.create_object_from_card(&land, controller, Zone::Battlefield);
+    }
+    if include_forest {
+        let forest = CardBuilder::new(CardId::new(), "Forest")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Forest])
+            .build();
+        game.create_object_from_card(&forest, controller, Zone::Battlefield);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_coalition_victory_creatures(
+    game: &mut GameState,
+    controller: PlayerId,
+    include_green: bool,
+) {
+    let creatures = [
+        ("White Coalition Creature", crate::color::ColorSet::WHITE),
+        ("Blue Coalition Creature", crate::color::ColorSet::BLUE),
+        ("Black Coalition Creature", crate::color::ColorSet::BLACK),
+        ("Red Coalition Creature", crate::color::ColorSet::RED),
+    ];
+    for (name, colors) in creatures {
+        let creature = CardBuilder::new(CardId::new(), name)
+            .color_indicator(colors)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&creature, controller, Zone::Battlefield);
+    }
+    if include_green {
+        let creature = CardBuilder::new(CardId::new(), "Green Coalition Creature")
+            .color_indicator(crate::color::ColorSet::GREEN)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&creature, controller, Zone::Battlefield);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_coalition_victory_with_board(include_forest: bool, include_green: bool) -> GameState {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_coalition_victory_lands(&mut game, alice, include_forest);
+    put_coalition_victory_creatures(&mut game, alice, include_green);
+
+    let coalition_victory = coalition_victory_definition();
+    let spell_id = game.create_object_from_definition(&coalition_victory, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    resolve_stack_entry(&mut game).expect("Coalition Victory should resolve");
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn coalition_victory_wins_with_each_basic_land_type_and_creature_color() {
+    let game = resolve_coalition_victory_with_board(true, true);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    assert!(
+        game.player(bob).expect("bob exists").has_lost,
+        "Coalition Victory should make opponents lose when Alice satisfies both gates"
+    );
+    assert!(
+        !game.player(alice).expect("alice exists").has_lost,
+        "Coalition Victory should not make its controller lose"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn coalition_victory_does_not_win_without_each_basic_land_type() {
+    let game = resolve_coalition_victory_with_board(false, true);
+    let bob = PlayerId::from_index(1);
+
+    assert!(
+        !game.player(bob).expect("bob exists").has_lost,
+        "Coalition Victory should not win while its controller is missing a basic land type"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn coalition_victory_does_not_win_without_each_creature_color() {
+    let game = resolve_coalition_victory_with_board(true, false);
+    let bob = PlayerId::from_index(1);
+
+    assert!(
+        !game.player(bob).expect("bob exists").has_lost,
+        "Coalition Victory should not win while its controller is missing a creature color"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn open_the_way_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_900), "Open the Way")
         .mana_cost(ManaCost::from_pips(vec![

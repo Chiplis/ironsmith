@@ -10355,6 +10355,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             let subject = describe_player_filter(player);
             let verb = player_verb(&subject, "control", "controls");
+            if *count == 5 {
+                return format!("{subject} {verb} a land of each basic land type");
+            }
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
             format!(
@@ -11286,6 +11289,15 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             ) = (left, operator, right)
             {
                 return "you have max speed".to_string();
+            }
+            if let (
+                Value::ColorsAmong(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(5),
+            ) = (left, operator, right)
+                && *filter == ObjectFilter::creature().you_control()
+            {
+                return "you control a creature of each color".to_string();
             }
             if let (
                 Value::LifeLostThisTurn(player),

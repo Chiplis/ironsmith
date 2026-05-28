@@ -389,6 +389,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "until"
             | "untap"
             | "untaps"
+            | "win"
+            | "wins"
     )
 }
 

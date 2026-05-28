@@ -1583,6 +1583,17 @@ pub(crate) fn parse_win_the_game_clause(
         return Ok(Some(EffectAst::subject_verb_win_game(PlayerAst::You)));
     }
 
+    if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
+        let leading_words = ClausePatternCompatWords::new(spec.leading_tokens).to_word_refs();
+        if leading_words.as_slice() == ["you", "win", "the", "game"] {
+            return Ok(Some(EffectAst::Conditional {
+                predicate: spec.predicate,
+                if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
+                if_false: Vec::new(),
+            }));
+        }
+    }
+
     if clause_words.get(4).copied() != Some("if") {
         return Ok(None);
     }
