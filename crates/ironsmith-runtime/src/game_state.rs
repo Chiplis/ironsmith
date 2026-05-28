@@ -8787,6 +8787,7 @@ impl GameState {
         self.turn_store
             .turn_history
             .stage_event(event, object_snapshot, source_snapshot);
+        self.mark_continuous_state_dirty();
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
@@ -8794,6 +8795,7 @@ impl GameState {
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);
+        self.mark_continuous_state_dirty();
     }
 
     pub fn queue_trigger_event(
