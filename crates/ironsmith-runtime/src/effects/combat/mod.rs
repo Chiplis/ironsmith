@@ -27,6 +27,7 @@ mod prevent_damage;
 mod prevention_helpers;
 mod remove_from_combat;
 mod set_base_power_toughness;
+mod switch_blocking_assignments;
 
 pub use enter_attacking::EnterAttackingEffect;
 pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
@@ -45,3 +46,4 @@ pub use prevent_all_damage_to_target::PreventAllDamageToTargetEffect;
 pub use prevent_damage::PreventDamageEffect;
 pub use remove_from_combat::RemoveFromCombatEffect;
 pub use set_base_power_toughness::SetBasePowerToughnessEffect;
+pub use switch_blocking_assignments::SwitchBlockingAssignmentsEffect;

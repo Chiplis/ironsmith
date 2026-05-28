@@ -3259,6 +3259,17 @@ impl RemoveFromCombatEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SwitchBlockingAssignmentsEffect {
+    pub attackers: ChooseSpec,
+}
+
+impl SwitchBlockingAssignmentsEffect {
+    pub fn new(attackers: ChooseSpec) -> Self {
+        Self { attackers }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DrawForEachTaggedMatchingEffect {
     pub tag: crate::tag::TagKey,
     pub filter: ObjectFilter,

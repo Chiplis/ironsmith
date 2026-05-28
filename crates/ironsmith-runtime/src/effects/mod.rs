@@ -102,6 +102,7 @@ pub use combat::{
     ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PreventAllCombatDamageEffect,
     PreventAllCombatDamageFromEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
     PreventDamageEffect, RemoveFromCombatEffect, SetBasePowerToughnessEffect,
+    SwitchBlockingAssignmentsEffect,
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BolsterEffect,
