@@ -32685,6 +32685,70 @@ fn the_aesir_escape_valhalla_chapter_two_requires_a_creature_you_control_target(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn the_aesir_escape_valhalla_without_exiled_card_adds_no_counters() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let saga_def = the_aesir_escape_valhalla_definition();
+    let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
+    let saga_stable_id = game.object(saga_id).expect("saga exists").stable_id;
+
+    let target_creature = CardBuilder::new(CardId::from_raw(992_007), "Small Ally")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let target_id = game.create_object_from_card(&target_creature, alice, Zone::Battlefield);
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter I should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter I should resolve with no graveyard permanent to exile");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "chapter I should not gain life when no card was exiled"
+    );
+    assert!(game.exile.is_empty(), "chapter I should not exile a card");
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter II should go on the stack with a legal target");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter II should resolve without an exiled-card amount");
+
+    assert_eq!(
+        game.counter_count(target_id, CounterType::PlusOnePlusOne),
+        0,
+        "chapter II should add no counters when chapter I did not exile a card"
+    );
+
+    add_lore_counter_and_check_chapters(&mut game, saga_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("chapter III should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("chapter III should resolve without an exiled card");
+
+    let returned_saga_id = game
+        .find_object_by_stable_id(saga_stable_id)
+        .expect("saga should still exist after returning");
+    assert_eq!(
+        game.object(returned_saga_id).expect("returned saga exists").zone,
+        Zone::Hand,
+        "chapter III should still return this Saga to its owner's hand"
+    );
+    assert!(
+        game.exile.is_empty(),
+        "chapter III should not leave or create an exiled-card object"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_saga_precombat_main_adds_lore_counter() {
     use crate::cards::definitions::the_birth_of_meletis;
 
