@@ -1669,6 +1669,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.id() == StaticAbilityId::Hexproof
     }
 
+    fn hexproof_from_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => Some(filter),
+            _ => self.leaf_static_ability()?.hexproof_from_filter(),
+        }
+    }
+
     fn has_shroud(&self) -> bool {
         self.id() == StaticAbilityId::Shroud
     }

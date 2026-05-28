@@ -23,6 +23,9 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     if lower.starts_with("protection from ") {
         return true;
     }
+    if lower.starts_with("hexproof from ") {
+        return true;
+    }
     if lower.starts_with("partner with ") {
         return true;
     }

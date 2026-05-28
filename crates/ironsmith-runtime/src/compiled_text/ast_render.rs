@@ -362,7 +362,11 @@ pub(super) fn describe_resolution_program(
         }
 
         if !segment.default_effects.is_empty() {
-            rendered_segments.push(describe_effect_list(&segment.default_effects));
+            rendered_segments.push(
+                describe_effect_clause_list(&segment.default_effects)
+                    .map(|text| capitalize_first(&text))
+                    .unwrap_or_else(|| describe_effect_list(&segment.default_effects)),
+            );
         }
         for branch in &segment.self_replacements {
             rendered_segments.push(describe_effect_list(&branch.replacement_effects));
