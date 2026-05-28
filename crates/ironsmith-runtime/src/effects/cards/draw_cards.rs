@@ -23,6 +23,7 @@ fn execute_draw_replacement_effects(
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,
     effect_id: crate::replacement::ReplacementEffectId,
+    replaced_player: PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
     let replacement_effect = game
         .effect_store
@@ -79,7 +80,17 @@ fn execute_draw_replacement_effects(
             .remove(&key);
     }
 
-    execution_result
+    execution_result.map(|mut outcome| {
+        let drawn_count = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<CardsDrawnEvent>())
+            .filter(|event| event.player == replaced_player)
+            .map(|event| event.amount() as i32)
+            .sum();
+        outcome.value = crate::effect::OutcomeValue::Count(drawn_count);
+        outcome
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -310,7 +321,7 @@ impl EffectExecutor for DrawCardsEffect {
                 TraitEventResult::Prevented => continue,
                 TraitEventResult::Replaced { effects, effect_id } => {
                     let replacement_outcome =
-                        execute_draw_replacement_effects(game, ctx, effects, effect_id)?;
+                        execute_draw_replacement_effects(game, ctx, effects, effect_id, player_id)?;
                     replacement_count += replacement_outcome.count_or_zero();
                     events.extend(replacement_outcome.events);
                     continue;

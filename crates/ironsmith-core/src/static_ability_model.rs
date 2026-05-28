@@ -407,6 +407,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         replacement_effects: Vec<E>,
         display: String,
     },
+    ConditionalDrawReplacement {
+        condition: Condition,
+        replacement_effects: Vec<E>,
+        display: String,
+    },
     CharacteristicDefiningPt {
         power: Value,
         toughness: Value,
@@ -1235,6 +1240,18 @@ where
             } => StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            } => StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(map_effect)
@@ -3206,6 +3223,23 @@ impl<
             id: Some(StaticAbilityId::DrawReplacementDouble),
             label: "draw replacement double".into(),
             payload: StaticAbilityPayload::None,
+        }
+    }
+
+    pub fn conditional_draw_replacement(
+        condition: Condition,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ConditionalDrawReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            },
         }
     }
 

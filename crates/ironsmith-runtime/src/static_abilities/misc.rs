@@ -3793,6 +3793,89 @@ impl StaticAbilityKind for DrawReplacementDouble {
     }
 }
 
+/// "If you would draw a card while [condition], [effects] instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalDrawReplacement {
+    pub condition: Condition,
+    pub replacement_effects: Vec<Effect>,
+    pub display: String,
+}
+
+impl ConditionalDrawReplacement {
+    pub fn new(
+        condition: Condition,
+        replacement_effects: Vec<Effect>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            condition,
+            replacement_effects,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ConditionalDrawReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ConditionalDrawReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ConditionalWouldDrawCardMatcher {
+                condition: self.condition.clone(),
+                display: self.display.clone(),
+            },
+            ReplacementAction::Instead(self.replacement_effects.clone()),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ConditionalWouldDrawCardMatcher {
+    condition: Condition,
+    display: String,
+}
+
+impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if !WouldDrawCardMatcher::you().matches_event(event, ctx) {
+            return false;
+        }
+
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: None,
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+
+        crate::condition_eval::evaluate_condition_external(ctx.game, &self.condition, &eval_ctx)
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+}
+
 /// "If you would draw a card, exile the top N cards of your library instead. You may play those
 /// cards this turn."
 #[derive(Debug, Clone, PartialEq, Eq)]

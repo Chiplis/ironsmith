@@ -1285,6 +1285,15 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::ConditionalDrawReplacement {
+                condition,
+                replacement_effects,
+                display,
+            } => StaticAbility::conditional_draw_replacement(
+                condition.clone(),
+                replacement_effects.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
                 power,
                 toughness,

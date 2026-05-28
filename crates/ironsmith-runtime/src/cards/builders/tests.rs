@@ -7,9 +7,9 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CreateTokenEffect, DestroyEffect, EffectExecutor, GainLifeEffect, MoveToZoneEffect,
-    ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
-    UntapEffect,
+    CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
+    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
+    TargetOnlyEffect, UntapEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
@@ -1491,6 +1491,101 @@ fn test_parse_max_speed_draw_replacement_static_ability() {
             && rendered.contains("max speed"),
         "expected max-speed draw replacement static ability, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_blood_scrivener_strictly_parses_conditional_draw_replacement() {
+    assert_oracle_card_parses_strict("Blood Scrivener");
+    let def = parse_oracle_card_definition("Blood Scrivener");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::ConditionalDrawReplacement
+        )),
+        "Blood Scrivener should compile to a conditional draw replacement static ability, got {def:#?}"
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "Blood Scrivener's replacement text should not lower as a spell effect"
+    );
+    assert!(
+        rendered.contains("If you would draw a card while you have no cards in hand")
+            && rendered.contains("instead draw two cards and you lose 1 life"),
+        "expected Blood Scrivener conditional draw-replacement text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_blood_scrivener_library_cards(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    count: u32,
+) {
+    for index in 0..count {
+        game.create_object_from_card(
+            &crate::card::CardBuilder::new(
+                CardId::from_raw(20_000 + index),
+                &format!("Blood Scrivener Library Card {index}"),
+            )
+            .card_types(vec![CardType::Creature])
+            .build(),
+            player,
+            Zone::Library,
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn blood_scrivener_replaces_draw_when_controller_has_no_cards_in_hand() {
+    let def = parse_oracle_card_definition("Blood Scrivener");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let blood_scrivener = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_blood_scrivener_library_cards(&mut game, alice, 3);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(blood_scrivener, alice, &mut dm);
+    let result = DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("Blood Scrivener replacement draw should resolve");
+
+    assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+    assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+    assert_eq!(game.player(alice).unwrap().library.len(), 1);
+    assert_eq!(game.life_total(alice), 19);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn blood_scrivener_does_not_replace_draw_when_controller_has_cards_in_hand() {
+    let def = parse_oracle_card_definition("Blood Scrivener");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let blood_scrivener = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(20_100), "Blood Scrivener Hand Card")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+    add_blood_scrivener_library_cards(&mut game, alice, 2);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(blood_scrivener, alice, &mut dm);
+    let result = DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("normal draw should resolve");
+
+    assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+    assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+    assert_eq!(game.player(alice).unwrap().library.len(), 1);
+    assert_eq!(game.life_total(alice), 20);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
