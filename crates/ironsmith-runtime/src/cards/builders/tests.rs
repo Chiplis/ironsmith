@@ -35368,6 +35368,128 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
     );
 }
 
+#[test]
+fn calamity_bearer_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Calamity Bearer");
+    let rendered_lines = canonical_compiled_lines(&def);
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::ModifyDamageAmountReplacement
+        )),
+        "Calamity Bearer should compile to a double-damage replacement static ability"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| line
+            == "If a giant source you control would deal damage to a permanent or player, it deals double that damage to that permanent or player instead."),
+        "Calamity Bearer should render its double-damage replacement clause, got {rendered_lines:?}"
+    );
+}
+
+#[test]
+fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents() {
+    let def = parse_oracle_card_definition("Calamity Bearer");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let giant_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_300), "Alice Giant")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Giant])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let target_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_301), "Target Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let player_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        giant_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(player_damage.assignments.len(), 1);
+    assert_eq!(player_damage.assignments[0].amount, 6);
+
+    let permanent_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        giant_source,
+        crate::events::DamageTarget::Object(target_permanent),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(permanent_damage.assignments.len(), 1);
+    assert_eq!(permanent_damage.assignments[0].amount, 4);
+}
+
+#[test]
+fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
+    let def = parse_oracle_card_definition("Calamity Bearer");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let non_giant_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_302), "Alice Soldier")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Soldier])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let opposing_giant_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_303), "Bob Giant")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Giant])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let non_giant_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        non_giant_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(non_giant_damage.assignments.len(), 1);
+    assert_eq!(non_giant_damage.assignments[0].amount, 3);
+
+    let opposing_giant_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        opposing_giant_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(opposing_giant_damage.assignments.len(), 1);
+    assert_eq!(opposing_giant_damage.assignments[0].amount, 3);
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_sporeweb_weaver_strict_regression() {
