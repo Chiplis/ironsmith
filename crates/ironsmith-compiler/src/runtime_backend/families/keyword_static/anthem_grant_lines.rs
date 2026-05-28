@@ -2125,6 +2125,20 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(condition);
     }
 
+    if clause_words == ["there", "are", "no", "cards", "in", "your", "library"]
+        || clause_words == ["your", "library", "has", "no", "cards", "in", "it"]
+    {
+        return Ok(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(
+                ObjectFilter::default()
+                    .in_zone(Zone::Library)
+                    .owned_by(PlayerFilter::You),
+            ),
+            comparison: crate::effect::Comparison::Equal(0),
+            display: Some("there are no cards in your library".to_string()),
+        });
+    }
+
     if clause_words.len() >= 6
         && clause_words[0] == "you"
         && clause_words[1] == "have"
@@ -6362,7 +6376,11 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&tokens[..has_idx]);
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -6427,21 +6445,48 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
     let mut compiled = Vec::new();
     match subject {
         AnthemSubjectAst::Source => {
-            compiled.push(
-                StaticAbility::set_base_power_toughness(ObjectFilter::source(), power, toughness)
-                    .into(),
-            );
-            compiled.extend(granted.into_iter().map(StaticAbilityAst::KeywordAction));
+            let source_filter = if anthem_word_slice_starts_with(
+                &subject_words,
+                &["this", "creature"],
+            ) {
+                ObjectFilter::source().with_type(CardType::Creature)
+            } else {
+                ObjectFilter::source()
+            };
+            let set_base =
+                StaticAbility::set_base_power_toughness(source_filter, power, toughness).into();
+            compiled.push(if let Some(condition) = condition.clone() {
+                StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(set_base),
+                    condition,
+                }
+            } else {
+                set_base
+            });
+            compiled.extend(granted.into_iter().map(|action| {
+                if let Some(condition) = condition.clone() {
+                    StaticAbilityAst::ConditionalKeywordAction { action, condition }
+                } else {
+                    StaticAbilityAst::KeywordAction(action)
+                }
+            }));
         }
         AnthemSubjectAst::Filter(filter) => {
-            compiled.push(
-                StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into(),
-            );
+            let set_base =
+                StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into();
+            compiled.push(if let Some(condition) = condition.clone() {
+                StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(set_base),
+                    condition,
+                }
+            } else {
+                set_base
+            });
             for action in granted {
                 compiled.push(StaticAbilityAst::GrantKeywordAction {
                     filter: filter.clone(),
                     action,
-                    condition: None,
+                    condition: condition.clone(),
                 });
             }
         }

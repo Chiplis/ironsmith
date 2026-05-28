@@ -206,6 +206,9 @@ impl StaticAbility {
                 )
             }
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
+            Some(StaticAbilityId::DrawReplacementSkipEmptyLibrary) => {
+                Self::draw_replacement_skip_empty_library()
+            }
             Some(StaticAbilityId::ExileWouldDieInstead) => {
                 Self::exile_would_die_instead(crate::target::ObjectFilter::creature())
             }

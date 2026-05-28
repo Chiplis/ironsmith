@@ -7791,6 +7791,28 @@ fn rewrite_grammar_draw_replace_exile_top_face_down_probe_matches_static_shape()
 }
 
 #[test]
+fn rewrite_grammar_living_conundrum_empty_library_draw_skip_matches_static_shape() {
+    let tokens = lex_line(
+        "If you would draw a card while your library has no cards in it, skip that draw instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify Living Conundrum draw-skip replacement line");
+
+    assert!(
+        super::grammar::abilities::is_draw_replacement_skip_empty_library_line_lexed(&tokens),
+        "grammar-owned empty-library draw-skip replacement probe should match"
+    );
+
+    let parsed = super::keyword_static::parse_draw_replacement_skip_empty_library_line(&tokens)
+        .expect("empty-library draw-skip replacement static line should parse");
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::DrawReplacementSkipEmptyLibrary
+    ));
+}
+
+#[test]
 fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
     let library_tokens = lex_line(
         "If an effect causes you to discard a card, you may discard it to the top of your library instead of into your graveyard.",
@@ -7838,7 +7860,9 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
         .expect("type-addition static line should parse");
     assert!(matches!(
         parsed_artifact_land,
-        Some(ability) if ability.id() == crate::static_abilities::StaticAbilityId::AddCardTypes
+        Some(abilities) if abilities.iter().any(|ability| {
+            ability.id() == crate::static_abilities::StaticAbilityId::AddCardTypes
+        })
     ));
 
     let discard_tokens = lex_line(
