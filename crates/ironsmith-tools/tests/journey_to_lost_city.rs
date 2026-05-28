@@ -1,9 +1,14 @@
 use ironsmith::{
-    CardBuilder, CardId, CardType, GameState, ManaCost, ManaSymbol, Phase, PlayerId,
-    PowerToughness, Step, TriggerQueue, Zone, generate_and_queue_step_triggers,
+    BooleanContext, CardBuilder, CardId, CardType, CounterType, DecisionMaker, GameState, Phase,
+    PlayerId, PowerToughness, Step, TriggerQueue, Zone, generate_and_queue_step_triggers,
     put_triggers_on_stack, resolve_stack_entry,
 };
-use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder, CardType as CompilerCardType};
+use ironsmith::game_loop::resolve_stack_entry_with;
+use ironsmith::semantic_compare::compare_semantics_scored;
+use ironsmith_compiler::mana::{ManaCost as CompilerManaCost, ManaSymbol as CompilerManaSymbol};
+use ironsmith_compiler::{
+    CardDefinitionBuilder as CompilerCardDefinitionBuilder, CardType as CompilerCardType,
+};
 
 const JOURNEY_TEXT: &str = "At the beginning of your upkeep, exile the top four cards of your library, then roll a d20.\n\
 1—9 | You may put a land card from among those cards onto the battlefield.\n\
@@ -15,9 +20,9 @@ fn journey_to_the_lost_city_definition() -> ironsmith::cards::CardDefinition {
         ironsmith_compiler::CardId::from_raw(91_681),
         "Journey to the Lost City",
     )
-    .mana_cost(ironsmith_compiler::ManaCost::from_pips(vec![
-        vec![ironsmith_compiler::ManaSymbol::Generic(3)],
-        vec![ironsmith_compiler::ManaSymbol::Green],
+    .mana_cost(CompilerManaCost::from_pips(vec![
+        vec![CompilerManaSymbol::Generic(3)],
+        vec![CompilerManaSymbol::Green],
     ]))
     .card_types(vec![CompilerCardType::Enchantment]);
 
@@ -36,7 +41,7 @@ fn setup_journey_game() -> (GameState, PlayerId, ironsmith::ObjectId) {
     (game, alice, journey_id)
 }
 
-fn make_card(id: u64, name: &str, card_types: Vec<CardType>) -> ironsmith::Card {
+fn make_card(id: u32, name: &str, card_types: Vec<CardType>) -> ironsmith::Card {
     let mut builder = CardBuilder::new(CardId::from_raw(id), name).card_types(card_types.clone());
     if card_types.contains(&CardType::Creature) {
         builder = builder.power_toughness(PowerToughness::fixed(2, 2));
@@ -44,24 +49,107 @@ fn make_card(id: u64, name: &str, card_types: Vec<CardType>) -> ironsmith::Card 
     builder.build()
 }
 
+fn has_named_object_in_zone(game: &GameState, name: &str, zone: Zone) -> bool {
+    game.objects_in_deterministic_order()
+        .into_iter()
+        .any(|object| object.name == name && object.zone == zone)
+}
+
+struct AcceptMayDecisionMaker;
+
+impl DecisionMaker for AcceptMayDecisionMaker {
+    fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+        true
+    }
+}
+
 #[test]
 fn journey_to_the_lost_city_strictly_compiles_and_renders_result_20_clause() {
     let definition = journey_to_the_lost_city_definition();
-    let rendered = ironsmith::compiled_text::compiled_text_lines(&definition).join("\n");
+    let compiled_lines = ironsmith::compiled_text::compiled_text_lines(&definition);
+    let rendered = compiled_lines.join("\n");
+    let (similarity, _, _, _, semantic_mismatch) =
+        compare_semantics_scored(JOURNEY_TEXT, &compiled_lines, None);
 
     assert!(
-        rendered.contains("If the result is 20"),
+        rendered.contains("20 | Put all permanent cards exiled with this enchantment onto the battlefield, then sacrifice it"),
         "expected exact d20 result branch in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("return all permanent cards exiled with this enchantment to the battlefield")
-            || rendered.contains("Return all permanent cards exiled with this enchantment to the battlefield"),
-        "expected source-linked permanent return in compiled text, got {rendered}"
+        rendered.contains("1—9 | You may put a land card from among those cards onto the battlefield"),
+        "expected optional land branch to reference among those cards, got {rendered}"
     );
     assert!(
-        rendered.contains("Sacrifice this enchantment"),
-        "expected source sacrifice in compiled text, got {rendered}"
+        rendered.contains("10—19 | Create a 2/2 green Wolf creature token, then put a +1/+1 counter on it for each creature card among those cards"),
+        "expected Wolf counter branch to reference among those cards, got {rendered}"
     );
+    assert!(!semantic_mismatch, "unexpected semantic mismatch for {rendered}");
+    assert!(
+        similarity >= 0.99,
+        "expected Journey to the Lost City similarity >= 0.99, got {similarity:.4}: {rendered}"
+    );
+}
+
+#[test]
+fn journey_to_the_lost_city_roll_1_to_9_can_put_exiled_land_onto_battlefield() {
+    let (mut game, alice, journey_id) = setup_journey_game();
+    let land = make_card(91_680, "Journey Forest", vec![CardType::Land]);
+    let creature = make_card(91_681, "Journey Bear", vec![CardType::Creature]);
+    let instant = make_card(91_682, "Journey Instant", vec![CardType::Instant]);
+    let sorcery = make_card(91_683, "Journey Sorcery", vec![CardType::Sorcery]);
+    game.create_object_from_card(&land, alice, Zone::Library);
+    game.create_object_from_card(&creature, alice, Zone::Library);
+    game.create_object_from_card(&instant, alice, Zone::Library);
+    game.create_object_from_card(&sorcery, alice, Zone::Library);
+    game.force_next_die_roll(1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Journey upkeep trigger should go on the stack");
+    let mut dm = AcceptMayDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Journey upkeep trigger should resolve");
+
+    assert!(has_named_object_in_zone(&game, "Journey Forest", Zone::Battlefield));
+    assert_eq!(game.object(journey_id).map(|obj| obj.zone), Some(Zone::Battlefield));
+}
+
+#[test]
+fn journey_to_the_lost_city_roll_10_to_19_counts_creature_cards_among_exiled_cards() {
+    let (mut game, alice, journey_id) = setup_journey_game();
+    let prior_exiled = make_card(91_709, "Previously Exiled Bear", vec![CardType::Creature]);
+    let prior_exiled_id = game.create_object_from_card(&prior_exiled, alice, Zone::Exile);
+    game.add_exiled_with_source_link(journey_id, prior_exiled_id);
+
+    for (offset, card_types) in [
+        vec![CardType::Creature],
+        vec![CardType::Creature],
+        vec![CardType::Land],
+        vec![CardType::Instant],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let card = make_card(91_710 + offset as u32, "Journey Exiled Card", card_types);
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    game.force_next_die_roll(10);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Journey upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Journey upkeep trigger should resolve");
+
+    let wolf_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| game.object(id).is_some_and(|obj| obj.name == "Wolf"))
+        .expect("Journey should create a Wolf token");
+    assert_eq!(game.counter_count(wolf_id, CounterType::PlusOnePlusOne), 2);
+    assert_eq!(game.object(prior_exiled_id).map(|obj| obj.zone), Some(Zone::Exile));
+    assert_eq!(game.object(journey_id).map(|obj| obj.zone), Some(Zone::Battlefield));
 }
 
 #[test]
@@ -87,11 +175,11 @@ fn journey_to_the_lost_city_roll_20_returns_linked_permanents_and_sacrifices_its
         .expect("Journey upkeep trigger should go on the stack");
     resolve_stack_entry(&mut game).expect("Journey upkeep trigger should resolve");
 
-    assert_eq!(game.object(linked_creature_id).map(|obj| obj.zone), Some(Zone::Battlefield));
-    assert_eq!(game.object(linked_land_id).map(|obj| obj.zone), Some(Zone::Battlefield));
+    assert!(has_named_object_in_zone(&game, "Linked Grizzly Bears", Zone::Battlefield));
+    assert!(has_named_object_in_zone(&game, "Linked Forest", Zone::Battlefield));
     assert_eq!(game.object(linked_instant_id).map(|obj| obj.zone), Some(Zone::Exile));
     assert_eq!(game.object(unlinked_land_id).map(|obj| obj.zone), Some(Zone::Exile));
-    assert_eq!(game.object(journey_id).map(|obj| obj.zone), Some(Zone::Graveyard));
+    assert!(has_named_object_in_zone(&game, "Journey to the Lost City", Zone::Graveyard));
 }
 
 #[test]

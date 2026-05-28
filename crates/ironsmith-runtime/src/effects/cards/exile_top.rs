@@ -9,7 +9,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
+use crate::tag::{THOSE_CARDS_TAG, TagKey};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -63,6 +63,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         for tag in &self.moved_tags {
             ctx.clear_object_tag(tag.as_str());
         }
+        ctx.clear_object_tag(THOSE_CARDS_TAG);
 
         let top_cards = game
             .player(player_id)
@@ -74,6 +75,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
             .unwrap_or_default();
 
         let mut moved_ids = Vec::new();
+        let mut moved_snapshots = Vec::new();
         for card_id in top_cards {
             if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
                 game.add_exiled_with_source_link(ctx.source, exiled_id);
@@ -81,6 +83,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                     && let Some(obj) = game.object(exiled_id)
                 {
                     let snapshot = ObjectSnapshot::from_object(obj, game);
+                    moved_snapshots.push(snapshot.clone());
                     for tag in &self.moved_tags {
                         ctx.tag_object(tag.clone(), snapshot.clone());
                     }
@@ -90,6 +93,9 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                 }
                 moved_ids.push(exiled_id);
             }
+        }
+        if !moved_snapshots.is_empty() && !self.moved_tags.is_empty() {
+            ctx.set_tagged_objects(TagKey::from(THOSE_CARDS_TAG), moved_snapshots);
         }
 
         view_hidden_candidate_objects(

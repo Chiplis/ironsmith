@@ -587,10 +587,12 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                         if !filter
                             .tagged_constraints
                             .iter()
-                            .any(|constraint| constraint.tag.as_str() == IT_TAG)
+                            .any(|constraint| {
+                                constraint.tag.as_str() == crate::tag::THOSE_CARDS_TAG
+                            })
                         {
                             filter.tagged_constraints.push(TaggedObjectConstraint {
-                                tag: TagKey::from(IT_TAG),
+                                tag: TagKey::from(crate::tag::THOSE_CARDS_TAG),
                                 relation: TaggedOpbjectRelation::IsTaggedObject,
                             });
                         }

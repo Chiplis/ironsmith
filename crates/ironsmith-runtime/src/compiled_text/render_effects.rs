@@ -2343,7 +2343,202 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects)
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_exile_top_then_roll_table_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_exile_top_then_roll_table_structural(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, roll_effect, branches @ ..] = effects else {
+        return None;
+    };
+    if branches.is_empty() {
+        return None;
+    }
+
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let exiled_tag = exile.moved_tags.first()?;
+    let roll = roll_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let die = roll
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()?;
+    if die.sides != 20 || die.player != PlayerFilter::You {
+        return None;
+    }
+
+    let mut rendered_branches = Vec::new();
+    for branch in branches {
+        let if_effect = branch
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .and_then(|with_id| with_id.effect.downcast_ref::<crate::effects::IfEffect>())
+            .or_else(|| branch.downcast_ref::<crate::effects::IfEffect>())?;
+        if if_effect.condition != roll.id || !if_effect.else_.is_empty() {
+            return None;
+        }
+        let EffectPredicate::Value(comparison) = &if_effect.predicate else {
+            return None;
+        };
+        let result_text = describe_roll_result_comparison(comparison)?.replace('-', "—");
+        let branch_text = describe_roll_table_branch_body(&if_effect.then, exiled_tag)?;
+        rendered_branches.push(format!("{result_text} | {branch_text}"));
+    }
+
+    Some(format!(
+        "{}, then {}.\n{}",
+        describe_effect(exile_effect),
+        lowercase_first(&describe_effect(roll_effect)),
+        rendered_branches.join("\n"),
+    ))
+}
+
+fn describe_roll_table_branch_body(effects: &[Effect], exiled_tag: &TagKey) -> Option<String> {
+    if let Some(text) = describe_may_put_tagged_card_from_among_those_cards(effects, exiled_tag) {
+        return Some(text);
+    }
+    if let Some(text) =
+        describe_create_token_then_counted_counter_from_among_those_cards(effects, exiled_tag)
+    {
+        return Some(text);
+    }
+    if let Some(text) = describe_source_exiled_return_then_sacrifice_source(effects) {
+        return Some(text);
+    }
+    None
+}
+
+fn describe_may_put_tagged_card_from_among_those_cards(
+    effects: &[Effect],
+    exiled_tag: &TagKey,
+) -> Option<String> {
+    let [may_effect] = effects else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::You) || may.effects.len() != 1 {
+        return None;
+    }
+    let move_to_zone = structural_unwrap_render_wrappers(&may.effects[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield || move_to_zone.to_top {
+        return None;
+    }
+    let ChooseSpec::WithCount(inner, count) = &move_to_zone.target else {
+        return None;
+    };
+    if count.min != 1 || count.max != Some(1) {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Exile)
+        || !filter_references_tag(filter, exiled_tag)
+        || filter.card_types.len() != 1
+    {
+        return None;
+    }
+
+    Some(format!(
+        "You may put a {} card from among those cards onto the battlefield",
+        describe_card_type_word_local(filter.card_types[0]),
+    ))
+}
+
+fn describe_create_token_then_counted_counter_from_among_those_cards(
+    effects: &[Effect],
+    exiled_tag: &TagKey,
+) -> Option<String> {
+    let [create_effect, counter_effect] = effects else {
+        return None;
+    };
+    let tagged = create_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create_token = tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if create_token.count != Value::Fixed(1) || create_token.controller != PlayerFilter::You {
+        return None;
+    }
+
+    let put_counters = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if !choose_spec_references_exact_tag(&put_counters.target, &tagged.tag) {
+        return None;
+    }
+    let Value::Count(filter) = put_counters.amount.unhinted() else {
+        return None;
+    };
+    let those_cards_tag = TagKey::from(crate::tag::THOSE_CARDS_TAG);
+    if filter.zone != Some(Zone::Exile)
+        || filter.card_types.len() != 1
+        || (!filter_references_tag(filter, exiled_tag)
+            && !filter_references_tag(filter, &those_cards_tag))
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{}, then put {} on it for each {} card among those cards",
+        describe_effect(create_effect),
+        describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+        describe_card_type_word_local(filter.card_types[0]),
+    ))
+}
+
+fn describe_source_exiled_return_then_sacrifice_source(effects: &[Effect]) -> Option<String> {
+    let [return_effect, sacrifice_effect] = effects else {
+        return None;
+    };
+    let return_all = return_effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    if return_all.tapped {
+        return None;
+    }
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+    let filter_text = source_exiled_permanent_cards_filter_text(&return_all.filter)?;
+    Some(format!(
+        "Put all {filter_text} onto the battlefield, then sacrifice it"
+    ))
+}
+
+fn source_exiled_permanent_cards_filter_text(filter: &ObjectFilter) -> Option<String> {
+    const PERMANENT_TYPES: [CardType; 6] = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+
+    if filter.zone != Some(Zone::Exile)
+        || !PERMANENT_TYPES
+            .iter()
+            .all(|card_type| filter.card_types.contains(card_type))
+        || filter.card_types.len() != PERMANENT_TYPES.len()
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+    {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    base.zone = None;
+    base.card_types.clear();
+    base.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    });
+    if base != ObjectFilter::default() {
+        return None;
+    }
+
+    Some(
+        describe_for_each_filter(filter)
+            .replace("permanent card exiled", "permanent cards exiled")
+            .replace("card exiled", "cards exiled"),
+    )
 }
 
 fn join_or_list(items: &[String]) -> Option<String> {

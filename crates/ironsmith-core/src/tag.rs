@@ -9,6 +9,9 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for cards referred to by a later "those cards" clause.
+pub const THOSE_CARDS_TAG: &str = "__those_cards__";
+
 /// Runtime tag for the creature sacrificed to an exploit action.
 pub const EXPLOITED_TAG: &str = "exploited";
 
