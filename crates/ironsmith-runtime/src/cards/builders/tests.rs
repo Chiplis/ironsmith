@@ -34732,6 +34732,201 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sporeweb_weaver_strict_regression() {
+    assert_oracle_card_parses_strict("Sporeweb Weaver");
+    let def = parse_oracle_card_definition("Sporeweb Weaver");
+    let rendered_lines = canonical_compiled_lines(&def);
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Reach
+        )),
+        "expected Sporeweb Weaver to have reach"
+    );
+    let hexproof_from = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                if static_ability.id() == StaticAbilityId::HexproofFrom {
+                    return static_ability.hexproof_from_filter();
+                }
+            }
+            None
+        })
+        .expect("expected Sporeweb Weaver to have hexproof from blue");
+    assert_eq!(
+        hexproof_from.colors,
+        Some(crate::color::ColorSet::BLUE),
+        "expected Sporeweb Weaver hexproof-from filter to be exactly blue"
+    );
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Reach, hexproof from blue".to_string(),
+            "Whenever this creature is dealt damage, you gain 1 life, then create a 1/1 green Saproling creature token."
+                .to_string(),
+        ],
+        "unexpected Sporeweb Weaver compiled text"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sporeweb_weaver_hexproof_from_blue_blocks_only_opposing_blue_sources() {
+    let def = parse_oracle_card_definition("Sporeweb Weaver");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let weaver_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let blue_source = CardDefinitionBuilder::new(CardId::from_raw(91_200), "Blue Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let red_source = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let opposing_blue = game.create_object_from_definition(&blue_source, bob, Zone::Battlefield);
+    let opposing_red = game.create_object_from_definition(&red_source, bob, Zone::Battlefield);
+    let own_blue = game.create_object_from_definition(&blue_source, alice, Zone::Battlefield);
+
+    assert_eq!(
+        crate::targeting::can_target_object(&game, weaver_id, opposing_blue, bob),
+        crate::targeting::TargetingResult::Invalid(
+            crate::targeting::TargetingInvalidReason::HasHexproofFrom
+        ),
+        "opposing blue source should be unable to target Sporeweb Weaver"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, weaver_id, opposing_red, bob).is_legal(),
+        "opposing nonblue source should be able to target Sporeweb Weaver"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, weaver_id, own_blue, alice).is_legal(),
+        "controller's blue source should be able to target their own Sporeweb Weaver"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sporeweb_weaver_damage_trigger_gains_life_and_creates_saproling() {
+    let def = parse_oracle_card_definition("Sporeweb Weaver");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let weaver_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_202), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            damage_source,
+            crate::events::DamageTarget::Object(weaver_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Sporeweb Weaver trigger on stack");
+    assert_eq!(game.stack.len(), 1, "expected one Weaver trigger on stack");
+
+    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve Weaver trigger");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        21,
+        "Sporeweb Weaver trigger should gain 1 life"
+    );
+    let saprolings: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| obj.owner == alice && obj.name == "Saproling")
+        .collect();
+    assert_eq!(saprolings.len(), 1, "expected one Saproling token");
+    let saproling = saprolings[0];
+    assert_eq!(saproling.kind, crate::object::ObjectKind::Token);
+    assert_eq!(saproling.power(), Some(1));
+    assert_eq!(saproling.toughness(), Some(1));
+    assert!(saproling.subtypes.contains(&Subtype::Saproling));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sporeweb_weaver_damage_trigger_ignores_other_damaged_creatures() {
+    let def = parse_oracle_card_definition("Sporeweb Weaver");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_203), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let other_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_204), "Other Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            damage_source,
+            crate::events::DamageTarget::Object(other_creature),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        crate::triggers::check_triggers(&game, &damage_event).is_empty(),
+        "Sporeweb Weaver should not trigger when another creature is dealt damage"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").life, 20);
+    assert!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .all(|obj| obj.name != "Saproling"),
+        "no Saproling token should be created without a Weaver trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_xanthic_statue_strict_regression() {
     assert_oracle_card_parses_strict("Xanthic Statue");
 }

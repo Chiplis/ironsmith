@@ -7296,6 +7296,22 @@ fn rewrite_lexed_keyword_line_routes_separator_lists_through_grammar_primitives(
 }
 
 #[test]
+fn rewrite_lexed_keyword_line_parses_hexproof_from_color_in_keyword_list() {
+    let keyword_tokens = lex_line("Reach, hexproof from blue", 0)
+        .expect("rewrite lexer should classify hexproof-from keyword line");
+
+    let parsed = super::clause_support::parse_ability_line_lexed(&keyword_tokens)
+        .expect("hexproof-from keyword line should parse");
+    assert_eq!(parsed.len(), 2, "{parsed:?}");
+    assert_eq!(parsed[0], crate::cards::builders::KeywordAction::Reach);
+
+    let crate::cards::builders::KeywordAction::HexproofFrom(filter) = &parsed[1] else {
+        panic!("expected hexproof-from action, got {parsed:?}");
+    };
+    assert_eq!(filter.colors, Some(crate::color::ColorSet::BLUE));
+}
+
+#[test]
 fn rewrite_lexed_triggered_and_static_entrypoints_work_natively() {
     let triggered_tokens = lex_line(
         "Whenever you cast an Aura, Equipment, or Vehicle spell, draw a card.",

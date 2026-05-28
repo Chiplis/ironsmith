@@ -246,6 +246,48 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     }
 }
 
+fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let mut filters = Vec::new();
+    for word in words {
+        if matches!(*word, "and" | "from") {
+            continue;
+        }
+        let color = crate::color::Color::from_name(word)?;
+        let mut filter = ObjectFilter::default();
+        filter.colors = Some(crate::color::ColorSet::from_color(color));
+        filters.push(filter);
+    }
+
+    match filters.len() {
+        0 => None,
+        1 => filters.pop(),
+        _ => {
+            let mut filter = ObjectFilter::default();
+            filter.any_of = filters;
+            Some(filter)
+        }
+    }
+}
+
+fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let words_view = TokenWordView::new(tokens);
+    let words = words_view.word_refs();
+    let first_word_idx = if words.first().copied() == Some("and") {
+        1
+    } else {
+        0
+    };
+    if words.len().saturating_sub(first_word_idx) < 3
+        || words.get(first_word_idx).copied() != Some("hexproof")
+        || words.get(first_word_idx + 1).copied() != Some("from")
+    {
+        return None;
+    }
+
+    color_only_hexproof_filter_words(&words[first_word_idx + 2..])
+        .map(|filter| vec![KeywordAction::HexproofFrom(filter)])
+}
+
 pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
@@ -261,6 +303,11 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
 
         if let Some(protection_actions) = parse_protection_chain(segment) {
             actions.extend(protection_actions);
+            continue;
+        }
+
+        if let Some(hexproof_actions) = parse_hexproof_from_chain(segment) {
+            actions.extend(hexproof_actions);
             continue;
         }
 
@@ -550,6 +597,10 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         }
     }
 
+    fn parse_hexproof_from_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+        parse_hexproof_from_chain(tokens)
+    }
+
     fn split_on_lexed_comma_or_semicolon(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
         let mut segments = Vec::new();
         let mut start = 0usize;
@@ -601,6 +652,11 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         }
         if let Some(protection_actions) = parse_protection_chain_lexed(segment) {
             actions.extend(protection_actions);
+            continue;
+        }
+
+        if let Some(hexproof_actions) = parse_hexproof_from_chain_lexed(segment) {
+            actions.extend(hexproof_actions);
             continue;
         }
 
