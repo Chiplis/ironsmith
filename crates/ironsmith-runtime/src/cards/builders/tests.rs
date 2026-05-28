@@ -42975,6 +42975,246 @@ fn parse_etali_attack_exiles_each_players_top_card_and_casts_any_number() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn locke_treasure_hunter_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(475), "Locke, Treasure Hunter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Locke can't be blocked by creatures with greater power.\n\
+             Mug — Whenever Locke attacks, each player mills a card. If a land card was milled this way, create a Treasure token. Until end of turn, you may cast a spell from among those cards.",
+        )
+        .expect("Locke, Treasure Hunter should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn locke_treasure_hunter_trigger(
+    def: &CardDefinition,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Locke, Treasure Hunter should have a Mug attack trigger")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn count_treasures_controlled_by(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+) -> usize {
+    game.objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| {
+            game.controller_of(object) == player && object.has_subtype(Subtype::Treasure)
+        })
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_object_named(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    name: &str,
+) -> ObjectId {
+    game.player(player)
+        .expect("player should exist")
+        .graveyard
+        .iter()
+        .copied()
+        .find(|id| game.object(*id).is_some_and(|object| object.name == name))
+        .unwrap_or_else(|| panic!("expected {name} in player's graveyard"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_locke_treasure_hunter_strict_and_renders_mug_mill_permission() {
+    let def = locke_treasure_hunter_definition();
+    let trigger = locke_treasure_hunter_trigger(&def);
+    let trigger_debug = format!("{:?}", trigger.trigger);
+    assert!(
+        trigger_debug.contains("ThisAttacks"),
+        "Locke, Treasure Hunter should trigger when Locke attacks, got {trigger_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Mug — Whenever this creature attacks"),
+        "expected Locke's Mug label and attack trigger in compiled text, got {rendered}"
+    );
+    let effects_debug = format!("{:?}", trigger.effects);
+    assert!(
+        effects_debug.contains("single_spell: true"),
+        "Locke's singular cast permission should be retained for runtime enforcement, got {effects_debug}"
+    );
+    assert!(
+        rendered.contains("each player mills a card")
+            && rendered.contains("If a land card was milled this way, create a Treasure token")
+            && rendered.contains("Until end of turn, you may cast a spell from among those cards"),
+        "expected Locke's mill, land branch, and temporary cast permission, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn locke_treasure_hunter_mug_mills_players_creates_treasure_and_grants_cast_permission() {
+    let def = locke_treasure_hunter_definition();
+    let trigger = locke_treasure_hunter_trigger(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let alice_land = crate::card::CardBuilder::new(CardId::from_raw(90_001), "Alice Mountain")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Mountain])
+        .build();
+    let bob_spell = crate::card::CardBuilder::new(CardId::from_raw(90_002), "Bob Shock")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&alice_land, alice, Zone::Library);
+    game.create_object_from_card(&bob_spell, bob, Zone::Library);
+
+    let attack_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            source,
+            crate::triggers::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_triggering_event(attack_event);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &trigger.effects,
+        None,
+        &[],
+    )
+    .expect("Locke, Treasure Hunter Mug trigger should resolve");
+
+    let alice_land_id = graveyard_object_named(&game, alice, "Alice Mountain");
+    let bob_spell_id = graveyard_object_named(&game, bob, "Bob Shock");
+    assert_eq!(
+        count_treasures_controlled_by(&game, alice),
+        1,
+        "milling a land card this way should create one Treasure"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            bob_spell_id,
+            Zone::Graveyard,
+            alice,
+        ),
+        "Locke should let Alice cast a milled spell card from among those cards this turn"
+    );
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            alice_land_id,
+            Zone::Graveyard,
+            alice,
+        ),
+        "Locke's cast-only permission should not grant land play permission"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn locke_treasure_hunter_mug_without_milled_land_does_not_create_treasure() {
+    let def = locke_treasure_hunter_definition();
+    let trigger = locke_treasure_hunter_trigger(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let alice_spell = crate::card::CardBuilder::new(CardId::from_raw(90_003), "Alice Opt")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let bob_spell = crate::card::CardBuilder::new(CardId::from_raw(90_004), "Bob Strike")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&alice_spell, alice, Zone::Library);
+    game.create_object_from_card(&bob_spell, bob, Zone::Library);
+
+    let attack_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            source,
+            crate::triggers::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_triggering_event(attack_event);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &trigger.effects,
+        None,
+        &[],
+    )
+    .expect("Locke, Treasure Hunter Mug trigger should resolve without a milled land");
+
+    let alice_spell_id = graveyard_object_named(&game, alice, "Alice Opt");
+    let bob_spell_id = graveyard_object_named(&game, bob, "Bob Strike");
+    assert_eq!(
+        count_treasures_controlled_by(&game, alice),
+        0,
+        "Locke should not create a Treasure when no land card was milled this way"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            alice_spell_id,
+            Zone::Graveyard,
+            alice,
+        ) && game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            bob_spell_id,
+            Zone::Graveyard,
+            alice,
+        ),
+        "Locke should still grant temporary cast permission for spell cards milled this way"
+    );
+    let alice_spell_stable_id = game
+        .object(alice_spell_id)
+        .expect("Alice Opt should still be in the graveyard")
+        .stable_id;
+    game.effect_store
+        .grant_registry
+        .consume_one_shot_play_from_grant(source, alice_spell_stable_id);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            bob_spell_id,
+            Zone::Graveyard,
+            alice,
+        ),
+        "after Alice casts one spell from Locke's milled cards, the remaining milled spell should no longer be castable"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_black_sun_destroy_those_creatures_reuses_ability_loss_filter() {
     let def = parse_oracle_card_definition("Day of Black Sun");

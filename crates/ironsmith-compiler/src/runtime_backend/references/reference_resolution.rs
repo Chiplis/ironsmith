@@ -3178,6 +3178,7 @@ mod tests {
                 false,
                 false,
                 false,
+                false,
             ),
         ];
 
@@ -3206,6 +3207,7 @@ mod tests {
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 TagKey::from(IT_TAG),
                 PlayerAst::You,
+                false,
                 false,
                 false,
                 false,
@@ -3271,6 +3273,7 @@ mod tests {
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 TagKey::from(IT_TAG),
                 PlayerAst::You,
+                false,
                 false,
                 false,
                 false,
@@ -3412,6 +3415,7 @@ mod tests {
                     false,
                     false,
                     false,
+                    false,
                 ),
             ],
             if_false: vec![
@@ -3422,6 +3426,7 @@ mod tests {
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                     TagKey::from(IT_TAG),
                     PlayerAst::You,
+                    false,
                     false,
                     false,
                     false,

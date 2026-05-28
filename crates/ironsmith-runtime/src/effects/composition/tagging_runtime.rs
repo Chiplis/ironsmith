@@ -131,7 +131,7 @@ pub(crate) fn apply_tagged_runtime_state(
             })
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
-            ctx.set_tagged_objects(tag, snapshots);
+            ctx.tag_objects_unique(tag, snapshots);
             return;
         }
     }
@@ -151,7 +151,7 @@ pub(crate) fn apply_tagged_runtime_state(
             })
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
-            ctx.set_tagged_objects(tag, snapshots);
+            ctx.tag_objects_unique(tag, snapshots);
             return;
         }
     }

@@ -3423,6 +3423,7 @@ pub struct GrantPlayTaggedEffect {
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
+    pub single_spell: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3439,7 +3440,13 @@ impl GrantPlayTaggedEffect {
             duration,
             allow_land,
             allow_any_color_for_cast,
+            single_spell: false,
         }
+    }
+
+    pub fn with_single_spell(mut self, single_spell: bool) -> Self {
+        self.single_spell = single_spell;
+        self
     }
 }
 

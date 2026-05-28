@@ -4604,6 +4604,7 @@ mod parse_compile_tests {
                 false,
                 false,
                 false,
+                false,
             ),
         ];
 
@@ -4642,6 +4643,7 @@ mod parse_compile_tests {
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 TagKey::from(IT_TAG),
                 PlayerAst::You,
+                false,
                 false,
                 false,
                 false,

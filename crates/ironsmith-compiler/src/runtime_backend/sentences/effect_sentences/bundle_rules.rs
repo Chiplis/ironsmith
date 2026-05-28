@@ -108,6 +108,7 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
+                    single_spell,
                     ..
                 },
             ..
@@ -115,9 +116,10 @@ fn parse_exile_top_library_then_play_bundle(
             tag,
             player,
             allow_land,
-            without_paying_mana_cost,
-            allow_any_color_for_cast,
-        ),
+                    without_paying_mana_cost,
+                    allow_any_color_for_cast,
+                    single_spell,
+                ),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {

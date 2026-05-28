@@ -3872,6 +3872,17 @@ pub(super) fn finalize_spell_cast(
                 .insert((caster, *source));
         }
     }
+    if let CastingMethod::PlayFrom {
+        source,
+        use_alternative: None,
+        ..
+    } = &casting_method
+        && let Some(stable_id) = game.object(new_id).map(|spell_obj| spell_obj.stable_id)
+    {
+        game.effect_store
+            .grant_registry
+            .consume_one_shot_play_from_grant(*source, stable_id);
+    }
 
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes
     let mut entry = StackEntry::new(new_id, caster)

@@ -1013,6 +1013,7 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        single_spell: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -2160,6 +2161,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                single_spell,
             } => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("tag", tag)
@@ -2167,6 +2169,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("single_spell", single_spell)
                 .finish(),
             Self::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -3588,6 +3591,7 @@ impl EffectAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        single_spell: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3598,6 +3602,7 @@ impl EffectAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                single_spell,
             },
         )
     }

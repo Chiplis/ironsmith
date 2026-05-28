@@ -29,6 +29,12 @@ pub enum GrantSource {
         /// Turn number when this grant expires (at end of that turn).
         expires_end_of_turn: u32,
     },
+    /// From a temporary permission that allows one spell from a tagged group.
+    EffectOneShotPlayFrom {
+        source_id: ObjectId,
+        expires_end_of_turn: u32,
+        group_id: u64,
+    },
     /// From a resolving effect that lasts while the source remains controlled by a player.
     EffectWhileControlled {
         source_id: ObjectId,
@@ -55,6 +61,7 @@ impl GrantSource {
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
+            GrantSource::EffectOneShotPlayFrom { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id } => *source_id,
         }
@@ -64,6 +71,10 @@ impl GrantSource {
     pub fn is_valid(&self, game: &crate::game_state::GameState) -> bool {
         match self {
             GrantSource::Effect {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectOneShotPlayFrom {
                 expires_end_of_turn,
                 ..
             } => {
@@ -87,6 +98,10 @@ impl GrantSource {
     pub fn is_valid_raw(&self, turn_number: u32, battlefield: &[ObjectId]) -> bool {
         match self {
             GrantSource::Effect {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectOneShotPlayFrom {
                 expires_end_of_turn,
                 ..
             } => {
@@ -131,6 +146,11 @@ impl GrantSource {
             GrantSource::Effect {
                 expires_end_of_turn,
                 source_id,
+            }
+            | GrantSource::EffectOneShotPlayFrom {
+                expires_end_of_turn,
+                source_id,
+                ..
             } => GrantLifetime::UntilEndOfTurn {
                 source_id: *source_id,
                 turn: *expires_end_of_turn,
@@ -191,6 +211,7 @@ pub struct Grant {
 pub struct GrantRegistry {
     /// All grants (unified storage).
     pub grants: Vec<Grant>,
+    next_one_shot_play_from_group_id: u64,
 }
 
 impl GrantRegistry {
@@ -202,6 +223,42 @@ impl GrantRegistry {
     /// Add a grant to the registry.
     pub fn add_grant(&mut self, grant: Grant) {
         self.grants.push(grant);
+    }
+
+    pub fn next_one_shot_play_from_group_id(&mut self) -> u64 {
+        let group_id = self.next_one_shot_play_from_group_id;
+        self.next_one_shot_play_from_group_id += 1;
+        group_id
+    }
+
+    pub fn consume_one_shot_play_from_grant(
+        &mut self,
+        source_id: ObjectId,
+        card_stable_id: StableId,
+    ) {
+        let Some(group_id) = self.grants.iter().find_map(|grant| match grant.source {
+            GrantSource::EffectOneShotPlayFrom {
+                source_id: grant_source,
+                group_id,
+                ..
+            } if grant_source == source_id
+                && grant.target_stable_id == Some(card_stable_id)
+                && matches!(grant.grantable, Grantable::PlayFrom) => Some(group_id),
+            _ => None,
+        }) else {
+            return;
+        };
+
+        self.grants.retain(|grant| {
+            !matches!(
+                grant.source,
+                GrantSource::EffectOneShotPlayFrom {
+                    source_id: grant_source,
+                    group_id: grant_group,
+                    ..
+                } if grant_source == source_id && grant_group == group_id
+            )
+        });
     }
 
     /// Add a grant for a specific card.
@@ -508,6 +565,7 @@ impl GrantRegistry {
         self.grants.retain(|grant| {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
+                GrantSource::EffectOneShotPlayFrom { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id

@@ -1842,6 +1842,7 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                single_spell,
                 ..
             },
         ..
@@ -1919,10 +1920,11 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     effects.push(EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
         exiled_tag,
         permission_player,
-        allow_land,
-        without_paying_mana_cost,
-        allow_any_color_for_cast,
-    ));
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                single_spell,
+            ));
 
     Ok(Some(effects))
 }

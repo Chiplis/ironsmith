@@ -42,6 +42,7 @@ pub(crate) enum PermissionClauseSpec {
         player: PlayerAst,
         allow_land: bool,
         as_copy: bool,
+        single_spell: bool,
         without_paying_mana_cost: bool,
         lifetime: PermissionLifetime,
     },
@@ -62,6 +63,7 @@ struct PermissionLead {
 struct TaggedPermissionTarget {
     tag: TagKey,
     as_copy: bool,
+    single_spell: bool,
 }
 
 fn parse_permission_lead_inner<'a>(
@@ -101,92 +103,121 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
 ) -> Result<TaggedPermissionTarget, ErrMode<ContextError>> {
     alt((
         alt((
-            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
-                TaggedPermissionTarget {
-                    tag: TagKey::from(IT_TAG),
-                    as_copy: false,
-                },
-            ),
+            alt((
+                grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
+                    TaggedPermissionTarget {
+                        tag: TagKey::from(IT_TAG),
+                        as_copy: false,
+                        single_spell: false,
+                    },
+                ),
+                grammar::phrase(&["a", "spell", "from", "among", "those", "cards"]).value(
+                    TaggedPermissionTarget {
+                        tag: TagKey::from(IT_TAG),
+                        as_copy: false,
+                        single_spell: true,
+                    },
+                ),
+            )),
             grammar::phrase(&["spells", "from", "among", "them"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["one", "of", "those", "cards"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["one", "of", "those", "card"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["one", "of", "them"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["it"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["them"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["that", "card"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["those", "cards"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
         )),
         alt((
             grammar::phrase(&["that", "spell"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             grammar::phrase(&["those", "spells"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
+                single_spell: false,
             }),
             alt((
                 grammar::phrase(&["that", "exiled", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: false,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["the", "exiled", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                     as_copy: false,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["that", "revealed", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from("__last_revealed__"),
                     as_copy: false,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["the", "revealed", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from("__last_revealed__"),
                     as_copy: false,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["the", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: false,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["the", "cards"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: false,
+                    single_spell: false,
                 }),
             )),
             alt((
                 grammar::phrase(&["the", "copy"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: true,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["that", "copy"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: true,
+                    single_spell: false,
                 }),
                 grammar::phrase(&["a", "copy"]).value(TaggedPermissionTarget {
                     tag: TagKey::from(IT_TAG),
                     as_copy: true,
+                    single_spell: false,
                 }),
             )),
         )),
@@ -836,6 +867,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             player,
             allow_land,
             as_copy: target_ref.as_copy,
+            single_spell: target_ref.single_spell,
             without_paying_mana_cost,
             lifetime,
         }));
@@ -1173,6 +1205,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
+            single_spell,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
         }) if player == PlayerAst::You => Ok(Some(
@@ -1182,6 +1215,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
                 allow_land,
                 without_paying_mana_cost,
                 false,
+                single_spell,
             ),
         )),
         _ => Ok(None),
@@ -1197,6 +1231,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             player,
             allow_land: true,
             as_copy: false,
+            single_spell: _,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => Ok(Some(
@@ -1542,6 +1577,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                                         lead.allow_land,
                                         without_paying_mana_cost,
                                         allow_any_color_for_cast,
+                                        target_ref.single_spell,
                                     )
                                 };
                                 EffectAst::Conditional {
@@ -1570,6 +1606,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy,
+            single_spell: _,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
         }) => {
@@ -1595,6 +1632,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
+            single_spell,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
@@ -1604,6 +1642,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                single_spell,
             ),
         )),
         Some(PermissionClauseSpec::Tagged {
@@ -1611,6 +1650,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
+            single_spell: _,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
@@ -1659,6 +1699,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
+            single_spell: _,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
@@ -1674,6 +1715,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
+            single_spell: _,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsYouControlSource,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(

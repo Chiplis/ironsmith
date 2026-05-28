@@ -1019,13 +1019,15 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+        let grant = crate::effects::GrantPlayTaggedEffect::new(
             payload.tag.clone(),
             payload.player.clone(),
             payload.duration,
             payload.allow_land,
             payload.allow_any_color_for_cast,
-        )));
+        )
+        .with_single_spell(payload.single_spell);
+        return Ok(Effect::new(grant));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::LocalRewriteEffect<M::Effect>>(&effect)
     {

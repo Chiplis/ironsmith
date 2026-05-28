@@ -12186,7 +12186,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         let mut rendered = describe_effect(filtered[idx]);
         if !rendered.is_empty() {
-            if !parts.is_empty() && rendered.starts_with("If ") {
+            if !parts.is_empty()
+                && rendered.starts_with("If ")
+                && !rendered.contains("milled this way")
+            {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {
                     let tail = lowercase_first(&rendered[comma_idx + 2..]);
@@ -30735,7 +30738,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             "cast"
         };
-        let helper_tag = grant_play_tagged.tag.as_str().starts_with("targeted_")
+        let tag_text = grant_play_tagged.tag.as_str();
+        let helper_tag = tag_text.starts_with("targeted_")
+            || tag_text.starts_with("milled_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || matches!(
@@ -30747,7 +30752,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+        let object_text = if tag_text.starts_with("milled_") {
+            if grant_play_tagged.single_spell && !grant_play_tagged.allow_land {
+                "a spell from among those cards".to_string()
+            } else if grant_play_tagged.allow_land {
+                "cards from among those cards".to_string()
+            } else {
+                "spells from among those cards".to_string()
+            }
+        } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || matches!(
@@ -30792,6 +30805,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             };
             return format!(
                 "{} may {verb} {object_text} {timing}, and you may spend mana as though it were mana of any color to cast {pronoun}",
+                describe_player_filter(&grant_play_tagged.player),
+            );
+        }
+        if tag_text.starts_with("milled_")
+            && grant_play_tagged.single_spell
+            && !grant_play_tagged.allow_land
+            && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        {
+            return format!(
+                "Until end of turn, {} may cast a spell from among those cards",
                 describe_player_filter(&grant_play_tagged.player),
             );
         }

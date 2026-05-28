@@ -19,6 +19,7 @@ pub struct GrantPlayTaggedEffect {
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
+    pub single_spell: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -35,7 +36,13 @@ impl GrantPlayTaggedEffect {
             duration,
             allow_land,
             allow_any_color_for_cast,
+            single_spell: false,
         }
+    }
+
+    pub fn with_single_spell(mut self, single_spell: bool) -> Self {
+        self.single_spell = single_spell;
+        self
     }
 
     pub fn until_your_next_turn(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
@@ -149,6 +156,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
         let mut mana_permission_stable_ids = Vec::new();
+        let one_shot_group = self
+            .single_spell
+            .then(|| game.effect_store.grant_registry.next_one_shot_play_from_group_id());
         for snapshot in snapshots {
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
@@ -170,7 +180,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            let source = if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
+            let source = if let Some(group_id) = one_shot_group {
+                GrantSource::EffectOneShotPlayFrom {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                    group_id,
+                }
+            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
                     controller: player_id,
@@ -181,7 +197,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     expires_end_of_turn,
                 }
             };
-            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+                || one_shot_group.is_some()
+            {
                 game.effect_store.grant_registry.grant_to_stable_card(
                     object_id,
                     object.stable_id,

@@ -926,6 +926,7 @@ pub(crate) fn consult_cast_effects(
                         clause.allow_land,
                         without_paying_mana_cost,
                         false,
+                        false,
                     )
                 };
                 vec![grant]
@@ -949,7 +950,7 @@ pub(crate) fn consult_cast_effects(
                 ));
             }
             vec![
-                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(match_tag.clone(), clause.caster, false, false, false),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(match_tag.clone(), clause.caster, false, false, false, false),
                 EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(match_tag.clone(), clause.caster),
             ]
         }
