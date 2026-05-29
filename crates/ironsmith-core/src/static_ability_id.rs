@@ -240,6 +240,7 @@ pub enum StaticAbilityId {
     DiscardOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
     PregameAction,
+    DraftRuleText,
     KeywordText,
     KeywordMarker,
     KeywordFallbackText,
@@ -487,6 +488,7 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
+            | DraftRuleText
             | KeywordText
             | KeywordMarker
             | KeywordFallbackText

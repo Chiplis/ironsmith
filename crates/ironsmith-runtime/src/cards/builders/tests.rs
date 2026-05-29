@@ -445,6 +445,73 @@ fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn cogwork_librarian_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Cogwork Librarian");
+
+    assert_eq!(
+        canonical_compiled_lines(&def),
+        vec![
+            "Draft this card face up.".to_string(),
+            "As you draft a card, you may draft an additional card from that booster pack. If you do, put this card into that booster pack."
+                .to_string(),
+        ],
+        "Cogwork Librarian should preserve its draft face-up and booster-pack clauses"
+    );
+    assert!(
+        def.abilities.iter().all(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                static_ability.id() == StaticAbilityId::DraftRuleText
+            }
+            _ => false,
+        }),
+        "Cogwork Librarian's draft-only text should compile as static rule text, got {:#?}",
+        def.abilities
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cogwork_librarian_draft_rules_do_not_create_runtime_effects() {
+    let oracle = oracle_text_by_name()
+        .get("Cogwork Librarian")
+        .expect("Cogwork Librarian oracle text should be available")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Cogwork Librarian")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Construct])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(oracle)
+        .expect("Cogwork Librarian should parse strictly");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let librarian = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(game.current_power(librarian), Some(3));
+    assert_eq!(game.current_toughness(librarian), Some(3));
+    assert!(game.object_has_card_type(librarian, CardType::Artifact));
+    assert!(game.object_has_card_type(librarian, CardType::Creature));
+
+    let draft_static_abilities = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(draft_static_abilities.len(), 2);
+    for ability in draft_static_abilities {
+        assert_eq!(ability.id(), StaticAbilityId::DraftRuleText);
+        assert!(ability.generate_effects(librarian, alice, &game).is_empty());
+        assert!(ability.generate_replacement_effect(librarian, alice).is_none());
+        assert!(ability.pregame_action_kind().is_none());
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn happily_ever_after_keeps_life_draw_and_win_gate() {
     let lines = [
         "When this enchantment enters, each player gains 5 life and draws a card.",

@@ -4751,6 +4751,28 @@ impl StaticAbilityKind for KeywordText {
     }
 }
 
+/// Draft-only rule text from Conspiracy-style cards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftRuleText {
+    pub text: String,
+}
+
+impl DraftRuleText {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for DraftRuleText {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DraftRuleText
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================
