@@ -4966,6 +4966,42 @@ mod tests {
     }
 
     #[test]
+    fn semblance_anvil_imprint_does_not_exile_land_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let semblance = CardDefinitionBuilder::new(CardId::from_raw(9015), "Semblance Anvil")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
+                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
+            )
+            .expect("Semblance Anvil should parse");
+        let anvil_id = game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
+        let land = CardBuilder::new(CardId::from_raw(9016), "Semblance Anvil Land Probe")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_card(&land, alice, Zone::Hand);
+
+        let triggered = semblance
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("Semblance Anvil should have an imprint trigger");
+        let mut ctx = ExecutionContext::new_default(anvil_id, alice);
+        for effect in &triggered.effects {
+            effect.0.execute(&mut game, &mut ctx).unwrap();
+        }
+
+        assert_eq!(game.object(land_id).map(|obj| obj.zone), Some(Zone::Hand));
+        assert!(game.get_imprinted_cards(anvil_id).is_empty());
+        assert!(game.get_exiled_with_source_links(anvil_id).is_empty());
+    }
+
+    #[test]
     fn semblance_anvil_reduces_only_your_spells_sharing_imprinted_card_type() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
