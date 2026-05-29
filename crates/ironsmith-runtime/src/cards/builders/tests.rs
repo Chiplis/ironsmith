@@ -31173,6 +31173,26 @@ fn test_land_definition(name: &str) -> CardDefinition {
         .build()
 }
 
+fn execute_herald_upkeep(
+    game: &mut crate::game_state::GameState,
+    herald: crate::ids::ObjectId,
+    upkeep: &crate::ability::TriggeredAbility,
+    controller: PlayerId,
+) {
+    let mut dm = PayCumulativeUpkeep;
+    let mut ctx = crate::effects::ExecutionContext::new(herald, controller, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        game,
+        &mut ctx,
+        controller,
+        herald,
+        &upkeep.effects,
+        None,
+        &[],
+    )
+    .expect("Herald cumulative upkeep should resolve");
+}
+
 #[test]
 fn herald_of_leshrac_strict_parser_and_compiled_text_regression() {
     let def = herald_of_leshrac_definition();
@@ -31232,18 +31252,7 @@ fn herald_of_leshrac_cumulative_upkeep_gains_land_and_scales_power() {
     let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let bob_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
 
-    let mut dm = PayCumulativeUpkeep;
-    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
-    crate::game_loop::execute_resolution_program(
-        &mut game,
-        &mut ctx,
-        alice,
-        herald,
-        &upkeep.effects,
-        None,
-        &[],
-    )
-    .expect("Herald cumulative upkeep should resolve");
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
 
     assert_eq!(
         game.counter_count(herald, crate::object::CounterType::Age),
@@ -31264,6 +31273,75 @@ fn herald_of_leshrac_cumulative_upkeep_gains_land_and_scales_power() {
 }
 
 #[test]
+fn herald_of_leshrac_repeated_cumulative_upkeep_pays_once_per_age_counter() {
+    let def = herald_of_leshrac_definition();
+    let upkeep = herald_upkeep_trigger(&def);
+    let land_def = test_land_definition("Stolen Land");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_land_one = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+    let bob_land_two = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+    let bob_land_three = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
+
+    assert_eq!(
+        game.counter_count(herald, crate::object::CounterType::Age),
+        2,
+        "second cumulative upkeep should leave two age counters"
+    );
+    for land in [bob_land_one, bob_land_two, bob_land_three] {
+        assert_eq!(
+            game.current_controller(land),
+            Some(alice),
+            "two age counters should require gaining control of two additional lands"
+        );
+    }
+    assert_eq!(
+        game.calculated_power(herald),
+        Some(5),
+        "Herald should count every land Alice controls but doesn't own"
+    );
+    assert_eq!(game.calculated_toughness(herald), Some(7));
+}
+
+#[test]
+fn herald_of_leshrac_repeated_cumulative_upkeep_fails_atomically_when_short_on_lands() {
+    let def = herald_of_leshrac_definition();
+    let upkeep = herald_upkeep_trigger(&def);
+    let land_def = test_land_definition("Stolen Land");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let first_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+    let only_remaining_land =
+        game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
+    assert_eq!(game.current_controller(first_land), Some(alice));
+
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
+
+    assert!(
+        !game.battlefield.contains(&herald),
+        "Herald should be sacrificed when the full repeated upkeep cost cannot be paid"
+    );
+    assert_eq!(
+        game.current_controller(only_remaining_land),
+        Some(bob),
+        "failed repeated upkeep should not keep a partial controller-change payment"
+    );
+}
+
+#[test]
 fn herald_of_leshrac_cumulative_upkeep_sacrifices_when_no_land_can_be_gained() {
     let def = herald_of_leshrac_definition();
     let upkeep = herald_upkeep_trigger(&def);
@@ -31273,23 +31351,20 @@ fn herald_of_leshrac_cumulative_upkeep_sacrifices_when_no_land_can_be_gained() {
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-    let mut dm = PayCumulativeUpkeep;
-    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
-    crate::game_loop::execute_resolution_program(
-        &mut game,
-        &mut ctx,
-        alice,
-        herald,
-        &upkeep.effects,
-        None,
-        &[],
-    )
-    .expect("Herald cumulative upkeep failure branch should resolve");
+    execute_herald_upkeep(&mut game, herald, upkeep, alice);
 
+    assert!(
+        !game.battlefield.contains(&herald),
+        "Herald should leave the battlefield when its cumulative upkeep cost cannot be paid"
+    );
+    let graveyard_object = game
+        .player(alice)
+        .and_then(|player| player.graveyard.first().copied())
+        .and_then(|id| game.object(id));
     assert_eq!(
-        game.object(herald).map(|object| object.zone),
-        Some(Zone::Graveyard),
-        "Herald should be sacrificed when its cumulative upkeep cost cannot be paid"
+        graveyard_object.map(|object| object.name.as_str()),
+        Some("Herald of Leshrac"),
+        "Herald should be sacrificed to its owner's graveyard when its cumulative upkeep cost cannot be paid"
     );
 }
 
