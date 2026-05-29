@@ -4599,6 +4599,44 @@ fn test_parse_trigger_attacks_with_subject_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn tattered_ratter_parses_filtered_becomes_blocked_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tattered Ratter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Peasant])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever a Rat you control becomes blocked, it gets +2/+0 until end of turn.",
+        )
+        .expect("Tattered Ratter should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BecomesBlockedTrigger")
+            && debug.contains("Rat")
+            && debug.contains("You")
+            && !debug.contains("UnsupportedParserLine")
+            && !debug.contains("RuleFallbackText"),
+        "expected filtered becomes-blocked trigger without unsupported fallback, got {debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("whenever")
+            && joined.contains("rat you control")
+            && joined.contains("becomes blocked")
+            && joined.contains("gets +2/+0 until end of turn"),
+        "expected Tattered Ratter compiled text to preserve filtered trigger and pump, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_deals_combat_damage_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Combat Damage Filter Probe")
             .card_types(vec![CardType::Enchantment])

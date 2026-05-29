@@ -39,6 +39,184 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn tattered_ratter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_980), "Tattered Ratter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Peasant])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever a Rat you control becomes blocked, it gets +2/+0 until end of turn.",
+        )
+        .expect("Tattered Ratter should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn declare_blocked_attacker(
+    game: &mut GameState,
+    attacker: ObjectId,
+    blocker: ObjectId,
+    attacking_player: PlayerId,
+    defending_player: PlayerId,
+) -> TriggerQueue {
+    game.turn.active_player = attacking_player;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(defending_player),
+        }],
+    )
+    .expect("attacker declaration should be legal");
+
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    apply_blocker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[BlockerDeclaration {
+            blocker,
+            blocking: attacker,
+        }],
+        defending_player,
+    )
+    .expect("blocker declaration should be legal");
+
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn creature_definition(
+    name: &str,
+    subtypes: Vec<Subtype>,
+    power: i32,
+    toughness: i32,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(subtypes)
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tattered_ratter_pumps_rat_you_control_when_it_becomes_blocked() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ratter_id = game.create_object_from_definition(
+        &tattered_ratter_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let rat_id = game.create_object_from_definition(
+        &creature_definition("Warehouse Rat", vec![Subtype::Rat], 1, 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let blocker_id = game.create_object_from_definition(
+        &creature_definition("Blocking Bear", vec![Subtype::Bear], 2, 2),
+        bob,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(rat_id);
+
+    let mut trigger_queue = declare_blocked_attacker(&mut game, rat_id, blocker_id, alice, bob);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Tattered Ratter trigger should go on stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "blocked Rat should trigger Tattered Ratter"
+    );
+
+    resolve_stack_entry(&mut game).expect("Tattered Ratter trigger should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(game.calculated_power(rat_id), Some(3));
+    assert_eq!(game.calculated_toughness(rat_id), Some(1));
+    assert_eq!(game.calculated_power(ratter_id), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tattered_ratter_does_not_pump_blocked_non_rat() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&tattered_ratter_definition(), alice, Zone::Battlefield);
+    let attacker_id = game.create_object_from_definition(
+        &creature_definition("Peasant Attacker", vec![Subtype::Human], 1, 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let blocker_id = game.create_object_from_definition(
+        &creature_definition("Blocking Bear", vec![Subtype::Bear], 2, 2),
+        bob,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut trigger_queue =
+        declare_blocked_attacker(&mut game, attacker_id, blocker_id, alice, bob);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("non-Rat block should not produce an invalid trigger");
+
+    assert!(
+        game.stack.is_empty(),
+        "blocked non-Rat should not trigger Tattered Ratter"
+    );
+    game.refresh_continuous_state();
+    assert_eq!(game.calculated_power(attacker_id), Some(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tattered_ratter_does_not_trigger_for_rat_an_opponent_controls() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&tattered_ratter_definition(), alice, Zone::Battlefield);
+    let attacker_id = game.create_object_from_definition(
+        &creature_definition("Opponent Rat", vec![Subtype::Rat], 1, 1),
+        bob,
+        Zone::Battlefield,
+    );
+    let blocker_id = game.create_object_from_definition(
+        &creature_definition("Blocking Bear", vec![Subtype::Bear], 2, 2),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut trigger_queue =
+        declare_blocked_attacker(&mut game, attacker_id, blocker_id, bob, alice);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("opponent-controlled Rat block should not produce an invalid trigger");
+
+    assert!(
+        game.stack.is_empty(),
+        "Rat controlled by an opponent should not trigger Tattered Ratter"
+    );
+    game.refresh_continuous_state();
+    assert_eq!(game.calculated_power(attacker_id), Some(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_950), "Twenty-Toed Toad")
         .mana_cost(ManaCost::from_pips(vec![

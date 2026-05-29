@@ -3101,6 +3101,23 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(becomes_blocked_idx) = find_word_sequence_start(&words, &["becomes", "blocked"])
+        && becomes_blocked_idx + 2 == words.len()
+    {
+        let subject_end = ActivationRestrictionCompatWords::new(tokens)
+            .token_index_for_word_index(becomes_blocked_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = trim_commas(&tokens[..subject_end]);
+        let subject_words = ActivationRestrictionCompatWords::new(&subject_tokens).to_word_refs();
+        if subject_tokens.is_empty() || is_source_reference_words(&subject_words) {
+            return Ok(TriggerSpec::ThisBecomesBlocked);
+        }
+        return Ok(match parse_trigger_subject_filter_lexed(&subject_tokens)? {
+            Some(filter) => TriggerSpec::BecomesBlocked(filter),
+            None => TriggerSpec::ThisBecomesBlocked,
+        });
+    }
+
     let (words, attacked_player_filter, attacked_target_must_be_player) =
         if let Some(attacks_word_idx) =
             find_index(&words, |word| matches!(*word, "attack" | "attacks"))

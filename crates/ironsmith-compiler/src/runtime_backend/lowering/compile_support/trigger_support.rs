@@ -37,6 +37,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Trigger::this_becomes_blocked_by_object(filter)
         }
+        TriggerSpec::BecomesBlocked(filter) => Trigger::becomes_blocked(filter),
         TriggerSpec::ThisDies => Trigger::this_dies(),
         TriggerSpec::ThisDiesOrIsExiled => Trigger::this_dies_or_is_exiled(),
         TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker { marker } => {
@@ -512,7 +513,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
-        TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
+        TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisBecomesBlocked
+        | TriggerSpec::BecomesBlocked(_) => Some(PlayerFilter::Defending),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
@@ -602,7 +605,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             _ => false,
         },
         EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
-            TriggerSpec::ThisBecomesBlocked => true,
+            TriggerSpec::ThisBecomesBlocked | TriggerSpec::BecomesBlocked(_) => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
                     && trigger_supports_event_value(right, spec)

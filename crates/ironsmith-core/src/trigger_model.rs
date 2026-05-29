@@ -65,6 +65,9 @@ pub enum TriggerKind {
     ThisBecomesBlockedByObject {
         filter: ObjectFilter,
     },
+    BecomesBlocked {
+        filter: ObjectFilter,
+    },
     ThisDies,
     ThisDiesOrIsExiled,
     ThisLeavesBattlefield,
@@ -428,6 +431,9 @@ impl Trigger {
             "this_becomes_blocked_by_object",
             TriggerKind::ThisBecomesBlockedByObject { filter },
         )
+    }
+    pub fn becomes_blocked(filter: ObjectFilter) -> Self {
+        Self::typed("becomes_blocked", TriggerKind::BecomesBlocked { filter })
     }
     pub fn this_dies() -> Self {
         Self::typed("this_dies", TriggerKind::ThisDies)

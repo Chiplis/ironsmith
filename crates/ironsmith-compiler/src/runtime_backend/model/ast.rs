@@ -121,6 +121,7 @@ pub(crate) enum TriggerSpec {
     Blocks(ObjectFilter),
     ThisBecomesBlocked,
     ThisBecomesBlockedByObject(ObjectFilter),
+    BecomesBlocked(ObjectFilter),
     ThisDies,
     ThisDiesOrIsExiled,
     ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
