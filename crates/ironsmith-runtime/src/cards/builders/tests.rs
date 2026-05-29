@@ -33813,6 +33813,67 @@ fn parse_oracle_roshan_hidden_magister_regression() {
 }
 
 #[test]
+fn parse_oracle_leyline_of_transformation_regression() {
+    let def = parse_oracle_card_definition("Leyline of Transformation");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::PregameAction),
+        "expected Leyline opening-hand pregame ability, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&StaticAbilityId::ChooseCreatureTypeAsEnters),
+        "expected Leyline to choose a creature type as it enters, got {ids:?}"
+    );
+    assert_eq!(
+        ids.iter()
+            .filter(|id| **id == StaticAbilityId::AddChosenCreatureType)
+            .count(),
+        3,
+        "expected battlefield, stack, and off-battlefield chosen-type static abilities, got {ids:?}"
+    );
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.matches("addchosencreaturetype").count() >= 3,
+        "expected Leyline to lower chosen-type additions structurally, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "creatures you control are the chosen type in addition to their other types"
+        ),
+        "expected Leyline battlefield chosen-type clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "creature spells you control are the chosen type in addition to their other types"
+        ),
+        "expected Leyline stack chosen-type clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "creature cards you own that aren't on the battlefield are the chosen type in addition to their other types"
+        ),
+        "expected Leyline off-battlefield chosen-type clause to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Leyline to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_leyline_of_the_guildpact_static_characteristics_regression() {
     let def = parse_oracle_card_definition("Leyline of the Guildpact");
 

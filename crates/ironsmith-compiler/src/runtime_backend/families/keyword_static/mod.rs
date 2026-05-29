@@ -6291,6 +6291,20 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
         return Ok(None);
     }
 
+    let subject_tokens = &tokens[..be_idx];
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let added_words = &tail[..addition_idx];
+    if matches!(added_words, ["the", "chosen", "type"] | ["chosen", "type"]) {
+        let filter = parse_object_filter(subject_tokens, false)?;
+        return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
+            filter,
+            render_token_slice(tokens),
+        )]));
+    }
+
     let mut card_types = Vec::new();
     let mut subtypes = Vec::new();
     for descriptor in &tail[..addition_idx] {
@@ -6317,10 +6331,6 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
         return Ok(None);
     }
 
-    let subject_tokens = &tokens[..be_idx];
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
     let filter = parse_object_filter(subject_tokens, false)?;
 
     let mut abilities = Vec::new();
