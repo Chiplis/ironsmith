@@ -528,10 +528,12 @@ fn firkraag_cunning_instigator_strict_parser_and_text_regression() {
     );
 
     let debug = format!("{:#?}", def.abilities);
+    let debug_compact = debug.split_whitespace().collect::<String>();
     assert!(
-        debug.contains("AttacksTrigger")
-            && debug.contains("attacking_player_or_planeswalker_controlled_by: Some(\n                                    Opponent")
-            && debug.contains("controller: Some(\n                                                        Defending"),
+        debug_compact.contains("AttacksTrigger")
+            && debug_compact
+                .contains("attacking_player_or_planeswalker_controlled_by:Some(Opponent,)")
+            && debug_compact.contains("controller:Some(Defending,)"),
         "Firkraag attack trigger should structurally bind the defending opponent, got {debug}"
     );
     assert!(

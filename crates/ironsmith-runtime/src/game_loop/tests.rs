@@ -11430,6 +11430,32 @@ impl ChooseSpecificObjectDecisionMaker {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 impl DecisionMaker for ChooseSpecificObjectDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        self.seen_candidates = ctx
+            .requirements
+            .iter()
+            .flat_map(|requirement| requirement.legal_targets.iter())
+            .filter_map(|target| match target {
+                Target::Object(id) => Some(*id),
+                Target::Player(_) => None,
+            })
+            .collect();
+        assert!(
+            ctx.requirements
+                .iter()
+                .any(|requirement| requirement
+                    .legal_targets
+                    .contains(&Target::Object(self.desired))),
+            "expected desired object target to be legal, got {:?}",
+            ctx.requirements
+        );
+        vec![Target::Object(self.desired)]
+    }
+
     fn decide_objects(
         &mut self,
         _game: &GameState,
