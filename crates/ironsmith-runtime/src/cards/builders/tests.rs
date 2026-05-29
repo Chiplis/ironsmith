@@ -6813,15 +6813,19 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn excavation_technique_parses_demonstrate_and_renders_keyword_text() {
     let def = parse_oracle_card_definition("Excavation Technique");
 
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let lines = unprocessed_compiled_lines(&def);
+    let rendered = lines.join("\n");
     assert!(
         rendered.contains("Demonstrate"),
         "expected Excavation Technique to render the demonstrate keyword, got {rendered}"
     );
-    assert!(
-        rendered.contains("Destroy target nonland permanent")
-            && rendered.contains("creates two Treasure tokens"),
-        "expected Excavation Technique spell text to remain intact, got {rendered}"
+    assert_eq!(
+        lines,
+        vec![
+            "Destroy target nonland permanent, then that object's controller creates 2 Treasure tokens.",
+            "Demonstrate.",
+        ],
+        "expected Excavation Technique compiled text to preserve spell text and keyword identity"
     );
     assert!(
         !rendered.to_ascii_lowercase().contains("unsupported"),
