@@ -1162,15 +1162,26 @@ fn is_nonland_permanent_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> boo
         })
 }
 
-fn is_noncreature_nonland_card_filter(filter: &ObjectFilter) -> bool {
-    filter.zone.is_none()
-        && filter.card_types.is_empty()
-        && filter.all_card_types.is_empty()
-        && filter.excluded_card_types.len() == 2
-        && filter.excluded_card_types.contains(&CardType::Creature)
-        && filter.excluded_card_types.contains(&CardType::Land)
-        && filter.subtypes.is_empty()
-        && filter.name.is_none()
+fn describe_tagged_condition_card_selection(
+    condition: &Condition,
+    tag: &str,
+) -> Option<String> {
+    match condition {
+        Condition::TaggedObjectMatches(condition_tag, filter) if condition_tag.as_str() == tag => {
+            Some(describe_search_selection_with_cards(&filter.description()))
+        }
+        Condition::Or(left, right) => {
+            let left = describe_tagged_condition_card_selection(left, tag)?;
+            let right = describe_tagged_condition_card_selection(right, tag)?;
+            if let (Some(left_type), true) = (left.strip_suffix(" card"), right.ends_with(" card"))
+            {
+                Some(format!("{left_type} or {right}"))
+            } else {
+                Some(format!("{left} or {right}"))
+            }
+        }
+        _ => None,
+    }
 }
 
 fn describe_look_top_card_if_matching_may_reveal_put_hand(
@@ -1180,13 +1191,11 @@ fn describe_look_top_card_if_matching_may_reveal_put_hand(
     if look_at_top.player != PlayerFilter::You || look_at_top.count != Value::Fixed(1) {
         return None;
     }
-    let Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
-        return None;
-    };
-    if tag != &look_at_top.tag
-        || !is_noncreature_nonland_card_filter(filter)
-        || !conditional.if_false.is_empty()
-    {
+    let selection = describe_tagged_condition_card_selection(
+        &conditional.condition,
+        look_at_top.tag.as_str(),
+    )?;
+    if !conditional.if_false.is_empty() {
         return None;
     }
     let [may_effect] = conditional.if_true.as_slice() else {
@@ -1208,10 +1217,58 @@ fn describe_look_top_card_if_matching_may_reveal_put_hand(
         return None;
     }
 
-    Some(
-        "Look at the top card of your library. If it's a noncreature, nonland card, you may reveal it and put it into your hand"
-            .to_string(),
-    )
+    Some(format!(
+        "Look at the top card of your library. If it's {}, you may reveal it and put it into your hand",
+        with_indefinite_article(&selection)
+    ))
+}
+
+fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    conditional: &crate::effects::ConditionalEffect,
+    bottom_conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let first = describe_look_top_card_if_matching_may_reveal_put_hand(look_at_top, conditional)?;
+    let Condition::Not(inner) = &bottom_conditional.condition else {
+        return None;
+    };
+    let Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = inner.as_ref()
+    else {
+        return None;
+    };
+    let hand_filter = ObjectFilter {
+        zone: Some(Zone::Hand),
+        ..Default::default()
+    };
+    if player != &PlayerFilter::You
+        || tag.as_str() != look_at_top.tag.as_str()
+        || filter != &hand_filter
+        || !bottom_conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let [may_effect] = bottom_conditional.if_true.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::You) || may.effects.len() != 1 {
+        return None;
+    }
+    let move_to_bottom = may.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_bottom.zone != Zone::Library
+        || move_to_bottom.to_top
+        || !matches!(move_to_bottom.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == look_at_top.tag.as_str())
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{first}. If you don't put the card into your hand, you may put it on the bottom of your library"
+    ))
 }
 
 fn describe_counter_constraint(counter: crate::filter::CounterConstraint) -> String {
@@ -11804,6 +11861,23 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(conditional) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(bottom_conditional) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(compact) = describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom(
+                look_at_top,
+                conditional,
+                bottom_conditional,
+            )
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 1 < filtered.len()
