@@ -8293,6 +8293,10 @@ fn runes_of_the_deus_strict_parse_and_compiled_text_conditions() {
         .to_ascii_lowercase();
 
     assert!(
+        rendered.contains("enchant creature"),
+        "expected Aura enchant restriction in compiled text, got {rendered}"
+    );
+    assert!(
         rendered.contains("enchanted creature gets +1/+1 and has double strike")
             && rendered.contains("as long as enchanted creature is red"),
         "expected red conditional double-strike grant in compiled text, got {rendered}"
