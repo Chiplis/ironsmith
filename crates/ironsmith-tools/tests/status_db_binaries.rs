@@ -1022,11 +1022,19 @@ fn compile_oracle_text_strictly_compiles_trystan_callous_cultivator_from_workspa
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(stdout.contains("Name: Trystan, Callous Cultivator"), "{stdout}");
+    assert!(stdout.contains("Name: Trystan, Penitent Culler"), "{stdout}");
     assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
     assert!(
         stdout.contains("enters or transforms into Trystan, Callous Cultivator")
             && stdout.contains("if there is an Elf card in your graveyard, you gain 2 life"),
         "expected Trystan transform trigger and Elf-card graveyard clause, got {stdout}"
+    );
+    assert!(
+        stdout.contains("transforms into Trystan, Penitent Culler")
+            && stdout.contains("you may exile an Elf card from your graveyard")
+            && stdout.contains("each opponent loses 2 life")
+            && stdout.contains("you may pay {G}"),
+        "expected Penitent Culler trigger, Elf-card exile, opponent life loss, and green transform clause, got {stdout}"
     );
 }
 

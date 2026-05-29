@@ -90,6 +90,37 @@ fn trystan_callous_cultivator_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn trystan_penitent_culler_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_921), "Trystan, Penitent Culler")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Warlock])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Deathtouch\n\
+             Whenever this creature transforms into Trystan, Penitent Culler, mill three cards, then you may exile an Elf card from your graveyard. If you do, each opponent loses 2 life.\n\
+             At the beginning of your first main phase, you may pay {G}. If you do, transform Trystan.",
+        )
+        .expect("Trystan, Penitent Culler should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn trystan_linked_face_definitions() -> (
+    crate::cards::CardDefinition,
+    crate::cards::CardDefinition,
+) {
+    let mut front = trystan_callous_cultivator_definition();
+    let mut back = trystan_penitent_culler_definition();
+    front.card.other_face = Some(back.card.id);
+    front.card.other_face_name = Some(back.card.name.clone());
+    front.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+    back.card.other_face = Some(front.card.id);
+    back.card.other_face_name = Some(front.card.name.clone());
+    back.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+    (front, back)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn trystan_test_card(name: &str, subtypes: Vec<Subtype>) -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Creature])
@@ -328,6 +359,145 @@ fn trystan_callous_cultivator_transform_trigger_uses_same_elf_graveyard_conditio
         game.player(alice).expect("alice exists").life,
         22,
         "Trystan should gain 2 life from the transform trigger when an Elf card is in your graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_penitent_culler_transform_trigger_exiles_milled_elf_and_each_opponent_loses_life() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let trystan = trystan_penitent_culler_definition();
+    let trystan_id = game.create_object_from_definition(&trystan, alice, Zone::Battlefield);
+    let elf = trystan_test_card("Trystan Test Elf", vec![Subtype::Elf]);
+    let non_elf = trystan_test_card("Trystan Test Soldier", vec![Subtype::Soldier]);
+    game.create_object_from_definition(&elf, alice, Zone::Library);
+    game.create_object_from_definition(&non_elf, alice, Zone::Library);
+    game.create_object_from_definition(&non_elf, alice, Zone::Library);
+
+    let transformed = TriggerEvent::new_with_provenance(
+        crate::events::other::TransformedEvent::new(trystan_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &transformed) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Trystan, Penitent Culler transform trigger should stack");
+    assert_eq!(game.stack.len(), 1, "expected Penitent Culler transform trigger");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Penitent Culler transform trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        2,
+        "Penitent Culler should mill three cards and exile the milled Elf card"
+    );
+    assert!(
+        game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.subtypes.contains(&Subtype::Elf))
+        }),
+        "Penitent Culler should exile an Elf card from your graveyard"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        18,
+        "Bob should lose 2 life when the Elf card is exiled"
+    );
+    assert_eq!(
+        game.player(charlie).expect("charlie exists").life,
+        18,
+        "Charlie should lose 2 life when the Elf card is exiled"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "Penitent Culler should affect each opponent, not its controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_penitent_culler_transform_trigger_can_decline_exiling_elf() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let trystan = trystan_penitent_culler_definition();
+    let trystan_id = game.create_object_from_definition(&trystan, alice, Zone::Battlefield);
+    let elf = trystan_test_card("Trystan Test Elf", vec![Subtype::Elf]);
+    let non_elf = trystan_test_card("Trystan Test Soldier", vec![Subtype::Soldier]);
+    game.create_object_from_definition(&elf, alice, Zone::Library);
+    game.create_object_from_definition(&non_elf, alice, Zone::Library);
+    game.create_object_from_definition(&non_elf, alice, Zone::Library);
+
+    let transformed = TriggerEvent::new_with_provenance(
+        crate::events::other::TransformedEvent::new(trystan_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &transformed) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Trystan, Penitent Culler transform trigger should stack");
+    resolve_stack_entry(&mut game).expect("Penitent Culler transform trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        3,
+        "declining the optional exile should leave all milled cards in your graveyard"
+    );
+    assert!(game.exile.is_empty(), "declining the optional exile should exile no cards");
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "opponents should not lose life when no Elf card is exiled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_penitent_culler_first_main_phase_green_payment_transforms_to_front_face() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let (front, back) = trystan_linked_face_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    let trystan_id = game.create_object_from_definition(&back, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let first_main = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &first_main) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Penitent Culler first-main-phase trigger should stack");
+    assert_eq!(game.stack.len(), 1, "expected first-main-phase transform trigger");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Penitent Culler first-main-phase trigger should resolve");
+
+    assert_eq!(
+        game.object(trystan_id).expect("Trystan should still exist").name,
+        front.card.name,
+        "paying {{G}} during the first main phase trigger should transform to the front face"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.green,
+        0,
+        "the {{G}} payment should be spent"
     );
 }
 

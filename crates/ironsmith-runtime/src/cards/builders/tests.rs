@@ -35402,6 +35402,39 @@ fn trystan_callous_cultivator_strict_parser_and_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn trystan_penitent_culler_strict_parser_and_text_regression() {
+    let oracle = "Deathtouch\n\
+        Whenever this creature transforms into Trystan, Penitent Culler, mill three cards, then you may exile an Elf card from your graveyard. If you do, each opponent loses 2 life.\n\
+        At the beginning of your first main phase, you may pay {G}. If you do, transform Trystan.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Trystan, Penitent Culler")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Trystan, Penitent Culler should parse strictly");
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Whenever this creature transforms into Trystan, Penitent Culler")
+            && rendered.contains("mill three cards")
+            && rendered.contains("You may exile an Elf card")
+            && rendered.contains("If you do, each opponent loses 2 life")
+            && rendered.contains("At the beginning of your first main phase, you may pay {G}")
+            && rendered.contains("If you do, transform Trystan"),
+        "expected Penitent Culler transform trigger, optional Elf exile, opponent life loss, and green transform trigger, got {rendered}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().contains("transforms into")
+                    && triggered.effects.iter().any(|effect| format!("{effect:?}").contains("Mill"))
+        )),
+        "expected Penitent Culler to compile a standalone transform triggered ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sporeweb_weaver_strict_regression() {
     assert_oracle_card_parses_strict("Sporeweb Weaver");
     let def = parse_oracle_card_definition("Sporeweb Weaver");
