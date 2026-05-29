@@ -2,6 +2,7 @@
 
 mod becomes_tapped;
 mod becomes_untapped;
+mod chapter_ability_resolved;
 mod each_players_turn;
 mod event_kind;
 mod expend;
@@ -20,6 +21,7 @@ mod wins_clash;
 
 pub use becomes_tapped::BecomesTappedTrigger;
 pub use becomes_untapped::BecomesUntappedTrigger;
+pub use chapter_ability_resolved::FinalChapterAbilityResolvedTrigger;
 pub use each_players_turn::EachPlayersTurnTrigger;
 pub use event_kind::{EventKindTrigger, ThisEventObjectTrigger};
 pub use expend::ExpendTrigger;

@@ -507,6 +507,23 @@ pub(crate) fn parse_trigger_clause_lexed(
 
     if matches!(
         words.as_slice(),
+        [
+            "the", "final", "chapter", "ability", "of", "a", "saga", "you", "control",
+            "resolves"
+        ] | [
+            "the", "final", "chapter", "ability", "of", "saga", "you", "control",
+            "resolves"
+        ]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.subtypes.push(Subtype::Saga);
+        filter.controller = Some(PlayerFilter::You);
+        filter.zone = Some(Zone::Battlefield);
+        return Ok(TriggerSpec::FinalChapterAbilityResolved(filter));
+    }
+
+    if matches!(
+        words.as_slice(),
         ["day", "becomes", "night", "or", "night", "becomes", "day"]
     ) {
         return Ok(TriggerSpec::DayNightChanged);

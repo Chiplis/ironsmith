@@ -879,6 +879,11 @@ impl Trigger {
         Self::new(SagaChapterTrigger::new(chapters))
     }
 
+    /// Create a trigger for a final Saga chapter ability resolving.
+    pub fn final_chapter_ability_resolved(filter: ObjectFilter) -> Self {
+        Self::new(FinalChapterAbilityResolvedTrigger::new(filter))
+    }
+
     // === Other Triggers ===
 
     /// Create a "when this permanent becomes tapped" trigger.

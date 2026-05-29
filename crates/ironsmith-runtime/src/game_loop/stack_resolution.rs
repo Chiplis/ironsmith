@@ -743,6 +743,24 @@ pub(super) fn resolve_stack_entry_full(
         drain_pending_trigger_events(game, tq);
     }
 
+    if entry.is_ability
+        && let Some((saga_id, controller)) = resolved_chapter_ability_event(game, &entry)
+    {
+        let event_provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::ChapterAbilityResolved);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::other::ChapterAbilityResolvedEvent::new(saga_id, controller, true),
+            event_provenance,
+        );
+        let event = game.ensure_trigger_event_provenance(event);
+        if let Some(ref mut tq) = trigger_queue {
+            for trigger in check_triggers(game, &event) {
+                tq.add(trigger);
+            }
+        }
+    }
+
     if !entry.is_ability
         && let Some(obj) = &obj
     {
@@ -1319,6 +1337,35 @@ pub(super) fn resolve_stack_entry_full(
     }
 
     Ok(())
+}
+
+fn resolved_chapter_ability_event(
+    game: &GameState,
+    entry: &StackEntry,
+) -> Option<(ObjectId, PlayerId)> {
+    let saga_id = entry.chapter_ability_source?;
+    let trigger_identity = entry.trigger_identity?;
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    let final_chapter = crate::game_loop::final_chapter_number_with_view(&view, saga_id)?;
+    let abilities = view.abilities_rc(saga_id)?;
+    let resolved_final_chapter = abilities.iter().any(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return false;
+        };
+        crate::triggers::compute_trigger_identity(triggered) == trigger_identity
+            && triggered
+                .trigger
+                .saga_chapters()
+                .is_some_and(|chapters| chapters.contains(&final_chapter))
+    });
+    if !resolved_final_chapter {
+        return None;
+    }
+    let controller = view
+        .calculated_characteristics(saga_id)
+        .map(|chars| chars.controller)
+        .or_else(|| game.object(saga_id).map(|obj| game.controller_of(obj)))?;
+    Some((saga_id, controller))
 }
 
 fn stack_entry_is_countered_by_unpaid_ward(

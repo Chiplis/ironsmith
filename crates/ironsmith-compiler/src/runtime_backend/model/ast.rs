@@ -345,6 +345,7 @@ pub(crate) enum TriggerSpec {
         amount: u32,
     },
     SagaChapter(Vec<u32>),
+    FinalChapterAbilityResolved(ObjectFilter),
     Either(Box<TriggerSpec>, Box<TriggerSpec>),
 }
 

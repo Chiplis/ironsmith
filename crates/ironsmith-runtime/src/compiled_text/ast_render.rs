@@ -744,15 +744,13 @@ fn substitute_legendary_source_reference(
     card: &crate::card::Card,
     subject: &str,
 ) -> String {
-    if subject != "this creature"
-        || !card.supertypes.contains(&Supertype::Legendary)
-        || card.name.contains(" // ")
-    {
+    if !card.supertypes.contains(&Supertype::Legendary) || card.name.contains(" // ") {
         return line.to_string();
     }
 
     let lower = line.to_ascii_lowercase();
     let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || (lower.starts_with("as long as ") && lower.contains(", this creature has "))
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")
         || lower.contains(": whenever this creature deals combat damage to a player");
