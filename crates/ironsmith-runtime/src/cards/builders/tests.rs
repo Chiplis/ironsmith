@@ -8277,6 +8277,37 @@ fn test_rageform_parses_and_renders_aura_become_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn runes_of_the_deus_strict_parse_and_compiled_text_conditions() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Runes of the Deus")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nAs long as enchanted creature is red, it gets +1/+1 and has double strike.\nAs long as enchanted creature is green, it gets +1/+1 and has trample.",
+        )
+        .expect("Runes of the Deus should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("enchanted creature gets +1/+1 and has double strike")
+            && rendered.contains("as long as enchanted creature is red"),
+        "expected red conditional double-strike grant in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("enchanted creature gets +1/+1 and has trample")
+            && rendered.contains("as long as enchanted creature is green"),
+        "expected green conditional trample grant in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "Runes of the Deus should not rely on parser fallback markers: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_dread_trigger_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Dread Probe")
         .card_types(vec![CardType::Creature])
