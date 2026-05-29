@@ -7116,7 +7116,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             loser = "that player".to_string();
         }
         let lose_verb = player_verb(&loser, "lose", "loses");
-        let loss_clause = if loser.eq_ignore_ascii_case(player) {
+        let same_revealing_player = loser.eq_ignore_ascii_case(player)
+            || (matches!(choose.chooser, PlayerFilter::Target(_)) && loser == "that player");
+        let loss_clause = if same_revealing_player {
             format!("{lose_verb} life equal to that card's mana value")
         } else {
             format!("{loser} {lose_verb} life equal to that card's mana value")

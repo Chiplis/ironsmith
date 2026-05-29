@@ -1094,6 +1094,40 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             previous_segment = Some(segment);
             continue;
         }
+        let primitive_segment_effects = if let Some(effects) = run_subject_verb_primitives_lexed(
+            &segment,
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )? {
+            Some(effects)
+        } else {
+            run_subject_verb_primitives_lexed(
+                &segment,
+                POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+                &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+            )?
+        };
+        if let Some(segment_effects) = primitive_segment_effects {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                }
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
+                    carried_duration = Some(duration);
+                }
+                effects.push(effect);
+            }
+            previous_segment = Some(segment);
+            continue;
+        }
         if let Some(followup) = parse_token_copy_followup_sentence_lexed(&segment)
             && try_apply_token_copy_followup(&mut effects, followup)?
         {

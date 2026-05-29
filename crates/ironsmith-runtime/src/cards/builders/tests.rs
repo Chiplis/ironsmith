@@ -9275,6 +9275,47 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_singe_mind_ogre_keeps_random_hand_reveal_and_life_loss_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Singe-Mind Ogre")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ogre, Subtype::Mutant])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "When this creature enters, target player reveals a card at random from their hand, then loses life equal to that card's mana value.",
+        )
+        .expect("Singe-Mind Ogre should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("random: true")
+            && debug.contains("zone: Some(Hand)")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("LoseLifeEffect")
+            && debug.contains("ManaValueOf"),
+        "expected random hand selection, reveal, and mana-value life-loss linkage, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("when this creature enters")
+            && rendered.contains("target player reveals a card at random from their hand")
+            && rendered.contains("then loses life equal to that card's mana value")
+            && !rendered.contains("reveal it")
+            && !rendered.contains("choose exactly 1 at random"),
+        "expected Singe-Mind Ogre compiled text to preserve the random reveal and life-loss link, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_word_of_blasting_uses_destroyed_wall_mana_value_for_damage() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Word of Blasting")
         .mana_cost(ManaCost::from_pips(vec![
