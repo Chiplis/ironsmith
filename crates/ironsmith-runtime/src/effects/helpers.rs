@@ -2512,6 +2512,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
             }
         }
 
+        if !filter.tagged_constraints.is_empty() {
+            return resolve_objects_from_spec(game, spec, ctx);
+        }
+
         let count = spec.count();
         let mut candidates = candidate_object_ids_for_filter(game, filter, ctx);
         if candidates.is_empty() {
@@ -2856,29 +2860,17 @@ pub fn resolve_objects_from_spec(
         // Object filter (non-targeted choice) - generally supplied via previous selection,
         // but some tags only effects resolve from tagged objects and filters.
         ChooseSpec::Object(filter) => {
-            let objects: Vec<ObjectId> = ctx
-                .targets
-                .iter()
-                .filter_map(|t| {
-                    if let ResolvedTarget::Object(id) = t {
-                        Some(*id)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if objects.is_empty() {
-                if filter.tagged_constraints.is_empty() {
-                    return Err(ExecutionError::InvalidTarget);
-                }
-
-                let filter_ctx = ctx.filter_context(game);
-                let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+            if filter.tagged_constraints.is_empty() {
+                let objects: Vec<ObjectId> = ctx
+                    .targets
                     .iter()
-                    .filter_map(|&id| game.object(id))
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .map(|obj| obj.id)
+                    .filter_map(|t| {
+                        if let ResolvedTarget::Object(id) = t {
+                            Some(*id)
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
 
                 if objects.is_empty() {
@@ -2886,6 +2878,18 @@ pub fn resolve_objects_from_spec(
                 }
 
                 return Ok(objects);
+            }
+
+            let filter_ctx = ctx.filter_context(game);
+            let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .map(|obj| obj.id)
+                .collect();
+
+            if objects.is_empty() {
+                return Err(ExecutionError::InvalidTarget);
             }
 
             Ok(objects)

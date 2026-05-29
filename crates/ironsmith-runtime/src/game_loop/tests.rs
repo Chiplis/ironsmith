@@ -3128,6 +3128,244 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
     );
 }
 
+fn dream_tides_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(99_120), "Dream Tides")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures don't untap during their controllers' untap steps.\n\
+             At the beginning of each player's upkeep, that player may choose any number of tapped nongreen creatures they control and pay {2} for each creature chosen this way. If the player does, untap those creatures.",
+        )
+        .expect("Dream Tides should parse for runtime tests")
+}
+
+fn create_colored_creature(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    colors: Option<crate::color::ColorSet>,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::from_raw(99_121), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2));
+    if let Some(colors) = colors {
+        builder = builder.color_indicator(colors);
+    }
+    let card = builder.build();
+    game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+fn put_dream_tides_upkeep_trigger_on_stack(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+) {
+    generate_and_queue_step_triggers(game, trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Dream Tides should create one upkeep trigger"
+    );
+    put_triggers_on_stack(game, trigger_queue)
+        .expect("Dream Tides trigger should go on the stack");
+}
+
+#[test]
+fn dream_tides_prevents_creatures_from_untapping_during_untap_step() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dream_tides = dream_tides_definition();
+    game.create_object_from_definition(&dream_tides, alice, Zone::Battlefield);
+    let bob_creature = create_creature(&mut game, "Bob Bear", bob, 2, 2);
+    let bob_relic = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_122), "Bob Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.tap(bob_creature);
+    game.tap(bob_relic);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+    let mut dm = AutoPassDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    assert!(
+        game.is_tapped(bob_creature),
+        "Dream Tides should keep creatures tapped during their controller's untap step"
+    );
+    assert!(
+        !game.is_tapped(bob_relic),
+        "Dream Tides should not stop noncreature permanents from untapping"
+    );
+}
+
+struct DreamTidesChoiceDecisionMaker {
+    chooser: PlayerId,
+    selected: Vec<ObjectId>,
+    rejected: Vec<ObjectId>,
+}
+
+impl DecisionMaker for DreamTidesChoiceDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        assert_eq!(
+            ctx.player, self.chooser,
+            "active player should choose for Dream Tides"
+        );
+        assert_eq!(ctx.min, 0, "Dream Tides should allow choosing zero creatures");
+        assert_eq!(
+            ctx.max,
+            Some(ctx.candidates.len()),
+            "Dream Tides any-number choice should be capped only by available candidates"
+        );
+        for selected in &self.selected {
+            assert!(
+                ctx.candidates
+                    .iter()
+                    .any(|candidate| candidate.id == *selected && candidate.legal),
+                "selected tapped nongreen creature should be legal for Dream Tides"
+            );
+        }
+        for rejected in &self.rejected {
+            assert!(
+                !ctx.candidates
+                    .iter()
+                    .any(|candidate| candidate.id == *rejected && candidate.legal),
+                "green, untapped, and non-controlled creatures should not be legal \
+                 Dream Tides choices"
+            );
+        }
+        self.selected.clone()
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.legal)
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+}
+
+#[test]
+fn dream_tides_upkeep_payment_untaps_only_chosen_tapped_nongreen_creature() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dream_tides = dream_tides_definition();
+    game.create_object_from_definition(&dream_tides, alice, Zone::Battlefield);
+    let first_chosen = create_colored_creature(&mut game, "First Chosen Bob Bear", bob, None);
+    let second_chosen = create_colored_creature(&mut game, "Second Chosen Bob Bear", bob, None);
+    let unchosen = create_colored_creature(&mut game, "Unchosen Bob Bear", bob, None);
+    let green = create_colored_creature(
+        &mut game,
+        "Green Bob Bear",
+        bob,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let untapped = create_colored_creature(&mut game, "Untapped Bob Bear", bob, None);
+    let alice_creature = create_colored_creature(&mut game, "Alice Bear", alice, None);
+    game.tap(first_chosen);
+    game.tap(second_chosen);
+    game.tap(unchosen);
+    game.tap(green);
+    game.tap(alice_creature);
+    game.player_mut(bob)
+        .expect("Bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    put_dream_tides_upkeep_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = DreamTidesChoiceDecisionMaker {
+        chooser: bob,
+        selected: vec![first_chosen, second_chosen],
+        rejected: vec![green, untapped, alice_creature],
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Dream Tides trigger should resolve");
+
+    assert!(
+        !game.is_tapped(first_chosen) && !game.is_tapped(second_chosen),
+        "paid-for chosen creatures should untap"
+    );
+    assert!(
+        game.is_tapped(unchosen),
+        "unchosen tapped nongreen creatures should remain tapped"
+    );
+    assert!(
+        game.is_tapped(green),
+        "green creatures should not be legal choices"
+    );
+    assert!(
+        !game.is_tapped(untapped),
+        "untapped creatures should remain unchanged"
+    );
+    assert!(
+        game.is_tapped(alice_creature),
+        "active player should not choose creatures they do not control"
+    );
+}
+
+#[test]
+fn dream_tides_upkeep_without_payment_leaves_chosen_creature_tapped() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dream_tides = dream_tides_definition();
+    game.create_object_from_definition(&dream_tides, alice, Zone::Battlefield);
+    let chosen = create_colored_creature(&mut game, "Unpaid Bob Bear", bob, None);
+    game.tap(chosen);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    put_dream_tides_upkeep_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = DreamTidesChoiceDecisionMaker {
+        chooser: bob,
+        selected: vec![chosen],
+        rejected: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Dream Tides trigger should resolve even when payment is impossible");
+
+    assert!(
+        game.is_tapped(chosen),
+        "chosen creature should remain tapped when its controller cannot pay {{2}}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn aether_rift_returns_randomly_discarded_creature_when_no_player_pays() {

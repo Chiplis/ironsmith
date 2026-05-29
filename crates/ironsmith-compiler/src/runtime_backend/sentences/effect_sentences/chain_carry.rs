@@ -2531,6 +2531,18 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
                 *effect_player = player;
             }
         }
+        EffectAst::ChooseObjects {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::ChooseObjectsAcrossZones {
+            player: effect_player,
+            ..
+        } => {
+            if matches!(*effect_player, PlayerAst::Implicit) {
+                *effect_player = player;
+            }
+        }
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             for nested_effect in nested {
                 bind_implicit_player_context(nested_effect, player);
