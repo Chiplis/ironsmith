@@ -5631,6 +5631,70 @@ fn test_parse_hideaway_keyword_line() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn rabble_rousing_definition_for_tests() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(55_824), "Rabble Rousing")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Hideaway 5 (When this enchantment enters, look at the top five cards of your library, exile one face down, then put the rest on the bottom in a random order.)\n\
+             Whenever you attack with one or more creatures, create that many 1/1 green and white Citizen creature tokens. Then if you control ten or more creatures, you may play the exiled card without paying its mana cost.",
+        )
+        .expect("Rabble Rousing should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rabble_rousing_strict_parser_and_compiled_text_regression() {
+    let def = rabble_rousing_definition_for_tests();
+
+    assert_eq!(def.name(), "Rabble Rousing");
+    assert_eq!(
+        def.abilities.len(),
+        2,
+        "Rabble Rousing should have hideaway and attack triggers"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        !debug.contains("KeywordFallbackText") && !debug.contains("unsupported"),
+        "Rabble Rousing should lower without unsupported placeholders, got {debug}"
+    );
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("ExileEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "Rabble Rousing hideaway should lower to look/choose/exile/bottom effects, got {debug}"
+    );
+    assert!(
+        debug.contains("AttacksTrigger")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("CastTaggedEffect"),
+        "Rabble Rousing attack trigger should lower to token creation plus conditional play permission, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Hideaway 5"),
+        "Rabble Rousing should render hideaway without tagged-object internals, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever you attack with one or more creatures, create that many 1/1 green and white Citizen creature tokens"
+        ),
+        "Rabble Rousing should render the attack token clause, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("tagged object")
+            && !rendered.to_ascii_lowercase().contains("tagged '")
+            && !rendered.contains("tagged-object-reference"),
+        "Rabble Rousing compiled text should not leak tagged-object internals, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_partner_with_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Probe")

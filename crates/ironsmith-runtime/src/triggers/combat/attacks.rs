@@ -175,6 +175,9 @@ impl TriggerMatcher for AttacksTrigger {
                     self.min_total_attackers
                 );
             }
+            if subject.eq_ignore_ascii_case("creature you control") {
+                return "Whenever you attack with one or more creatures".to_string();
+            }
             return format!("Whenever one or more {subject} attack");
         }
         if self.min_total_attackers > 1 {

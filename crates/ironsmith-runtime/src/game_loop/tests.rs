@@ -5463,6 +5463,237 @@ fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn rabble_rousing_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(55_824), "Rabble Rousing")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Hideaway 5 (When this enchantment enters, look at the top five cards of your library, exile one face down, then put the rest on the bottom in a random order.)\n\
+             Whenever you attack with one or more creatures, create that many 1/1 green and white Citizen creature tokens. Then if you control ten or more creatures, you may play the exiled card without paying its mana cost.",
+        )
+        .expect("Rabble Rousing should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn controlled_citizen_count(game: &GameState, controller: PlayerId) -> usize {
+    game.battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| game.controller_of(obj) == controller && obj.name == "Citizen")
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct CountingBooleanDecisionMaker {
+    boolean_prompts: usize,
+    response: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for CountingBooleanDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.boolean_prompts += 1;
+        self.response
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rabble_rousing_hideaway_exiles_one_card_face_down_and_bottoms_the_rest() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    for idx in 0..6 {
+        let card = CardBuilder::new(CardId::from_raw(55_900 + idx), &format!("Library Card {idx}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let rabble_id =
+        game.create_object_from_definition(&rabble_rousing_definition(), alice, Zone::Hand);
+    let rabble_id = game
+        .move_object_by_effect(rabble_id, Zone::Battlefield)
+        .expect("Rabble Rousing should enter the battlefield");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Rabble Rousing hideaway trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "hideaway should create one ETB trigger");
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("hideaway trigger should resolve");
+
+    assert!(
+        game.battlefield.contains(&rabble_id),
+        "Rabble Rousing should remain on the battlefield"
+    );
+    assert_eq!(game.exile.len(), 1, "hideaway should exile exactly one chosen card");
+    let exiled = game.exile[0];
+    assert!(
+        game.is_face_down(exiled),
+        "hideaway should exile the chosen card face down"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").library.len(),
+        5,
+        "hideaway should leave the unchosen cards plus the unlooked card in the library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rabble_rousing_attack_trigger_creates_tokens_and_skips_play_permission_below_ten_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&rabble_rousing_definition(), alice, Zone::Battlefield);
+    let attackers = (0..2)
+        .map(|idx| {
+            let id = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+            game.remove_summoning_sickness(id);
+            id
+        })
+        .collect::<Vec<_>>();
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = attackers
+        .iter()
+        .copied()
+        .map(|creature| AttackerDeclaration {
+            creature,
+            target: AttackTarget::Player(bob),
+        })
+        .collect::<Vec<_>>();
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attackers should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Rabble Rousing attack trigger should go on stack");
+
+    let mut dm = CountingBooleanDecisionMaker {
+        boolean_prompts: 0,
+        response: false,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Rabble Rousing attack trigger should resolve");
+
+    assert_eq!(
+        controlled_citizen_count(&game, alice),
+        2,
+        "Rabble Rousing should create one Citizen per attacking creature"
+    );
+    assert_eq!(
+        dm.boolean_prompts, 0,
+        "Rabble Rousing should not offer the exiled-card play permission below ten creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rabble_rousing_attack_trigger_offers_play_permission_after_tokens_reach_ten_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let exiled_card = CardBuilder::new(CardId::from_raw(55_950), "Hidden Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    game.create_object_from_card(&exiled_card, alice, Zone::Library);
+    for idx in 0..4 {
+        let card = CardBuilder::new(CardId::from_raw(55_951 + idx), &format!("Library Card {idx}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let rabble_id =
+        game.create_object_from_definition(&rabble_rousing_definition(), alice, Zone::Hand);
+    game.move_object_by_effect(rabble_id, Zone::Battlefield)
+        .expect("Rabble Rousing should enter the battlefield");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Rabble Rousing hideaway trigger should go on stack");
+    let mut hideaway_dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut hideaway_dm).expect("hideaway trigger should resolve");
+    assert_eq!(game.exile.len(), 1, "hideaway should exile one card");
+    let exiled_name = game
+        .object(game.exile[0])
+        .expect("exiled card should exist")
+        .name
+        .clone();
+
+    let attackers = (0..5)
+        .map(|idx| {
+            let id = create_creature(&mut game, &format!("Attacker {idx}"), alice, 2, 2);
+            game.remove_summoning_sickness(id);
+            id
+        })
+        .collect::<Vec<_>>();
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let declarations = attackers
+        .iter()
+        .copied()
+        .map(|creature| AttackerDeclaration {
+            creature,
+            target: AttackTarget::Player(bob),
+        })
+        .collect::<Vec<_>>();
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("attackers should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Rabble Rousing attack trigger should go on stack");
+
+    let mut dm = CountingBooleanDecisionMaker {
+        boolean_prompts: 0,
+        response: true,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Rabble Rousing attack trigger should resolve");
+
+    assert_eq!(
+        controlled_citizen_count(&game, alice),
+        5,
+        "Rabble Rousing should create five Citizens for five attacking creatures"
+    );
+    assert_eq!(
+        dm.boolean_prompts, 1,
+        "Rabble Rousing should offer the exiled-card play permission after tokens bring you to ten creatures"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "accepting the permission should cast the exiled card"
+    );
+    let cast_object = game
+        .object(game.stack[0].object_id)
+        .expect("cast exiled card should be on the stack");
+    assert_eq!(cast_object.name, exiled_name);
+    assert_eq!(cast_object.zone, Zone::Stack);
+}
+
 fn bridge_from_below_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(472), "Bridge from Below")
         .card_types(vec![CardType::Enchantment])

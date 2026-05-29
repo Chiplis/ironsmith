@@ -419,6 +419,7 @@ fn apply_prepared_attacker_declarations_with_dm(
             .insert(game.turn.active_player);
     }
 
+    let mut attack_events = Vec::with_capacity(declarations.len());
     for decl in &declarations {
         let Some(creature) = game.object(decl.creature) else {
             return Err(
@@ -453,6 +454,11 @@ fn apply_prepared_attacker_declarations_with_dm(
             ),
             event_provenance,
         );
+        attack_events.push(event);
+    }
+
+    game.combat = Some(combat.clone());
+    for event in attack_events {
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
 

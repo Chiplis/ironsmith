@@ -649,10 +649,10 @@ fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
         return None;
     }
 
-    let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
-    Some(format!(
-        "Look at the top {count_text} {noun} of your library, then exile one of them face down. Put the rest on the bottom of your library in a random order"
-    ))
+    let Value::Fixed(count) = &look.count else {
+        return None;
+    };
+    Some(format!("Hideaway {count}"))
 }
 
 fn describe_exile_targets_opponent_piles_return_chosen(effects: &[&Effect]) -> Option<String> {
@@ -2388,6 +2388,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| {
+            let effect_refs = effects.iter().collect::<Vec<_>>();
+            describe_hideaway_effects(&effect_refs)
+        })
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
 
@@ -13545,6 +13549,30 @@ fn describe_triggered_resolution_text(
     ))
 }
 
+fn describe_triggered_hideaway_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let zone_change = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !zone_change.this_object
+        || zone_change.from != crate::triggers::ZonePattern::Any
+        || zone_change.to != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || zone_change.player != crate::triggers::zone_changes::PlayerRelation::Any
+        || zone_change.count_mode != crate::triggers::zone_changes::CountMode::Each
+        || triggered.effects.segments.len() != 1
+        || !triggered.effects.segments[0].self_replacements.is_empty()
+    {
+        return None;
+    }
+
+    let effects = triggered.effects.segments[0]
+        .default_effects
+        .iter()
+        .collect::<Vec<_>>();
+    describe_hideaway_effects(&effects)
+}
+
 fn rewrite_damaged_player_reference_for_combat_damage_trigger(
     triggered: &crate::ability::TriggeredAbility,
     effects: String,
@@ -13568,6 +13596,9 @@ fn describe_triggered_inline_ability(
     self_subject: &str,
 ) -> String {
     if let Some(rendered) = describe_backup_keyword(triggered) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_triggered_hideaway_keyword(triggered) {
         return rendered;
     }
 
@@ -28803,6 +28834,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else {
                 format!("a copy of {}", describe_choose_spec(&spec))
             }
+        } else if tag == "__source_exiled__" {
+            "the exiled card".to_string()
         } else if helper_tag {
             "that card".to_string()
         } else {
@@ -34833,6 +34866,9 @@ pub(super) fn describe_ability(
         AbilityKind::Triggered(triggered) => {
             if let Some(rendered) = describe_backup_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_triggered_hideaway_keyword(triggered) {
+                return vec![format!("Keyword ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_annihilator_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
