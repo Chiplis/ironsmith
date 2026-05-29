@@ -3148,6 +3148,37 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered[0] == "you"
         && (filtered[1] == "control" || filtered[1] == "controls")
     {
+        if let Some(and_idx) = find_index(&filtered[2..], |word| *word == "and") {
+            let and_idx = 2 + and_idx;
+            if and_idx > 2 && and_idx + 1 < filtered.len() {
+                let left_tokens = filtered[2..and_idx]
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                let right_tokens = filtered[and_idx + 1..]
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                if let (Ok(mut left_filter), Ok(mut right_filter)) = (
+                    parse_object_filter(&left_tokens, false),
+                    parse_object_filter(&right_tokens, false),
+                ) {
+                    left_filter.controller = Some(PlayerFilter::You);
+                    right_filter.controller = Some(PlayerFilter::You);
+                    return Ok(PredicateAst::And(
+                        Box::new(PredicateAst::PlayerControls {
+                            player: PlayerAst::You,
+                            filter: left_filter,
+                        }),
+                        Box::new(PredicateAst::PlayerControls {
+                            player: PlayerAst::You,
+                            filter: right_filter,
+                        }),
+                    ));
+                }
+            }
+        }
+
         let mut filter_start = 2usize;
         let mut min_count: Option<u32> = None;
         let mut exact_count: Option<u32> = None;

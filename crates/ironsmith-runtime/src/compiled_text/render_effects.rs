@@ -2913,6 +2913,115 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(candidate)) if candidate == tag)
     }
 
+    fn filter_is_tagged_object(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    }
+
+    fn describe_artifact_enchantment_condition(condition: &Condition) -> Option<String> {
+        fn controlled_type(condition: &Condition) -> Option<CardType> {
+            let Condition::PlayerControls {
+                player: PlayerFilter::You,
+                filter,
+            } = condition
+            else {
+                return None;
+            };
+            if filter.controller == Some(PlayerFilter::You)
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.card_types.len() == 1
+                && filter.subtypes.is_empty()
+            {
+                return filter.card_types.first().copied();
+            }
+            None
+        }
+
+        let Condition::And(left, right) = condition else {
+            return None;
+        };
+        let left_type = controlled_type(left)?;
+        let right_type = controlled_type(right)?;
+        if matches!(
+            (left_type, right_type),
+            (CardType::Artifact, CardType::Enchantment)
+                | (CardType::Enchantment, CardType::Artifact)
+        ) {
+            return Some("you control an artifact and an enchantment".to_string());
+        }
+        None
+    }
+
+    fn describe_tagged_pump_then_conditional_keyword(effects: &[&Effect]) -> Option<String> {
+        let [pump_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let pumped_tag = effect_tag(pump_effect)?;
+        let pump = unwrap_wrapped_effect(pump_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if pump.until != Until::EndOfTurn
+            || pump.condition.is_some()
+            || pump.modification.is_some()
+            || !pump.additional_modifications.is_empty()
+        {
+            return None;
+        }
+        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+            power,
+            toughness,
+        }] = pump.runtime_modifications.as_slice()
+        else {
+            return None;
+        };
+        let target_spec = pump.target_spec.as_ref()?;
+        let target_text = describe_choose_spec(target_spec);
+        if !target_text.contains("target") || !target_text.ends_with("creatures") {
+            return None;
+        }
+
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let [grant_effect] = conditional.if_true.as_slice() else {
+            return None;
+        };
+        if !conditional.if_false.is_empty() {
+            return None;
+        }
+        let grant = unwrap_wrapped_effect(grant_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if grant.until != Until::EndOfTurn
+            || grant.condition.is_some()
+            || !grant.runtime_modifications.is_empty()
+            || !grant.additional_modifications.is_empty()
+        {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddAbility(ability)) = &grant.modification else {
+            return None;
+        };
+        if ability.id() != crate::static_abilities::StaticAbilityId::Lifelink {
+            return None;
+        }
+        let Some(ChooseSpec::Object(filter)) = grant.target_spec.as_ref() else {
+            return None;
+        };
+        if !filter_is_tagged_object(filter, pumped_tag) {
+            return None;
+        }
+
+        let condition = describe_artifact_enchantment_condition(&conditional.condition)
+            .unwrap_or_else(|| describe_condition(&conditional.condition));
+        Some(format!(
+            "{} each get {}/{} until end of turn. If {condition}, those creatures also gain lifelink until end of turn",
+            capitalize_first(&target_text),
+            describe_signed_value(power),
+            describe_toughness_delta_with_power_context(power, toughness),
+        ))
+    }
+
+    if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
+        return compact;
+    }
+
     fn describe_move_then_color_subtype_addition(effects: &[&Effect]) -> Option<String> {
         let [move_effect, color_effect, subtype_effect] = effects else {
             return None;
