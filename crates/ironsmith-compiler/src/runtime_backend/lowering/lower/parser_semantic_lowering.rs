@@ -361,7 +361,13 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     let contains_sequence = |needle: &[&str]| -> bool {
         !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
     };
+    let targeted_temporary_modifier = words.contains(&"target")
+        && contains_sequence(&["until", "end", "of", "turn"])
+        && words
+            .iter()
+            .any(|word| matches!(*word, "get" | "gets" | "gain" | "gains"));
     contains_sequence(&["if"]) && contains_sequence(&["instead"])
+        || targeted_temporary_modifier
         || ((contains_sequence(&["cant", "cast"]) || contains_sequence(&["can't", "cast"]))
             && contains_sequence(&["next", "turn"]))
         || (contains_sequence(&["until", "end", "of", "turn"])

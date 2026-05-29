@@ -36131,6 +36131,34 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn when_we_were_young_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("When We Were Young");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Up to two target creatures each get +2/+2 until end of turn"),
+        "expected up-to-two pump clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If you control an artifact and an enchantment, those creatures also gain lifelink until end of turn"
+        ),
+        "expected conditional lifelink clause to render, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_debug.contains("choicecount{min:0,max:some(2)")
+            && debug.contains("and(")
+            && debug.contains("artifact")
+            && debug.contains("enchantment")
+            && debug.contains("lifelink"),
+        "expected structural up-to-two targets plus artifact/enchantment lifelink condition, got {debug}"
+    );
+}
+
+#[test]
 fn guardian_of_the_ages_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Guardian of the Ages");
 
