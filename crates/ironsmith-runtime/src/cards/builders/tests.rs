@@ -11509,6 +11509,41 @@ fn test_guard_dogs_keeps_color_sharing_prevention_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn tsabos_assassin_parses_and_renders_most_common_color_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(44_300), "Tsabo's Assassin")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Zombie, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{T}: Destroy target creature if it shares a color with the most common color among all permanents or a color tied for most common. A creature destroyed this way can't be regenerated.",
+        )
+        .expect("Tsabo's Assassin should parse strictly");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("SharesMostCommonPermanentColor")
+            && ability_debug.contains("DestroyNoRegenerationEffect"),
+        "expected conditional most-common-color destroy in Tsabo's Assassin, got {ability_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature if it shares a color with the most common color among all permanents or a color tied for most common")
+            && (rendered.contains("can't be regenerated") || rendered.contains("cant be regenerated")),
+        "expected Tsabo's Assassin compiled text to keep the most-common-color and regeneration clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_heroism_parses_for_each_attacking_red_prevention_unless_pays() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Heroism")
         .mana_cost(ManaCost::from_pips(vec![

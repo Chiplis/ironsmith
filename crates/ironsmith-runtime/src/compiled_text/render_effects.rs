@@ -3872,6 +3872,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_may_choose_pay_for_each_then_untap_tagged(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_targeted_most_common_color_conditional_destroy(&filtered) {
+        return compact;
+    }
 
     fn describe_search_two_split_hand_graveyard(effects: &[&Effect]) -> Option<String> {
         let [
@@ -5739,6 +5742,51 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             .downcast_ref::<crate::effects::WithIdEffect>()?
             .effect
             .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+    }
+
+    fn filter_has_most_common_permanent_color_constraint(
+        filter: &crate::target::ObjectFilter,
+    ) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation
+                == crate::target::TaggedOpbjectRelation::SharesMostCommonPermanentColor
+        })
+    }
+
+    fn describe_targeted_most_common_color_conditional_destroy(
+        effects: &[&Effect],
+    ) -> Option<String> {
+        let [target_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        let target_only = downcast_target_only(target_effect)?;
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+            return None;
+        }
+        let crate::effect::Condition::TaggedObjectMatches(condition_tag, filter) =
+            &conditional.condition
+        else {
+            return None;
+        };
+        if condition_tag != target_tag || !filter_has_most_common_permanent_color_constraint(filter)
+        {
+            return None;
+        }
+
+        let target_text = describe_choose_spec(&target_only.target);
+        let condition_text = "it shares a color with the most common color among all permanents or a color tied for most common";
+        let true_effect = conditional.if_true.first()?;
+        if downcast_destroy_no_regeneration(true_effect).is_some() {
+            return Some(format!(
+                "Destroy {target_text} if {condition_text}. A creature destroyed this way can't be regenerated"
+            ));
+        }
+        if downcast_destroy(true_effect).is_some() {
+            return Some(format!("Destroy {target_text} if {condition_text}"));
+        }
+        None
     }
 
     fn downcast_return_all_to_battlefield<'a>(

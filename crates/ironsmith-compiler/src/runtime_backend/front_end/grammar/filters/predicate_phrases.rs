@@ -2964,6 +2964,30 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 ObjectFilter::default().shares_card_type_with_tagged("triggering"),
             ));
         }
+        if matches!(
+            descriptor_words.as_slice(),
+            [
+                "shares",
+                "color",
+                "with",
+                "most",
+                "common",
+                "color",
+                "among",
+                "all",
+                "permanents",
+                "or",
+                "color",
+                "tied",
+                "for",
+                "most",
+                "common"
+            ]
+        ) {
+            return Ok(PredicateAst::ItMatches(
+                ObjectFilter::default().shares_most_common_permanent_color(),
+            ));
+        }
         if slice_starts_with(&descriptor_words, &["not", "token"]) {
             descriptor_words.drain(0..2);
             descriptor_words.insert(0, "nontoken");

@@ -387,6 +387,343 @@ fn keeper_of_the_flame_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn tsabos_assassin_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_960), "Tsabo's Assassin")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Zombie, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{T}: Destroy target creature if it shares a color with the most common color among all permanents or a color tied for most common. A creature destroyed this way can't be regenerated.",
+        )
+        .expect("Tsabo's Assassin should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_tsabos_assassin_conditional_effect_targeting(
+    game: &mut GameState,
+    assassin_id: ObjectId,
+    target_id: ObjectId,
+    controller: PlayerId,
+) {
+    let ability_index = game
+        .object(assassin_id)
+        .expect("Tsabo's Assassin should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Tsabo's Assassin should have an activated ability");
+    let conditional_effect = match &game
+        .object(assassin_id)
+        .expect("Tsabo's Assassin should exist")
+        .abilities[ability_index]
+        .kind
+    {
+        AbilityKind::Activated(activated) => activated.effects.segments[0]
+            .default_effects
+            .iter()
+            .find(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                    .is_some()
+            })
+            .expect("Tsabo's Assassin should have a conditional destroy effect")
+            .clone(),
+        _ => panic!("Tsabo's Assassin ability should be activated"),
+    };
+    let target_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(target_id)
+            .expect("Tsabo's Assassin target should exist"),
+        game,
+    );
+    let tagged = std::collections::HashMap::from([(
+        crate::tag::TagKey::from("targeted_0"),
+        vec![target_snapshot],
+    )]);
+    let mut ctx = ExecutionContext::new_default(assassin_id, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_tagged_objects(tagged);
+    crate::effects::execute_effect(game, &conditional_effect, &mut ctx)
+        .expect("Tsabo's Assassin conditional destroy should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tsabos_assassin_activation_is_legal_taps_source_and_resolves_from_stack() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let assassin_id = game.create_object_from_definition(
+        &tsabos_assassin_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(assassin_id);
+    let target_id = create_colored_creature(
+        &mut game,
+        "Green Target",
+        bob,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+    let ability_index = game
+        .object(assassin_id)
+        .expect("Tsabo's Assassin should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Tsabo's Assassin should have an activated ability");
+
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == assassin_id && *idx == ability_index
+        ))
+        .expect("Tsabo's Assassin activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Tsabo's Assassin activation should start");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("choosing Tsabo's Assassin target should complete activation");
+
+    assert!(
+        game.is_tapped(assassin_id),
+        "paying Tsabo's Assassin's activation cost should tap it"
+    );
+
+    resolve_stack_entry(&mut game).expect("Tsabo's Assassin ability should resolve");
+    let graveyard_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("destroyed target should still be tracked by stable id");
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .graveyard
+            .contains(&graveyard_id),
+        "resolving Tsabo's Assassin from the stack should destroy a target sharing a tied most-common color"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tsabos_assassin_destroys_creature_sharing_most_common_permanent_color() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let assassin_id = game.create_object_from_definition(
+        &tsabos_assassin_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(assassin_id);
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent A",
+        alice,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent B",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    let target_id = create_colored_creature(
+        &mut game,
+        "Blue Target With Green Base Color",
+        bob,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    game.object_mut(target_id)
+        .expect("target exists")
+        .color_override = Some(crate::color::ColorSet::BLUE);
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+    game.add_regeneration_shield(target_id, 1);
+    let filter = crate::target::ObjectFilter::default().shares_most_common_permanent_color();
+    assert_eq!(
+        game.current_colors(target_id),
+        Some(crate::color::ColorSet::BLUE),
+        "test setup should make the target currently blue despite its printed green color"
+    );
+    assert!(
+        filter.matches(
+            game.object(target_id).expect("target exists"),
+            &game.filter_context_for(alice, Some(assassin_id)),
+            &game,
+        ),
+        "blue target should match the most-common permanent color predicate"
+    );
+
+    resolve_tsabos_assassin_conditional_effect_targeting(&mut game, assassin_id, target_id, alice);
+    let graveyard_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("destroyed target should still be tracked by stable id");
+
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .graveyard
+            .contains(&graveyard_id),
+        "target sharing the most common permanent color should be destroyed"
+    );
+    assert_eq!(
+        game.regenerated_this_turn_count(target_id),
+        0,
+        "Tsabo's Assassin should prevent regeneration for the destroyed creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tsabos_assassin_destroys_creature_sharing_tied_most_common_color() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let assassin_id = game.create_object_from_definition(
+        &tsabos_assassin_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(assassin_id);
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent A",
+        alice,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent B",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    create_colored_creature(
+        &mut game,
+        "Red Permanent",
+        alice,
+        Some(crate::color::ColorSet::RED),
+    );
+    let target_id = create_colored_creature(
+        &mut game,
+        "Red Target",
+        bob,
+        Some(crate::color::ColorSet::RED),
+    );
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+    let filter = crate::target::ObjectFilter::default().shares_most_common_permanent_color();
+    assert!(
+        filter.matches(
+            game.object(target_id).expect("target exists"),
+            &game.filter_context_for(alice, Some(assassin_id)),
+            &game,
+        ),
+        "red target should match the tied most-common permanent color predicate"
+    );
+
+    resolve_tsabos_assassin_conditional_effect_targeting(&mut game, assassin_id, target_id, alice);
+    let graveyard_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("destroyed target should still be tracked by stable id");
+
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .graveyard
+            .contains(&graveyard_id),
+        "target sharing a tied most-common permanent color should be destroyed"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tsabos_assassin_does_not_destroy_nonmatching_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let assassin_id = game.create_object_from_definition(
+        &tsabos_assassin_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(assassin_id);
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent A",
+        alice,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    create_colored_creature(
+        &mut game,
+        "Blue Permanent B",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    let target_id = create_colored_creature(
+        &mut game,
+        "Green Target",
+        bob,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let filter = crate::target::ObjectFilter::default().shares_most_common_permanent_color();
+    assert!(
+        !filter.matches(
+            game.object(target_id).expect("target exists"),
+            &game.filter_context_for(alice, Some(assassin_id)),
+            &game,
+        ),
+        "green target should not match the most-common permanent color predicate"
+    );
+
+    resolve_tsabos_assassin_conditional_effect_targeting(&mut game, assassin_id, target_id, alice);
+
+    assert!(
+        game.battlefield.contains(&target_id),
+        "target that does not share a most-common or tied color should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn explore_event_for(game: &GameState, controller: PlayerId, source: ObjectId) -> TriggerEvent {
     let snapshot = game
         .object(source)
