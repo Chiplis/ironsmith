@@ -1694,6 +1694,30 @@ fn describe_for_players_simple_iterated_action(
             if subject == "You" { "your" } else { "their" }
         ));
     }
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && apply.modification.is_none()
+        && apply.additional_modifications.is_empty()
+        && matches!(
+            apply.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                PlayerFilter::IteratedPlayer
+            )]
+        )
+    {
+        if let crate::continuous::EffectTarget::Filter(filter) = &apply.target
+            && filter.owner == Some(PlayerFilter::IteratedPlayer)
+            && filter.controller == Some(PlayerFilter::You)
+        {
+            let mut object_filter = filter.clone();
+            object_filter.owner = None;
+            object_filter.controller = None;
+            let object = strip_indefinite_article(&object_filter.description()).to_string();
+            return Some(format!(
+                "{subject} {} control of each {object} they own that you control",
+                verb("gain", "gains")
+            ));
+        }
+    }
 
     let inner = describe_effect_list(&for_players.effects);
     let rest = inner
@@ -33779,6 +33803,9 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
         } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
         {
             parts.push(cumulative_upkeep_move_to_zone_text(move_to_zone)?);
+        } else if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        {
+            parts.push(describe_apply_continuous_effect(apply_continuous)?);
         }
     }
     if parts.is_empty() {
