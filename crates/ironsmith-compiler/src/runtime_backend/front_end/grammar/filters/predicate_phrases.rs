@@ -402,6 +402,55 @@ fn parse_repeated_if_or_predicate(
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
+fn predicate_reference_prefix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    if words.first().copied() == Some("it") {
+        return Some(&words[..1]);
+    }
+    if words.len() >= 2
+        && words[0] == "that"
+        && matches!(
+            words[1],
+            "artifact"
+                | "card"
+                | "creature"
+                | "creatures"
+                | "enchantment"
+                | "land"
+                | "object"
+                | "permanent"
+                | "source"
+                | "spell"
+                | "token"
+        )
+    {
+        return Some(&words[..2]);
+    }
+    None
+}
+
+fn predicate_words_start_with_reference(words: &[&str]) -> bool {
+    matches!(
+        words.first().copied(),
+        Some(
+            "it" | "its" | "this" | "that" | "you" | "your" | "opponent" | "player"
+                | "target" | "source"
+        )
+    )
+}
+
+fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter> {
+    if words.len() == 2
+        && matches!(words[1], "card" | "cards")
+        && let Some(card_type) = parse_card_type(words[0])
+    {
+        return Some(ObjectFilter {
+            card_types: vec![card_type],
+            ..Default::default()
+        });
+    }
+    None
+}
+
 fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
     let Some(or_idx) = filtered.iter().enumerate().rev().find_map(|(idx, word)| {
         if *word != "or" || idx == 0 || idx + 1 >= filtered.len() {
@@ -418,10 +467,29 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
         return Ok(None);
     };
 
-    let left_tokens = predicate_tokens_from_words(&filtered[..or_idx]);
-    let right_tokens = predicate_tokens_from_words(&filtered[or_idx + 1..]);
+    let left_words = &filtered[..or_idx];
+    let right_words = &filtered[or_idx + 1..];
+    let left_tokens = predicate_tokens_from_words(left_words);
+    let right_tokens = predicate_tokens_from_words(right_words);
     let left = parse_predicate(&left_tokens)?;
-    let right = parse_predicate(&right_tokens)?;
+    let right = match parse_predicate(&right_tokens) {
+        Ok(predicate) => predicate,
+        Err(original_err) => {
+            let Some(reference_prefix) = predicate_reference_prefix(left_words) else {
+                return Err(original_err);
+            };
+            if predicate_words_start_with_reference(right_words) {
+                return Err(original_err);
+            }
+            let prefixed_words = reference_prefix
+                .iter()
+                .copied()
+                .chain(right_words.iter().copied())
+                .collect::<Vec<_>>();
+            let prefixed_tokens = predicate_tokens_from_words(&prefixed_words);
+            parse_predicate(&prefixed_tokens).map_err(|_| original_err)?
+        }
+    };
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
@@ -695,7 +763,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "empty predicate in if clause".to_string(),
         ));
     }
-    if filtered[0] == "it's" {
+    if filtered[0] == "its" || filtered[0] == "it's" {
         filtered[0] = "it";
     }
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
@@ -3003,6 +3071,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             descriptor_words.insert(0, "nontoken");
         }
         if !descriptor_words.is_empty() {
+            if let Some(filter) = parse_single_card_type_card_descriptor(&descriptor_words) {
+                return Ok(PredicateAst::ItMatches(filter));
+            }
             let descriptor_tokens = descriptor_words
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -3735,6 +3806,33 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::ItIsNight);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_inherits_it_for_bare_or_descriptor_tail() -> Result<(), CardTextError> {
+        let tokens = lex_line("If it's a creature or planeswalker card", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        match parsed {
+            PredicateAst::Or(left, right) => {
+                assert!(
+                    matches!(*left, PredicateAst::ItMatches(ref filter) if filter.card_types == vec![CardType::Creature]),
+                    "expected creature left predicate, got {left:?}"
+                );
+                assert!(
+                    matches!(*right, PredicateAst::ItMatches(ref filter) if filter.card_types == vec![CardType::Planeswalker]),
+                    "expected planeswalker right predicate, got {right:?}"
+                );
+            }
+            other => panic!("expected inherited-reference or predicate, got {other:?}"),
+        }
         Ok(())
     }
 

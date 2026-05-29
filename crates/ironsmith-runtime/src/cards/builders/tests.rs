@@ -38160,20 +38160,18 @@ fn parse_cabaretti_ascendancy_strict_regression() {
 #[test]
 fn cabaretti_ascendancy_compiled_text_keeps_hand_or_bottom_branch() {
     let def = parse_oracle_card_definition("Cabaretti Ascendancy");
-    let rendered = canonical_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = canonical_compiled_lines(&def);
 
-    assert!(
-        rendered.contains("if you don't put the card into your hand")
-            || rendered.contains("if you dont put the card into your hand")
-            || rendered.contains("if not"),
-        "expected hand-branch predicate in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("you may put it on the bottom of your library")
-            || rendered.contains("you may put it on the bottom of its owner's library"),
-        "expected optional bottom-of-library branch in compiled text, got {rendered}"
+    assert_eq!(
+        rendered,
+        vec![concat!(
+            "At the beginning of your upkeep, look at the top card of your library. ",
+            "If it's a creature or a planeswalker card, you may reveal it and put it ",
+            "into your hand. If you don't put the card into your hand, you may put ",
+            "it on the bottom of your library."
+        )
+        .to_string()],
+        "expected Cabaretti Ascendancy compiled text to preserve both matching card types, the reveal-to-hand branch, and the conditional bottom branch"
     );
 }
 
@@ -38207,6 +38205,176 @@ fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runtime_shape() 
             && debug.contains("to_top: false")
             && debug.contains("mayeffect"),
         "expected optional move-to-bottom effect gated by the condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct CabarettiSequenceDecisionMaker {
+    decisions: Vec<bool>,
+    index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for CabarettiSequenceDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        let choice = self.decisions.get(self.index).copied().unwrap_or(false);
+        self.index += 1;
+        choice
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_cabaretti_ascendancy_top_card(
+    top_name: &str,
+    top_card_types: Vec<CardType>,
+    decisions: Vec<bool>,
+) -> (crate::game_state::GameState, PlayerId, ObjectId, ObjectId, usize) {
+    let def = parse_oracle_card_definition("Cabaretti Ascendancy");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cabaretti Ascendancy should compile to a triggered upkeep ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bottom_id = game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(93_001), "Bottom Filler")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    let top_id = game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(93_002), top_name)
+            .card_types(top_card_types)
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = CabarettiSequenceDecisionMaker {
+        decisions,
+        index: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm);
+    for effect in &triggered.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cabaretti Ascendancy trigger should resolve");
+    }
+    drop(ctx);
+    let decision_count = dm.index;
+
+    (game, alice, top_id, bottom_id, decision_count)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cabaretti_player_zone_names(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    zone: Zone,
+) -> Vec<String> {
+    let player = game.player(player).expect("player exists");
+    let ids = match zone {
+        Zone::Hand => &player.hand,
+        Zone::Library => &player.library,
+        _ => panic!("unsupported Cabaretti test zone {zone:?}"),
+    };
+    ids.iter()
+        .map(|id| game.object(*id).expect("zone object exists").name.clone())
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_planeswalker_top_card_can_go_to_hand() {
+    let (game, alice, _top_id, _bottom_id, decision_count) =
+        execute_cabaretti_ascendancy_top_card(
+            "Top Planeswalker",
+            vec![CardType::Planeswalker],
+            vec![true],
+        );
+
+    assert_eq!(decision_count, 1, "matching top card should ask the hand decision once");
+    assert_eq!(
+        cabaretti_player_zone_names(&game, alice, Zone::Hand),
+        vec!["Top Planeswalker".to_string()],
+        "accepted planeswalker branch should put exactly the top card into hand"
+    );
+    assert_eq!(
+        cabaretti_player_zone_names(&game, alice, Zone::Library),
+        vec!["Bottom Filler".to_string()],
+        "only the filler card should remain in library after the top card moves to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_creature_top_card_can_decline_hand_and_move_bottom() {
+    let (game, alice, _top_id, _bottom_id, decision_count) = execute_cabaretti_ascendancy_top_card(
+        "Top Creature",
+        vec![CardType::Creature],
+        vec![false, true],
+    );
+
+    assert_eq!(
+        decision_count, 2,
+        "matching top card should ask hand decision and then bottom decision when hand is declined"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").hand.len(), 0);
+    assert_eq!(
+        cabaretti_player_zone_names(&game, alice, Zone::Library),
+        vec!["Top Creature".to_string(), "Bottom Filler".to_string()],
+        "declined creature card should move from top to bottom when the bottom branch is accepted"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_matching_top_card_can_decline_both_optional_actions() {
+    let (game, alice, _top_id, _bottom_id, decision_count) = execute_cabaretti_ascendancy_top_card(
+        "Top Creature",
+        vec![CardType::Creature],
+        vec![false, false],
+    );
+
+    assert_eq!(decision_count, 2, "both optional decisions should be offered");
+    assert_eq!(game.player(alice).expect("alice exists").hand.len(), 0);
+    assert_eq!(
+        cabaretti_player_zone_names(&game, alice, Zone::Library),
+        vec!["Bottom Filler".to_string(), "Top Creature".to_string()],
+        "declining the bottom branch should leave the matching card on top"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cabaretti_ascendancy_nonmatching_top_card_skips_hand_branch_and_can_move_bottom() {
+    let (game, alice, _top_id, _bottom_id, decision_count) = execute_cabaretti_ascendancy_top_card(
+        "Top Artifact",
+        vec![CardType::Artifact],
+        vec![true],
+    );
+
+    assert_eq!(
+        decision_count, 1,
+        "nonmatching top card should skip the hand decision and only ask the bottom decision"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").hand.len(), 0);
+    assert_eq!(
+        cabaretti_player_zone_names(&game, alice, Zone::Library),
+        vec!["Top Artifact".to_string(), "Bottom Filler".to_string()],
+        "nonmatching card should move to bottom when the fallback branch is accepted"
     );
 }
 
