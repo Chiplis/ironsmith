@@ -19363,6 +19363,341 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn demon_of_fates_design_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_200), "Demon of Fate's Design")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Demon])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "Flying, trample\n\
+             Once during each of your turns, you may cast an enchantment spell by paying life equal to its mana value rather than paying its mana cost.\n\
+             {2}{B}, Sacrifice another enchantment: This creature gets +X/+0 until end of turn, where X is the sacrificed enchantment's mana value.",
+        )
+        .expect("Demon of Fate's Design should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demon_of_fates_design_life_cost_casts_only_enchantments_once_during_your_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demon_id = game.create_object_from_definition(
+        &demon_of_fates_design_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let enchantment = CardBuilder::new(CardId::from_raw(92_201), "Fate Test Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .build();
+    let enchantment_id = game.create_object_from_card(&enchantment, alice, Zone::Hand);
+    let second_enchantment = CardBuilder::new(CardId::from_raw(92_202), "Second Fate Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .build();
+    let second_enchantment_id =
+        game.create_object_from_card(&second_enchantment, alice, Zone::Hand);
+    let artifact = CardBuilder::new(CardId::from_raw(92_203), "Fate Test Artifact")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Hand);
+
+    game.player_mut(alice).expect("Alice exists").life = 20;
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::PlayFrom {
+                    source,
+                    zone: Zone::Hand,
+                    use_alternative: Some(_),
+                    ..
+                },
+            } if *spell_id == enchantment_id && *source == demon_id
+        )),
+        "Demon of Fate's Design should offer a life-cost alternative cast for enchantments"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                ..
+            } if *spell_id == artifact_id
+        )),
+        "Demon of Fate's Design should not grant the alternative cost to non-enchantments"
+    );
+
+    let cast_action = actions
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::PlayFrom {
+                    source,
+                    zone: Zone::Hand,
+                    use_alternative: Some(_),
+                    ..
+                },
+            } if *spell_id == enchantment_id && *source == demon_id
+        ))
+        .expect("expected Demon alternative cast action");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("Demon alternative cast should succeed");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        17,
+        "casting the three-mana-value enchantment should cost 3 life"
+    );
+    assert!(
+        game.stack.iter().any(|entry| game
+            .object(entry.object_id)
+            .is_some_and(|object| object.name == "Fate Test Enchantment")),
+        "the enchantment should be on the stack after paying the life alternative cost"
+    );
+
+    resolve_stack_entry(&mut game).expect("enchantment spell should resolve");
+    let actions_after_use = compute_legal_actions(&game, alice);
+    assert!(
+        !actions_after_use.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                ..
+            } if *spell_id == second_enchantment_id
+        )),
+        "Demon of Fate's Design should not offer a second life-cost enchantment cast in the same turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demon_of_fates_design_life_cost_requires_enough_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(
+        &demon_of_fates_design_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let enchantment = CardBuilder::new(CardId::from_raw(92_204), "Expensive Fate Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .build();
+    let enchantment_id = game.create_object_from_card(&enchantment, alice, Zone::Hand);
+    game.player_mut(alice).expect("Alice exists").life = 2;
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                ..
+            } if *spell_id == enchantment_id
+        )),
+        "Demon of Fate's Design should not offer the life-cost alternative if its mana value exceeds your life total"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demon_of_fates_design_life_cost_is_only_during_your_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(
+        &demon_of_fates_design_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let flash_enchantment =
+        CardDefinitionBuilder::new(CardId::from_raw(92_206), "Flash Fate Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .parse_text("Flash")
+            .expect("flash enchantment should parse");
+    let enchantment_id = game.create_object_from_definition(&flash_enchantment, alice, Zone::Hand);
+    game.player_mut(alice).expect("Alice exists").life = 20;
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+                ..
+            } if *spell_id == enchantment_id
+        )),
+        "Demon of Fate's Design should not offer its life-cost alternative outside your turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demon_of_fates_design_sacrificed_enchantment_mana_value_sets_pump_amount() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demon_id = game.create_object_from_definition(
+        &demon_of_fates_design_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    assert!(
+        !compute_legal_actions(&game, alice).iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == demon_id
+        )),
+        "Demon of Fate's Design should not be able to sacrifice itself for its another-enchantment cost"
+    );
+
+    let sacrificial_enchantment = CardBuilder::new(CardId::from_raw(92_205), "Sacrificial Saga")
+        .card_types(vec![CardType::Enchantment])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .build();
+    let sacrifice_id =
+        game.create_object_from_card(&sacrificial_enchantment, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let ability_index = game
+        .object(demon_id)
+        .expect("Demon should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Demon should have an activated ability");
+    let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+        source: demon_id,
+        ability_index,
+    });
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let cost_order_ctx = match apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &activate,
+        &mut dm,
+    )
+    .expect("Demon activation should start")
+    {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected next-cost chooser for Demon activation, got {other:?}"),
+    };
+    let sacrifice_cost_index = cost_order_ctx
+        .options
+        .iter()
+        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .map(|option| option.index)
+        .expect("expected Demon sacrifice cost option");
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+        &mut dm,
+    )
+    .expect("should choose Demon sacrifice cost first");
+    match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {}
+        other => panic!("expected sacrifice object chooser for Demon activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(sacrifice_id),
+        &mut dm,
+    )
+    .expect("should choose the enchantment to sacrifice");
+    assert!(
+        game.stack.last().is_some_and(|entry| entry
+            .tagged_objects
+            .get(&crate::tag::TagKey::from("sacrifice_cost_0"))
+            .is_some_and(|objects| objects
+                .iter()
+                .any(|object| object.name == "Sacrificial Saga"))),
+        "Demon stack entry should remember the sacrificed enchantment"
+    );
+
+    resolve_stack_entry(&mut game).expect("Demon activation should resolve");
+    assert_eq!(
+        game.calculated_power(demon_id),
+        Some(9),
+        "Demon should get +3/+0 from the sacrificed enchantment's mana value"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_word_of_blasting_destroys_wall_and_deals_mana_value_damage_to_controller() {
     use crate::decision::LegalAction;
