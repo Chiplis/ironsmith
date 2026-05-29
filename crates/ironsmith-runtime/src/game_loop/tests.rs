@@ -14013,6 +14013,21 @@ impl DecisionMaker for ChooseMimeoplasmPairDecisionMaker {
     }
 }
 
+struct PanicOnMimeoplasmReplacementPrompt;
+
+impl DecisionMaker for PanicOnMimeoplasmReplacementPrompt {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        panic!(
+            "The Mimeoplasm should not offer replacement choices without two graveyard creatures: {:?}",
+            ctx.options
+        );
+    }
+}
+
 #[test]
 fn the_mimeoplasm_exiles_two_graveyard_creatures_copies_one_and_gets_other_power_counters() {
     let mut game = setup_game();
@@ -14120,8 +14135,9 @@ fn the_mimeoplasm_needs_two_graveyard_creature_cards_to_apply_copy_replacement()
 
     let mimeoplasm = the_mimeoplasm_test_definition();
     let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
+    let mut dm = PanicOnMimeoplasmReplacementPrompt;
     let result = game
-        .move_object_with_etb_processing(mimeoplasm_id, Zone::Battlefield)
+        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
         .expect("The Mimeoplasm should enter without enough graveyard creature cards");
 
     let entered = game

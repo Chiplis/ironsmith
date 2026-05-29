@@ -105,18 +105,6 @@ fn push_enter_as_copy_effects_for_spec(
         return;
     }
 
-    if spec.may {
-        copy_choice_effects.push(
-            ReplacementEffect::with_matcher(
-                entering_object,
-                controller,
-                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
-                ReplacementAction::Additionally(Vec::new()),
-            )
-            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
-        );
-    }
-
     let set_base_power_toughness = spec.set_base_power_toughness.or_else(|| {
         spec.set_base_power_toughness_from_self
             .then(|| {
@@ -129,6 +117,17 @@ fn push_enter_as_copy_effects_for_spec(
     if let Some(linked_pair) = spec.linked_exile_pair {
         if candidates.len() < 2 {
             return;
+        }
+        if spec.may {
+            copy_choice_effects.push(
+                ReplacementEffect::with_matcher(
+                    entering_object,
+                    controller,
+                    crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    ReplacementAction::Additionally(Vec::new()),
+                )
+                .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+            );
         }
         for &copy_candidate in &candidates {
             for &counter_candidate in &candidates {
@@ -163,6 +162,18 @@ fn push_enter_as_copy_effects_for_spec(
             }
         }
         return;
+    }
+
+    if spec.may {
+        copy_choice_effects.push(
+            ReplacementEffect::with_matcher(
+                entering_object,
+                controller,
+                crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::Additionally(Vec::new()),
+            )
+            .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+        );
     }
 
     for candidate in candidates {
