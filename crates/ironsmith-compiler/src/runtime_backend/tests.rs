@@ -8435,6 +8435,27 @@ fn rewrite_grammar_flying_block_probes_match_keyword_static_shapes() {
     let parsed_only_flying = super::keyword_static::parse_can_block_only_flying_line(&only_flying)
         .expect("can-block-only-flying restriction should parse");
     assert!(parsed_only_flying.is_some(), "{parsed_only_flying:?}");
+
+    let subtype_reach = lex_line(
+        "This creature can block Dragons as though it had reach.",
+        0,
+    )
+    .expect("rewrite lexer should classify subtype reach blocking clause");
+    assert_eq!(
+        super::grammar::abilities::parse_can_block_subtype_as_though_reach_line_lexed(
+            &subtype_reach,
+        ),
+        Some(crate::types::Subtype::Dragon),
+        "grammar-owned subtype reach blocking probe should match"
+    );
+    let parsed_subtype_reach =
+        super::keyword_static::parse_can_block_subtype_as_though_reach_line(&subtype_reach)
+            .expect("subtype reach blocking clause should parse")
+            .expect("subtype reach blocking clause should produce an ability");
+    assert_eq!(
+        parsed_subtype_reach.can_block_as_though_reach_subtype(),
+        Some(crate::types::Subtype::Dragon)
+    );
 }
 
 #[test]

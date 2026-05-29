@@ -93,6 +93,10 @@ pub(crate) fn can_block_with_view(
         .as_ref()
         .map(|c| c.colors.clone())
         .unwrap_or_else(|| blocker.colors());
+    let attacker_subtypes = attacker_chars
+        .as_ref()
+        .map(|c| c.subtypes.clone())
+        .unwrap_or_else(|| attacker.subtypes.clone());
     let blocker_is_artifact = blocker_chars
         .as_ref()
         .map(|c| c.card_types.contains(&CardType::Artifact))
@@ -111,8 +115,19 @@ pub(crate) fn can_block_with_view(
     if attacker_has(StaticAbilityId::Flying) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
         let blocker_has_reach = blocker_has(StaticAbilityId::Reach);
-        let blocker_can_block_flying = blocker_has(StaticAbilityId::CanBlockFlying)
-            || blocker_has(StaticAbilityId::CanBlockOnlyFlying);
+        let blocker_can_block_flying = blocker_abilities.iter().any(|ability| {
+            if ability.id() == StaticAbilityId::CanBlockOnlyFlying {
+                return true;
+            }
+
+            if ability.id() != StaticAbilityId::CanBlockFlying {
+                return false;
+            }
+
+            ability
+                .can_block_as_though_reach_subtype()
+                .map_or(true, |subtype| attacker_subtypes.contains(&subtype))
+        });
 
         if !blocker_has_flying && !blocker_has_reach && !blocker_can_block_flying {
             return false;

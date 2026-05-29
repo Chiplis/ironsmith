@@ -932,6 +932,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                StaticAbility::can_block_subtype_as_though_reach(*subtype)
+            }
             ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbility::cant_be_blocked_by_more_than(*count)
             }
@@ -1611,6 +1614,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 Some(*count)
             }
             _ => None,
+        }
+    }
+
+    fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                Some(*subtype)
+            }
+            _ => self
+                .leaf_static_ability()
+                .and_then(|ability| ability.can_block_as_though_reach_subtype()),
         }
     }
 

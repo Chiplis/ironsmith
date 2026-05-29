@@ -522,6 +522,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the attacker subtype this creature can block as though it had reach.
+    fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        None
+    }
+
     /// Returns the maximum number of creatures that can attack in a combat.
     fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
         None
@@ -1265,6 +1270,10 @@ impl StaticAbility {
         self.0.additional_blockable_attackers()
     }
 
+    pub fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        self.0.can_block_as_though_reach_subtype()
+    }
+
     pub fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
         self.0.max_creatures_can_attack_each_combat()
     }
@@ -1757,6 +1766,10 @@ impl StaticAbility {
 
     pub fn can_block_only_flying() -> Self {
         Self::new(CanBlockOnlyFlying)
+    }
+
+    pub fn can_block_subtype_as_though_reach(subtype: crate::types::Subtype) -> Self {
+        Self::new(CanBlockSubtypeAsThoughReach::new(subtype))
     }
 
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {

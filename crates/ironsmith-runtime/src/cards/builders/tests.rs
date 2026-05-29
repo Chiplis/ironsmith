@@ -18193,6 +18193,77 @@ fn parse_can_block_only_creatures_with_flying_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_dragon_hunter_strict_and_renders_reach_blocking_clause() {
+    assert_oracle_card_parses_strict("Dragon Hunter");
+    let def = parse_oracle_card_definition("Dragon Hunter");
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.can_block_as_though_reach_subtype() == Some(Subtype::Dragon)
+        )),
+        "expected Dragon Hunter to block Dragons as though it had reach, got {:?}",
+        def.abilities
+    );
+
+    let compiled = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("this creature can block dragons as though it had reach"),
+        "expected compiled text to keep Dragon Hunter's reach-blocking clause, got {compiled}"
+    );
+}
+
+#[test]
+fn dragon_hunter_blocks_flying_dragons_but_not_other_fliers() {
+    let dragon_hunter = parse_oracle_card_definition("Dragon Hunter");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+
+    let hunter_id = game.create_object_from_definition(&dragon_hunter, bob, Zone::Battlefield);
+    let flying_dragon = CardDefinitionBuilder::new(CardId::new(), "Flying Dragon Attacker")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .flying()
+        .build();
+    let flying_dragon_id =
+        game.create_object_from_definition(&flying_dragon, alice, Zone::Battlefield);
+    let flying_bird = CardDefinitionBuilder::new(CardId::new(), "Flying Bird Attacker")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bird])
+        .flying()
+        .build();
+    let flying_bird_id =
+        game.create_object_from_definition(&flying_bird, alice, Zone::Battlefield);
+
+    let hunter = game.object(hunter_id).expect("Dragon Hunter exists").clone();
+    let dragon = game
+        .object(flying_dragon_id)
+        .expect("flying Dragon exists")
+        .clone();
+    let bird = game
+        .object(flying_bird_id)
+        .expect("flying Bird exists")
+        .clone();
+
+    assert!(
+        crate::rules::combat::can_block(&dragon, &hunter, &game),
+        "Dragon Hunter should block flying Dragons as though it had reach"
+    );
+    assert!(
+        !crate::rules::combat::can_block(&bird, &hunter, &game),
+        "Dragon Hunter should not get reach against non-Dragon fliers"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_cant_be_blocked_by_creatures_with_power_or_less_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Arlinn's Wolf Variant")
         .card_types(vec![CardType::Creature])

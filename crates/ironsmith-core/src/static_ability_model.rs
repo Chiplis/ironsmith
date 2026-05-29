@@ -199,6 +199,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Disguise(TotalCost<C>),
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
+    CanBlockAsThoughReachForSubtype(Subtype),
     CantBeBlockedByMoreThan(usize),
     CantBeBlockedExceptByNOrMore(usize),
     CantBeBlockedByPowerOrLess(i32),
@@ -872,6 +873,9 @@ where
             }
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
+            }
+            StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype)
             }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
@@ -1877,6 +1881,27 @@ impl<
             id: Some(StaticAbilityId::CanBlockAdditionalCreatureEachCombat),
             label: "can block additional creature".to_string(),
             payload: StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(additional),
+        }
+    }
+
+    pub fn can_block_subtype_as_though_reach(subtype: Subtype) -> Self {
+        let subtype_text = subtype.to_string();
+        let plural = if subtype_text.ends_with('s') {
+            subtype_text
+        } else {
+            format!("{subtype_text}s")
+        };
+        Self {
+            id: Some(StaticAbilityId::CanBlockFlying),
+            label: format!("This creature can block {plural} as though it had reach"),
+            payload: StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype),
+        }
+    }
+
+    pub fn can_block_as_though_reach_subtype(&self) -> Option<Subtype> {
+        match self.payload {
+            StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
+            _ => None,
         }
     }
 

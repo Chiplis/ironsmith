@@ -46,6 +46,7 @@ use super::grammar::abilities::{
     is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
+    parse_can_block_subtype_as_though_reach_line_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
     parse_doesnt_untap_during_untap_step_spec_lexed,
     parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed,
@@ -773,6 +774,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_anthem_line),
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
+        single_static_ability_ast_rule!(parse_can_block_subtype_as_though_reach_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
@@ -7330,6 +7332,13 @@ pub(crate) fn parse_can_block_only_flying_line(
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_can_block_subtype_as_though_reach_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    Ok(parse_can_block_subtype_as_though_reach_line_lexed(tokens)
+        .map(StaticAbility::can_block_subtype_as_though_reach))
 }
 
 pub(crate) fn parse_assign_damage_as_unblocked_line(
