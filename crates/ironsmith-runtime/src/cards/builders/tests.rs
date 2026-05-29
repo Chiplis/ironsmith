@@ -6382,6 +6382,219 @@ fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const RAKAVOLVER_TEXT: &str = "Kicker {1}{W} and/or {U} (You may pay an additional {1}{W} and/or {U} as you cast this spell.)\nIf this creature was kicked with its {1}{W} kicker, it enters with two +1/+1 counters on it and with \"Whenever this creature deals damage, you gain that much life.\"\nIf this creature was kicked with its {U} kicker, it enters with a +1/+1 counter on it and with flying.";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn rakavolver_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(43787), "Rakavolver")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(RAKAVOLVER_TEXT)
+        .expect("Rakavolver oracle text should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_rakavolver_oracle_text_with_and_or_kicker_costs() {
+    let def = rakavolver_definition();
+
+    assert_eq!(def.optional_costs.len(), 2);
+    assert_eq!(def.optional_costs[0].label, "Kicker {1}{W}");
+    assert_eq!(def.optional_costs[1].label, "Kicker {U}");
+    assert_eq!(
+        def.optional_costs[0]
+            .cost
+            .mana_cost()
+            .expect("white kicker should be mana")
+            .to_oracle(),
+        "{1}{W}"
+    );
+    assert_eq!(
+        def.optional_costs[1]
+            .cost
+            .mana_cost()
+            .expect("blue kicker should be mana")
+            .to_oracle(),
+        "{U}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Kicker {1}{W} and/or {U}"),
+        "expected combined and/or kicker line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("this creature was kicked with its {1}{W} kicker")
+            && rendered.contains("Whenever this creature deals damage, you gain that much life")
+            && rendered.contains("this creature was kicked with its {U} kicker")
+            && rendered.contains("with flying"),
+        "expected both Rakavolver kicked ETB branches in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ThisSpellPaidLabel")
+            && debug.contains("Kicker {1}{w}")
+            && debug.contains("Kicker {u}")
+            && debug.contains("GainLifeEffect")
+            && debug.contains("Flying"),
+        "expected split kicker labels, lifegain trigger, and flying branch, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_rakavolver_onto_battlefield(
+    white_kicker: bool,
+    blue_kicker: bool,
+) -> (crate::game_state::GameState, ObjectId) {
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let def = rakavolver_definition();
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    if white_kicker {
+        paid.pay(0);
+    }
+    if blue_kicker {
+        paid.pay(1);
+    }
+    game.object_mut(source)
+        .expect("Rakavolver spell should exist")
+        .optional_costs_paid = paid;
+
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+        .expect("Rakavolver should enter the battlefield");
+    (game, result.new_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rakavolver_kicker_etb_branches_apply_only_when_the_matching_cost_was_paid() {
+    let (none_game, none_id) = put_rakavolver_onto_battlefield(false, false);
+    let none = none_game.object(none_id).expect("Rakavolver exists");
+    assert_eq!(
+        none.counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        None
+    );
+    assert!(
+        !none_game.object_has_ability(none_id, &crate::static_abilities::StaticAbility::flying())
+    );
+    assert!(
+        none.abilities
+            .iter()
+            .all(|ability| !matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Rakavolver should not gain the lifegain trigger without the white kicker"
+    );
+
+    let (white_game, white_id) = put_rakavolver_onto_battlefield(true, false);
+    let white = white_game.object(white_id).expect("Rakavolver exists");
+    assert_eq!(
+        white
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(2)
+    );
+    assert!(
+        !white_game.object_has_ability(white_id, &crate::static_abilities::StaticAbility::flying())
+    );
+    assert!(
+        white
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "white kicker should grant Rakavolver the damage lifegain trigger"
+    );
+
+    let (blue_game, blue_id) = put_rakavolver_onto_battlefield(false, true);
+    let blue = blue_game.object(blue_id).expect("Rakavolver exists");
+    assert_eq!(
+        blue.counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(1)
+    );
+    assert!(
+        blue_game.object_has_ability(blue_id, &crate::static_abilities::StaticAbility::flying())
+    );
+    assert!(
+        blue.abilities
+            .iter()
+            .all(|ability| !matches!(ability.kind, AbilityKind::Triggered(_))),
+        "blue kicker should not grant the white kicker lifegain trigger"
+    );
+
+    let (both_game, both_id) = put_rakavolver_onto_battlefield(true, true);
+    let both = both_game.object(both_id).expect("Rakavolver exists");
+    assert_eq!(
+        both.counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(3)
+    );
+    assert!(
+        both_game.object_has_ability(both_id, &crate::static_abilities::StaticAbility::flying())
+    );
+    assert!(
+        both.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "paying both kickers should grant both branch abilities"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rakavolver_white_kicker_lifegain_trigger_uses_damage_amount() {
+    let (mut game, rakavolver_id) = put_rakavolver_onto_battlefield(true, false);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let life_before = game.player(alice).expect("Alice exists").life;
+
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            rakavolver_id,
+            crate::events::DamageTarget::Player(bob),
+            4,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Rakavolver should trigger when it deals damage after the white kicker was paid"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Rakavolver trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Rakavolver lifegain trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        life_before + 4,
+        "Rakavolver's granted trigger should gain life equal to the damage dealt"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_dash_kicker_with_typed_discard_cost_compiles_to_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dash Kicker Probe")

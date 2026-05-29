@@ -794,7 +794,9 @@ pub struct OptionalCostsPaid {
 
 impl OptionalCostsPaid {
     fn label_matches_query(stored: &str, query: &str) -> bool {
-        stored == query
+        stored.eq_ignore_ascii_case(query)
+            || (query.eq_ignore_ascii_case("Kicker")
+                && stored.to_ascii_lowercase().starts_with("kicker "))
             || (query.eq_ignore_ascii_case("Gift")
                 && stored.to_ascii_lowercase().starts_with("gift "))
             || (query.eq_ignore_ascii_case("Conspire")

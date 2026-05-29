@@ -36,8 +36,9 @@ use super::util::{
     parse_eternalize_line_lexed, parse_evoke_line_lexed,
     parse_flash_with_additional_cost_line_lexed, parse_flashback_line_lexed,
     parse_harmonize_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
-    parse_jump_start_line_lexed, parse_kicker_line_lexed, parse_madness_line_lexed,
-    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_offspring_line_lexed,
+    parse_jump_start_line_lexed, parse_kicker_lines_lexed, parse_madness_line_lexed,
+    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
+    parse_offspring_line_lexed,
     parse_prowl_line_lexed, parse_reinforce_line_lexed, parse_replicate_line_lexed,
     parse_retrace_line_lexed, parse_self_free_cast_alternative_cost_line_lexed,
     parse_squad_line_lexed, parse_transmute_line_lexed, parse_warp_line_lexed,
@@ -446,8 +447,16 @@ pub(super) fn lower_kicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(
-        require_keyword_parse(line, "kicker", parse_kicker_line_lexed(tokens)?)?.into(),
+    let costs = require_keyword_parse(line, "kicker", parse_kicker_lines_lexed(tokens)?)?;
+    if costs.len() == 1 {
+        return Ok(LineAst::OptionalCost(costs.into_iter().next().unwrap().into()));
+    }
+
+    Ok(LineAst::Multiple(
+        costs
+            .into_iter()
+            .map(|cost| LineAst::OptionalCost(cost.into()))
+            .collect(),
     ))
 }
 
@@ -780,7 +789,7 @@ pub(super) fn matches_kicker(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    Ok(parse_kicker_line_lexed(tokens)?.is_some())
+    Ok(parse_kicker_lines_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_flashback(

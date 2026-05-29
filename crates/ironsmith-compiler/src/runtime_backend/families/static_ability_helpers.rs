@@ -423,8 +423,13 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
                 StaticAbility::can_block_additional_creature_each_combat(*additional);
             Ok(Ability::static_ability(static_ability))
         }
-        GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
-            let lowered = rewrite_lower_parsed_ability(ability.clone())?.into_runtime();
+        GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
+            let mut lowered = rewrite_lower_parsed_ability(ability.clone())?.into_runtime();
+            if let crate::ability::AbilityKind::Triggered(triggered) = &mut lowered.kind
+                && triggered.presentation_label.is_none()
+            {
+                triggered.presentation_label = Some(display.clone());
+            }
             Ok(lowered)
         }
     }

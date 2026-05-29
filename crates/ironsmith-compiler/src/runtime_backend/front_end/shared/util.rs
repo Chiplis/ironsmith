@@ -4208,10 +4208,71 @@ pub(crate) fn parse_kicker_line(
     parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
 }
 
-pub(crate) fn parse_kicker_line_lexed(
+pub(crate) fn parse_kicker_lines(
     tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_kicker_line(tokens)
+) -> Result<Option<Vec<OptionalCost>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("kicker")) {
+        return Ok(None);
+    }
+
+    let mut tail = tokens.get(1..).unwrap_or_default();
+    if matches!(
+        tail.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
+        tail = tail.get(1..).unwrap_or_default();
+    }
+    if tail.is_empty() {
+        return Err(CardTextError::ParseError("kicker keyword missing cost".to_string()));
+    }
+
+    let reminder_start = find_window_by(tail, 3, |window| {
+        window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("pay")
+    })
+    .or_else(|| {
+        find_window_by(tail, 2, |window| {
+            window[0].is_word("you") && window[1].is_word("may")
+        })
+    })
+    .unwrap_or(tail.len());
+    let sentence_end = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| token.is_period().then_some(idx))
+        .unwrap_or(tail.len());
+    let end = reminder_start.min(sentence_end);
+    let cost_tokens = trim_commas(&tail[..end]);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError("kicker keyword missing cost".to_string()));
+    }
+
+    if let Some(and_or_idx) = cost_tokens.iter().position(|token| token.is_word("and/or")) {
+        let left = trim_commas(&cost_tokens[..and_or_idx]);
+        let right = trim_commas(&cost_tokens[and_or_idx + 1..]);
+        if left.is_empty() || right.is_empty() {
+            return Err(CardTextError::ParseError(
+                "kicker and/or cost missing a branch".to_string(),
+            ));
+        }
+
+        let mut costs = Vec::new();
+        for branch in [left, right] {
+            let total_cost = parse_activation_cost(&branch)?;
+            costs.push(OptionalCost::custom(
+                format!("Kicker {}", total_cost.display()),
+                total_cost,
+            ));
+        }
+        return Ok(Some(costs));
+    }
+
+    parse_kicker_line(tokens).map(|cost| cost.map(|cost| vec![cost]))
+}
+
+pub(crate) fn parse_kicker_lines_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<OptionalCost>>, CardTextError> {
+    parse_kicker_lines(tokens)
 }
 
 pub(crate) fn parse_multikicker_line(

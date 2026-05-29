@@ -2052,8 +2052,29 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         }
     }
     out.extend(leading_alternative_cast_lines);
-    for cost in &def.optional_costs {
-        let line = describe_optional_cost_line(cost);
+    let mut optional_cost_idx = 0usize;
+    while optional_cost_idx < def.optional_costs.len() {
+        let cost = &def.optional_costs[optional_cost_idx];
+        let line = if cost.label.starts_with("Kicker ") {
+            let start = optional_cost_idx;
+            while optional_cost_idx + 1 < def.optional_costs.len()
+                && def.optional_costs[optional_cost_idx + 1].label.starts_with("Kicker ")
+            {
+                optional_cost_idx += 1;
+            }
+            if optional_cost_idx > start {
+                let costs = def.optional_costs[start..=optional_cost_idx]
+                    .iter()
+                    .map(|cost| cost.label.trim_start_matches("Kicker ").to_string())
+                    .collect::<Vec<_>>();
+                format!("Kicker {}", costs.join(" and/or "))
+            } else {
+                describe_optional_cost_line(cost)
+            }
+        } else {
+            describe_optional_cost_line(cost)
+        };
+        optional_cost_idx += 1;
         if spell_like_card && cost.label == "Conspire" {
             deferred_spell_optional_lines.push(line);
         } else {

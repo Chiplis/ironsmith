@@ -133,7 +133,7 @@ pub(crate) fn parse_enters_with_counters_line(
             let Some(parsed) = parse_enters_with_counter_condition_clause(&condition_tokens) else {
                 return Ok(None);
             };
-            let display = etb_token_words(&condition_tokens).join(" ");
+            let display = render_token_slice(&condition_tokens);
             condition = Some((parsed, display));
             clause_tokens = trim_commas(&clause_tokens[comma_idx + 1..]);
         }
@@ -179,7 +179,7 @@ pub(crate) fn parse_enters_with_counters_line(
     let mut after_with = &clause_tokens[with_idx + 1..];
     if let Some(and_with_idx) = etb_find_token_word_sequence_index(after_with, &["and", "with"]) {
         let ability_prefix = trim_commas(&after_with[..and_with_idx]);
-        if let Some(abilities) = parse_enters_with_added_abilities_prefix(&ability_prefix) {
+        if let Some(abilities) = parse_enters_with_added_abilities_prefix(&ability_prefix)? {
             added_abilities.extend(abilities);
             after_with = &after_with[and_with_idx + 2..];
         }
@@ -252,7 +252,7 @@ pub(crate) fn parse_enters_with_counters_line(
             Value::Fixed(multiplier) => scale_dynamic_cost_modifier_value(dynamic, *multiplier),
             _ => dynamic,
         };
-        if let Some(abilities) = parse_enters_with_added_abilities_tail(&tail) {
+        if let Some(abilities) = parse_enters_with_added_abilities_tail(&tail)? {
             added_abilities = abilities;
         } else if tail_words.first().copied() == Some("if") {
             let condition_tokens = trim_commas(&tail[1..]);
@@ -263,7 +263,7 @@ pub(crate) fn parse_enters_with_counters_line(
                         full_words.join(" ")
                     ))
                 })?;
-            let display = etb_token_words(&condition_tokens).join(" ");
+            let display = render_token_slice(&condition_tokens);
             condition = Some(combine_enters_with_counter_conditions(
                 condition,
                 (parsed, display),
@@ -452,7 +452,9 @@ pub(crate) fn parse_enters_with_counters_line(
     )))
 }
 
-fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
+fn parse_enters_with_added_abilities_tail(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<Ability>>, CardTextError> {
     let tail = trim_commas(tokens);
     let words = etb_token_words(&tail);
     let ability_tokens = if etb_word_slice_starts_with(&words, &["and", "with"]) {
@@ -460,9 +462,22 @@ fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Ve
     } else if etb_word_slice_starts_with(&words, &["with"]) {
         &tail[1..]
     } else {
-        return None;
+        return Ok(None);
     };
-    let ability_words = etb_token_words(ability_tokens);
+    parse_enters_with_added_abilities(ability_tokens)
+}
+
+fn parse_enters_with_added_abilities_prefix(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<Ability>>, CardTextError> {
+    parse_enters_with_added_abilities(tokens)
+}
+
+fn parse_enters_with_added_abilities(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<Ability>>, CardTextError> {
+    let ability_tokens = trim_commas(tokens);
+    let ability_words = etb_token_words(&ability_tokens);
     if ability_words
         == [
             "this", "creature", "can", "attack", "as", "though", "it", "didnt", "have", "defender",
@@ -483,30 +498,33 @@ fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Ve
                 "defender",
             ]
     {
-        return Some(vec![Ability::static_ability(
+        return Ok(Some(vec![Ability::static_ability(
             StaticAbility::can_attack_as_though_no_defender(),
-        )]);
+        )]));
     }
 
-    let actions = parse_ability_line(ability_tokens)?;
-    let mut abilities = Vec::new();
-    for action in actions {
-        let static_ability =
-            super::static_ability_helpers::static_ability_for_keyword_action(action)?;
-        abilities.push(Ability::static_ability(static_ability));
+    if let Some(actions) = parse_ability_line(&ability_tokens) {
+        let mut abilities = Vec::new();
+        for action in actions {
+            let Some(static_ability) =
+                super::static_ability_helpers::static_ability_for_keyword_action(action)
+            else {
+                return Ok(None);
+            };
+            abilities.push(Ability::static_ability(static_ability));
+        }
+        return Ok((!abilities.is_empty()).then_some(abilities));
     }
-    (!abilities.is_empty()).then_some(abilities)
-}
 
-fn parse_enters_with_added_abilities_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
-    let actions = parse_ability_line(tokens)?;
-    let mut abilities = Vec::new();
-    for action in actions {
-        let static_ability =
-            super::static_ability_helpers::static_ability_for_keyword_action(action)?;
-        abilities.push(Ability::static_ability(static_ability));
+    let (granted, _) = parse_granted_abilities_for_gain_clause(
+        &ability_tokens,
+        &ability_words,
+        false,
+    )?;
+    if granted.is_empty() {
+        return Ok(None);
     }
-    (!abilities.is_empty()).then_some(abilities)
+    Ok(Some(lower_granted_abilities_ast_to_object_abilities(&granted)?))
 }
 
 fn combine_enters_with_counter_conditions(
@@ -579,6 +597,9 @@ fn parse_enters_with_counter_condition_clause(
         || condition_words == ["it", "was", "kicked"]
     {
         return Some(crate::ConditionExpr::ThisSpellWasKicked);
+    }
+    if let Some(label) = parse_kicked_with_mana_cost_label(&condition_tokens) {
+        return Some(crate::ConditionExpr::ThisSpellPaidLabel(label));
     }
     if condition_words == ["this", "spell", "escaped"] || condition_words == ["it", "escaped"]
     {
@@ -738,6 +759,38 @@ fn parse_enters_with_counter_condition_clause(
     }
 
     parse_static_condition_clause(&condition_tokens).ok()
+}
+
+fn parse_kicked_with_mana_cost_label(tokens: &[OwnedLexToken]) -> Option<String> {
+    let words = etb_token_words(tokens);
+    if !(etb_word_slice_starts_with(
+        &words,
+        &["this", "spell", "was", "kicked", "with", "its"],
+    ) || etb_word_slice_starts_with(
+        &words,
+        &["this", "creature", "was", "kicked", "with", "its"],
+    ) || etb_word_slice_starts_with(
+        &words,
+        &["this", "permanent", "was", "kicked", "with", "its"],
+    ) || etb_word_slice_starts_with(&words, &["it", "was", "kicked", "with", "its"])) {
+        return None;
+    }
+    if words.last().copied() != Some("kicker") {
+        return None;
+    }
+
+    let with_idx = etb_find_token_word_sequence_index(tokens, &["with", "its"])?;
+    let end = tokens.iter().rposition(|token| token.is_word("kicker"))?;
+    let start = with_idx + 2;
+    if start >= end {
+        return None;
+    }
+    let cost_text = render_token_slice(&tokens[start..end]);
+    let cost_text = cost_text.trim();
+    if cost_text.is_empty() {
+        return None;
+    }
+    Some(format!("Kicker {cost_text}"))
 }
 
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {

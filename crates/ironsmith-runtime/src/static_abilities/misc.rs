@@ -1225,6 +1225,21 @@ impl StaticAbilityKind for EntersWithCountersIfCondition {
 fn entered_ability_display(ability: &Ability) -> Option<String> {
     match &ability.kind {
         AbilityKind::Static(static_ability) => Some(static_ability.display().to_ascii_lowercase()),
+        AbilityKind::Triggered(triggered) => triggered.presentation_label.clone().or_else(|| {
+            let effects = triggered.effects.flattened_default_effects();
+            if effects.len() == 1
+                && let Some(gain) = effects[0].downcast_ref::<crate::effects::GainLifeEffect>()
+                && gain.amount == Value::EventValue(EventValueSpec::Amount)
+                && gain.player == ChooseSpec::Player(PlayerFilter::You)
+            {
+                let trigger_text = triggered
+                    .trigger
+                    .display()
+                    .replace("this permanent", "this creature");
+                return Some(format!("{trigger_text}, you gain that much life"));
+            }
+            None
+        }),
         _ => None,
     }
 }
