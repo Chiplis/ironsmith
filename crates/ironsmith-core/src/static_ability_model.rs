@@ -199,6 +199,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Disguise(TotalCost<C>),
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
+    CanBlockAsThoughReachForSubtype(Subtype),
     CantBeBlockedByMoreThan(usize),
     CantBeBlockedExceptByNOrMore(usize),
     CantBeBlockedByPowerOrLess(i32),
@@ -252,6 +253,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     SetChosenColor {
         filter: ObjectFilter,
         display: String,
+    },
+    SetMaximumHandSize {
+        player: PlayerFilter,
+        amount: u32,
     },
     ReduceMaximumHandSize {
         player: PlayerFilter,
@@ -350,6 +355,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
+        display: String,
+    },
+    ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+        options: Vec<(i32, i32)>,
         display: String,
     },
     EnterAsCopyAsEnters {
@@ -662,6 +671,9 @@ where
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
                 }
+                DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
+                    DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
+                }
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                     additional_costs,
                     usage_limit,
@@ -873,6 +885,9 @@ where
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
             }
+            StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype)
+            }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
             }
@@ -946,6 +961,9 @@ where
             }
             StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbilityPayload::SetChosenColor { filter, display }
+            }
+            StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
+                StaticAbilityPayload::SetMaximumHandSize { player, amount }
             }
             StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbilityPayload::ReduceMaximumHandSize { player, by }
@@ -1126,6 +1144,13 @@ where
             StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display } => {
                 StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display }
             }
+            StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            } => StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            },
             StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
                 for ability in spec.added_abilities {
@@ -1142,6 +1167,7 @@ where
                         affected_filter: spec.affected_filter,
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        linked_exile_pair: spec.linked_exile_pair,
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override,
@@ -1671,6 +1697,10 @@ impl<
         Self::identified(StaticAbilityId::KeywordFallbackText, text)
     }
 
+    pub fn draft_rule_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DraftRuleText, text)
+    }
+
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::RuleFallbackText, text)
     }
@@ -1877,6 +1907,27 @@ impl<
             id: Some(StaticAbilityId::CanBlockAdditionalCreatureEachCombat),
             label: "can block additional creature".to_string(),
             payload: StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(additional),
+        }
+    }
+
+    pub fn can_block_subtype_as_though_reach(subtype: Subtype) -> Self {
+        let subtype_text = subtype.to_string();
+        let plural = if subtype_text.ends_with('s') {
+            subtype_text
+        } else {
+            format!("{subtype_text}s")
+        };
+        Self {
+            id: Some(StaticAbilityId::CanBlockFlying),
+            label: format!("This creature can block {plural} as though it had reach"),
+            payload: StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype),
+        }
+    }
+
+    pub fn can_block_as_though_reach_subtype(&self) -> Option<Subtype> {
+        match self.payload {
+            StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
+            _ => None,
         }
     }
 
@@ -2475,6 +2526,13 @@ impl<
             payload: StaticAbilityPayload::ReduceMaximumHandSize { player, by },
         }
     }
+    pub fn set_maximum_hand_size(player: PlayerFilter, amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetMaximumHandSize),
+            label: "set maximum hand size".into(),
+            payload: StaticAbilityPayload::SetMaximumHandSize { player, amount },
+        }
+    }
     pub fn equipment_grant(abilities: Vec<StaticAbility<T, E, C, Cond>>) -> Self {
         Self {
             id: Some(StaticAbilityId::EquipmentGrant),
@@ -2518,6 +2576,12 @@ impl<
         Self::identified(
             StaticAbilityId::EquipAbilitiesAnyTime,
             "activate equip abilities any time",
+        )
+    }
+    pub fn exhaust_abilities_as_though_unactivated_this_turn() -> Self {
+        Self::identified(
+            StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn,
+            "activate exhaust abilities as though unactivated this turn",
         )
     }
     pub fn vote_additional_time_while_voting() -> Self {
@@ -2901,6 +2965,22 @@ impl<
             payload: StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display },
         }
     }
+
+    pub fn choose_power_toughness_as_enters_or_turns_face_up(
+        options: Vec<(i32, i32)>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            },
+        }
+    }
+
     pub fn duplicate_matching_triggered_abilities(
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<T>,
@@ -4146,6 +4226,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub affected_filter: Option<ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
@@ -4155,6 +4236,11 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnterAsCopyLinkedExilePairSpec {
+    pub counter_type: CounterType,
 }
 
 impl<T, E, C, Cond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond>

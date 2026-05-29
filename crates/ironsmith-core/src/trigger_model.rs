@@ -262,6 +262,13 @@ pub enum TriggerKind {
     },
     DayNightChanged,
     ThisEntersBattlefield,
+    ThisTransforms {
+        destination_name: Option<String>,
+    },
+    ThisTransformsWithSurface {
+        surface: SourceReferenceSurface,
+        destination_name: Option<String>,
+    },
     YouCastThisSpell,
     KeywordActionMatchingObject {
         action: KeywordActionKind,
@@ -292,6 +299,9 @@ pub enum TriggerKind {
     },
     SagaChapter {
         chapters: Vec<u32>,
+    },
+    FinalChapterAbilityResolved {
+        filter: ObjectFilter,
     },
     Custom {
         id: String,
@@ -921,6 +931,30 @@ impl Trigger {
             TriggerKind::ThisEntersBattlefield,
         )
     }
+    pub fn transforms() -> Self {
+        Self::transforms_with_destination(None)
+    }
+    pub fn transforms_with_destination(destination_name: Option<String>) -> Self {
+        Self::typed(
+            "this_transforms",
+            TriggerKind::ThisTransforms { destination_name },
+        )
+    }
+    pub fn transforms_with_surface(surface: SourceReferenceSurface) -> Self {
+        Self::transforms_with_surface_and_destination(surface, None)
+    }
+    pub fn transforms_with_surface_and_destination(
+        surface: SourceReferenceSurface,
+        destination_name: Option<String>,
+    ) -> Self {
+        Self::typed(
+            "this_transforms",
+            TriggerKind::ThisTransformsWithSurface {
+                surface,
+                destination_name,
+            },
+        )
+    }
     pub fn you_cast_this_spell() -> Self {
         Self::typed("you_cast_this_spell", TriggerKind::YouCastThisSpell)
     }
@@ -976,6 +1010,12 @@ impl Trigger {
     }
     pub fn saga_chapter(chapters: Vec<u32>) -> Self {
         Self::typed("saga_chapter", TriggerKind::SagaChapter { chapters })
+    }
+    pub fn final_chapter_ability_resolved(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "final_chapter_ability_resolved",
+            TriggerKind::FinalChapterAbilityResolved { filter },
+        )
     }
     pub fn custom(id: impl Into<String>, label: String) -> Self {
         let id = id.into();

@@ -1975,6 +1975,13 @@ pub fn player_filter_matches_with_context(
                     candidate.hand.len() >= your_hand.saturating_add(*count as usize)
                 })
         }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            player_filter_matches_with_context(base, player, controller, game, defending_player)
+                && game
+                    .player(player)
+                    .zip(game.player(controller))
+                    .is_some_and(|(candidate, you)| candidate.life > you.life)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

@@ -93,6 +93,10 @@ pub(crate) fn can_block_with_view(
         .as_ref()
         .map(|c| c.colors.clone())
         .unwrap_or_else(|| blocker.colors());
+    let attacker_subtypes = attacker_chars
+        .as_ref()
+        .map(|c| c.subtypes.clone())
+        .unwrap_or_else(|| attacker.subtypes.clone());
     let blocker_is_artifact = blocker_chars
         .as_ref()
         .map(|c| c.card_types.contains(&CardType::Artifact))
@@ -101,6 +105,13 @@ pub(crate) fn can_block_with_view(
     // Helper to check if abilities contain a specific ability ID
     let attacker_has = |id: StaticAbilityId| attacker_abilities.iter().any(|a| a.id() == id);
     let blocker_has = |id: StaticAbilityId| blocker_abilities.iter().any(|a| a.id() == id);
+    let blocker_has_subtype_scoped_reach = blocker_abilities.iter().any(|ability| {
+        ability
+            .can_block_as_though_reach_subtype()
+            .is_some_and(|subtype| attacker_subtypes.contains(&subtype))
+    });
+    let blocker_has_reach_for_attacker =
+        blocker_has(StaticAbilityId::Reach) || blocker_has_subtype_scoped_reach;
 
     // Unblockable creatures and live "can't be blocked" restrictions can't be blocked.
     if attacker_has(StaticAbilityId::Unblockable) || !game.can_be_blocked(attacker.id) {
@@ -110,9 +121,20 @@ pub(crate) fn can_block_with_view(
     // Flying: can only be blocked by flying or reach
     if attacker_has(StaticAbilityId::Flying) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
-        let blocker_has_reach = blocker_has(StaticAbilityId::Reach);
-        let blocker_can_block_flying = blocker_has(StaticAbilityId::CanBlockFlying)
-            || blocker_has(StaticAbilityId::CanBlockOnlyFlying);
+        let blocker_has_reach = blocker_has_reach_for_attacker;
+        let blocker_can_block_flying = blocker_abilities.iter().any(|ability| {
+            if ability.id() == StaticAbilityId::CanBlockOnlyFlying {
+                return true;
+            }
+
+            if ability.id() != StaticAbilityId::CanBlockFlying {
+                return false;
+            }
+
+            ability
+                .can_block_as_though_reach_subtype()
+                .map_or(true, |subtype| attacker_subtypes.contains(&subtype))
+        });
 
         if !blocker_has_flying && !blocker_has_reach && !blocker_can_block_flying {
             return false;
@@ -122,7 +144,7 @@ pub(crate) fn can_block_with_view(
     // "Can't be blocked except by creatures with flying or reach" (without requiring flying)
     if attacker_has(StaticAbilityId::FlyingRestriction) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
-        let blocker_has_reach = blocker_has(StaticAbilityId::Reach);
+        let blocker_has_reach = blocker_has_reach_for_attacker;
         if !blocker_has_flying && !blocker_has_reach {
             return false;
         }
@@ -382,6 +404,25 @@ fn protection_prevents_blocking_with_view(
             let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
             filter.matches(blocker, &ctx, game)
         }
+        ProtectionFrom::EachManaValueAmong(filter) => {
+            let blocker_mana_value = blocker
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value() as i32);
+            let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
+            let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
+            game.objects_in_zone(zone).into_iter().any(|object_id| {
+                let Some(object) = game.object(object_id) else {
+                    return false;
+                };
+                filter.matches(object, &ctx, game)
+                    && object
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32)
+                        == blocker_mana_value
+            })
+        }
         ProtectionFrom::Everything => true,
         ProtectionFrom::Colorless => blocker_colors.is_empty(),
         ProtectionFrom::ChosenPlayer => game
@@ -531,6 +572,10 @@ pub(crate) fn can_attack_defending_player_with_view(
         return false;
     }
 
+    if !game.can_attack_defending_player(creature.id, defending_player) {
+        return false;
+    }
+
     let abilities = view
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)
@@ -670,7 +715,10 @@ mod tests {
     use crate::cost::OptionalCostsPaid;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId, StableId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
+    use crate::target::PlayerFilter;
+    use crate::types::Subtype;
     use crate::zone::Zone;
     use std::collections::HashMap;
 
@@ -731,6 +779,12 @@ mod tests {
         obj.abilities.push(Ability::static_ability(static_ability));
     }
 
+    fn set_mana_value(obj: &mut Object, mana_value: u8) {
+        obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]));
+    }
+
     #[test]
     fn test_flying_blocks_flying() {
         let game = test_game_state();
@@ -757,6 +811,42 @@ mod tests {
         add_ability(&mut blocker, StaticAbility::reach());
 
         assert!(can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_subtype_scoped_reach_blocks_matching_subtype_only() {
+        let game = test_game_state();
+        let mut dragon = make_creature("Dragon", 2, 2);
+        dragon.subtypes.push(Subtype::Dragon);
+        add_ability(&mut dragon, StaticAbility::flying());
+        let mut bird = make_creature("Bird", 2, 2);
+        bird.subtypes.push(Subtype::Bird);
+        add_ability(&mut bird, StaticAbility::flying());
+
+        let mut blocker = make_creature("Dragon Hunter", 2, 1);
+        add_ability(
+            &mut blocker,
+            StaticAbility::can_block_subtype_as_though_reach(Subtype::Dragon),
+        );
+
+        assert!(can_block(&dragon, &blocker, &game));
+        assert!(!can_block(&bird, &blocker, &game));
+    }
+
+    #[test]
+    fn test_subtype_scoped_reach_satisfies_reach_blocking_restriction() {
+        let game = test_game_state();
+        let mut dragon = make_creature("Restricted Dragon", 2, 2);
+        dragon.subtypes.push(Subtype::Dragon);
+        add_ability(&mut dragon, StaticAbility::flying_restriction());
+
+        let mut blocker = make_creature("Dragon Hunter", 2, 1);
+        add_ability(
+            &mut blocker,
+            StaticAbility::can_block_subtype_as_though_reach(Subtype::Dragon),
+        );
+
+        assert!(can_block(&dragon, &blocker, &game));
     }
 
     #[test]
@@ -1295,6 +1385,59 @@ mod tests {
 
         // Blue can block protection from red
         assert!(can_block(&protected, &blue_blocker, &game));
+    }
+
+    #[test]
+    fn rebbec_architect_of_ascension_mana_value_protection_blocks_only_matching_values_you_control()
+    {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Rebbec-protected artifact creature", 2, 2);
+        attacker.id = ObjectId::from_raw(2100);
+        attacker.owner = alice;
+        attacker.card_types.push(CardType::Artifact);
+        set_mana_value(&mut attacker, 2);
+        add_ability(
+            &mut attacker,
+            StaticAbility::protection(ProtectionFrom::EachManaValueAmong(
+                crate::target::ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            )),
+        );
+
+        let mut matching_blocker = make_creature("Matching Mana Value Blocker", 2, 2);
+        matching_blocker.id = ObjectId::from_raw(2101);
+        matching_blocker.owner = bob;
+        set_mana_value(&mut matching_blocker, 2);
+
+        let mut nonmatching_blocker = make_creature("Different Mana Value Blocker", 3, 3);
+        nonmatching_blocker.id = ObjectId::from_raw(2102);
+        nonmatching_blocker.owner = bob;
+        set_mana_value(&mut nonmatching_blocker, 3);
+
+        let mut opponents_artifact_with_nonmatching_value =
+            make_creature("Opponent Artifact With Mana Value Three", 0, 1);
+        opponents_artifact_with_nonmatching_value.id = ObjectId::from_raw(2103);
+        opponents_artifact_with_nonmatching_value.owner = bob;
+        opponents_artifact_with_nonmatching_value
+            .card_types
+            .push(CardType::Artifact);
+        set_mana_value(&mut opponents_artifact_with_nonmatching_value, 3);
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(matching_blocker.clone());
+        game.add_object(nonmatching_blocker.clone());
+        game.add_object(opponents_artifact_with_nonmatching_value);
+
+        assert!(
+            !can_block(&attacker, &matching_blocker, &game),
+            "Rebbec, Architect of Ascension should stop blockers whose mana value is among artifacts the attacker controller controls"
+        );
+        assert!(
+            can_block(&attacker, &nonmatching_blocker, &game),
+            "Rebbec, Architect of Ascension should not count artifacts controlled by the defending player for the attacker's mana-value set"
+        );
     }
 
     #[test]

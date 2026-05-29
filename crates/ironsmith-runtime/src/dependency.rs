@@ -853,6 +853,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::LowestLifeTied
             | PlayerFilter::MostCardsInHand
             | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+            | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate

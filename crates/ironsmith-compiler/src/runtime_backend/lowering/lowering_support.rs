@@ -337,6 +337,14 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    fn is_win_the_game_effect(effects: &[EffectAst]) -> bool {
+        matches!(
+            effects,
+            [EffectAst::SubjectVerb(subject_verb)]
+                if matches!(subject_verb.action, SubjectVerbActionAst::WinGame)
+        )
+    }
+
     fn extract_exact_other_attack_predicate(
         predicate: PredicateAst,
     ) -> (Option<u32>, Option<PredicateAst>) {
@@ -379,6 +387,9 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         && if_false.is_empty()
         && !if_true.is_empty()
         && predicate_can_promote_to_intervening_if(predicate)
+        // "Whenever this attacks, you win the game if ..." checks on resolution;
+        // it is not an intervening-if trigger gate.
+        && !(matches!(trigger, TriggerSpec::ThisAttacks) && is_win_the_game_effect(if_true))
     {
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
@@ -901,6 +912,9 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         )),
         KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Permanents(filter),
+        )),
+        KeywordAction::ProtectionFromEachManaValueAmong(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::EachManaValueAmong(filter),
         )),
         KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),

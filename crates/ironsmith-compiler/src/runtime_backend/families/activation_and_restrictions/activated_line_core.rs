@@ -42,6 +42,7 @@ pub(crate) fn parse_prefixed_activated_ability_label(
     let prefix = ActivationRestrictionCompatWords::new(&tokens[..cost_start]);
     match prefix.get(prefix.len().saturating_sub(1)) {
         Some("boast") => Some("Boast".to_string()),
+        Some("exhaust") => Some("Exhaust".to_string()),
         Some("renew") => Some("Renew".to_string()),
         _ => None,
     }
@@ -145,6 +146,18 @@ pub(crate) fn parse_activated_line_with_raw(
     let mana_activation_condition = scanned_modifiers.mana_activation_condition;
     let mut additional_activation_restrictions =
         scanned_modifiers.additional_activation_restrictions;
+    if ability_label.as_deref() == Some("Exhaust")
+        && !additional_activation_restrictions
+            .iter()
+            .any(|restriction| {
+                restriction
+                    .to_ascii_lowercase()
+                    .contains("activate each exhaust ability only once")
+            })
+    {
+        additional_activation_restrictions
+            .push("Activate each exhaust ability only once.".to_string());
+    }
     let mana_usage_restrictions = scanned_modifiers.mana_usage_restrictions;
     let inline_effects_ast = scanned_modifiers.inline_effects_ast;
     effect_sentences = scanned_modifiers.kept_sentences;

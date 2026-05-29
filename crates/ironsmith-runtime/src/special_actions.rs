@@ -796,6 +796,12 @@ fn perform_turn_face_up(
     }
     game.set_face_up(permanent_id);
 
+    game.apply_power_toughness_choice_as_enters_or_turns_face_up(
+        permanent_id,
+        player,
+        decision_maker,
+    );
+
     if spec.megamorph
         && let Some(object) = game.object_mut(permanent_id)
     {

@@ -366,6 +366,16 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                     .this(),
             )
         }
+        TriggerSpec::ThisTransforms { destination_name } => {
+            Trigger::transforms_with_destination(destination_name.clone())
+        }
+        TriggerSpec::ThisTransformsWithSurface {
+            surface,
+            destination_name,
+        } => Trigger::transforms_with_surface_and_destination(
+            surface.clone(),
+            destination_name.clone(),
+        ),
         TriggerSpec::ThisDealsCombatDamageToPlayer => Trigger::this_deals_combat_damage_to_player(),
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
@@ -401,6 +411,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::WinsClash { player } => Trigger::wins_clash(player),
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
+        TriggerSpec::FinalChapterAbilityResolved(filter) => {
+            Trigger::final_chapter_ability_resolved(filter)
+        }
         TriggerSpec::HauntedCreatureDies => Trigger::custom(
             "haunted_creature_dies",
             "When the creature it haunts dies".to_string(),
@@ -513,6 +526,13 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
+        TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
+            if filter
+                .attacking_player_or_planeswalker_controlled_by
+                .is_some() =>
+        {
+            Some(PlayerFilter::Defending)
+        }
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)

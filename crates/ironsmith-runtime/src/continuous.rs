@@ -469,6 +469,9 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::RemoveAllSubtypesOfFamily(family) => {
                 Self::RemoveAllSubtypesOfFamily(family)
             }
+            ironsmith_core::CompiledContinuousModification::AddColors(colors) => {
+                Self::AddColors(colors)
+            }
             ironsmith_core::CompiledContinuousModification::SetColors(colors) => {
                 Self::SetColors(colors)
             }

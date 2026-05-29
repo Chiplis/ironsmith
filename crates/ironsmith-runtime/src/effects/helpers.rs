@@ -352,6 +352,14 @@ fn resolve_effect_metric(
                 })
                 .unwrap_or(0)
         }
+        EffectMetric::OtherNumber => outcome
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                _ => None,
+            })
+            .unwrap_or(0),
     };
 
     Ok(resolved)
@@ -2064,6 +2072,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
@@ -2511,6 +2520,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
             }
         }
 
+        if !filter.tagged_constraints.is_empty() {
+            return resolve_objects_from_spec(game, spec, ctx);
+        }
+
         let count = spec.count();
         let mut candidates = candidate_object_ids_for_filter(game, filter, ctx);
         if candidates.is_empty() {
@@ -2855,29 +2868,17 @@ pub fn resolve_objects_from_spec(
         // Object filter (non-targeted choice) - generally supplied via previous selection,
         // but some tags only effects resolve from tagged objects and filters.
         ChooseSpec::Object(filter) => {
-            let objects: Vec<ObjectId> = ctx
-                .targets
-                .iter()
-                .filter_map(|t| {
-                    if let ResolvedTarget::Object(id) = t {
-                        Some(*id)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if objects.is_empty() {
-                if filter.tagged_constraints.is_empty() {
-                    return Err(ExecutionError::InvalidTarget);
-                }
-
-                let filter_ctx = ctx.filter_context(game);
-                let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+            if filter.tagged_constraints.is_empty() {
+                let objects: Vec<ObjectId> = ctx
+                    .targets
                     .iter()
-                    .filter_map(|&id| game.object(id))
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .map(|obj| obj.id)
+                    .filter_map(|t| {
+                        if let ResolvedTarget::Object(id) = t {
+                            Some(*id)
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
 
                 if objects.is_empty() {
@@ -2885,6 +2886,18 @@ pub fn resolve_objects_from_spec(
                 }
 
                 return Ok(objects);
+            }
+
+            let filter_ctx = ctx.filter_context(game);
+            let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .map(|obj| obj.id)
+                .collect();
+
+            if objects.is_empty() {
+                return Err(ExecutionError::InvalidTarget);
             }
 
             Ok(objects)
@@ -3190,7 +3203,8 @@ pub(crate) fn resolve_player_filter_to_list(
             })
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => Ok(game
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

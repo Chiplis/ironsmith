@@ -1,6 +1,7 @@
 use crate::{
-    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, ObjectId, PlayerId,
-    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
+    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric, ObjectId,
+    PlayerId, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
+    effect_model::EventValueSpec,
 };
 
 /// A reference to an object for use in filters and effects.
@@ -50,6 +51,7 @@ pub enum TaggedOpbjectRelation {
     SharesCardType,
     SharesSubtypeWithTagged,
     SharesColorWithTagged,
+    SharesMostCommonPermanentColor,
     SameStableId,
     SameNameAsTagged,
     DifferentNameFromTagged,
@@ -154,6 +156,9 @@ pub enum PlayerFilter {
         base: Box<PlayerFilter>,
         count: u32,
     },
+    HasMoreLifeThanYou {
+        base: Box<PlayerFilter>,
+    },
     MaxSpeed {
         base: Box<PlayerFilter>,
         has_max_speed: bool,
@@ -208,6 +213,7 @@ impl PlayerFilter {
             Self::IteratedPlayer => true,
             Self::Target(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
+            Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
             Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -262,9 +268,15 @@ impl PlayerFilter {
             Self::CardsInHandAtLeastMoreThanYou { base, count } => {
                 let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
                 format!(
-                    "{} who has at least {} more cards in hand than you do",
+                    "{} who has at least {} more cards in hand than you do as you activate this ability",
                     base.description(),
                     count_text
+                )
+            }
+            Self::HasMoreLifeThanYou { base } => {
+                format!(
+                    "{} who has more life than you do as you activate this ability",
+                    base.description()
                 )
             }
             Self::MaxSpeed {
@@ -1065,6 +1077,13 @@ impl ObjectFilter {
         self.match_tagged(tag, TaggedOpbjectRelation::SharesColorWithTagged)
     }
 
+    pub fn shares_most_common_permanent_color(self) -> Self {
+        self.match_tagged(
+            TagKey::from("most_common_permanent_color"),
+            TaggedOpbjectRelation::SharesMostCommonPermanentColor,
+        )
+    }
+
     pub fn shares_subtype_with_tagged(self, tag: impl Into<TagKey>) -> Self {
         self.match_tagged(tag, TaggedOpbjectRelation::SharesSubtypeWithTagged)
     }
@@ -1169,6 +1188,9 @@ impl ObjectFilter {
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -1244,6 +1266,9 @@ impl ObjectFilter {
                     card_type.to_string().to_ascii_lowercase()
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -1380,6 +1405,12 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
                     post_noun_qualifiers.push("that shares a color with that object".to_string());
+                }
+                TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+                    post_noun_qualifiers.push(
+                        "that shares a color with the most common color among all permanents or a color tied for most common"
+                            .to_string(),
+                    );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
                     post_noun_qualifiers
@@ -2171,7 +2202,13 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do's",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability's",
+                describe_player_filter(base)
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability's",
                 describe_player_filter(base)
             )
         }
@@ -2237,7 +2274,13 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability",
+                describe_player_filter(base)
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability",
                 describe_player_filter(base)
             )
         }
@@ -2382,6 +2425,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
 fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &Value) -> String {
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
@@ -2454,6 +2498,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {
                 "a dynamic blocker count".to_string()
             }
+            Value::EffectValue(_) => "that result".to_string(),
+            Value::EffectMetric {
+                metric: EffectMetric::OtherNumber,
+                ..
+            } => "the other result".to_string(),
             _ => "a dynamic value".to_string(),
         }
     }

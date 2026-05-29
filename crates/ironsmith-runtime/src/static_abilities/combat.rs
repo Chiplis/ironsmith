@@ -17,6 +17,7 @@ use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
 use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
+use crate::types::Subtype;
 use crate::zone::Zone;
 
 /// Macro to define simple combat abilities.
@@ -128,6 +129,44 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
 
     fn display(&self) -> String {
         "Can block only creatures with flying".to_string()
+    }
+}
+
+/// Can block creatures with a subtype as though this creature had reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanBlockSubtypeAsThoughReach {
+    subtype: Subtype,
+}
+
+impl CanBlockSubtypeAsThoughReach {
+    pub fn new(subtype: Subtype) -> Self {
+        Self { subtype }
+    }
+
+    fn plural_subtype(&self) -> String {
+        let subtype = self.subtype.to_string();
+        if subtype.ends_with('s') {
+            subtype
+        } else {
+            format!("{subtype}s")
+        }
+    }
+}
+
+impl StaticAbilityKind for CanBlockSubtypeAsThoughReach {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockFlying
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "This creature can block {} as though it had reach",
+            self.plural_subtype()
+        )
+    }
+
+    fn can_block_as_though_reach_subtype(&self) -> Option<Subtype> {
+        Some(self.subtype)
     }
 }
 

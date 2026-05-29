@@ -259,6 +259,8 @@ pub struct TurnStore {
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Static or temporary grant sources whose once-per-turn cast permission was used.
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Exhaust activated abilities that have been activated by this object instance.
+    pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
 }
@@ -432,6 +434,10 @@ fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -
     format!("activated_ability:{}:{}", source.0, ability_index)
 }
 
+fn exhaust_ability_turn_counter_name(player: PlayerId) -> String {
+    format!("exhaust_ability:{}", player.0)
+}
+
 fn activated_ability_resolution_turn_counter_name(
     source: ObjectId,
     ability_index: usize,
@@ -513,6 +519,10 @@ pub struct CantEffectTracker {
     /// Creatures that can't attack.
     /// Example: Pacifism, Propaganda (if unpaid), Maze of Ith
     pub cant_attack: HashSet<ObjectId>,
+
+    /// Creature -> defending players this creature can't attack or attack planeswalkers of.
+    /// Example: "Creatures that player controls can't attack you or planeswalkers you control."
+    pub cant_attack_defenders: HashMap<ObjectId, HashSet<PlayerId>>,
 
     /// Creatures that can't attack alone.
     /// Example: "This creature can't attack alone."
@@ -809,6 +819,12 @@ impl CantEffectTracker {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
         self.cant_attack.extend(other.cant_attack);
+        for (creature, defenders) in other.cant_attack_defenders {
+            self.cant_attack_defenders
+                .entry(creature)
+                .or_default()
+                .extend(defenders);
+        }
         self.cant_attack_alone.extend(other.cant_attack_alone);
         self.cant_block.extend(other.cant_block);
         for (blocker, attackers) in other.cant_block_specific_attackers {
@@ -879,6 +895,7 @@ impl CantEffectTracker {
         self.cant_gain_life.clear();
         self.cant_search.clear();
         self.cant_attack.clear();
+        self.cant_attack_defenders.clear();
         self.cant_attack_alone.clear();
         self.cant_block.clear();
         self.cant_block_specific_attackers.clear();
@@ -938,6 +955,19 @@ impl CantEffectTracker {
     /// Check if a creature can attack.
     pub fn can_attack(&self, creature: ObjectId) -> bool {
         !self.cant_attack.contains(&creature)
+    }
+
+    /// Check if a creature can attack a defending player or planeswalker they control.
+    pub fn can_attack_defending_player(
+        &self,
+        creature: ObjectId,
+        defending_player: PlayerId,
+    ) -> bool {
+        self.can_attack(creature)
+            && self
+                .cant_attack_defenders
+                .get(&creature)
+                .is_none_or(|defenders| !defenders.contains(&defending_player))
     }
 
     /// Check if a creature can attack alone (as the only attacker).
@@ -1237,6 +1267,17 @@ impl CantEffectTracker {
     /// Add a creature to the "can't attack" set.
     pub fn add_cant_attack(&mut self, creature: ObjectId) {
         self.cant_attack.insert(creature);
+    }
+
+    /// Add defender-specific attack prohibitions for a creature.
+    pub fn add_cant_attack_defenders<I>(&mut self, creature: ObjectId, defenders: I)
+    where
+        I: IntoIterator<Item = PlayerId>,
+    {
+        self.cant_attack_defenders
+            .entry(creature)
+            .or_default()
+            .extend(defenders);
     }
 
     /// Add a creature to the "can't attack alone" set.
@@ -3029,6 +3070,17 @@ impl GameState {
         self.effect_store.cant_effects.can_attack(creature)
     }
 
+    /// Can the creature attack this player or planeswalkers they control?
+    pub fn can_attack_defending_player(
+        &self,
+        creature: ObjectId,
+        defending_player: PlayerId,
+    ) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_attack_defending_player(creature, defending_player)
+    }
+
     /// Can the creature attack as the only attacker?
     pub fn can_attack_alone(&self, creature: ObjectId) -> bool {
         self.effect_store.cant_effects.can_attack_alone(creature)
@@ -4225,7 +4277,7 @@ impl GameState {
         }
 
         // Proceed with normal battlefield entry
-        let new_id = self.move_object(old_id, Zone::Battlefield, cause)?;
+        let new_id = self.move_object(old_id, Zone::Battlefield, cause.clone())?;
         if let Some(controller) = result.controller_override {
             self.set_current_controller(new_id, controller);
         }
@@ -4291,6 +4343,18 @@ impl GameState {
             if let Some(obj) = self.object_mut(new_id) {
                 *obj.counters.entry(*counter_type).or_insert(0) += count;
             }
+        }
+
+        for linked_old_id in &result.linked_exile_with_entering {
+            if self.object(*linked_old_id).is_none() {
+                continue;
+            }
+            let Some(exiled_id) = self.move_object(*linked_old_id, Zone::Exile, cause.clone())
+            else {
+                continue;
+            };
+            self.add_exiled_with_source_link(new_id, exiled_id);
+            self.record_zone_change_results(*linked_old_id, vec![exiled_id]);
         }
 
         // Apply "as this enters, choose a color" selections.
@@ -4494,6 +4558,11 @@ impl GameState {
                     }
                 }
             }
+            self.apply_power_toughness_choice_as_enters_or_turns_face_up(
+                new_id,
+                controller,
+                decision_maker,
+            );
         }
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
@@ -7334,6 +7403,19 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
+        let exhaust_controller = self.object(source).and_then(|object| {
+            object
+                .abilities
+                .get(ability_index)
+                .and_then(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(activated)
+                        if activated.is_exhaust_ability() =>
+                    {
+                        Some(self.controller_of(object))
+                    }
+                    _ => None,
+                })
+        });
         self.turn_store
             .turn_history
             .activated_abilities_this_turn
@@ -7342,6 +7424,15 @@ impl GameState {
             .turn_history
             .turn_counters
             .increment_named(activated_ability_turn_counter_name(source, ability_index));
+        if let Some(controller) = exhaust_controller {
+            self.turn_store
+                .exhaust_abilities_activated
+                .insert((source, ability_index));
+            self.turn_store
+                .turn_history
+                .turn_counters
+                .increment_named(exhaust_ability_turn_counter_name(controller));
+        }
     }
 
     /// Check if an activated ability has been used this turn.
@@ -7359,6 +7450,18 @@ impl GameState {
         ability_index: usize,
     ) -> u32 {
         self.named_turn_counter(&activated_ability_turn_counter_name(source, ability_index))
+    }
+
+    /// Check if an exhaust ability has already been activated by this object instance.
+    pub fn exhaust_ability_activated(&self, source: ObjectId, ability_index: usize) -> bool {
+        self.turn_store
+            .exhaust_abilities_activated
+            .contains(&(source, ability_index))
+    }
+
+    /// Count exhaust activations by this player during the current turn.
+    pub fn exhaust_ability_activation_count_this_turn(&self, player: PlayerId) -> u32 {
+        self.named_turn_counter(&exhaust_ability_turn_counter_name(player))
     }
 
     /// Record that a specific activated ability resolved this turn.
@@ -8522,6 +8625,55 @@ impl GameState {
         self.choice_store
             .chosen_named_options
             .insert(permanent_id, option);
+    }
+
+    pub(crate) fn apply_power_toughness_choice_as_enters_or_turns_face_up(
+        &mut self,
+        permanent_id: ObjectId,
+        controller: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) {
+        let abilities = self
+            .object(permanent_id)
+            .map(|object| object.abilities.clone())
+            .unwrap_or_default();
+        for ability in abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            let Some(spec) = static_ability.power_toughness_choice_as_enters_or_turns_face_up()
+            else {
+                continue;
+            };
+            if spec.options.is_empty() {
+                continue;
+            }
+            let display_options = spec
+                .options
+                .iter()
+                .enumerate()
+                .map(|(idx, (power, toughness))| {
+                    crate::decisions::spec::DisplayOption::new(idx, format!("{power}/{toughness}"))
+                })
+                .collect::<Vec<_>>();
+            let choice_spec =
+                crate::decisions::specs::ChoiceSpec::single(permanent_id, display_options);
+            let mut chosen = crate::decisions::make_decision(
+                self,
+                decision_maker,
+                controller,
+                Some(permanent_id),
+                choice_spec,
+            );
+            if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < spec.options.len()) {
+                let (power, toughness) = spec.options[chosen_idx];
+                if let Some(object) = self.object_mut(permanent_id) {
+                    object.base_power = Some(crate::card::PtValue::Fixed(power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+                    self.mark_continuous_state_dirty();
+                }
+            }
+        }
     }
 
     /// Get a chosen named option for a permanent, if any.

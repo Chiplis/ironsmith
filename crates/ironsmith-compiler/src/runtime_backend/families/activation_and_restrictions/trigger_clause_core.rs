@@ -31,6 +31,63 @@ fn this_enters_battlefield_trigger_spec(
     }
 }
 
+fn this_transforms_trigger_spec(
+    surface: Option<crate::target::SourceReferenceSurface>,
+    destination_name: Option<String>,
+) -> TriggerSpec {
+    match surface {
+        Some(surface) => TriggerSpec::ThisTransformsWithSurface {
+            surface,
+            destination_name,
+        },
+        None => TriggerSpec::ThisTransforms { destination_name },
+    }
+}
+
+fn trigger_destination_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+    let destination_words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
+    if destination_words.as_slice() == ["this"] {
+        return current_source_reference_name();
+    }
+
+    if let Some(
+        crate::target::SourceReferenceSurface::FullName(text)
+        | crate::target::SourceReferenceSurface::ShortName(text)
+        | crate::target::SourceReferenceSurface::ThisPermanentType(text),
+    ) = source_reference_surface_for_span(span_from_tokens(tokens))
+    {
+        return Some(text);
+    }
+
+    let mut out = String::new();
+    for token in tokens {
+        if token.is_comma() {
+            out.push(',');
+            continue;
+        }
+        if token.as_word().is_none() {
+            continue;
+        }
+        if !out.is_empty() && !out.ends_with(' ') {
+            out.push(' ');
+        }
+        out.push_str(token.slice.as_str());
+    }
+    let trimmed = out.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn transform_destination_name_after_into(
+    word_view: &ActivationRestrictionCompatWords<'_>,
+    transforms_word_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Option<String> {
+    let into_word_idx = transforms_word_idx + 1;
+    let destination_word_idx = into_word_idx + 1;
+    let destination_token_idx = word_view.token_index_for_word_index(destination_word_idx)?;
+    trigger_destination_name_from_tokens(&tokens[destination_token_idx..])
+}
+
 pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         if !token.is_word("or") {
@@ -503,6 +560,21 @@ pub(crate) fn parse_trigger_clause_lexed(
                 marker: "craft".to_string(),
             },
         );
+    }
+
+    if words.len() > 6
+        && words[..5] == ["the", "final", "chapter", "ability", "of"]
+        && words.last() == Some(&"resolves")
+    {
+        let mut filter =
+            parse_object_filter_lexed(&tokens[5..tokens.len() - 1], false).map_err(|err| {
+                CardTextError::ParseError(format!(
+                    "unsupported final chapter trigger filter: {} [{err:?}]",
+                    words[5..words.len() - 1].join(" ")
+                ))
+            })?;
+        filter.zone.get_or_insert(Zone::Battlefield);
+        return Ok(TriggerSpec::FinalChapterAbilityResolved(filter));
     }
 
     if matches!(
@@ -1044,6 +1116,27 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
 
         let subject_tokens = &tokens[..enters_token_idx];
+        if words.get(enters_word_idx + 1..enters_word_idx + 4)
+            == Some(&["or", "transforms", "into"][..])
+            || words.get(enters_word_idx + 1..enters_word_idx + 4)
+                == Some(&["or", "transform", "into"][..])
+        {
+            let destination_name =
+                transform_destination_name_after_into(&word_view, enters_word_idx + 2, tokens);
+            let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_word_view.to_word_refs();
+            if is_source_reference_words(&subject_words) {
+                return Ok(TriggerSpec::Either(
+                    Box::new(this_enters_battlefield_trigger_spec(
+                        source_reference_surface_for_trigger_subject(subject_tokens),
+                    )),
+                    Box::new(this_transforms_trigger_spec(
+                        source_reference_surface_for_trigger_subject(subject_tokens),
+                        destination_name,
+                    )),
+                ));
+            }
+        }
         if let Some(or_idx) =
             find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
         {
@@ -1230,6 +1323,27 @@ pub(crate) fn parse_trigger_clause_lexed(
                     cause_filter,
                 }
             });
+        }
+    }
+
+    if let Some(transforms_word_idx) =
+        find_index(&words, |word| *word == "transforms" || *word == "transform")
+    {
+        let transforms_token_idx = word_view
+            .token_index_for_word_index(transforms_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..transforms_token_idx];
+        let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if is_source_reference_words(&subject_words)
+            && words.get(transforms_word_idx + 1) == Some(&"into")
+        {
+            let destination_name =
+                transform_destination_name_after_into(&word_view, transforms_word_idx, tokens);
+            return Ok(this_transforms_trigger_spec(
+                source_reference_surface_for_trigger_subject(subject_tokens),
+                destination_name,
+            ));
         }
     }
 
@@ -3115,6 +3229,14 @@ pub(crate) fn parse_trigger_clause_lexed(
             let tail = &words[attacks_word_idx + 1..];
             if matches!(tail, ["a", "player"]) {
                 (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
+            } else if matches!(tail, ["an", "opponent"] | ["opponent"])
+                || matches!(tail, ["one", "of", "your", "opponents"])
+            {
+                (
+                    &words[..=attacks_word_idx],
+                    Some(PlayerFilter::Opponent),
+                    true,
+                )
             } else if matches!(
                 tail,
                 ["the", "defending", "player"] | ["defending", "player"]

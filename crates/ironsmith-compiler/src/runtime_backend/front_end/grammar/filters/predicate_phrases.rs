@@ -415,6 +415,104 @@ fn parse_repeated_if_or_predicate(
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
+fn predicate_reference_prefix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    if words.first().copied() == Some("it") {
+        return Some(&words[..1]);
+    }
+    if words.len() >= 2
+        && words[0] == "that"
+        && matches!(
+            words[1],
+            "artifact"
+                | "card"
+                | "creature"
+                | "creatures"
+                | "enchantment"
+                | "land"
+                | "object"
+                | "permanent"
+                | "source"
+                | "spell"
+                | "token"
+        )
+    {
+        return Some(&words[..2]);
+    }
+    None
+}
+
+fn predicate_words_start_with_reference(words: &[&str]) -> bool {
+    matches!(
+        words.first().copied(),
+        Some(
+            "it" | "its"
+                | "this"
+                | "that"
+                | "you"
+                | "your"
+                | "opponent"
+                | "player"
+                | "target"
+                | "source"
+        )
+    )
+}
+
+fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter> {
+    if words.len() == 2
+        && matches!(words[1], "card" | "cards")
+        && let Some(card_type) = parse_card_type(words[0])
+    {
+        return Some(ObjectFilter {
+            card_types: vec![card_type],
+            ..Default::default()
+        });
+    }
+    None
+}
+
+fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(or_idx) = filtered.iter().enumerate().rev().find_map(|(idx, word)| {
+        if *word != "or" || idx == 0 || idx + 1 >= filtered.len() {
+            return None;
+        }
+        if matches!(
+            filtered.get(idx + 1).copied(),
+            Some("more" | "fewer" | "less" | "greater" | "equal")
+        ) {
+            return None;
+        }
+        Some(idx)
+    }) else {
+        return Ok(None);
+    };
+
+    let left_words = &filtered[..or_idx];
+    let right_words = &filtered[or_idx + 1..];
+    let left_tokens = predicate_tokens_from_words(left_words);
+    let right_tokens = predicate_tokens_from_words(right_words);
+    let left = parse_predicate(&left_tokens)?;
+    let right = match parse_predicate(&right_tokens) {
+        Ok(predicate) => predicate,
+        Err(original_err) => {
+            let Some(reference_prefix) = predicate_reference_prefix(left_words) else {
+                return Err(original_err);
+            };
+            if predicate_words_start_with_reference(right_words) {
+                return Err(original_err);
+            }
+            let prefixed_words = reference_prefix
+                .iter()
+                .copied()
+                .chain(right_words.iter().copied())
+                .collect::<Vec<_>>();
+            let prefixed_tokens = predicate_tokens_from_words(&prefixed_words);
+            parse_predicate(&prefixed_tokens).map_err(|_| original_err)?
+        }
+    };
+    Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
 fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
@@ -671,6 +769,40 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
     ))
 }
 
+fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 6 || words[0] != "there" || words[1] != "is" {
+        return None;
+    }
+
+    let in_idx = words
+        .iter()
+        .enumerate()
+        .skip(2)
+        .find_map(|(idx, word)| (*word == "in").then_some(idx))?;
+    if in_idx <= 2 {
+        return None;
+    }
+    if !matches!(
+        &words[in_idx..],
+        ["in", "your", "graveyard"] | ["in", "graveyard"] | ["in", "the", "graveyard"]
+    ) {
+        return None;
+    }
+
+    let descriptor_tokens = words[2..in_idx]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let mut filter = parse_object_filter(&descriptor_tokens, false).ok()?;
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+
+    Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    })
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -685,7 +817,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "empty predicate in if clause".to_string(),
         ));
     }
-    if filtered[0] == "it's" {
+    if filtered[0] == "its" || filtered[0] == "it's" {
         filtered[0] = "it";
     }
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
@@ -711,6 +843,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_or_predicate(&filtered)? {
         return Ok(predicate);
     }
 
@@ -808,6 +944,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_card_in_your_graveyard_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -1463,13 +1603,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             }) && rest_words.len() >= 4
                 && rest_words[0] == "or"
                 && rest_words[1] == "more"
-                && counter_idx > 2
-                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[2..=counter_idx])
             {
-                return Ok(PredicateAst::SourceHasCounterAtLeast {
-                    counter_type,
-                    count,
-                });
+                if counter_idx == 2 {
+                    return Ok(PredicateAst::SourceHasCountersAtLeast(count));
+                }
+                if counter_idx > 2
+                    && let Some(counter_type) =
+                        parse_counter_type_from_tokens(&rest[2..=counter_idx])
+                {
+                    return Ok(PredicateAst::SourceHasCounterAtLeast {
+                        counter_type,
+                        count,
+                    });
+                }
             }
         }
     }
@@ -2445,6 +2591,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::YouAttackedThisTurn);
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["that", "creature", "had", "to", "attack", "this", "combat"]
+            | ["it", "had", "to", "attack", "this", "combat"]
+            | ["that", "creature", "must", "attack", "this", "combat"]
+            | ["it", "must", "attack", "this", "combat"]
+    ) {
+        return Ok(PredicateAst::TriggeringObjectHadToAttackThisCombat);
+    }
+
     if filtered.len() == 9
         && filtered[0] == "you"
         && filtered[1] == "attacked"
@@ -3024,11 +3180,38 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 ObjectFilter::default().shares_card_type_with_tagged("triggering"),
             ));
         }
+        if matches!(
+            descriptor_words.as_slice(),
+            [
+                "shares",
+                "color",
+                "with",
+                "most",
+                "common",
+                "color",
+                "among",
+                "all",
+                "permanents",
+                "or",
+                "color",
+                "tied",
+                "for",
+                "most",
+                "common"
+            ]
+        ) {
+            return Ok(PredicateAst::ItMatches(
+                ObjectFilter::default().shares_most_common_permanent_color(),
+            ));
+        }
         if word_slice_starts_with(&descriptor_words, &["not", "token"]) {
             descriptor_words.drain(0..2);
             descriptor_words.insert(0, "nontoken");
         }
         if !descriptor_words.is_empty() {
+            if let Some(filter) = parse_single_card_type_card_descriptor(&descriptor_words) {
+                return Ok(PredicateAst::ItMatches(filter));
+            }
             let descriptor_tokens = descriptor_words
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -3176,6 +3359,37 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered[0] == "you"
         && (filtered[1] == "control" || filtered[1] == "controls")
     {
+        if let Some(and_idx) = find_index(&filtered[2..], |word| *word == "and") {
+            let and_idx = 2 + and_idx;
+            if and_idx > 2 && and_idx + 1 < filtered.len() {
+                let left_tokens = filtered[2..and_idx]
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                let right_tokens = filtered[and_idx + 1..]
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                if let (Ok(mut left_filter), Ok(mut right_filter)) = (
+                    parse_object_filter(&left_tokens, false),
+                    parse_object_filter(&right_tokens, false),
+                ) {
+                    left_filter.controller = Some(PlayerFilter::You);
+                    right_filter.controller = Some(PlayerFilter::You);
+                    return Ok(PredicateAst::And(
+                        Box::new(PredicateAst::PlayerControls {
+                            player: PlayerAst::You,
+                            filter: left_filter,
+                        }),
+                        Box::new(PredicateAst::PlayerControls {
+                            player: PlayerAst::You,
+                            filter: right_filter,
+                        }),
+                    ));
+                }
+            }
+        }
+
         let mut filter_start = 2usize;
         let mut min_count: Option<u32> = None;
         let mut exact_count: Option<u32> = None;
@@ -3771,6 +3985,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_inherits_it_for_bare_or_descriptor_tail() -> Result<(), CardTextError> {
+        let tokens = lex_line("If it's a creature or planeswalker card", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        match parsed {
+            PredicateAst::Or(left, right) => {
+                assert!(
+                    matches!(*left, PredicateAst::ItMatches(ref filter) if filter.card_types == vec![CardType::Creature]),
+                    "expected creature left predicate, got {left:?}"
+                );
+                assert!(
+                    matches!(*right, PredicateAst::ItMatches(ref filter) if filter.card_types == vec![CardType::Planeswalker]),
+                    "expected planeswalker right predicate, got {right:?}"
+                );
+            }
+            other => panic!("expected inherited-reference or predicate, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), CardTextError> {
         let tokens = lex_line("If you don't put the card into your hand", 0)?;
         let predicate_tokens = tokens
@@ -3997,6 +4238,31 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_card_in_your_graveyard_existence() -> Result<(), CardTextError> {
+        let tokens = lex_line("If there is an Elf card in your graveyard", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        let mut expected_filter = ObjectFilter::default()
+            .with_subtype(parse_subtype_word("elf").expect("elf subtype"))
+            .in_zone(Zone::Graveyard);
+        expected_filter.owner = Some(PlayerFilter::You);
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: expected_filter,
+            }
         );
         Ok(())
     }

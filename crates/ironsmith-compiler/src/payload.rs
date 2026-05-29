@@ -97,6 +97,7 @@ pub enum KeywordAction {
     },
     Casualty(u32),
     VariableCasualtyPlaneswalkerCopy,
+    Demonstrate,
     Conspire,
     Amplify(u32),
     AuraSwap(ManaCost),
@@ -138,6 +139,7 @@ pub enum KeywordAction {
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
     ProtectionFromFilter(ObjectFilter),
+    ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -244,6 +246,7 @@ impl KeywordAction {
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
                 | Self::ProtectionFromFilter(_)
+                | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -356,6 +359,7 @@ impl KeywordAction {
             Self::VariableCasualtyPlaneswalkerCopy => {
                 "Casualty X. The copy isn't legendary and has starting loyalty X.".to_string()
             }
+            Self::Demonstrate => "Demonstrate".to_string(),
             Self::Conspire => "Conspire".to_string(),
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
@@ -408,6 +412,12 @@ impl KeywordAction {
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
             Self::ProtectionFromFilter(filter) => {
                 format!("Protection from {}", filter.description())
+            }
+            Self::ProtectionFromEachManaValueAmong(filter) => {
+                format!(
+                    "Protection from each mana value among {}",
+                    filter.description()
+                )
             }
             Self::ProtectionFromCardType(card_type) => {
                 format!(

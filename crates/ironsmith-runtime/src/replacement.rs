@@ -152,6 +152,8 @@ pub enum ReplacementAction {
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
+        linked_exile_objects: Vec<ObjectId>,
+        additional_counters: Vec<(CounterType, u32)>,
         name_override: Option<String>,
         added_card_types: Vec<CardType>,
         removed_supertypes: Vec<Supertype>,

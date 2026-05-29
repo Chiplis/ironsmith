@@ -551,6 +551,7 @@ pub(crate) enum KeywordAction {
     },
     Casualty(u32),
     VariableCasualtyPlaneswalkerCopy,
+    Demonstrate,
     Conspire,
     Amplify(u32),
     AuraSwap(ManaCost),
@@ -592,6 +593,7 @@ pub(crate) enum KeywordAction {
     ProtectionFromChosenPlayer,
     ProtectionFromChosenColor,
     ProtectionFromFilter(ObjectFilter),
+    ProtectionFromEachManaValueAmong(ObjectFilter),
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
@@ -697,6 +699,7 @@ impl KeywordAction {
                 | Self::ProtectionFromChosenPlayer
                 | Self::ProtectionFromChosenColor
                 | Self::ProtectionFromFilter(_)
+                | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
@@ -808,6 +811,7 @@ impl KeywordAction {
             Self::VariableCasualtyPlaneswalkerCopy => {
                 "Casualty X. The copy isn't legendary and has starting loyalty X.".to_string()
             }
+            Self::Demonstrate => "Demonstrate".to_string(),
             Self::Conspire => "Conspire".to_string(),
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
@@ -854,6 +858,12 @@ impl KeywordAction {
             Self::ProtectionFromChosenColor => "Protection from the chosen color".to_string(),
             Self::ProtectionFromFilter(filter) => {
                 format!("Protection from {}", filter.description())
+            }
+            Self::ProtectionFromEachManaValueAmong(filter) => {
+                format!(
+                    "Protection from each mana value among {}",
+                    filter.description()
+                )
             }
             Self::ProtectionFromCardType(card_type) => format!(
                 "Protection from {}",
@@ -1673,6 +1683,7 @@ impl CardDefinitionBuilder {
             KeywordAction::VariableCasualtyPlaneswalkerCopy => {
                 self.variable_casualty_planeswalker_copy()
             }
+            KeywordAction::Demonstrate => self.demonstrate(),
             KeywordAction::Conspire => self.conspire(),
             KeywordAction::Amplify(amount) => self.amplify(amount),
             KeywordAction::AuraSwap(cost) => self.aura_swap(cost),
@@ -1755,6 +1766,11 @@ impl CardDefinitionBuilder {
                 StaticAbility::protection(crate::ability::ProtectionFrom::ChosenColor),
             )),
             KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
+            KeywordAction::ProtectionFromEachManaValueAmong(filter) => {
+                self.with_ability(Ability::static_ability(StaticAbility::protection(
+                    crate::ability::ProtectionFrom::EachManaValueAmong(filter),
+                )))
+            }
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -2951,6 +2967,47 @@ impl CardDefinitionBuilder {
                 trigger: Trigger::you_cast_this_spell(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
+                )]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+        })
+    }
+
+    /// Add demonstrate.
+    ///
+    /// Demonstrate means "When you cast this spell, you may copy it. If you do,
+    /// choose an opponent to also copy it. Players may choose new targets for
+    /// their copies."
+    pub fn demonstrate(self) -> Self {
+        use crate::effect::EffectId;
+
+        let opponent_tag = TagKey::from("demonstrate_opponent");
+        let opponent = PlayerFilter::TaggedPlayer(opponent_tag.clone());
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
+                    vec![
+                        Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                        Effect::new(crate::effects::ChoosePlayerEffect::new(
+                            PlayerFilter::You,
+                            PlayerFilter::Opponent,
+                            opponent_tag.clone(),
+                        )),
+                        Effect::with_id(
+                            1,
+                            Effect::new(crate::effects::CopySpellEffect::new_for_player(
+                                ChooseSpec::Source,
+                                1,
+                                opponent.clone(),
+                            )),
+                        ),
+                        Effect::may_choose_new_targets_player(EffectId(0), PlayerFilter::You),
+                        Effect::may_choose_new_targets_player(EffectId(1), opponent),
+                    ],
                 )]),
                 choices: vec![],
                 intervening_if: None,
@@ -9420,14 +9477,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_rejects_most_common_color_constraint_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
+    fn parse_supports_most_common_color_constraint_clause() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
             .parse_text(
                 "Return target permanent to its owner's hand if that permanent shares a color with the most common color among all permanents or a color tied for most common.",
-            );
+            )
+            .expect("most-common-color conditional should parse structurally");
+        let debug = format!("{:#?}", definition.spell_effect);
         assert!(
-            result.is_err(),
-            "unsupported most-common-color conditional should fail parse instead of dropping the condition"
+            debug.contains("ConditionalEffect") && debug.contains("SharesMostCommonPermanentColor"),
+            "expected most-common-color target condition in lowered effects, got {debug}"
         );
     }
 

@@ -26,6 +26,10 @@ pub enum DerivedAlternativeCast<C> {
     EscapeFromCardManaCost { exile_count: u32 },
     /// Cast from hand by paying generic mana equal to the card's mana value.
     ManaValueAsGenericFromHand,
+    /// Cast from hand by paying life equal to the card's mana value.
+    LifeEqualManaValueFromHand {
+        usage_limit: Option<GrantUsageLimit>,
+    },
     /// Cast from the graveyard using the card's mana cost plus optional extra cost components.
     GraveyardCastFromCardManaCost {
         additional_costs: Vec<C>,
@@ -45,12 +49,14 @@ impl<C> DerivedAlternativeCast<C> {
             Self::MiracleFromCardManaCostReducedBy { .. } => "Miracle",
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
+            Self::LifeEqualManaValueFromHand { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
         }
     }
 
     pub fn usage_limit(&self) -> Option<GrantUsageLimit> {
         match self {
+            Self::LifeEqualManaValueFromHand { usage_limit } => *usage_limit,
             Self::GraveyardCastFromCardManaCost { usage_limit, .. } => *usage_limit,
             _ => None,
         }
@@ -96,6 +102,10 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
             condition: None,
             exiles_after_resolution: false,
         }
+    }
+
+    pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
+        Self::LifeEqualManaValueFromHand { usage_limit }
     }
 
     pub fn graveyard_cast_from_cards_mana_cost_with_condition(
@@ -189,6 +199,14 @@ where
     /// to the granted card's mana value.
     pub fn mana_value_as_generic_from_hand() -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand)
+    }
+
+    /// Create a grantable for casting from hand by paying life equal to
+    /// the granted card's mana value.
+    pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::life_equal_mana_value_from_hand(
+            usage_limit,
+        ))
     }
 
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
@@ -448,6 +466,7 @@ where
                     card_type.to_string().to_ascii_lowercase()
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
+                PlayerFilter::HasMoreLifeThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
@@ -648,6 +667,29 @@ where
             return format!(
                 "{may_prefix} pay {{X}} rather than pay the mana cost for {} you cast, where X is that spell's mana value",
                 castable_filter_description(&self.filter)
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit },
+        ) = &self.grantable
+            && self.zone == Zone::Hand
+        {
+            let prefix = if matches!(
+                usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            ) {
+                "Once during each of your turns, "
+            } else {
+                ""
+            };
+            let filter_desc = castable_filter_description(&self.filter);
+            let singular_filter_desc = filter_desc
+                .strip_suffix(" spells")
+                .map(|base| format!("a {base} spell"))
+                .unwrap_or(filter_desc);
+            return format!(
+                "{prefix}{} cast {singular_filter_desc} by paying life equal to its mana value rather than paying its mana cost",
+                may_prefix.to_ascii_lowercase()
             );
         }
         if let Grantable::DerivedAlternativeCast(

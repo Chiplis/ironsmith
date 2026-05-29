@@ -311,6 +311,13 @@ pub(crate) enum TriggerSpec {
         from: Zone,
         owner: Option<PlayerFilter>,
     },
+    ThisTransforms {
+        destination_name: Option<String>,
+    },
+    ThisTransformsWithSurface {
+        surface: crate::target::SourceReferenceSurface,
+        destination_name: Option<String>,
+    },
     ThisDealsCombatDamageToPlayer,
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
@@ -345,6 +352,7 @@ pub(crate) enum TriggerSpec {
         amount: u32,
     },
     SagaChapter(Vec<u32>),
+    FinalChapterAbilityResolved(ObjectFilter),
     Either(Box<TriggerSpec>, Box<TriggerSpec>),
 }
 
@@ -507,6 +515,7 @@ pub(crate) enum PredicateAst {
     SourceIsTapped,
     SourceIsSaddled,
     SourceMatches(ObjectFilter),
+    TriggeringObjectHadToAttackThisCombat,
 
     SourceHasNoCounter(CounterType),
     TriggeringObjectHadNoCounter(CounterType),
@@ -518,6 +527,7 @@ pub(crate) enum PredicateAst {
         counter_type: CounterType,
         count: u32,
     },
+    SourceHasCountersAtLeast(u32),
     SourceHasAttachmentsMatching {
         filter: ObjectFilter,
         comparison: crate::effect::Comparison,
@@ -585,6 +595,7 @@ impl PredicateAst {
             | PredicateAst::SourceMatches(_)
             | PredicateAst::SourceHasNoCounter(_)
             | PredicateAst::SourceHasCounterAtLeast { .. }
+            | PredicateAst::SourceHasCountersAtLeast(_)
             | PredicateAst::SourceHasAttachmentsMatching { .. }
             | PredicateAst::SourcePowerAtLeast(_)
             | PredicateAst::SourceAttackedThisTurn
@@ -743,6 +754,11 @@ pub(crate) enum SubjectVerbActionAst {
         sides: u32,
         die_text: Option<String>,
     },
+    RollDiceChooseResult {
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    },
     ShuffleHandAndGraveyardIntoLibrary,
     ShuffleGraveyardIntoLibrary,
     ReorderGraveyard,
@@ -895,6 +911,9 @@ pub(crate) enum SubjectVerbActionAst {
         count: Value,
         tag: TagKey,
         reveal: bool,
+    },
+    LookAtObjects {
+        filter: ObjectFilter,
     },
     PutIntoHand {
         object: ObjectRefAst,
@@ -1137,6 +1156,11 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    AddColors {
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    },
     AddAllSubtypesOfFamily {
         target: TargetAst,
         family: SubtypeFamily,
@@ -1315,6 +1339,11 @@ pub(crate) enum SubjectVerbActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         all_this_turn: bool,
+    },
+    RedirectAllDamageThisTurnToTarget {
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
     },
     Meld {
         result_name: String,
@@ -1738,6 +1767,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     f.debug_tuple("RollDie").field(sides).finish()
                 }
             }
+            Self::RollDiceChooseResult {
+                count,
+                sides,
+                die_text,
+            } => f
+                .debug_struct("RollDiceChooseResult")
+                .field("count", count)
+                .field("sides", sides)
+                .field("die_text", die_text)
+                .finish(),
             Self::ShuffleHandAndGraveyardIntoLibrary => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")
             }
@@ -1977,6 +2016,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count", count)
                 .field("tag", tag)
                 .field("reveal", reveal)
+                .finish(),
+            Self::LookAtObjects { filter } => f
+                .debug_struct("LookAtObjects")
+                .field("filter", filter)
                 .finish(),
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
@@ -2408,6 +2451,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("subtypes", subtypes)
                 .field("duration", duration)
                 .finish(),
+            Self::AddColors {
+                target,
+                colors,
+                duration,
+            } => f
+                .debug_struct("AddColors")
+                .field("target", target)
+                .field("colors", colors)
+                .field("duration", duration)
+                .finish(),
             Self::AddAllSubtypesOfFamily {
                 target,
                 family,
@@ -2649,6 +2702,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("source", source)
                 .field("target", target)
                 .field("all_this_turn", all_this_turn)
+                .finish(),
+            Self::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
+            } => f
+                .debug_struct("RedirectAllDamageThisTurnToTarget")
+                .field("player_filter", player_filter)
+                .field("object_filter", object_filter)
+                .field("target", target)
                 .finish(),
             Self::Meld {
                 result_name,
@@ -3067,6 +3130,9 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
+    Sequence {
+        effects: Vec<EffectAst>,
+    },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
@@ -3967,6 +4033,22 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_add_colors(
+        target: TargetAst,
+        colors: ColorSet,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AddColors {
+                target,
+                colors,
+                duration,
+            },
+        )
+    }
+
     pub(crate) fn subject_verb_add_all_subtypes_of_family(
         target: TargetAst,
         family: SubtypeFamily,
@@ -4344,6 +4426,22 @@ impl EffectAst {
                 source,
                 target,
                 all_this_turn: true,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_target(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                player_filter,
+                object_filter,
+                target,
             },
         )
     }
@@ -5233,6 +5331,14 @@ impl EffectAst {
         Self::subject_verb_top_library_cards(player, count, tag, true)
     }
 
+    pub(crate) fn subject_verb_look_at_objects(player: PlayerAst, filter: ObjectFilter) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LookAtObjects { filter },
+        )
+    }
+
     fn subject_verb_top_library_cards(
         player: PlayerAst,
         count: Value,
@@ -5337,6 +5443,23 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::RollDie { sides, die_text },
+        )
+    }
+
+    pub(crate) fn subject_verb_roll_dice_choose_result_with_die_text(
+        player: PlayerAst,
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::RollDiceChooseResult {
+                count,
+                sides,
+                die_text,
+            },
         )
     }
 

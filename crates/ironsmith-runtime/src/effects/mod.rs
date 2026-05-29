@@ -88,12 +88,12 @@ pub use cards::{
     ClashEffect, ClashOpponentMode, ConniveEffect, ConsultTopOfLibraryEffect,
     ConsultTopOfLibraryStopRule, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, ExileTopOfLibraryEffect,
-    ExileUntilMatchEffect, FatesealEffect, LearnEffect, LookAtHandEffect, LookAtTopCardsEffect,
-    MillEffect, PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    RevealFromHandEffect, RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect,
-    ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
-    ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
-    ShuffleLibraryEffect, SurveilEffect,
+    ExileUntilMatchEffect, FatesealEffect, LearnEffect, LookAtHandEffect, LookAtObjectsEffect,
+    LookAtTopCardsEffect, MillEffect, PutTaggedRemainderOnLibraryBottomEffect,
+    RearrangeLookedCardsInLibraryEffect, RevealFromHandEffect, RevealSourceFromHandEffect,
+    RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect, SearchLibrarySlot,
+    SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
+    ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
@@ -131,7 +131,8 @@ pub(crate) use counters::{
 };
 pub use damage::{
     ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,
-    PreventNextTimeDamageSource, PreventNextTimeDamageTarget, RedirectNextDamageToTargetEffect,
+    PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
+    RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
@@ -167,9 +168,10 @@ pub use player::{
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayEnergyEffect,
-    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDieEffect,
-    SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
+    RollDieEffect, SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect,
+    SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect,
+    WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

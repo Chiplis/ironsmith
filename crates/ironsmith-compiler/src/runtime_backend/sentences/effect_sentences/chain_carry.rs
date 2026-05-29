@@ -1085,6 +1085,40 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             previous_segment = Some(segment);
             continue;
         }
+        let primitive_segment_effects = if let Some(effects) = run_subject_verb_primitives_lexed(
+            &segment,
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )? {
+            Some(effects)
+        } else {
+            run_subject_verb_primitives_lexed(
+                &segment,
+                POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+                &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+            )?
+        };
+        if let Some(segment_effects) = primitive_segment_effects {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                }
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
+                    carried_duration = Some(duration);
+                }
+                effects.push(effect);
+            }
+            previous_segment = Some(segment);
+            continue;
+        }
         if let Some(followup) = parse_token_copy_followup_sentence_lexed(&segment)
             && try_apply_token_copy_followup(&mut effects, followup)?
         {
@@ -1227,6 +1261,7 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
                 | SubjectVerbActionAst::AddCardTypes { duration, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
                 | SubjectVerbActionAst::AddSubtypes { duration, .. }
+                | SubjectVerbActionAst::AddColors { duration, .. }
                 | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
                 | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
                 | SubjectVerbActionAst::SetColors { duration, .. }
@@ -1290,6 +1325,10 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
                     ..
                 }
                 | SubjectVerbActionAst::AddSubtypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddColors {
                     duration: effect_duration,
                     ..
                 }
@@ -2193,6 +2232,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::WinGame
                 | SubjectVerbActionAst::FlipCoin
                 | SubjectVerbActionAst::RollDie { .. }
+                | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
                 | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
                 | SubjectVerbActionAst::ReorderGraveyard
@@ -2264,6 +2304,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::WinGame
                 | SubjectVerbActionAst::FlipCoin
                 | SubjectVerbActionAst::RollDie { .. }
+                | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
                 | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
                 | SubjectVerbActionAst::ReorderGraveyard
@@ -2479,6 +2520,18 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             if let Some(effect_player) = subject_verb_player_action_player_mut(effect)
                 && matches!(*effect_player, PlayerAst::Implicit)
             {
+                *effect_player = player;
+            }
+        }
+        EffectAst::ChooseObjects {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::ChooseObjectsAcrossZones {
+            player: effect_player,
+            ..
+        } => {
+            if matches!(*effect_player, PlayerAst::Implicit) {
                 *effect_player = player;
             }
         }

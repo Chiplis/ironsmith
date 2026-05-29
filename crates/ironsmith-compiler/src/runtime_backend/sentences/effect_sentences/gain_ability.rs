@@ -1848,6 +1848,10 @@ fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration
                     duration: effect_duration,
                     ..
                 }
+                | SubjectVerbActionAst::AddColors {
+                    duration: effect_duration,
+                    ..
+                }
                 | SubjectVerbActionAst::AddAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..

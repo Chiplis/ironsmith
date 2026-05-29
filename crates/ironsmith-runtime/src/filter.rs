@@ -9,7 +9,7 @@
 //! - Cost requirements (for sacrifice costs, etc.)
 //! - Triggered ability conditions (for triggers that watch for specific events)
 
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, Object, ObjectKind};
@@ -389,6 +389,9 @@ fn tagged_constraint_matches_subject(
                 .intersection(snapshot.colors)
                 .is_empty()
         }),
+        TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+            subject_shares_most_common_permanent_color(subject, game)
+        }
         TaggedOpbjectRelation::SameStableId => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.stable_id == subject.subject_stable_id()),
@@ -432,6 +435,45 @@ fn tagged_constraint_matches_subject(
             .iter()
             .all(|snapshot| snapshot.object_id != subject.subject_object_id()),
     }
+}
+
+fn most_common_permanent_colors(game: &GameState) -> ColorSet {
+    let mut counts = [0u32; 5];
+    for object_id in game.objects_in_zone(Zone::Battlefield) {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        let colors = game
+            .current_colors(object_id)
+            .unwrap_or_else(|| object.colors());
+        for (idx, color) in Color::ALL.into_iter().enumerate() {
+            if colors.contains(color) {
+                counts[idx] += 1;
+            }
+        }
+    }
+
+    let max_count = counts.into_iter().max().unwrap_or(0);
+    if max_count == 0 {
+        return ColorSet::new();
+    }
+
+    Color::ALL
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, color)| (counts[idx] == max_count).then_some(color))
+        .collect()
+}
+
+fn subject_shares_most_common_permanent_color(
+    subject: &impl TaggedConstraintSubject,
+    game: &GameState,
+) -> bool {
+    let most_common_colors = most_common_permanent_colors(game);
+    let subject_colors = game
+        .current_colors(subject.subject_object_id())
+        .unwrap_or_else(|| subject.subject_colors());
+    !most_common_colors.is_empty() && !subject_colors.intersection(most_common_colors).is_empty()
 }
 
 // ============================================================================
@@ -1128,6 +1170,7 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. } => {
                 base.matches_player(player, ctx)
             }
+            PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -1190,6 +1233,17 @@ pub(crate) fn player_filter_matches_game(
             let candidate_hand = game.player(player).map(|p| p.hand.len()).unwrap_or(0);
             let your_hand = game.player(you).map(|p| p.hand.len()).unwrap_or(0);
             candidate_hand >= your_hand.saturating_add(*count as usize)
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            let Some(you) = ctx.you else {
+                return false;
+            };
+            let candidate_life = game.player(player).map(|p| p.life).unwrap_or(0);
+            let your_life = game.player(you).map(|p| p.life).unwrap_or(0);
+            candidate_life > your_life
         }
         PlayerFilter::MaxSpeed {
             base,
@@ -1433,6 +1487,12 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         for constraint in &self.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::SharesMostCommonPermanentColor {
+                if !subject_shares_most_common_permanent_color(subject, game) {
+                    return false;
+                }
+                continue;
+            }
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
                 if let Some(matches) = intrinsic_attachment_tag_constraint_matches_subject(
                     subject,
@@ -2396,6 +2456,7 @@ impl ObjectFilterExt for ObjectFilter {
             relation,
             TaggedOpbjectRelation::IsNotTaggedObject
                 | TaggedOpbjectRelation::DifferentNameFromTagged
+                | TaggedOpbjectRelation::SharesMostCommonPermanentColor
         )
     }
 
@@ -2975,6 +3036,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -3049,6 +3113,9 @@ impl ObjectFilterExt for ObjectFilter {
                     "the player who has the most cards in hand owns".to_string()
                 }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -3194,6 +3261,12 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
                     post_noun_qualifiers.push("that shares a color with that object".to_string());
+                }
+                TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+                    post_noun_qualifiers.push(
+                        "that shares a color with the most common color among all permanents or a color tied for most common"
+                            .to_string(),
+                    );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
                     post_noun_qualifiers
@@ -4099,6 +4172,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
+        PlayerFilter::HasMoreLifeThanYou { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::MaxSpeed { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
@@ -4151,7 +4225,13 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = count.to_string();
             format!(
-                "{} who has at least {count_text} more cards in hand than you do",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability",
+                describe_player_filter(base)
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability",
                 describe_player_filter(base)
             )
         }
@@ -4605,6 +4685,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &crate::effect::Value) -> String {
         use crate::effect::Value;
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
@@ -4656,6 +4737,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     "that card's mana value".to_string()
                 }
             }
+            Value::EffectValue(_) => "that result".to_string(),
+            Value::EffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            } => "the other result".to_string(),
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",
@@ -4762,6 +4848,7 @@ mod tests {
             blockers: std::collections::HashMap::from([(attacker.id, vec![blocker.id])]),
             damage_assignment_order: std::collections::HashMap::new(),
             attacking_bands: Vec::new(),
+            had_to_attack_this_combat: Default::default(),
         });
 
         let blocker_snapshot =

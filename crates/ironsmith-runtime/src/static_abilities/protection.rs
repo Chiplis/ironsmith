@@ -99,6 +99,10 @@ impl StaticAbilityKind for Protection {
                 };
                 format!("Protection from {description}")
             }
+            ProtectionFrom::EachManaValueAmong(filter) => format!(
+                "Protection from each mana value among {}",
+                describe_protection_mana_value_scope(filter)
+            ),
         }
     }
 
@@ -113,6 +117,34 @@ impl StaticAbilityKind for Protection {
     fn protection_from(&self) -> Option<&ProtectionFrom> {
         Some(&self.from)
     }
+}
+
+fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    pluralize_leading_subject(&description).unwrap_or(description)
+}
+
+fn pluralize_leading_subject(description: &str) -> Option<String> {
+    let description = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+        .unwrap_or(description);
+    for (singular, plural) in [
+        ("artifact", "artifacts"),
+        ("creature", "creatures"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("permanent", "permanents"),
+        ("spell", "spells"),
+    ] {
+        if description == singular {
+            return Some(plural.to_string());
+        }
+        if let Some(rest) = description.strip_prefix(&format!("{singular} ")) {
+            return Some(format!("{plural} {rest}"));
+        }
+    }
+    None
 }
 
 fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {

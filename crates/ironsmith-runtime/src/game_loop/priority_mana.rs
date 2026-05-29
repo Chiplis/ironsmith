@@ -3827,7 +3827,8 @@ pub(super) fn finalize_spell_cast(
             spell_obj.optional_costs_paid.mark_label_paid("Evoke");
         }
     }
-    if let Some(label) = alternative_cast_label(game, caster, new_id, &casting_method)
+    let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
+    if let Some(label) = selected_alternative_label.as_deref()
         && !label.eq_ignore_ascii_case("Parsed alternative cost")
         && !matches!(
             label.to_ascii_lowercase().as_str(),
@@ -3846,27 +3847,26 @@ pub(super) fn finalize_spell_cast(
         ..
     } = &casting_method
     {
-        let source_has_once_graveyard_cast_grant = game.object(*source).is_some_and(|source_obj| {
+        let source_has_selected_once_grant = game.object(*source).is_some_and(|source_obj| {
             source_obj.abilities.iter().any(|ability| {
                 let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                     return false;
                 };
                 static_ability.grant_spec().is_some_and(|spec| {
+                    let Some(label) = selected_alternative_label.as_deref() else {
+                        return false;
+                    };
                     matches!(
                         spec.grantable,
-                        crate::grant::Grantable::DerivedAlternativeCast(
-                            crate::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
-                                usage_limit: Some(
-                                    crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
-                                ),
-                                ..
-                            }
-                        )
+                        crate::grant::Grantable::DerivedAlternativeCast(ref derived)
+                            if derived.usage_limit()
+                                == Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+                                && derived.display_name().eq_ignore_ascii_case(label)
                     )
                 })
             })
         });
-        if source_has_once_graveyard_cast_grant {
+        if source_has_selected_once_grant {
             game.turn_store
                 .grant_cast_uses_this_turn
                 .insert((caster, *source));

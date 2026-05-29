@@ -9,7 +9,8 @@ use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CompilationSnapshot, ParseStatus, build_parse_input,
     compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
-    default_cards_path, load_card_by_name, parse_card_definition_with_runtime_builder,
+    default_cards_path, load_card_by_name, load_card_payloads_by_name,
+    parse_card_definition_with_runtime_builder,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -227,6 +228,44 @@ fn compile_job_for_name(
         }
         (None, None) => Err(format!("unknown card name: {name}")),
     }
+}
+
+fn compile_jobs_for_name(
+    cards_path: &str,
+    name: &str,
+    input_text: Option<&str>,
+) -> Result<Vec<CompileJob>, String> {
+    if input_text.is_none() {
+        let payloads =
+            load_card_payloads_by_name(cards_path, name).map_err(|err| err.to_string())?;
+        if !payloads.is_empty() {
+            return payloads
+                .into_iter()
+                .map(|card| {
+                    let name = card.name.clone();
+                    let oracle_text = card.oracle_text.clone();
+                    let parse_input = card.parse_input.clone();
+                    let authoritative_snapshot = {
+                        let _scope = card_parse_trace::scope("authoritative snapshot");
+                        compile_authoritative_snapshot_from_payload(&card)
+                    };
+                    let compiled_definition = {
+                        let _scope = card_parse_trace::scope("display definition");
+                        compile_definition_from_payload(&card).ok()
+                    };
+                    Ok(CompileJob {
+                        name,
+                        oracle_text,
+                        parse_input,
+                        authoritative_snapshot: Some(authoritative_snapshot),
+                        compiled_definition,
+                    })
+                })
+                .collect();
+        }
+    }
+
+    compile_job_for_name(cards_path, name, input_text).map(|job| vec![job])
 }
 
 fn write_compiled_job<W: Write>(
@@ -450,20 +489,25 @@ fn main() -> Result<(), String> {
     }
 
     let mut stdout = io::stdout().lock();
-    for (idx, name) in names.iter().enumerate() {
-        let compile_one = || -> Result<Vec<u8>, String> {
+    let mut output_idx = 0;
+    for name in names.iter() {
+        let compile_one = || -> Result<Vec<Vec<u8>>, String> {
             card_parse_trace::event(format!("Trace: {name}"));
-            let job = compile_job_for_name(&cards_path, name, input_text.as_deref())?;
-            let mut output = Vec::new();
-            if compare_text {
-                write_compare_text_job(&mut output, &job)?;
-            } else {
-                write_compiled_job(&mut output, &job, detailed, raw, show_definition)?;
-            }
-            Ok(output)
+            compile_jobs_for_name(&cards_path, name, input_text.as_deref())?
+                .iter()
+                .map(|job| {
+                    let mut output = Vec::new();
+                    if compare_text {
+                        write_compare_text_job(&mut output, job)?;
+                    } else {
+                        write_compiled_job(&mut output, job, detailed, raw, show_definition)?;
+                    }
+                    Ok(output)
+                })
+                .collect()
         };
 
-        let output = if trace {
+        let outputs = if trace {
             let (result, report) = card_parse_trace::capture(compile_one);
             if !report.is_empty() {
                 eprint!("{}", report.render());
@@ -473,12 +517,15 @@ fn main() -> Result<(), String> {
             compile_one()?
         };
 
-        if idx > 0 {
-            writeln!(stdout).map_err(|err| format!("failed to write compile output: {err}"))?;
+        for output in outputs {
+            if output_idx > 0 {
+                writeln!(stdout).map_err(|err| format!("failed to write compile output: {err}"))?;
+            }
+            stdout
+                .write_all(&output)
+                .map_err(|err| format!("failed to write compile output: {err}"))?;
+            output_idx += 1;
         }
-        stdout
-            .write_all(&output)
-            .map_err(|err| format!("failed to write compile output: {err}"))?;
     }
 
     Ok(())

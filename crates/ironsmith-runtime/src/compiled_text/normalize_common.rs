@@ -50,7 +50,13 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability",
+                strip_leading_article(&describe_player_filter(base))
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability",
                 strip_leading_article(&describe_player_filter(base))
             )
         }
@@ -237,6 +243,55 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
         return lowercase_first(text);
     }
     text.to_string()
+}
+
+fn should_lowercase_trigger_effect_tail(tail: &str) -> bool {
+    let Some(first) = tail.split_whitespace().next() else {
+        return false;
+    };
+    let first = first.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    matches!(
+        first,
+        "A" | "An"
+            | "The"
+            | "This"
+            | "That"
+            | "Those"
+            | "It"
+            | "They"
+            | "If"
+            | "Then"
+            | "You"
+            | "Add"
+            | "Attach"
+            | "Cast"
+            | "Choose"
+            | "Copy"
+            | "Counter"
+            | "Create"
+            | "Destroy"
+            | "Discard"
+            | "Draw"
+            | "Exile"
+            | "Fight"
+            | "Gain"
+            | "Lose"
+            | "Mill"
+            | "Pay"
+            | "Play"
+            | "Put"
+            | "Regenerate"
+            | "Reveal"
+            | "Return"
+            | "Sacrifice"
+            | "Scry"
+            | "Search"
+            | "Shuffle"
+            | "Surveil"
+            | "Tap"
+            | "Transform"
+            | "Untap"
+    )
 }
 
 pub(super) fn describe_mana_pool_owner(filter: &PlayerFilter) -> String {
@@ -5534,6 +5589,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_uppercase())
+        && should_lowercase_trigger_effect_tail(tail)
     {
         normalized = format!("{head}, {}", lowercase_first(tail));
     }
@@ -5952,6 +6008,13 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }
     if describe_tagged_this_way_action(filter) == Some("revealed") {
         return pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+    }
+    if describe_tagged_this_way_action(filter) == Some("discarded") {
+        let mut untagged = filter.clone();
+        untagged.tagged_constraints.clear();
+        if untagged == ObjectFilter::default() {
+            return "cards discarded this way".to_string();
+        }
     }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -6434,9 +6497,7 @@ pub(super) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
 
 pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
-        ChooseSpec::SurfaceHinted { spec, hints }
-            if matches!(spec.as_ref().unhinted(), ChooseSpec::Source) =>
-        {
+        ChooseSpec::SurfaceHinted { spec, hints } => {
             match hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
             }) {
@@ -6448,7 +6509,6 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 None => describe_choose_spec(spec),
             }
         }
-        ChooseSpec::SurfaceHinted { spec, .. } => describe_choose_spec(spec),
         ChooseSpec::Target(inner) => {
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
@@ -6662,6 +6722,17 @@ pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
 
 pub(super) fn describe_goad_target(spec: &ChooseSpec) -> String {
     match spec {
+        ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.card_types == vec![CardType::Creature]
+                && filter.controller == Some(PlayerFilter::Defending)
+                && filter.subtypes.is_empty()
+            {
+                return "target creature that player controls".to_string();
+            }
+            describe_choose_spec(spec)
+        }
         ChooseSpec::Tagged(tag) => {
             if tag.as_str().starts_with("counters_") {
                 return "each creature that had counters put on it this way".to_string();
@@ -7523,6 +7594,7 @@ fn describe_effect_metric_value(
             "the greatest number of cards a player discarded this way".to_string()
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
+        crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
         Some(0) | None => base,
@@ -8281,6 +8353,18 @@ pub(super) fn describe_apply_continuous_clauses(
         crate::continuous::Modification::SetColors(colors) => {
             clauses.push(format!(
                 "becomes {}",
+                describe_token_color_words(*colors, false)
+            ));
+        }
+        crate::continuous::Modification::AddColors(colors) => {
+            let verb = if plural_target { "become" } else { "becomes" };
+            let other_colors = if plural_target {
+                "their other colors"
+            } else {
+                "its other colors"
+            };
+            clauses.push(format!(
+                "{verb} {} in addition to {other_colors}",
                 describe_token_color_words(*colors, false)
             ));
         }
@@ -9056,6 +9140,63 @@ fn describe_attack_block_if_able_apply_continuous(
     }
 }
 
+fn describe_color_subtype_addition_pair(
+    first: &crate::effects::ApplyContinuousEffect,
+    second: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+    plural_target: bool,
+) -> Option<String> {
+    if !first.additional_modifications.is_empty()
+        || !second.additional_modifications.is_empty()
+        || !first.runtime_modifications.is_empty()
+        || !second.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+
+    let (colors, subtypes) = match (&first.modification, &second.modification) {
+        (
+            Some(crate::continuous::Modification::AddColors(colors)),
+            Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+        ) => (*colors, subtypes),
+        (
+            Some(crate::continuous::Modification::AddSubtypes(subtypes)),
+            Some(crate::continuous::Modification::AddColors(colors)),
+        ) => (*colors, subtypes),
+        _ => return None,
+    };
+    if colors.is_empty() || subtypes.is_empty() {
+        return None;
+    }
+
+    let subtype_words = subtypes
+        .iter()
+        .map(|subtype| subtype.to_string().to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let descriptor = format!(
+        "{} {subtype_words}",
+        describe_token_color_words(colors, false)
+    );
+    let descriptor = if plural_target {
+        pluralize_noun_phrase(&descriptor)
+    } else {
+        with_indefinite_article(&descriptor)
+    };
+    let verb = if plural_target { "become" } else { "becomes" };
+    let other = if plural_target {
+        "their other colors and types"
+    } else {
+        "its other colors and types"
+    };
+    let mut text = format!("{target} {verb} {descriptor} in addition to {other}");
+    if let Some(tail) = describe_apply_continuous_tail(first) {
+        text.push(' ');
+        text.push_str(&tail);
+    }
+    Some(text)
+}
+
 pub(super) fn describe_compact_apply_continuous_pair(
     first: &crate::effects::ApplyContinuousEffect,
     second: &crate::effects::ApplyContinuousEffect,
@@ -9071,6 +9212,10 @@ pub(super) fn describe_compact_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target)
+    {
+        return Some(text);
+    }
     let mut clauses = describe_apply_continuous_clauses(first, plural_target);
     clauses.extend(describe_apply_continuous_clauses(second, plural_target));
     if clauses.is_empty() {
@@ -9127,6 +9272,10 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target)
+    {
+        return Some(text);
+    }
     if tagged_apply_pair_preserves_animated_land(first, second)
         && (first.until == second.until || matches!(second.until, Until::Forever))
         && (first.condition == second.condition || second.condition.is_none())
@@ -9617,6 +9766,35 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::Attack(filter) => {
             format!("{} can't attack", filter.description())
+        }
+        crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            attackers,
+            player,
+        } => {
+            let attacker_text = if attackers
+                == &crate::target::ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::IteratedPlayer)
+            {
+                "creatures that player controls".to_string()
+            } else {
+                attackers.description()
+            };
+            let planeswalker_controller = match player {
+                PlayerFilter::You => "you control".to_string(),
+                PlayerFilter::Opponent => "your opponents control".to_string(),
+                PlayerFilter::Any => "players control".to_string(),
+                PlayerFilter::IteratedPlayer => "that player controls".to_string(),
+                PlayerFilter::Target(inner) if inner.as_ref() == &PlayerFilter::You => {
+                    "you control".to_string()
+                }
+                _ => format!("{} controls", describe_player_filter(player)),
+            };
+            format!(
+                "{} can't attack {} or planeswalkers {}",
+                attacker_text,
+                describe_player_filter(player),
+                planeswalker_controller
+            )
         }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
@@ -10216,6 +10394,25 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if matches!(
+                filter.zone,
+                Some(
+                    Zone::Graveyard
+                        | Zone::Hand
+                        | Zone::Library
+                        | Zone::Exile
+                        | Zone::Command
+                )
+            ) {
+                let mut described_filter = filter.clone();
+                if described_filter.owner.is_none() {
+                    described_filter.owner = Some(player.clone());
+                }
+                return format!(
+                    "there is {}",
+                    with_indefinite_article(&described_filter.description())
+                );
+            }
             if is_owned_player_zone(filter.zone) {
                 let object_text = with_indefinite_article(&describe_owned_player_zone_filter(
                     player, filter,
@@ -10234,23 +10431,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 .is_some_and(|controller| controller == player)
             {
                 described_filter.controller = None;
-            }
-            if matches!(
-                described_filter.zone,
-                Some(
-                    Zone::Graveyard
-                        | Zone::Hand
-                        | Zone::Library
-                        | Zone::Exile
-                        | Zone::Command
-                )
-            ) {
-                // For non-battlefield zones, the condition is about card presence rather than
-                // "control". Prefer oracle-style existential phrasing.
-                if described_filter.owner.is_none() {
-                    described_filter.owner = Some(player.clone());
-                }
-                return format!("there is {}", described_filter.description());
             }
             if described_filter.could_be_targeted_by.is_some() {
                 let described =
@@ -10564,23 +10744,28 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         },
         Condition::LifeTotalOrLess(n) => format!("your life total is {n} or less"),
         Condition::LifeTotalOrGreater(n) => format!("your life total is {n} or greater"),
-        Condition::CardsInHandOrMore(n) => format!("you have {n} or more cards in hand"),
+        Condition::CardsInHandOrMore(n) => {
+            let count = number_word(*n).unwrap_or_else(|| n.to_string());
+            format!("you have {count} or more cards in hand")
+        }
         Condition::PlayerCardsInHandOrMore { player, count } => {
             let subject = describe_player_filter(player);
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or more cards in hand",
                 subject,
                 player_verb(&subject, "have", "has"),
-                count
+                count_text
             )
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
             let subject = describe_player_filter(player);
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or fewer cards in hand",
                 subject,
                 player_verb(&subject, "have", "has"),
-                count
+                count_text
             )
         }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
@@ -10804,6 +10989,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     counter_type.description()
                 )
             }
+        }
+        Condition::SourceHasCountersAtLeast(count) => {
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            format!("there are {count_text} or more counters on it")
         }
         Condition::SourcePowerAtLeast(min_power) => {
             format!("this has power {min_power} or greater")
@@ -11250,6 +11439,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("this effect has been used fewer than {limit} times this turn")
         }
         Condition::TriggeringObjectWasEnchanted => "the triggering object was enchanted".to_string(),
+        Condition::TriggeringObjectHadToAttackThisCombat => {
+            "that creature had to attack this combat".to_string()
+        }
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,

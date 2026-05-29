@@ -1,7 +1,9 @@
 //! Or trigger combinator - matches if any of the inner triggers match.
 
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
-use crate::triggers::{ThisAttacksTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern};
+use crate::triggers::{
+    ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
+};
 use crate::zone::Zone;
 
 /// A trigger that matches if any of the inner triggers match.
@@ -69,6 +71,40 @@ impl OrTrigger {
         };
         Some(format!("Whenever {subject} {action}"))
     }
+
+    fn self_enters_or_transforms_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (zone_change, transforms) = if let (Some(zone_change), Some(transforms)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<TransformsTrigger>(),
+        ) {
+            (zone_change, transforms)
+        } else if let (Some(transforms), Some(zone_change)) = (
+            first.downcast_ref::<TransformsTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            (zone_change, transforms)
+        } else {
+            return None;
+        };
+
+        if !zone_change.this_object
+            || zone_change.from != ZonePattern::Any
+            || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
+            || zone_change.player != crate::triggers::PlayerRelation::Any
+            || zone_change.cause_filter.is_some()
+        {
+            return None;
+        }
+
+        let subject = zone_change.this_subject_text("creature");
+        let destination = transforms.destination_text();
+        Some(format!(
+            "Whenever {subject} enters or transforms into {destination}"
+        ))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -105,6 +141,9 @@ impl TriggerMatcher for OrTrigger {
             return self.triggers[0].display();
         }
         if let Some(display) = self.self_enters_or_attacks_display() {
+            return display;
+        }
+        if let Some(display) = self.self_enters_or_transforms_display() {
             return display;
         }
         // Combine displays with "or", stripping leading "When"/"Whenever" from

@@ -435,6 +435,11 @@ impl StaticAbilityModelInterpreter {
                     affected_filter: spec.affected_filter.clone(),
                     may: spec.may,
                     enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                    linked_exile_pair: spec.linked_exile_pair.map(|pair| {
+                        super::EnterAsCopyLinkedExilePairSpec {
+                            counter_type: pair.counter_type,
+                        }
+                    }),
                     copy_source_self: spec.copy_source_self,
                     copy_source_enchanted: spec.copy_source_enchanted,
                     name_override: spec.name_override.clone(),
@@ -930,6 +935,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                StaticAbility::can_block_subtype_as_though_reach(*subtype)
+            }
             ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbility::cant_be_blocked_by_more_than(*count)
             }
@@ -1017,6 +1025,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbility::set_chosen_color(filter.clone(), display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
+                StaticAbility::set_maximum_hand_size(player.clone(), *amount)
             }
             ironsmith_core::StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbility::reduce_maximum_hand_size(player.clone(), *by)
@@ -1156,6 +1167,13 @@ impl StaticAbilityModelInterpreter {
                 options,
                 display,
             } => StaticAbility::choose_named_option_as_enters(options.clone(), display.clone()),
+            ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            } => StaticAbility::choose_power_toughness_as_enters_or_turns_face_up(
+                options.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 StaticAbility::with_enter_as_copy_as_enters(
                     super::EnterAsCopyAsEntersSpec {
@@ -1163,6 +1181,11 @@ impl StaticAbilityModelInterpreter {
                         affected_filter: spec.affected_filter.clone(),
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        linked_exile_pair: spec.linked_exile_pair.map(|pair| {
+                            super::EnterAsCopyLinkedExilePairSpec {
+                                counter_type: pair.counter_type,
+                            }
+                        }),
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override.clone(),
@@ -1612,6 +1635,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
+                Some(*subtype)
+            }
+            _ => self
+                .leaf_static_ability()
+                .and_then(|ability| ability.can_block_as_though_reach_subtype()),
+        }
+    }
+
     fn has_first_strike(&self) -> bool {
         self.id() == StaticAbilityId::FirstStrike
     }
@@ -1823,6 +1857,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(_)
         )
         .then_some(super::ChooseCreatureTypeAsEntersSpec)
+    }
+
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        if let Some(ability) = self.leaf_static_ability() {
+            return ability.power_toughness_choice_as_enters_or_turns_face_up();
+        }
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                ..
+            } => Some(super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
+                options: options.clone(),
+            }),
+            _ => None,
+        }
     }
 
     fn pregame_action_kind(&self) -> Option<super::PregameActionKind> {

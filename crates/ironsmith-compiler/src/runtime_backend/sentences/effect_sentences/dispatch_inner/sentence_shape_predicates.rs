@@ -841,6 +841,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
@@ -1077,6 +1078,18 @@ fn parse_effect_sentence_with_where_x_lexed(
                 Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
                     "tap_cost_0",
                 ))))
+            }
+            Some(["the", "sacrificed", sacrificed_kind, "mana", "value"])
+            | Some(["sacrificed", sacrificed_kind, "mana", "value"]) => {
+                let sacrificed_kind = sacrificed_kind.trim_end_matches('s');
+                Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0"))
+                        .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ThisPermanentType(format!(
+                                "the sacrificed {sacrificed_kind}"
+                            )),
+                        )),
+                ))
             }
             Some(
                 [

@@ -2242,9 +2242,16 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::EquippedCreatureAttacking);
     }
     if clause_words.len() >= 4
-        && clause_words[0] == "equipped"
-        && clause_words[1] == "creature"
         && clause_words[2] == "is"
+        && matches!(
+            &clause_words[..2],
+            ["equipped", "creature"]
+                | ["equipped", "permanent"]
+                | ["enchanted", "artifact"]
+                | ["enchanted", "creature"]
+                | ["enchanted", "land"]
+                | ["enchanted", "permanent"]
+        )
     {
         let mut descriptor_words = &clause_words[3..];
         if descriptor_words.first().is_some_and(|word| is_article(word)) {
@@ -2253,8 +2260,13 @@ pub(crate) fn parse_static_condition_clause(
 
         if descriptor_words.len() == 1 {
             let descriptor = descriptor_words[0];
-            let mut filter = ObjectFilter::creature()
-                .match_tagged(crate::TagKey::from("equipped"), crate::target::TaggedOpbjectRelation::IsTaggedObject);
+            let subject_end = token_index_for_word_index(&tokens, 2).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map attached-object condition subject (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            let mut filter = parse_object_filter(&tokens[..subject_end], false)?;
             if let Some(color) = parse_color(descriptor) {
                 filter.colors = Some(color);
                 return Ok(crate::ConditionExpr::CountComparison {
@@ -2493,7 +2505,33 @@ pub(crate) fn parse_static_condition_clause(
             )));
         }
 
-        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+        let filter_word_view = AnthemNormalizedWords::new(filter_tokens);
+        let filter_words = filter_word_view.word_refs();
+        if let Some(counter_word_idx) = word_slice_find_word_where(&filter_words, |word| {
+            matches!(word, "counter" | "counters")
+        })
+        && counter_word_idx > 0
+        && filter_words
+            .get(counter_word_idx + 1)
+            .is_some_and(|word| *word == "among")
+        && let Some(counter_type) = parse_counter_type_word(filter_words[counter_word_idx - 1])
+        && let Some(among_filter_start) = filter_word_view
+            .token_index_for_word_index(counter_word_idx + 2)
+        {
+            let filter = parse_object_filter(&filter_tokens[among_filter_start..], false)
+                .map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported counter-among filter in static condition (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?;
+            return Ok(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::CountersAmong(filter, counter_type),
+                comparison,
+                display: Some(clause_words.join(" ")),
+            });
+        }
+
         let filter =
             if let Some(in_idx) = word_slice_find_word_where(&filter_words, |word| word == "in") {
                 let subject_words = &filter_words[..in_idx];

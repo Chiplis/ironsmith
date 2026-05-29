@@ -33,6 +33,7 @@ pub enum EffectMetric {
     CardTypesAmong,
     GreatestPlayerCount,
     IteratedPlayerCount,
+    OtherNumber,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -272,6 +273,10 @@ pub enum Restriction {
     BecomeMonarch(PlayerFilter),
     PreventDamage,
     Attack(ObjectFilter),
+    AttackPlayerOrPlaneswalkersControlledBy {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
     AttackAlone(ObjectFilter),
     Block(ObjectFilter),
     BlockSpecificAttacker {
@@ -487,6 +492,13 @@ impl Restriction {
 
     pub fn attack(filter: ObjectFilter) -> Self {
         Self::Attack(filter)
+    }
+
+    pub fn attack_player_or_planeswalkers_controlled_by(
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
     }
 
     pub fn attack_alone(filter: ObjectFilter) -> Self {
@@ -738,6 +750,7 @@ pub enum Condition {
         counter_type: CounterType,
         count: u32,
     },
+    SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
     ManaSpentToCastThisSpellAtLeast {
@@ -772,6 +785,7 @@ pub enum Condition {
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
+    TriggeringObjectHadToAttackThisCombat,
     TriggeringObjectHadCounters {
         counter_type: CounterType,
         min_count: u32,

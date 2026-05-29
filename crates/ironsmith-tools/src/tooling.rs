@@ -357,6 +357,66 @@ pub fn load_card_by_name(path: &str, name: &str) -> Result<Option<CardPayload>, 
     Ok(cards.get(&normalized).cloned())
 }
 
+pub fn load_card_payloads_by_name(
+    path: &str,
+    name: &str,
+) -> Result<Vec<CardPayload>, Box<dyn Error>> {
+    let raw = fs::read_to_string(path)?;
+    let cards: Vec<Value> = serde_json::from_str(&raw)?;
+    let normalized = normalize_lookup_name(name);
+
+    for card in &cards {
+        if card
+            .get("digital")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let card_name = card
+            .get("name")
+            .and_then(Value::as_str)
+            .map(normalize_lookup_name);
+        let card_name_matches = card_name.as_deref() == Some(normalized.as_str());
+        let supported = card_is_legal_in_supported_paper_format(card);
+        let face_match_indexes = matching_face_indexes(card, &normalized);
+        if !supported && !card_name_matches && face_match_indexes.is_empty() {
+            continue;
+        }
+
+        if card_name_matches {
+            if linked_face_layout_from_card(card).is_some()
+                && let Some(faces) = card.get("card_faces").and_then(Value::as_array)
+            {
+                let payloads = (0..faces.len())
+                    .filter_map(|idx| build_card_payload_for_face(card, idx))
+                    .collect::<Vec<_>>();
+                if !payloads.is_empty() {
+                    return Ok(payloads);
+                }
+            }
+            if let Some(record) =
+                build_registry_card_record_with_explicit_includes(card, &BTreeSet::new())
+            {
+                return Ok(vec![record.payload]);
+            }
+        }
+
+        if !face_match_indexes.is_empty() {
+            let payloads = face_match_indexes
+                .into_iter()
+                .filter_map(|idx| build_card_payload_for_face(card, idx))
+                .collect::<Vec<_>>();
+            if !payloads.is_empty() {
+                return Ok(payloads);
+            }
+        }
+    }
+
+    Ok(Vec::new())
+}
+
 pub fn parse_card_with_fallback(name: &str, parse_input: &str) -> ParseAttempt {
     let strict_attempt = parse_card(name, parse_input, false);
     if strict_attempt.status == ParseStatus::StrictCompiled {
@@ -2567,6 +2627,99 @@ fn get_second_face(card: &Value) -> Option<&Value> {
     card.get("card_faces")
         .and_then(Value::as_array)
         .and_then(|faces| faces.get(1))
+}
+
+fn matching_face_indexes(card: &Value, normalized_name: &str) -> Vec<usize> {
+    card.get("card_faces")
+        .and_then(Value::as_array)
+        .map(|faces| {
+            faces
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, face)| {
+                    let face_name = face.get("name").and_then(Value::as_str)?.trim();
+                    (normalize_lookup_name(face_name) == normalized_name).then_some(idx)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPayload> {
+    let faces = card.get("card_faces")?.as_array()?;
+    let face = faces.get(face_index)?;
+    let name = face.get("name")?.as_str()?.trim();
+    if name.is_empty() {
+        return None;
+    }
+
+    let raw_oracle_text = face
+        .get("oracle_text")
+        .and_then(value_to_string)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let oracle_text = strip_parenthetical_text(&raw_oracle_text);
+    let mana_cost = pick_field_preferring_face(card, Some(face), "mana_cost");
+    let type_line = pick_field_preferring_face(card, Some(face), "type_line");
+    let power = pick_field_preferring_face(card, Some(face), "power");
+    let toughness = pick_field_preferring_face(card, Some(face), "toughness");
+    let loyalty = pick_field_preferring_face(card, Some(face), "loyalty");
+    let defense = pick_field_preferring_face(card, Some(face), "defense");
+
+    let mut metadata_lines = Vec::new();
+    if let Some(mana_cost) = mana_cost
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
+    }
+    if let Some(type_line) = type_line
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+    if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
+        && !power.trim().is_empty()
+        && !toughness.trim().is_empty()
+    {
+        metadata_lines.push(format!(
+            "Power/Toughness: {}/{}",
+            power.trim(),
+            toughness.trim()
+        ));
+    }
+    if let Some(loyalty) = loyalty.as_deref().filter(|value| !value.trim().is_empty()) {
+        metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
+    }
+    if let Some(defense) = defense.as_deref().filter(|value| !value.trim().is_empty()) {
+        metadata_lines.push(format!("Defense: {}", defense.trim()));
+    }
+
+    let linked_face_layout = linked_face_layout_from_card(card);
+    let other_face_name = linked_face_layout.and_then(|_| {
+        faces
+            .iter()
+            .enumerate()
+            .find(|(idx, _)| *idx != face_index)
+            .and_then(|(_, other_face)| other_face.get("name"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    });
+
+    Some(CardPayload {
+        name: name.to_string(),
+        parse_name: None,
+        oracle_text,
+        raw_oracle_text: raw_oracle_text.clone(),
+        metadata_lines: metadata_lines.clone(),
+        parse_input: build_parse_input(&metadata_lines, &raw_oracle_text),
+        other_face_name,
+        linked_face_layout,
+    })
 }
 
 fn value_to_string(value: &Value) -> Option<String> {

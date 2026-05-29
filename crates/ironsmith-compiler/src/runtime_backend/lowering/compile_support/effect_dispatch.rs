@@ -93,6 +93,16 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::Sequence { effects } = effect {
+        let mut compiled_effects = Vec::new();
+        let mut choices = Vec::new();
+        for child in effects {
+            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
+            compiled_effects.append(&mut child_effects);
+            choices.append(&mut child_choices);
+        }
+        return Ok((compiled_effects, choices));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,
@@ -216,7 +226,7 @@ fn compile_subject_verb_effect(
             true,
             true,
             true,
-            false,
+            true,
             Effect::lose_life,
             Effect::lose_life_player,
         ),
@@ -228,7 +238,7 @@ fn compile_subject_verb_effect(
             true,
             true,
             true,
-            false,
+            true,
             Effect::gain_life,
             |value, filter| Effect::gain_life_player(value, ChooseSpec::Player(filter)),
         ),
@@ -581,6 +591,18 @@ fn compile_subject_verb_effect(
                 )
             })
         }
+        SubjectVerbActionAst::RollDiceChooseResult {
+            count,
+            sides,
+            die_text,
+        } => compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
+            Effect::roll_dice_choose_result_with_die_text(
+                *count,
+                *sides,
+                subject.into_player_filter(),
+                die_text.clone(),
+            )
+        }),
         SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::shuffle_hand_and_graveyard_into_library_player(subject.into_player_filter())
@@ -1206,6 +1228,20 @@ fn compile_subject_verb_effect(
                 subject.into_choices(),
             ))
         }
+        SubjectVerbActionAst::LookAtObjects { filter } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let player_filter = subject.clone_player_filter();
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            resolved_filter.controller.get_or_insert(player_filter.clone());
+            Ok((
+                vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
+                    resolved_filter,
+                    PlayerFilter::You,
+                    player_filter,
+                ))],
+                subject.into_choices(),
+            ))
+        }
         SubjectVerbActionAst::PutIntoHand { object } => {
             let ObjectRefAst::Tagged(tag) = object;
             let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
@@ -1600,6 +1636,20 @@ fn compile_subject_verb_effect(
                     effect
                 };
                 Effect::new(effect)
+            })
+        }
+        SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+            player_filter,
+            object_filter,
+            target,
+        } => {
+            let object_filter = resolve_it_tag(object_filter, &current_reference_env(ctx))?;
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                    player_filter.clone(),
+                    object_filter.clone(),
+                    spec,
+                ))
             })
         }
         SubjectVerbActionAst::PutOrRemoveCounters {
@@ -2475,6 +2525,17 @@ fn compile_subject_verb_effect(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::AddColors {
+            target,
+            colors,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "colored", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::AddColors(*colors),
                 duration.clone(),
             ))
         }),

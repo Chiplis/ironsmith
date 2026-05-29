@@ -698,6 +698,19 @@ fn condition_filter_context(
     ctx
 }
 
+fn triggering_object_had_to_attack_this_combat(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    triggering_event
+        .and_then(|event| event.object_id())
+        .is_some_and(|object_id| {
+            game.combat
+                .as_ref()
+                .is_some_and(|combat| combat.creature_had_to_attack_this_combat(object_id))
+        })
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
@@ -847,6 +860,11 @@ fn evaluate_condition_shared_core(
                 .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
                 .unwrap_or(false),
         ),
+        Condition::SourceHasCountersAtLeast(count) => Some(
+            game.object(ctx.source)
+                .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
+                .unwrap_or(false),
+        ),
         Condition::SourcePowerAtLeast(min_power) => Some(
             game.calculated_power(ctx.source)
                 .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
@@ -968,6 +986,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceMatches(..) => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
+        Condition::SourceHasCountersAtLeast(..) => {}
         Condition::SourcePowerAtLeast(..) => {}
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
@@ -990,6 +1009,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
+        Condition::TriggeringObjectHadToAttackThisCombat => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
         Condition::CardInYourGraveyard { .. } => {}
@@ -1353,6 +1373,9 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
+        Condition::TriggeringObjectHadToAttackThisCombat => {
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
+        }
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -1764,6 +1787,9 @@ pub fn evaluate_condition_external(
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
             .is_some_and(|power| power >= *min_power as i32),
+        Condition::SourceHasCountersAtLeast(count) => game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count),
         Condition::SourceIsUntapped => !game.is_tapped(ctx.source),
         Condition::SourceIsAttacking => game
             .combat
@@ -2446,9 +2472,9 @@ fn evaluate_condition_simple(
         Condition::FirstTimeThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
-        Condition::TriggeringObjectWasEnchanted | Condition::TriggeringObjectHadCounters { .. } => {
-            false
-        }
+        Condition::TriggeringObjectWasEnchanted
+        | Condition::TriggeringObjectHadToAttackThisCombat
+        | Condition::TriggeringObjectHadCounters { .. } => false,
         Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
@@ -2522,6 +2548,7 @@ fn evaluate_condition_simple(
         | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
+        | Condition::SourceHasCountersAtLeast(_)
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
@@ -2601,7 +2628,9 @@ fn resolve_condition_player_simple(
                 _ => None,
             }
         }
-        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } | PlayerFilter::MaxSpeed { .. } => {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
                     game.players
@@ -3266,6 +3295,9 @@ fn evaluate_condition(
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
             .is_some_and(|power| power >= *min_power as i32)),
+        Condition::SourceHasCountersAtLeast(count) => Ok(game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count)),
         Condition::SourceAttackedOrBlockedThisTurn => Ok(game
             .creature_attacked_this_turn(ctx.source)
             || game.creature_blocked_this_turn(ctx.source)),
@@ -3374,6 +3406,20 @@ fn evaluate_condition(
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);
             for snapshot in tagged {
+                let current_id = game
+                    .object(snapshot.object_id)
+                    .map(|object| object.id)
+                    .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
+                if let Some(current_id) = current_id
+                    && let Some(object) = game.object(current_id)
+                {
+                    if game.controller_of(object) == player_id
+                        && filter.matches(object, &filter_ctx, game)
+                    {
+                        return Ok(true);
+                    }
+                    continue;
+                }
                 if snapshot.controller != player_id {
                     continue;
                 }
@@ -3403,6 +3449,9 @@ fn evaluate_condition(
             .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
+        Condition::TriggeringObjectHadToAttackThisCombat => Ok(
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event.as_ref()),
+        ),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,

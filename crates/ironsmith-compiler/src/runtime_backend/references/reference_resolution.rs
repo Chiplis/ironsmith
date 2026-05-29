@@ -18,11 +18,11 @@ use crate::types::Subtype;
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag,
+    effects_reference_its_controller, effects_reference_tag, value_references_event_derived_amount,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
-use super::effect_ast_traversal::try_for_each_nested_effects_mut;
+use super::effect_ast_traversal::{for_each_nested_effects, try_for_each_nested_effects_mut};
 use super::reference_helpers::{
     choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
     object_filter_as_tagged_reference, resolve_it_tag, resolve_non_target_player_filter,
@@ -352,6 +352,9 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
+        EffectAst::Sequence { effects } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::SubjectVerb(subject_verb) => {
             track_effect_player(subject_verb.subject.player, frame, true, true)?;
             match &subject_verb.action {
@@ -470,7 +473,23 @@ fn advance_reference_frame_for_effect(
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::Exile { target, .. } => {
-                    maybe_tag_target(target, frame, id_gen, "exiled")?;
+                    let refs = lowering_reference_frame(frame);
+                    let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    if matches!(spec.base(), ChooseSpec::Source) {
+                        frame.source_object_antecedent = true;
+                    }
+                    if frame.auto_tag_object_targets {
+                        if spec.is_target() {
+                            if let Some(tag) =
+                                propagated_or_generated_object_tag(&spec, id_gen, "exiled")
+                            {
+                                frame.last_object_tag = Some(tag);
+                            }
+                        } else if choose_spec_targets_object(&spec) {
+                            frame.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                        }
+                    }
+                    track_target_player(target, frame);
                 }
                 SubjectVerbActionAst::ExileAll { filter, .. } => {
                     let keep_last_object_tag =
@@ -825,6 +844,9 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
                 | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "subtyped")?;
+                }
+                SubjectVerbActionAst::AddColors { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "colored")?;
                 }
                 SubjectVerbActionAst::SetColors { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "set_colors")?;
@@ -1249,7 +1271,10 @@ fn maybe_assign_effect_result_id(
     let next_is_result_gate = idx + 1 < effects.len()
         && matches!(
             effects[idx + 1],
-            EffectAst::IfResult { .. } | EffectAst::WhenResult { .. }
+            EffectAst::IfResult { .. }
+                | EffectAst::WhenResult { .. }
+                | EffectAst::ResolvedIfResult { .. }
+                | EffectAst::ResolvedWhenResult { .. }
         );
     let next_is_if_result_with_opponent_doesnt = next_is_result_gate
         && idx + 2 < effects.len()
@@ -1263,13 +1288,13 @@ fn maybe_assign_effect_result_id(
     let next_is_if_result_with_player_did = next_is_result_gate
         && idx + 2 < effects.len()
         && matches!(effects[idx + 2], EffectAst::ForEachPlayerDid { .. });
-    let next_needs_event_derived_amount =
-        idx + 1 < effects.len() && effect_references_event_derived_amount(&effects[idx + 1]);
+    let next_needs_event_derived_amount = idx + 1 < effects.len()
+        && effect_can_supply_event_derived_amount_for(&effects[idx], &effects[idx + 1]);
     let later_needs_event_derived_amount = effect_can_supply_prior_effect_memory(&effects[idx])
         && idx + 1 < effects.len()
         && effects[idx + 1..]
             .iter()
-            .any(effect_references_event_derived_amount);
+            .any(|later| effect_can_supply_event_derived_amount_for(&effects[idx], later));
     let next_needs_prior_effect_value = idx + 1 < effects.len()
         && matches!(
             &effects[idx + 1],
@@ -1325,6 +1350,223 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
         _ => false,
+    }
+}
+
+fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &EffectAst) -> bool {
+    if !effect_references_event_derived_amount(consumer) {
+        return false;
+    }
+    if effect_references_only_other_number_metric(consumer) {
+        return matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RollDiceChooseResult { .. },
+                ..
+            })
+        );
+    }
+    true
+}
+
+fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
+    let mut saw_other_number = false;
+    let mut saw_other_event_value = false;
+    visit_effect_values(effect, &mut |value| {
+        if value_references_only_other_number_metric(value) {
+            saw_other_number = true;
+        } else if value_references_event_derived_amount(value) {
+            saw_other_event_value = true;
+        }
+    });
+    saw_other_number && !saw_other_event_value
+}
+
+fn value_references_only_other_number_metric(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_references_only_other_number_metric(value),
+        Value::PendingEffectMetric {
+            metric: EffectMetric::OtherNumber,
+            ..
+        }
+        | Value::PendingEffectMetricOffset {
+            metric: EffectMetric::OtherNumber,
+            ..
+        } => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_only_other_number_metric(left)
+                || value_references_only_other_number_metric(right)
+        }
+        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+            value_references_only_other_number_metric(value)
+        }
+        _ => false,
+    }
+}
+
+fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => {
+            visit_subject_verb_action_values(&subject_verb.action, visit);
+        }
+        _ => {}
+    }
+    for_each_nested_effects(effect, true, |nested| {
+        for nested_effect in nested {
+            visit_effect_values(nested_effect, visit);
+        }
+    });
+}
+
+fn visit_filter_values(filter: &ObjectFilter, visit: &mut impl FnMut(&Value)) {
+    for comparison in [
+        filter.power.as_ref(),
+        filter.toughness.as_ref(),
+        filter.mana_value.as_ref(),
+        filter.color_count.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        visit_comparison_values(comparison, visit);
+    }
+    for child in &filter.any_of {
+        visit_filter_values(child, visit);
+    }
+}
+
+fn visit_comparison_values(comparison: &crate::filter::Comparison, visit: &mut impl FnMut(&Value)) {
+    match comparison {
+        crate::filter::Comparison::EqualExpr(value)
+        | crate::filter::Comparison::NotEqualExpr(value)
+        | crate::filter::Comparison::LessThanExpr(value)
+        | crate::filter::Comparison::LessThanOrEqualExpr(value)
+        | crate::filter::Comparison::GreaterThanExpr(value)
+        | crate::filter::Comparison::GreaterThanOrEqualExpr(value) => visit(value),
+        _ => {}
+    }
+}
+
+fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut impl FnMut(&Value)) {
+    match action {
+        SubjectVerbActionAst::Draw { count }
+        | SubjectVerbActionAst::Mill { count }
+        | SubjectVerbActionAst::ExileTopOfLibrary { count, .. }
+        | SubjectVerbActionAst::Scry { count }
+        | SubjectVerbActionAst::Surveil { count }
+        | SubjectVerbActionAst::Proliferate { count }
+        | SubjectVerbActionAst::Investigate { count }
+        | SubjectVerbActionAst::Discover { count }
+        | SubjectVerbActionAst::Fateseal { count }
+        | SubjectVerbActionAst::Populate { count, .. }
+        | SubjectVerbActionAst::Connive { count, .. }
+        | SubjectVerbActionAst::CreateTokenCopy { count, .. }
+        | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
+        | SubjectVerbActionAst::Monstrosity { amount: count }
+        | SubjectVerbActionAst::LoseLife { amount: count }
+        | SubjectVerbActionAst::GainLife { amount: count }
+        | SubjectVerbActionAst::DealDamage { amount: count, .. }
+        | SubjectVerbActionAst::DealDistributedDamage { amount: count, .. }
+        | SubjectVerbActionAst::DealDamageEach { amount: count, .. }
+        | SubjectVerbActionAst::PreventDamage { amount: count, .. }
+        | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
+        | SubjectVerbActionAst::CopySpell { count, .. }
+        | SubjectVerbActionAst::PutCounters { count, .. }
+        | SubjectVerbActionAst::PutCountersAll { count, .. }
+        | SubjectVerbActionAst::RemoveUpToAnyCounters { amount: count, .. }
+        | SubjectVerbActionAst::RemoveCountersAll { amount: count, .. }
+        | SubjectVerbActionAst::Discard { count, .. }
+        | SubjectVerbActionAst::PoisonCounters { count }
+        | SubjectVerbActionAst::EnergyCounters { count }
+        | SubjectVerbActionAst::TicketCounters { count }
+        | SubjectVerbActionAst::PayEnergy { amount: count }
+        | SubjectVerbActionAst::SetLifeTotal { amount: count }
+        | SubjectVerbActionAst::AddManaScaled { amount: count, .. }
+        | SubjectVerbActionAst::AddManaAnyColor { amount: count, .. }
+        | SubjectVerbActionAst::AddManaAnyOneColor { amount: count }
+        | SubjectVerbActionAst::AddManaChosenColor { amount: count, .. }
+        | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount: count, .. }
+        | SubjectVerbActionAst::AddManaCommanderIdentity { amount: count }
+        | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount: count, .. }
+        | SubjectVerbActionAst::LookAtTopCards { count, .. }
+        | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+            position: count, ..
+        }
+        | SubjectVerbActionAst::AdditionalLandPlays { count, .. } => visit(count),
+        SubjectVerbActionAst::Incubate { amount, count } => {
+            visit(amount);
+            visit(count);
+        }
+        SubjectVerbActionAst::CounterUnlessPays { .. } => {}
+        SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => {
+            visit(amount);
+        }
+        SubjectVerbActionAst::PutOrRemoveCounters {
+            put_count,
+            remove_count,
+            ..
+        } => {
+            visit(put_count);
+            visit(remove_count);
+        }
+        SubjectVerbActionAst::Pump {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::SetBasePowerToughness {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::BecomeBasePtCreature {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::PumpAll {
+            power, toughness, ..
+        } => {
+            visit(power);
+            visit(toughness);
+        }
+        SubjectVerbActionAst::SetBasePower { power, .. } => visit(power),
+        SubjectVerbActionAst::PumpForEach { count, .. } => visit(count),
+        SubjectVerbActionAst::ReturnToBattlefield {
+            count_value: Some(count_value),
+            ..
+        } => visit(count_value),
+        SubjectVerbActionAst::DestroyAll { filter, .. }
+        | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
+        | SubjectVerbActionAst::ExileAll { filter, .. }
+        | SubjectVerbActionAst::ReturnAllToHand { filter }
+        | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
+        | SubjectVerbActionAst::TapAll { filter }
+        | SubjectVerbActionAst::UntapAll { filter }
+        | SubjectVerbActionAst::PhaseOutAll { filter }
+        | SubjectVerbActionAst::PhaseInAll { filter }
+        | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
+        | SubjectVerbActionAst::SacrificeAll { filter }
+        | SubjectVerbActionAst::RegenerateAll { filter }
+        | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
+        | SubjectVerbActionAst::TagMatchingObjects { filter, .. }
+        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
+        | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. } => {
+            visit_filter_values(filter, visit)
+        }
+        SubjectVerbActionAst::CreateTokenWithMods {
+            count,
+            dynamic_power_toughness,
+            ..
+        } => {
+            visit(count);
+            if let Some((power, toughness)) = dynamic_power_toughness {
+                visit(power);
+                visit(toughness);
+            }
+        }
+        SubjectVerbActionAst::ConsultTopOfLibrary {
+            stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value),
+            ..
+        } => visit(value),
+        _ => {}
     }
 }
 
@@ -1610,6 +1852,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
+            | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }
@@ -1629,6 +1872,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
             | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
@@ -1726,6 +1970,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
@@ -1772,6 +2017,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
@@ -2123,6 +2369,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
             | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
@@ -2321,6 +2568,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(count, seed_tag)
                     + bind_unresolved_it_in_tag(tag, seed_tag)
             }
+            SubjectVerbActionAst::LookAtObjects { filter } => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
+            }
             SubjectVerbActionAst::PutIntoHand { object } => {
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)
             }
@@ -2495,6 +2745,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
+                object_filter,
+                target,
+                ..
+            } => bind_unresolved_it_in_filter(object_filter, seed_tag)
+                + bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::PreventDamage {
                 amount, target, ..
             } => {
@@ -2613,6 +2869,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }
@@ -2996,6 +3253,9 @@ fn bind_unresolved_it_in_restriction(
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. } => {
+            bind_unresolved_it_in_filter(attackers, seed_tag)
+        }
         _ => 0,
     }
 }
@@ -3367,6 +3627,70 @@ mod tests {
                 );
             }
             other => panic!("expected draw effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn annotate_effect_sequence_keeps_other_result_bound_to_roll_across_destroy() {
+        let mut filter = ObjectFilter::creature();
+        filter.power = Some(Comparison::GreaterThanOrEqualExpr(Box::new(
+            Value::EventValue(EventValueSpec::Amount),
+        )));
+        let effects = vec![
+            EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                PlayerAst::Implicit,
+                2,
+                6,
+                Some("d6".to_string()),
+            ),
+            EffectAst::subject_verb_destroy_all(filter),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    name: "Knight".to_string(),
+                    count: Value::PendingEffectMetric {
+                        source: EffectMetricSource::Outcome,
+                        metric: EffectMetric::OtherNumber,
+                    },
+                    dynamic_power_toughness: None,
+                    player: PlayerAst::Implicit,
+                    attached_to: None,
+                    tapped: false,
+                    attacking: false,
+                    exile_at_end_of_combat: false,
+                    sacrifice_at_end_of_combat: false,
+                    sacrifice_at_next_end_step: false,
+                    exile_at_next_end_step: false,
+                    granted_abilities: Vec::new(),
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate roll-destroy-create sequence");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert_eq!(annotated.effects[1].assigned_effect_id, None);
+
+        match &annotated.effects[2].effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+                ..
+            }) => assert_eq!(
+                count,
+                &Value::EffectMetric {
+                    effect_id: EffectId(0),
+                    source: EffectMetricSource::Outcome,
+                    metric: EffectMetric::OtherNumber,
+                }
+            ),
+            other => panic!("expected create-token effect, got {other:?}"),
         }
     }
 

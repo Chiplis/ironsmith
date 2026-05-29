@@ -30,8 +30,9 @@ use super::super::token_primitives::{
     slice_starts_with,
 };
 use super::super::util::{
-    is_article, is_source_reference_words, parse_card_type, parse_filter_counter_constraint_words,
-    parse_subject, parse_target_phrase, parse_value, token_index_for_word_index, words,
+    is_article, is_source_reference_words, parse_card_type, parse_color,
+    parse_filter_counter_constraint_words, parse_subject, parse_target_phrase, parse_value,
+    token_index_for_word_index, words,
 };
 use super::sentence_helpers::*;
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
@@ -50,7 +51,7 @@ use crate::object::CounterType;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 

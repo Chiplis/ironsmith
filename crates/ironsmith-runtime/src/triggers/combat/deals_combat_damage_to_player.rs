@@ -98,13 +98,38 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             };
             return format!("Whenever one or more {subject} deal combat damage to {player}");
         }
-        let player = self.player.description();
-        format!(
-            "Whenever {} deals combat damage to {}",
-            self.filter.description(),
-            player
-        )
+        let player = if matches!(self.player, PlayerFilter::Opponent) {
+            "one of your opponents".to_string()
+        } else {
+            self.player.description()
+        };
+        let subject = with_indefinite_article(self.filter.description());
+        format!("Whenever {} deals combat damage to {}", subject, player)
     }
+}
+
+fn with_indefinite_article(subject: String) -> String {
+    let trimmed = subject.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+        || lower.starts_with("target ")
+    {
+        return trimmed.to_string();
+    }
+    let article = if trimmed
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {trimmed}")
 }
 
 #[cfg(test)]

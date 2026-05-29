@@ -53,6 +53,7 @@ struct SourceReferenceAlias {
 
 #[derive(Clone, Default)]
 struct SourceReferenceContext {
+    source_name: String,
     aliases: Vec<SourceReferenceAlias>,
     surfaces_by_span: HashMap<TextSpan, SourceReferenceSurface>,
 }
@@ -66,12 +67,20 @@ pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce()
     let aliases = source_reference_aliases_for_name(card_name);
     SOURCE_REFERENCE_CONTEXT.with(|context| {
         let previous = context.replace(SourceReferenceContext {
+            source_name: card_name.trim().to_string(),
             aliases,
             surfaces_by_span: HashMap::new(),
         });
         let result = f();
         context.replace(previous);
         result
+    })
+}
+
+pub(crate) fn current_source_reference_name() -> Option<String> {
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        let source_name = context.borrow().source_name.trim().to_string();
+        (!source_name.is_empty()).then_some(source_name)
     })
 }
 
@@ -967,6 +976,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
     match candidate.as_str() {
         "mice" => return Some(Subtype::Mouse),
         "ouphe" => return Some(Subtype::Ouphe),
+        "oxen" => return Some(Subtype::Ox),
         "spacecraft" => return Some(Subtype::Spacecraft),
         _ => {}
     }
@@ -1564,6 +1574,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
     if matches!(words.get(..2), Some(["the", "result"])) {
         return Some((Value::EventValue(EventValueSpec::Amount), 2));
+    }
+    if matches!(words.get(..2), Some(["that", "result"])) {
+        return Some((Value::EventValue(EventValueSpec::Amount), 2));
+    }
+    if matches!(words.get(..3), Some(["the", "other", "result"])) {
+        return Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::OtherNumber,
+            },
+            3,
+        ));
     }
     if words.first().copied() == Some("result") {
         return Some((Value::EventValue(EventValueSpec::Amount), 1));
@@ -3170,6 +3192,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
 
+    if let Some(filter) = parse_life_advantage_player_target_filter(&remaining_words) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(filter, target_span),
+            target_count,
+        ));
+    }
+
     if word_slice_eq_any(
         &remaining_words,
         &[
@@ -3786,6 +3815,47 @@ fn parse_hand_advantage_player_target_filter(words: &[&str]) -> Option<PlayerFil
     Some(PlayerFilter::CardsInHandAtLeastMoreThanYou {
         base: Box::new(base),
         count,
+    })
+}
+
+fn parse_life_advantage_player_target_filter(words: &[&str]) -> Option<PlayerFilter> {
+    let (base, mut idx) = match words.first().copied()? {
+        "opponent" | "opponents" => (PlayerFilter::Opponent, 1),
+        "player" | "players" => (PlayerFilter::Any, 1),
+        _ => return None,
+    };
+
+    if !matches!(words.get(idx).copied(), Some("who" | "that")) {
+        return None;
+    }
+    idx += 1;
+    if words.get(idx).copied() != Some("has") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() != Some("more")
+        || words.get(idx + 1).copied() != Some("life")
+        || words.get(idx + 2).copied() != Some("than")
+        || words.get(idx + 3).copied() != Some("you")
+    {
+        return None;
+    }
+    idx += 4;
+
+    if words.get(idx).copied() == Some("do") {
+        idx += 1;
+    }
+
+    if idx < words.len() {
+        let rest = &words[idx..];
+        if rest != ["as", "you", "activate", "this", "ability"] {
+            return None;
+        }
+    }
+
+    Some(PlayerFilter::HasMoreLifeThanYou {
+        base: Box::new(base),
     })
 }
 

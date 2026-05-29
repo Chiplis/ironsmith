@@ -521,9 +521,33 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
 
     apply_spell_filter_word_atoms(&mut filter, words);
     apply_spell_filter_comparisons(&mut filter, words, words);
+    apply_spell_filter_tagged_relations(&mut filter, words);
     apply_spell_filter_parity_phrases(words, &mut filter);
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {
+    let shares_card_type = (contains_filter_word(words, "share")
+        || contains_filter_word(words, "shares"))
+        && contains_filter_word(words, "card")
+        && contains_filter_word(words, "type");
+    let references_exiled_card = contains_any_filter_phrase(
+        words,
+        &[
+            &["with", "exiled", "card"],
+            &["with", "exiled", "cards"],
+            &["with", "the", "exiled", "card"],
+            &["with", "the", "exiled", "cards"],
+        ],
+    );
+
+    if shares_card_type && references_exiled_card {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            relation: TaggedOpbjectRelation::SharesCardType,
+        });
+    }
 }
 
 pub(super) fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {

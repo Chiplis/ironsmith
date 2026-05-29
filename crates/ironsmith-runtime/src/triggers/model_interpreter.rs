@@ -386,6 +386,16 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::DayNightChanged => crate::triggers::Trigger::day_night_changed(),
         TriggerKind::ThisEntersBattlefield => crate::triggers::Trigger::this_enters_battlefield(),
+        TriggerKind::ThisTransforms { destination_name } => {
+            crate::triggers::Trigger::transforms_with_destination(destination_name)
+        }
+        TriggerKind::ThisTransformsWithSurface {
+            surface,
+            destination_name,
+        } => crate::triggers::Trigger::transforms_with_surface_and_destination(
+            surface,
+            destination_name,
+        ),
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {
             action,
@@ -414,6 +424,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::WinsClash { player } => crate::triggers::Trigger::wins_clash(player),
         TriggerKind::Expend { amount, player } => crate::triggers::Trigger::expend(amount, player),
         TriggerKind::SagaChapter { chapters } => crate::triggers::Trigger::saga_chapter(chapters),
+        TriggerKind::FinalChapterAbilityResolved { filter } => {
+            crate::triggers::Trigger::final_chapter_ability_resolved(filter)
+        }
         TriggerKind::Custom { id, label } => {
             let id: &'static str = Box::leak(id.into_boxed_str());
             crate::triggers::Trigger::custom(id, label)

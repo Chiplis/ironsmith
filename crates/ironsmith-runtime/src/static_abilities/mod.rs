@@ -522,6 +522,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the attacker subtype this creature can block as though it had reach.
+    fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        None
+    }
+
     /// Returns the maximum number of creatures that can attack in a combat.
     fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
         None
@@ -624,6 +629,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns info for "as this enters, choose <A> or <B>" abilities.
     fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
+        None
+    }
+
+    /// Returns info for "as this enters or is turned face up, choose a P/T" abilities.
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
         None
     }
 
@@ -943,6 +955,12 @@ pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
 }
 
+/// Spec for "as this enters or is turned face up, choose a P/T" abilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
+    pub options: Vec<(i32, i32)>,
+}
+
 /// Spec for "you may have this enter as a copy ..." abilities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterAsCopyAsEntersSpec {
@@ -950,6 +968,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub affected_filter: Option<crate::target::ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
@@ -959,6 +978,11 @@ pub struct EnterAsCopyAsEntersSpec {
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnterAsCopyLinkedExilePairSpec {
+    pub counter_type: crate::object::CounterType,
 }
 
 /// Spec for static abilities that duplicate matching triggered abilities.
@@ -1056,6 +1080,12 @@ impl StaticAbility {
 
     pub fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
         self.0.named_option_choice_as_enters()
+    }
+
+    pub fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        self.0.power_toughness_choice_as_enters_or_turns_face_up()
     }
 
     pub fn enter_as_copy_as_enters(&self) -> Option<&EnterAsCopyAsEntersSpec> {
@@ -1263,6 +1293,10 @@ impl StaticAbility {
 
     pub fn additional_blockable_attackers(&self) -> Option<usize> {
         self.0.additional_blockable_attackers()
+    }
+
+    pub fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
+        self.0.can_block_as_though_reach_subtype()
     }
 
     pub fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
@@ -1759,6 +1793,10 @@ impl StaticAbility {
         Self::new(CanBlockOnlyFlying)
     }
 
+    pub fn can_block_subtype_as_though_reach(subtype: crate::types::Subtype) -> Self {
+        Self::new(CanBlockSubtypeAsThoughReach::new(subtype))
+    }
+
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
         Self::new(CanBlockAdditionalCreatureEachCombat::new(additional))
     }
@@ -1887,6 +1925,10 @@ impl StaticAbility {
 
     pub fn equip_abilities_any_time() -> Self {
         Self::new(EquipAbilitiesAnyTime)
+    }
+
+    pub fn exhaust_abilities_as_though_unactivated_this_turn() -> Self {
+        Self::new(ExhaustAbilitiesAsThoughUnactivatedThisTurn)
     }
 
     pub fn vote_additional_time_while_voting() -> Self {
@@ -2461,6 +2503,10 @@ impl StaticAbility {
         Self::new(NoMaximumHandSize)
     }
 
+    pub fn set_maximum_hand_size(player: crate::target::PlayerFilter, amount: u32) -> Self {
+        Self::new(SetMaximumHandSize::new(player, amount))
+    }
+
     pub fn reduce_maximum_hand_size(player: crate::target::PlayerFilter, amount: u32) -> Self {
         Self::new(ReduceMaximumHandSize::new(player, amount))
     }
@@ -2524,6 +2570,15 @@ impl StaticAbility {
 
     pub fn choose_named_option_as_enters(options: Vec<String>, display: String) -> Self {
         Self::new(ChooseNamedOptionAsEnters::new(options, display))
+    }
+
+    pub fn choose_power_toughness_as_enters_or_turns_face_up(
+        options: Vec<(i32, i32)>,
+        display: String,
+    ) -> Self {
+        Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new(
+            options, display,
+        ))
     }
 
     pub fn with_enter_as_copy_as_enters(spec: EnterAsCopyAsEntersSpec, display: String) -> Self {
@@ -2946,6 +3001,10 @@ impl StaticAbility {
 
     pub fn keyword_text(text: impl Into<String>) -> Self {
         Self::new(KeywordText::new(text))
+    }
+
+    pub fn draft_rule_text(text: impl Into<String>) -> Self {
+        Self::new(DraftRuleText::new(text))
     }
 
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {

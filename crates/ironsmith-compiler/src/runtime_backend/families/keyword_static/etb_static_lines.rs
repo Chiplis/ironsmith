@@ -2729,3 +2729,67 @@ pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
         filter, card_types, subtypes, power, toughness,
     )))
 }
+
+pub(crate) fn parse_as_enters_or_turns_face_up_pt_choice_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.first().copied() != Some("as") {
+        return Ok(None);
+    }
+
+    let Some(enter_word_idx) =
+        word_slice_find_word_where(&clause_words, |word| matches!(word, "enter" | "enters"))
+    else {
+        return Ok(None);
+    };
+    if enter_word_idx <= 1 {
+        return Ok(None);
+    }
+
+    let subject_words = &clause_words[1..enter_word_idx];
+    if !matches!(subject_words, ["this", "creature" | "permanent" | "object"]) {
+        return Ok(None);
+    }
+
+    let after_enter = clause_words.get(enter_word_idx + 1..).unwrap_or_default();
+    if after_enter.len() != 13
+        || !word_slice_starts_with(
+            after_enter,
+            &[
+                "or", "is", "turned", "face", "up", "it", "becomes", "your", "choice",
+                "of",
+            ],
+        )
+        || after_enter.get(11).copied() != Some("or")
+    {
+        return Ok(None);
+    }
+
+    let first = parse_pt_modifier(after_enter[10]).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported power/toughness choice '{}' (clause: '{}')",
+            after_enter[10],
+            clause_words.join(" ")
+        ))
+    })?;
+    let second = parse_pt_modifier(after_enter[12]).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported power/toughness choice '{}' (clause: '{}')",
+            after_enter[12],
+            clause_words.join(" ")
+        ))
+    })?;
+
+    let subject = subject_words.join(" ");
+    let display = format!(
+        "As {subject} enters or is turned face up, it becomes your choice of {}/{} or {}/{}",
+        first.0, first.1, second.0, second.1
+    );
+    Ok(Some(
+        StaticAbility::choose_power_toughness_as_enters_or_turns_face_up(
+            vec![first, second],
+            display,
+        ),
+    ))
+}

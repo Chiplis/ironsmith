@@ -2805,6 +2805,50 @@ fn rewrite_zone_counter_helpers_parse_equal_to_named_source_power_counter_amount
 }
 
 #[test]
+fn rewrite_zone_counter_helpers_parse_target_before_exiled_card_mana_value_amount() {
+    let tokens = lex_line(
+        "Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.",
+        0,
+    )
+    .expect("rewrite lexer should classify source-exiled mana-value counter clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("source-exiled mana-value counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+}
+
+#[test]
+fn the_aesir_escape_valhalla_lowers_source_exiled_counter_and_return_pair() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "The Aesir Escape Valhalla")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .parse_text(
+            "I — Exile a permanent card from your graveyard. You gain life equal to its mana value.\n\
+             II — Put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card.\n\
+             III — Return this Saga and the exiled card to their owner's hand.",
+        )
+        .expect("The Aesir Escape Valhalla should parse strictly");
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(!debug.contains("__it__"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("ReturnToHandEffect"), "{debug}");
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("any_of"), "{debug}");
+}
+
+#[test]
 fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Warstorm Surge Probe")
         .card_types(vec![CardType::Enchantment])
@@ -8437,6 +8481,24 @@ fn rewrite_grammar_flying_block_probes_match_keyword_static_shapes() {
     let parsed_only_flying = super::keyword_static::parse_can_block_only_flying_line(&only_flying)
         .expect("can-block-only-flying restriction should parse");
     assert!(parsed_only_flying.is_some(), "{parsed_only_flying:?}");
+
+    let subtype_reach = lex_line("This creature can block Dragons as though it had reach.", 0)
+        .expect("rewrite lexer should classify subtype reach blocking clause");
+    assert_eq!(
+        super::grammar::abilities::parse_can_block_subtype_as_though_reach_line_lexed(
+            &subtype_reach,
+        ),
+        Some(crate::types::Subtype::Dragon),
+        "grammar-owned subtype reach blocking probe should match"
+    );
+    let parsed_subtype_reach =
+        super::keyword_static::parse_can_block_subtype_as_though_reach_line(&subtype_reach)
+            .expect("subtype reach blocking clause should parse")
+            .expect("subtype reach blocking clause should produce an ability");
+    assert_eq!(
+        parsed_subtype_reach.can_block_as_though_reach_subtype(),
+        Some(crate::types::Subtype::Dragon)
+    );
 }
 
 #[test]
@@ -8947,6 +9009,13 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     .expect("rewrite lexer should classify exile zone-change trigger probe");
     let dealt_combat_damage_tokens = lex_line("this creature is dealt combat damage", 0)
         .expect("rewrite lexer should classify dealt-combat-damage trigger probe");
+    let enters_or_transforms_tokens = lex_line(
+        "this creature enters or transforms into Trystan, Callous Cultivator",
+        0,
+    )
+    .expect("rewrite lexer should classify enter-or-transform trigger probe");
+    let transforms_tokens = lex_line("this creature transforms into Trystan, Penitent Culler", 0)
+        .expect("rewrite lexer should classify standalone transforms trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -8988,6 +9057,37 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
+    let enters_or_transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &enters_or_transforms_tokens,
+        );
+    assert!(
+        matches!(
+            enters_or_transforms,
+            Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
+                if matches!(left.as_ref(), crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
+                    && matches!(
+                        right.as_ref(),
+                        crate::cards::builders::TriggerSpec::ThisTransforms { destination_name }
+                            | crate::cards::builders::TriggerSpec::ThisTransformsWithSurface { destination_name, .. }
+                            if destination_name.as_deref() == Some("Trystan, Callous Cultivator")
+                    )
+        ),
+        "expected enter-or-transform trigger pair, got {enters_or_transforms:?}"
+    );
+    let transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &transforms_tokens,
+        );
+    assert!(
+        matches!(
+            transforms,
+            Ok(crate::cards::builders::TriggerSpec::ThisTransforms { ref destination_name })
+                | Ok(crate::cards::builders::TriggerSpec::ThisTransformsWithSurface { ref destination_name, .. })
+                    if destination_name.as_deref() == Some("Trystan, Penitent Culler")
+        ),
+        "expected standalone transform trigger, got {transforms:?}"
+    );
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &spell_tokens,

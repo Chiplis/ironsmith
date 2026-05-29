@@ -17,7 +17,8 @@ use crate::continuous::{
     ContinuousEffect, ContinuousEffectGroupId, EffectTarget, Modification, PtSublayer,
 };
 use crate::decision::AttackerDeclaration;
-use crate::effect::{Until, Value};
+use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, Until, Value};
+use crate::effects::{CantEffect, EffectExecutor};
 use crate::game_loop::{GameLoopError, apply_attacker_declarations};
 use crate::game_state::{GameState, Phase};
 use crate::ids::{CardId, PlayerId};
@@ -3685,6 +3686,137 @@ fn test_same_player_goading_again_does_not_refresh_duration() {
     assert!(
         !game.is_goaded(creature_id),
         "same-player re-goad should not refresh the duration past Bob's next turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_orzhov_advokist_attack_restriction_blocks_only_accepting_players_creatures() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.active_player = bob;
+
+    let attacker_def = grizzly_bears();
+    let bob_attacker = game.create_object_from_definition(&attacker_def, bob, Zone::Battlefield);
+    let charlie_attacker =
+        game.create_object_from_definition(&attacker_def, charlie, Zone::Battlefield);
+    game.remove_summoning_sickness(bob_attacker);
+    game.remove_summoning_sickness(charlie_attacker);
+
+    let planeswalker_card = CardBuilder::new(CardId::new(), "Alice Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+    let alice_planeswalker =
+        game.create_object_from_card(&planeswalker_card, alice, Zone::Battlefield);
+
+    let orzhov_source = CardBuilder::new(CardId::new(), "Orzhov Advokist")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let source = game.create_object_from_card(&orzhov_source, alice, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    ctx.store_outcome(
+        EffectId(0),
+        EffectOutcome::resolved().with_player_counts(vec![(bob, 1), (charlie, 0)]),
+    );
+    let branch = crate::effects::IfEffect::new(
+        EffectId(0),
+        EffectPredicate::Happened,
+        vec![Effect::new(CantEffect::new(
+            crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(
+                crate::target::ObjectFilter::creature()
+                    .controlled_by(crate::target::PlayerFilter::IteratedPlayer),
+                crate::target::PlayerFilter::You,
+            ),
+            Until::YourNextTurn,
+        ))],
+        vec![],
+    );
+    branch
+        .execute(&mut game, &mut ctx)
+        .expect("Orzhov Advokist per-player branch should apply");
+    game.update_cant_effects();
+
+    let combat = new_combat();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let bob_option = options
+        .iter()
+        .find(|option| option.creature == bob_attacker)
+        .expect("Bob's creature should still be able to attack other players");
+    assert!(
+        !bob_option
+            .valid_targets
+            .contains(&AttackTarget::Player(alice)),
+        "a player who accepted Orzhov Advokist's counters can't attack its controller"
+    );
+    assert!(
+        !bob_option
+            .valid_targets
+            .contains(&AttackTarget::Planeswalker(alice_planeswalker)),
+        "a player who accepted Orzhov Advokist's counters can't attack its controller's planeswalkers"
+    );
+    assert!(
+        bob_option
+            .valid_targets
+            .contains(&AttackTarget::Player(charlie)),
+        "Orzhov Advokist should not stop attacks against other players"
+    );
+    assert!(
+        game.can_attack_defending_player(charlie_attacker, alice),
+        "a player who did not accept counters should not receive the attack restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_orzhov_advokist_attack_restriction_expires_on_controller_next_turn() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+
+    let attacker_def = grizzly_bears();
+    let attacker = game.create_object_from_definition(&attacker_def, bob, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker);
+
+    let source_card = CardBuilder::new(CardId::new(), "Orzhov Advokist")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    ctx.iteration.iterated_player = Some(bob);
+    CantEffect::new(
+        crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(
+            crate::target::ObjectFilter::creature()
+                .controlled_by(crate::target::PlayerFilter::IteratedPlayer),
+            crate::target::PlayerFilter::You,
+        ),
+        Until::YourNextTurn,
+    )
+    .execute(&mut game, &mut ctx)
+    .expect("Orzhov Advokist attack restriction should apply");
+    assert!(
+        !game.can_attack_defending_player(attacker, alice),
+        "restriction should apply before Alice's next turn"
+    );
+
+    game.next_turn();
+    game.update_cant_effects();
+    assert!(
+        game.can_attack_defending_player(attacker, alice),
+        "restriction should expire as Alice's next turn begins"
     );
 }
 

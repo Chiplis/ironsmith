@@ -5,7 +5,8 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
     StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
     TriggerSuppressionSpec,
@@ -381,6 +382,21 @@ impl StaticAbilityKind for EquipAbilitiesAnyTime {
 
     fn display(&self) -> String {
         "You may activate equip abilities any time you could cast an instant".to_string()
+    }
+}
+
+/// "During your turn, as long as you haven't activated an exhaust ability this turn,
+/// you may activate exhaust abilities as though they haven't been activated."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExhaustAbilitiesAsThoughUnactivatedThisTurn;
+
+impl StaticAbilityKind for ExhaustAbilitiesAsThoughUnactivatedThisTurn {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn
+    }
+
+    fn display(&self) -> String {
+        "During your turn, as long as you haven't activated an exhaust ability this turn, you may activate exhaust abilities as though they haven't been activated".to_string()
     }
 }
 
@@ -1593,6 +1609,37 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
 
     fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
         Some(ChooseNamedOptionAsEntersSpec {
+            options: self.options.clone(),
+        })
+    }
+}
+
+/// "As this enters or is turned face up, choose a power/toughness."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    pub options: Vec<(i32, i32)>,
+    pub display: String,
+}
+
+impl ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    pub fn new(options: Vec<(i32, i32)>, display: String) -> Self {
+        Self { options, display }
+    }
+}
+
+impl StaticAbilityKind for ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        Some(ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
             options: self.options.clone(),
         })
     }
@@ -3542,6 +3589,45 @@ impl StaticAbilityKind for NoMaximumHandSize {
     }
 }
 
+/// "Your/Each opponent's maximum hand size is N."
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetMaximumHandSize {
+    pub player: PlayerFilter,
+    pub amount: u32,
+}
+
+impl SetMaximumHandSize {
+    pub fn new(player: PlayerFilter, amount: u32) -> Self {
+        Self { player, amount }
+    }
+}
+
+impl StaticAbilityKind for SetMaximumHandSize {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetMaximumHandSize
+    }
+
+    fn display(&self) -> String {
+        let amount = number_word_u32(self.amount).unwrap_or_else(|| self.amount.to_string());
+        match self.player {
+            PlayerFilter::You => format!("Your maximum hand size is {amount}."),
+            PlayerFilter::Opponent => {
+                format!("Each opponent's maximum hand size is {amount}.")
+            }
+            PlayerFilter::Any => format!("Each player's maximum hand size is {amount}."),
+            _ => format!("Maximum hand size is {amount}."),
+        }
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+        for player_id in player_ids_for_filter(game, self.player.clone(), controller) {
+            if let Some(player) = game.player_mut(player_id) {
+                player.max_hand_size = self.amount as i32;
+            }
+        }
+    }
+}
+
 /// "Your/Each opponent's maximum hand size is reduced by N."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReduceMaximumHandSize {
@@ -4752,6 +4838,28 @@ impl StaticAbilityKind for KeywordText {
     }
 }
 
+/// Draft-only rule text from Conspiracy-style cards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftRuleText {
+    pub text: String,
+}
+
+impl DraftRuleText {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for DraftRuleText {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DraftRuleText
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================
@@ -5026,6 +5134,27 @@ mod tests {
                 .max_hand_size,
             i32::MAX
         );
+    }
+
+    #[test]
+    fn test_set_maximum_hand_size_for_you() {
+        let ability = SetMaximumHandSize::new(PlayerFilter::You, 20);
+        assert_eq!(ability.id(), StaticAbilityId::SetMaximumHandSize);
+        assert_eq!(ability.display(), "Your maximum hand size is twenty.");
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(43);
+        ability.apply_restrictions(&mut game, source, alice);
+
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .max_hand_size,
+            20
+        );
+        assert_eq!(game.player(bob).expect("bob should exist").max_hand_size, 7);
     }
 
     #[test]

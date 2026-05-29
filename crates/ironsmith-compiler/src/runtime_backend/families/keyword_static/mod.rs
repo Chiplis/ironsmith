@@ -46,6 +46,7 @@ use super::grammar::abilities::{
     is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
+    parse_can_block_subtype_as_though_reach_line_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
     parse_doesnt_untap_during_untap_step_spec_lexed,
     parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed,
@@ -756,9 +757,12 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_anthem_line),
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
+        single_static_ability_ast_rule!(parse_can_block_subtype_as_though_reach_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
+        single_static_ability_ast_rule!(parse_life_mana_value_instead_of_mana_cost_grant_line),
+        single_static_ability_ast_rule!(parse_as_enters_or_turns_face_up_pt_choice_line),
         single_static_ability_ast_rule!(parse_as_enters_becomes_characteristics_for_filter_line),
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         multi_static_ability_ast_rule!(
@@ -881,6 +885,13 @@ fn parse_static_ability_ast_line_early_lexed(
                 "X can't be greater than the number of players in the game.",
             )
             .into(),
+        ]));
+    }
+    if rendered
+        == "during your turn as long as you havent activated an exhaust ability this turn you may activate exhaust abilities as though they havent been activated"
+    {
+        return Ok(Some(vec![
+            StaticAbility::exhaust_abilities_as_though_unactivated_this_turn().into(),
         ]));
     }
     if rendered == "this creature cant attack unless youve cast a creature spell this turn"
@@ -3143,6 +3154,48 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if word_slice_starts_with(&clause_words, &["as"])
+        && let Some(enter_idx) =
+            find_index(&clause_words, |word| *word == "enter" || *word == "enters")
+        && clause_words.get(enter_idx + 1..enter_idx + 8)
+            == Some(&["you", "may", "exile", "two", "creature", "cards", "from"])
+        && clause_words.get(enter_idx + 8).copied() == Some("graveyards")
+        && word_slice_find_phrase_start(
+            &clause_words,
+            &[
+                "if", "you", "do", "it", "enters", "as", "a", "copy", "of", "one", "of", "those",
+                "cards",
+            ],
+        )
+        .is_some()
+        && word_slice_contains_word(&clause_words, "additional")
+        && word_slice_contains_word(&clause_words, "+1/+1")
+        && word_slice_contains_word(&clause_words, "counters")
+        && word_slice_contains_word(&clause_words, "power")
+        && word_slice_contains_word(&clause_words, "other")
+    {
+        return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
+            crate::static_abilities::EnterAsCopyAsEntersSpec {
+                filter: ObjectFilter::creature().in_zone(Zone::Graveyard).nontoken(),
+                affected_filter: None,
+                may: true,
+                enters_tapped_if_chosen: false,
+                linked_exile_pair: Some(crate::static_abilities::EnterAsCopyLinkedExilePairSpec {
+                    counter_type: CounterType::PlusOnePlusOne,
+                }),
+                copy_source_self: false,
+                copy_source_enchanted: false,
+                name_override: None,
+                added_card_types: Vec::new(),
+                removed_supertypes: Vec::new(),
+                added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
+                set_base_power_toughness: None,
+                set_base_power_toughness_from_self: false,
+            },
+            render_token_slice(tokens).trim().to_string(),
+        )));
+    }
     if !word_slice_starts_with(&clause_words, &["you", "may", "have"])
         && let Some(enter_idx) =
             find_index(&clause_words, |word| *word == "enter" || *word == "enters")
@@ -3180,6 +3233,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     affected_filter: Some(affected_filter),
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self,
                     copy_source_enchanted,
                     name_override: None,
@@ -3443,6 +3497,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             affected_filter: None,
             may: true,
             enters_tapped_if_chosen,
+            linked_exile_pair: None,
             copy_source_self: false,
             copy_source_enchanted: false,
             name_override,
@@ -7320,6 +7375,13 @@ pub(crate) fn parse_can_block_only_flying_line(
     Ok(None)
 }
 
+pub(crate) fn parse_can_block_subtype_as_though_reach_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    Ok(parse_can_block_subtype_as_though_reach_line_lexed(tokens)
+        .map(StaticAbility::can_block_subtype_as_though_reach))
+}
+
 pub(crate) fn parse_assign_damage_as_unblocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -7376,6 +7438,71 @@ pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
     Ok(Some(StaticAbility::grants(crate::grant::GrantSpec::new(
         crate::grant::Grantable::mana_value_as_generic_from_hand(),
+        filter,
+        Zone::Hand,
+    ))))
+}
+
+pub(crate) fn parse_life_mana_value_instead_of_mana_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &tokens[..tokens.len() - 1]
+    } else {
+        tokens
+    };
+
+    let words = super::lexer::parser_token_word_refs(tokens);
+    if !word_slice_starts_with(
+        words.as_slice(),
+        &[
+            "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    let Some(cast_idx) = find_index(tokens, |token| token.is_word("cast")) else {
+        return Ok(None);
+    };
+    let Some(by_idx) = find_index(tokens, |token| token.is_word("by")) else {
+        return Ok(None);
+    };
+    if by_idx <= cast_idx + 1 {
+        return Ok(None);
+    }
+    let subject_tokens = trim_lexed_commas(tokens.get(cast_idx + 1..by_idx).unwrap_or_default());
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    if subject_tokens.is_empty()
+        || !slice_contains(&subject_words, &"spell") && !slice_contains(&subject_words, &"spells")
+    {
+        return Ok(None);
+    }
+
+    let tail_words =
+        crate::runtime_backend::token_word_refs(tokens.get(by_idx + 1..).unwrap_or_default());
+    if tail_words
+        != [
+            "paying", "life", "equal", "to", "its", "mana", "value", "rather", "than", "paying",
+            "its", "mana", "cost",
+        ]
+        && tail_words
+            != [
+                "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay",
+                "its", "mana", "cost",
+            ]
+    {
+        return Ok(None);
+    }
+
+    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
+    Ok(Some(StaticAbility::grants(crate::grant::GrantSpec::new(
+        crate::grant::Grantable::life_equal_mana_value_from_hand(Some(
+            crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns,
+        )),
         filter,
         Zone::Hand,
     ))))
@@ -8366,16 +8493,7 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
             return Ok(None);
         }
 
-        if amount <= 7 {
-            return Ok(Some(StaticAbility::reduce_maximum_hand_size(
-                player,
-                7 - amount,
-            )));
-        }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported maximum-hand-size increase clause (clause: '{}')",
-            line_words.join(" ")
-        )));
+        return Ok(Some(StaticAbility::set_maximum_hand_size(player, amount)));
     }
     Ok(None)
 }

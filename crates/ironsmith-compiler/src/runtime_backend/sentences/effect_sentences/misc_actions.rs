@@ -208,6 +208,14 @@ pub(crate) fn parse_flip(
         return Ok(EffectAst::subject_verb_flip(TargetAst::Source(None)));
     }
 
+    if let Some(timed_tokens) = split_trailing_next_end_step_timing(tokens) {
+        let timed_effect = parse_flip(timed_tokens, subject)?;
+        return Ok(EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![timed_effect],
+        });
+    }
+
     let target_words = crate::runtime_backend::token_word_refs(tokens);
     if word_slice_eq_any(&target_words, &[&["a", "coin"], &["coin"]]) {
         return Ok(EffectAst::subject_verb_flip_coin(player));
@@ -228,6 +236,33 @@ pub(crate) fn parse_flip(
 
     let target = parse_target_phrase(tokens)?;
     Ok(EffectAst::subject_verb_flip(target))
+}
+
+fn split_trailing_next_end_step_timing(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let words = TokenWordView::new(tokens);
+    let timing_phrases: &[&[&str]] = &[
+        &["at", "the", "beginning", "of", "the", "next", "end", "step"],
+        &["at", "the", "beginning", "of", "next", "end", "step"],
+        &["at", "beginning", "of", "the", "next", "end", "step"],
+        &["at", "beginning", "of", "next", "end", "step"],
+    ];
+
+    for phrase in timing_phrases {
+        if words.len() < phrase.len() {
+            continue;
+        }
+        let phrase_start = words.len() - phrase.len();
+        if !words.slice_eq(phrase_start, phrase) {
+            continue;
+        }
+        let token_start = words.token_index_for_word_index(phrase_start)?;
+        let action_tokens = &tokens[..token_start];
+        if !trim_commas(action_tokens).is_empty() {
+            return Some(action_tokens);
+        }
+    }
+
+    None
 }
 
 pub(crate) fn parse_roll(

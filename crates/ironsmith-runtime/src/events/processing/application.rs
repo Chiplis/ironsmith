@@ -171,6 +171,8 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,
+            linked_exile_objects,
+            additional_counters,
             name_override,
             added_card_types,
             removed_supertypes,
@@ -182,6 +184,8 @@ pub(super) fn apply_trait_replacement(
                 &event,
                 *source,
                 *enters_tapped,
+                linked_exile_objects,
+                additional_counters,
                 name_override.clone(),
                 added_card_types,
                 removed_supertypes,
@@ -756,6 +760,8 @@ fn apply_trait_enter_as_copy(
     event: &Event,
     source_id: crate::ids::ObjectId,
     enters_tapped: bool,
+    linked_exile_objects: &[crate::ids::ObjectId],
+    additional_counters: &[(CounterType, u32)],
     name_override: Option<String>,
     added_card_types: &[crate::types::CardType],
     removed_supertypes: &[crate::types::Supertype],
@@ -768,6 +774,7 @@ fn apply_trait_enter_as_copy(
     let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
         etb = etb
             .with_copy_of(source_id)
+            .with_linked_exile_objects(linked_exile_objects)
             .with_copy_name_override(name_override.clone())
             .with_added_card_types(added_card_types)
             .with_removed_supertypes(removed_supertypes)
@@ -775,6 +782,9 @@ fn apply_trait_enter_as_copy(
             .with_added_abilities(added_abilities);
         if let Some((power, toughness)) = set_base_power_toughness {
             etb = etb.with_base_power_toughness(power, toughness);
+        }
+        for (counter_type, count) in additional_counters {
+            etb = etb.with_counters(*counter_type, *count);
         }
         if enters_tapped {
             etb = etb.with_tapped();

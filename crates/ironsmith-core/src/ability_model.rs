@@ -74,6 +74,7 @@ pub enum ProtectionFrom {
     Creatures,
     CardType(CardType),
     Permanents(ObjectFilter),
+    EachManaValueAmong(ObjectFilter),
     ChosenPlayer,
     ChosenColor,
     Everything,
@@ -410,6 +411,14 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
 
     pub fn life_cost_amount(&self) -> Option<u32> {
         self.mana_cost.costs().iter().find_map(|c| c.life_amount())
+    }
+
+    pub fn is_exhaust_ability(&self) -> bool {
+        self.additional_restrictions.iter().any(|restriction| {
+            let lower = restriction.to_ascii_lowercase();
+            lower.contains("activate each exhaust ability only once")
+                || lower.contains("activate this exhaust ability only once")
+        })
     }
 
     pub fn max_activations_per_turn(&self) -> Option<u32> {

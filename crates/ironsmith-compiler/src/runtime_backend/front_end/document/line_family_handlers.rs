@@ -210,6 +210,37 @@ pub(super) fn run_start_your_engines_line_family(
     )))
 }
 
+pub(super) fn run_draft_rule_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if !is_draft_rule_line(ctx.line.info.raw_line.as_str()) {
+        return Ok(None);
+    }
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(StaticLineCst {
+            info: ctx.line.info.clone(),
+            text: ctx.line.info.normalized.normalized.clone(),
+            parse_tokens: ctx.line.tokens.clone(),
+            chosen_option_label: None,
+        }),
+        ctx.idx + 1,
+    )))
+}
+
+fn is_draft_rule_line(raw_line: &str) -> bool {
+    let lower = raw_line.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    lower.trim_end_matches('.') == "draft this card face up"
+        || lower.starts_with("as you draft ")
+        || lower.starts_with("during the draft, ")
+        || lower.starts_with("immediately after the draft, ")
+        || lower.starts_with("each player passes ") && lower.contains("booster pack")
+}
+
 pub(super) fn run_learn_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

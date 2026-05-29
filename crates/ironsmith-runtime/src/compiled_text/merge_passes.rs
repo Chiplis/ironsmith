@@ -497,6 +497,16 @@ fn format_conditioned_subject_predicate_merge(
         .trim_start_matches("As long as ")
         .trim_start_matches("as long as ")
         .trim();
+    let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
+    if is_trait(&left.verb) && is_trait(right_verb) {
+        return format!(
+            "As long as {condition}, {} {} {} and {}",
+            lowercase_first(&left.subject),
+            have_verb_for_subject(&left.subject),
+            left_predicate,
+            right_predicate
+        );
+    }
     format!(
         "{} {} {} and {} {} as long as {}",
         left.subject, left.verb, left_predicate, right_verb, right_predicate, condition

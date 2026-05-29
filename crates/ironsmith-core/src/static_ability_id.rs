@@ -155,9 +155,11 @@ pub enum StaticAbilityId {
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
+    ChoosePowerToughnessAsEntersOrTurnsFaceUp,
     BoastTwiceEachTurn,
     FirstEquipCostAlternative,
     EquipAbilitiesAnyTime,
+    ExhaustAbilitiesAsThoughUnactivatedThisTurn,
     VoteAdditionalTimeWhileVoting,
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
@@ -201,6 +203,7 @@ pub enum StaticAbilityId {
     CanBeCommander,
     LevelAbilities,
     NoMaximumHandSize,
+    SetMaximumHandSize,
     ReduceMaximumHandSize,
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
@@ -240,6 +243,7 @@ pub enum StaticAbilityId {
     DiscardOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
     PregameAction,
+    DraftRuleText,
     KeywordText,
     KeywordMarker,
     KeywordFallbackText,
@@ -402,9 +406,11 @@ impl StaticAbilityId {
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
+            | ChoosePowerToughnessAsEntersOrTurnsFaceUp
             | BoastTwiceEachTurn
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
+            | ExhaustAbilitiesAsThoughUnactivatedThisTurn
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType
@@ -448,6 +454,7 @@ impl StaticAbilityId {
             | CanBeCommander
             | LevelAbilities
             | NoMaximumHandSize
+            | SetMaximumHandSize
             | ReduceMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
@@ -487,6 +494,7 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
+            | DraftRuleText
             | KeywordText
             | KeywordMarker
             | KeywordFallbackText

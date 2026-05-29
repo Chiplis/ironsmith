@@ -100,6 +100,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
             Some(StaticAbilityId::BoastTwiceEachTurn) => Self::boast_twice_each_turn(),
             Some(StaticAbilityId::EquipAbilitiesAnyTime) => Self::equip_abilities_any_time(),
+            Some(StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn) => {
+                Self::exhaust_abilities_as_though_unactivated_this_turn()
+            }
             Some(StaticAbilityId::VoteAdditionalTimeWhileVoting) => {
                 Self::vote_additional_time_while_voting()
             }
@@ -190,6 +193,9 @@ impl StaticAbility {
             Some(StaticAbilityId::ChooseColorAsBecomesAttached) => {
                 Self::choose_color_as_becomes_attached(label)
             }
+            Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp) => {
+                Self::rule_fallback_text(label)
+            }
             Some(StaticAbilityId::NoMaximumHandSize) => Self::no_maximum_hand_size(),
             Some(StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger) => {
                 Self::creatures_entering_dont_cause_abilities_to_trigger()
@@ -242,6 +248,7 @@ impl StaticAbility {
                 Self::enters_tapped_unless_two_or_more_opponents()
             }
             Some(StaticAbilityId::CanBeCommander) => Self::can_be_commander(),
+            Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),
             Some(StaticAbilityId::KeywordFallbackText) => Self::keyword_fallback_text(label),

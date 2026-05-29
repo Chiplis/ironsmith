@@ -621,8 +621,7 @@ pub(crate) fn find_any_token_word_sequence_span<'p>(
     expected
         .iter()
         .filter_map(|phrase| {
-            find_token_word_sequence_span(tokens, phrase)
-                .map(|(start, end)| (*phrase, start, end))
+            find_token_word_sequence_span(tokens, phrase).map(|(start, end)| (*phrase, start, end))
         })
         .min_by_key(|(_, start, _)| *start)
 }

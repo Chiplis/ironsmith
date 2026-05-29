@@ -1182,6 +1182,38 @@ fn player_may_activate_equip_abilities_any_time(
     })
 }
 
+fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
+    game: &GameState,
+    controller: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if game.turn.active_player != controller
+        || game.exhaust_ability_activation_count_this_turn(controller) > 0
+    {
+        return false;
+    }
+
+    game.battlefield.iter().copied().any(|object_id| {
+        let Some(object) = game.object(object_id) else {
+            return false;
+        };
+        if game.controller_of(object) != controller {
+            return false;
+        }
+        let abilities = view
+            .abilities_rc(object_id)
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+        abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn
+            )
+        })
+    })
+}
+
 fn activation_cost_component_precheck_with_view(
     game: &GameState,
     controller: PlayerId,
@@ -1355,6 +1387,16 @@ fn activation_precheck_with_view(
     }
     if !activated.is_runtime_mana_ability(game, source, controller)
         && !source_facts.can_activate_non_mana_abilities_of_source
+    {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
+    if activated.is_exhaust_ability()
+        && game.exhaust_ability_activated(source, ability_index)
+        && !player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
     {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());

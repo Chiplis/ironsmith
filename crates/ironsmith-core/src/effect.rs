@@ -1042,6 +1042,23 @@ impl LookAtHandEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LookAtObjectsEffect {
+    pub filter: ObjectFilter,
+    pub viewer: PlayerFilter,
+    pub subject: PlayerFilter,
+}
+
+impl LookAtObjectsEffect {
+    pub fn new(filter: ObjectFilter, viewer: PlayerFilter, subject: PlayerFilter) -> Self {
+        Self {
+            filter,
+            viewer,
+            subject,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevealTaggedEffect {
     pub tag: crate::tag::TagKey,
@@ -3417,6 +3434,27 @@ impl RedirectNextTimeDamageToSourceEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RedirectAllDamageThisTurnToTargetEffect {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+    pub target: ChooseSpec,
+}
+
+impl RedirectAllDamageThisTurnToTargetEffect {
+    pub fn new(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: ChooseSpec,
+    ) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+            target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrantPlayTaggedEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
@@ -4139,6 +4177,39 @@ impl RollDieEffect {
     pub fn new_with_die_text(player: PlayerFilter, sides: u32, die_text: Option<String>) -> Self {
         Self {
             player,
+            sides,
+            die_text,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RollDiceChooseResultEffect {
+    pub player: PlayerFilter,
+    pub count: u32,
+    pub sides: u32,
+    pub die_text: Option<String>,
+}
+
+impl RollDiceChooseResultEffect {
+    pub fn new(player: PlayerFilter, count: u32, sides: u32) -> Self {
+        Self {
+            player,
+            count,
+            sides,
+            die_text: None,
+        }
+    }
+
+    pub fn new_with_die_text(
+        player: PlayerFilter,
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    ) -> Self {
+        Self {
+            player,
+            count,
             sides,
             die_text,
         }

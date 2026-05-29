@@ -355,7 +355,13 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     let contains_sequence = |needle: &[&str]| -> bool {
         !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
     };
+    let targeted_temporary_modifier = words.contains(&"target")
+        && contains_sequence(&["until", "end", "of", "turn"])
+        && words
+            .iter()
+            .any(|word| matches!(*word, "get" | "gets" | "gain" | "gains"));
     contains_sequence(&["if"]) && contains_sequence(&["instead"])
+        || targeted_temporary_modifier
         || ((contains_sequence(&["cant", "cast"]) || contains_sequence(&["can't", "cast"]))
             && contains_sequence(&["next", "turn"]))
         || (contains_sequence(&["until", "end", "of", "turn"])
@@ -1306,6 +1312,14 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if is_draft_rule_static_line(raw) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::draft_rule_text(raw.trim_end_matches('.').to_string()).into(),
+            ),
+            chosen_option_label,
+        );
+    }
     if is_first_equip_cost_alternative_lowering_line(&line.text) {
         let display = capitalize_first_equip_cost_alternative_display(&line.text);
         return wrap_chosen_option_static_chunk(
@@ -1440,6 +1454,15 @@ fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken
     }
     let words = token_word_refs(parse_tokens);
     !words.is_empty() && words.len() <= 4
+}
+
+fn is_draft_rule_static_line(raw: &str) -> bool {
+    let lower = raw.trim().to_ascii_lowercase();
+    lower.trim_end_matches('.') == "draft this card face up"
+        || lower.starts_with("as you draft ")
+        || lower.starts_with("during the draft, ")
+        || lower.starts_with("immediately after the draft, ")
+        || lower.starts_with("each player passes ") && lower.contains("booster pack")
 }
 
 fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> {

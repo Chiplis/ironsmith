@@ -197,6 +197,7 @@ pub enum ExecutionFact {
     PlayerCounts(Vec<(PlayerId, i32)>),
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
+    OtherNumber(u32),
 }
 
 impl ExecutionFact {
@@ -984,6 +985,28 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_attack.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+                let defenders = game
+                    .players
+                    .iter()
+                    .filter(|player_state| {
+                        player_state.is_in_game()
+                            && player_matches_restriction_filter(player_state.id, player)
+                    })
+                    .map(|player_state| player_state.id)
+                    .collect::<Vec<_>>();
+                if defenders.is_empty() {
+                    return;
+                }
+
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker.add_cant_attack_defenders(obj_id, defenders.iter().copied());
                     }
                 }
             }
@@ -2880,6 +2903,19 @@ impl Effect {
         Self::new(RollDieEffect::new_with_die_text(player, sides, die_text))
     }
 
+    pub fn roll_dice_choose_result_with_die_text(
+        count: u32,
+        sides: u32,
+        player: PlayerFilter,
+        die_text: Option<String>,
+    ) -> Self {
+        use crate::effects::RollDiceChooseResultEffect;
+
+        Self::new(RollDiceChooseResultEffect::new_with_die_text(
+            player, count, sides, die_text,
+        ))
+    }
+
     // === Effect composition builders ===
 
     /// Wrap an effect with an ID for later reference.
@@ -3771,6 +3807,16 @@ impl Effect {
     ) -> Self {
         use crate::effects::LookAtTopCardsEffect;
         Self::new(LookAtTopCardsEffect::new(player, count, tag))
+    }
+
+    /// Create a "look at objects" effect for objects matched by a filter.
+    pub fn look_at_objects(
+        filter: ObjectFilter,
+        viewer: PlayerFilter,
+        subject: PlayerFilter,
+    ) -> Self {
+        use crate::effects::LookAtObjectsEffect;
+        Self::new(LookAtObjectsEffect::new(filter, viewer, subject))
     }
 
     /// Create a "reveal the top N cards" effect, tagging the revealed cards.

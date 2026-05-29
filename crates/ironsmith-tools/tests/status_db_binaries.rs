@@ -992,6 +992,98 @@ fn compile_oracle_text_strictly_compiles_aunt_may_from_workspace_cards() {
 }
 
 #[test]
+fn compile_oracle_text_strictly_compiles_the_aesir_escape_valhalla_from_workspace_cards() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+    assert!(
+        cards_path.exists(),
+        "expected workspace cards.json at {cards_path:?}"
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("The Aesir Escape Valhalla")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --name The Aesir Escape Valhalla --compare-text");
+
+    assert!(
+        output.status.success(),
+        "The Aesir Escape Valhalla should compile strictly, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(
+        stdout.contains("Name: The Aesir Escape Valhalla"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
+    assert!(
+        stdout.contains(
+            "put a number of +1/+1 counters on target creature you control equal to the mana value of the exiled card"
+        ),
+        "expected source-exiled mana-value counter clause in compiled comparison output, got {stdout}"
+    );
+    assert!(
+        stdout.contains("return this Saga and the exiled card to their owner's hand"),
+        "expected source-plus-exiled-card return clause in compiled comparison output, got {stdout}"
+    );
+}
+
+#[test]
+fn compile_oracle_text_strictly_compiles_trystan_faces_from_workspace_cards() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Trystan, Callous Cultivator // Trystan, Penitent Culler")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --name Trystan --compare-text");
+
+    assert!(
+        output.status.success(),
+        "Trystan should compile strictly, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(
+        stdout.contains("Name: Trystan, Callous Cultivator"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Name: Trystan, Penitent Culler"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Semantic mismatch: false"), "{stdout}");
+    assert!(
+        stdout.contains("enters or transforms into Trystan, Callous Cultivator")
+            && stdout.contains("if there is an Elf card in your graveyard, you gain 2 life")
+            && stdout.contains("transforms into Trystan, Penitent Culler")
+            && stdout.contains("you may exile an Elf card from your graveyard")
+            && stdout.contains("each opponent loses 2 life"),
+        "expected both Trystan face clauses in compiled comparison output, got {stdout}"
+    );
+}
+
+#[test]
 fn compile_oracle_text_strictly_compiles_aloe_alchemist_from_workspace_cards() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
