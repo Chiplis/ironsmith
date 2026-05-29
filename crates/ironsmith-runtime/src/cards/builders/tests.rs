@@ -36150,6 +36150,23 @@ fn thunderwave_roll_ten_to_nineteen_spares_chosen_creature_only() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn thunderwave_roll_ten_to_nineteen_can_spare_opponent_creature() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let yours = thunderwave_test_creature(&mut game, "Alice Creature", alice);
+    let opponent = thunderwave_test_creature(&mut game, "Opponent Creature", bob);
+    let other_opponent = thunderwave_test_creature(&mut game, "Other Opponent Creature", bob);
+
+    resolve_thunderwave_with_roll(&mut game, 19, true, Some(opponent));
+
+    assert_eq!(game.damage_on(yours), 3);
+    assert_eq!(game.damage_on(opponent), 0);
+    assert_eq!(game.damage_on(other_opponent), 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn thunderwave_roll_ten_to_nineteen_declined_choice_damages_all_creatures() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
