@@ -36479,6 +36479,225 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+fn season_of_the_burrow_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Season of the Burrow should compile to one modal choice effect")
+}
+
+fn target_assignment_for_first_targeted_effect(
+    mode: &crate::effect::EffectMode,
+) -> crate::game_state::TargetAssignment {
+    let profile = mode
+        .effects
+        .iter()
+        .find_map(|effect| effect.target_selection_profile())
+        .expect("mode should require one target");
+    crate::game_state::TargetAssignment {
+        spec: profile.spec.clone(),
+        range: 0..1,
+    }
+}
+
+#[test]
+fn season_of_the_burrow_strict_parser_and_weighted_modal_text_regression() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def);
+
+    assert_eq!(modal.choose_count, Value::Fixed(5));
+    assert_eq!(modal.min_choose_count, Value::Fixed(0));
+    assert!(modal.allow_repeated_modes);
+    assert_eq!(modal.mode_point_costs, vec![1, 2, 3]);
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Choose up to five {P} worth of modes")
+            && rendered.contains("You may choose the same mode more than once")
+            && rendered.contains("{P}{P} — Exile target nonland permanent")
+            && rendered.contains("{P}{P}{P} — Return target permanent card with mana value 3 or less"),
+        "expected Season of the Burrow weighted modal text, got {rendered}"
+    );
+}
+
+#[test]
+fn season_of_the_burrow_weighted_mode_boundary_rejects_more_than_five_points() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .segments[0]
+        .default_effects
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_700), "Bob's Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_701), "Alice's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    assert!(game.object(graveyard_card).is_some());
+    assert!(game.object(target).is_some());
+
+    let legal_five_points = [2usize, 1usize];
+    assert!(
+        crate::game_loop::spell_has_legal_targets_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&legal_five_points),
+        ),
+        "3-point plus 2-point Season modes should be legal"
+    );
+
+    let illegal_six_points = [2usize, 2usize];
+    assert!(
+        !crate::game_loop::spell_has_legal_targets_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&illegal_six_points),
+        ),
+        "two 3-point Season modes should be rejected as more than five {{P}}"
+    );
+}
+
+#[test]
+fn season_of_the_burrow_rabbit_mode_creates_token() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow Rabbit mode should resolve");
+
+    let rabbit_count = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| game.object(*id).is_some_and(|object| object.name == "Rabbit"))
+        .count();
+    assert_eq!(rabbit_count, 1, "Rabbit mode should create one Rabbit token");
+}
+
+#[test]
+fn season_of_the_burrow_exile_mode_exiles_nonland_permanent_and_draws_for_controller() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_710), "Bob's Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_711), "Bob's Draw")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![target_assignment_for_first_targeted_effect(
+            &modal.modes[1],
+        )]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow exile mode should resolve");
+
+    assert!(
+        game.objects_in_zone(Zone::Exile).into_iter().any(|id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Bob's Relic")),
+        "target nonland permanent should move to exile"
+    );
+    assert_eq!(game.player(bob).expect("Bob should exist").hand.len(), 1);
+}
+
+#[test]
+fn season_of_the_burrow_return_mode_returns_small_permanent_with_indestructible_counter() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_720), "Alice's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![2]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![target_assignment_for_first_targeted_effect(
+            &modal.modes[2],
+        )]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow return mode should resolve");
+
+    let returned_id = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Alice's Keepsake")
+        })
+        .expect("returned permanent should be on the battlefield");
+    let returned = game.object(returned_id).expect("returned permanent should exist");
+    assert_eq!(
+        returned
+            .counters
+            .get(&crate::object::CounterType::Indestructible)
+            .copied(),
+        Some(1)
+    );
+}
+
 #[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");

@@ -713,6 +713,7 @@ fn choose_trigger_modes(
     }
 
     let mut valid = Vec::new();
+    let mut selected_point_total = 0usize;
     for idx in chosen {
         if !mode_is_legal_for_trigger(game, trigger, &effects, idx) {
             continue;
@@ -720,13 +721,23 @@ fn choose_trigger_modes(
         if !modal_spec.allow_repeated_modes && valid.contains(&idx) {
             continue;
         }
+        let point_cost = modal_spec
+            .mode_point_costs
+            .get(idx)
+            .copied()
+            .unwrap_or(1)
+            .max(1) as usize;
+        if selected_point_total.saturating_add(point_cost) > max_modes {
+            continue;
+        }
         valid.push(idx);
-        if valid.len() >= max_modes {
+        selected_point_total += point_cost;
+        if selected_point_total >= max_modes {
             break;
         }
     }
 
-    if valid.len() < min_modes {
+    if selected_point_total < min_modes {
         return None;
     }
 

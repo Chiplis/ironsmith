@@ -38,6 +38,7 @@ impl EffectExecutor for ChooseModeEffect {
             max_modes: self.choose_count.clone(),
             min_modes: self.min_choose_count.clone(),
             allow_repeated_modes: self.allow_repeated_modes,
+            mode_point_costs: self.mode_point_costs.clone(),
         })
     }
 
@@ -47,6 +48,7 @@ impl EffectExecutor for ChooseModeEffect {
             max_modes: &self.choose_count,
             min_modes: &self.min_choose_count,
             allow_repeated_modes: self.allow_repeated_modes,
+            mode_point_costs: &self.mode_point_costs,
             disallow_previously_chosen_modes: self.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: self
                 .disallow_previously_chosen_modes_this_turn,

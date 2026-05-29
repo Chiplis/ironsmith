@@ -52,6 +52,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             choose_count: choose_mode.choose_count.clone(),
             min_choose_count: choose_mode.min_choose_count.clone(),
             allow_repeated_modes: choose_mode.allow_repeated_modes,
+            mode_point_costs: choose_mode.mode_point_costs.clone(),
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
@@ -64,12 +65,37 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             choose_count: choose_mode.choose_count.clone(),
             min_choose_count: choose_mode.min_choose_count.clone(),
             allow_repeated_modes: choose_mode.allow_repeated_modes,
+            mode_point_costs: choose_mode.mode_point_costs.clone(),
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
         },
     ));
     true
+}
+
+fn header_mentions_modal_point_cost(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("worth of modes") && lower.contains("{p}")
+}
+
+fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
+    let mut rest = text.trim_start();
+    let mut count = 0u32;
+    loop {
+        let trimmed = rest.trim_start();
+        if !trimmed.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("{p}")) {
+            rest = trimmed;
+            break;
+        }
+        count += 1;
+        rest = &trimmed[3..];
+    }
+    if count == 0 {
+        return None;
+    }
+    let rest = rest.trim_start();
+    rest.starts_with('—').then_some(count)
 }
 
 pub(crate) fn rewrite_lower_parsed_modal(
@@ -128,8 +154,11 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
     };
 
+    let weighted_mode_points = header_mentions_modal_point_cost(line_text.as_str());
     let mut compiled_modes = Vec::new();
+    let mut mode_point_costs = Vec::new();
     for mode in modes {
+        let point_cost = parse_leading_modal_point_cost(mode.info.raw_line.as_str()).unwrap_or(1);
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
@@ -146,6 +175,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             description: mode.description,
             effects: effects.to_vec(),
         });
+        mode_point_costs.push(point_cost);
     }
 
     if compiled_modes.is_empty() {
@@ -158,20 +188,25 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let min = header_min;
     let is_fixed_one =
         |value: &crate::effect::Value| matches!(value, crate::effect::Value::Fixed(1));
-    let with_unchosen_requirement = |effect: crate::effect::Effect| {
-        if !mode_must_be_unchosen {
+    let apply_modal_metadata = |effect: crate::effect::Effect| {
+        let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() else {
             return effect;
+        };
+        let mut choose_mode = choose_mode.clone();
+        if same_mode_more_than_once {
+            choose_mode = choose_mode.with_repeated_modes();
         }
-        if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-            let choose_mode = choose_mode.clone();
-            let choose_mode = if mode_must_be_unchosen_this_turn {
+        if weighted_mode_points {
+            choose_mode = choose_mode.with_mode_point_costs(mode_point_costs.clone());
+        }
+        if mode_must_be_unchosen {
+            choose_mode = if mode_must_be_unchosen_this_turn {
                 choose_mode.with_previously_unchosen_modes_only_this_turn()
             } else {
                 choose_mode.with_previously_unchosen_modes_only()
             };
-            return crate::effect::Effect::new(choose_mode);
         }
-        effect
+        crate::effect::Effect::new(choose_mode)
     };
 
     let choose_both_condition = if commander_allows_both {
@@ -199,7 +234,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let modal_effect = if let Some(choose_both_condition) = choose_both_condition {
         let max_both = (mode_count.min(2)).max(1);
         let choose_both = if max_both == 1 {
-            with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()))
+            apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()))
         } else {
             #[cfg(not(feature = "serialization"))]
             let choose_up_to = crate::effect::Effect::choose_up_to_with_min(
@@ -213,24 +248,23 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 crate::effect::Value::Fixed(1),
                 compiled_modes.clone(),
             );
-            with_unchosen_requirement(choose_up_to)
+            apply_modal_metadata(choose_up_to)
         };
-        let choose_one =
-            with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()));
+        let choose_one = apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
         crate::effect::Effect::conditional(
             choose_both_condition,
             vec![choose_both],
             vec![choose_one],
         )
     } else if same_mode_more_than_once && min == max {
-        with_unchosen_requirement(crate::effect::Effect::choose_exactly_allow_repeated_modes(
+        apply_modal_metadata(crate::effect::Effect::choose_exactly_allow_repeated_modes(
             max.clone(),
             compiled_modes,
         ))
     } else if is_fixed_one(&min) && is_fixed_one(&max) {
-        with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes))
+        apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes))
     } else if min == max {
-        with_unchosen_requirement(crate::effect::Effect::choose_exactly(
+        apply_modal_metadata(crate::effect::Effect::choose_exactly(
             max.clone(),
             compiled_modes,
         ))
@@ -241,7 +275,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         #[cfg(feature = "serialization")]
         let choose_up_to =
             crate::effect::Effect::choose_up_to(max.clone(), min.clone(), compiled_modes);
-        with_unchosen_requirement(choose_up_to)
+        apply_modal_metadata(choose_up_to)
     };
 
     let mut combined_effects = prefix_effects;

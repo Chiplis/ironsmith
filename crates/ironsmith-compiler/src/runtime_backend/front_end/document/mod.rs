@@ -110,6 +110,9 @@ fn is_bullet_line(line: &str) -> bool {
     if str_starts_with_char(trimmed, '•') || str_starts_with_char(trimmed, '*') {
         return true;
     }
+    if starts_with_pawprint_modal_label(trimmed) {
+        return true;
+    }
     if let Some(rest) = str_strip_prefix(trimmed, "-") {
         let next = rest.chars().next();
         if next.is_some_and(|ch| ch.is_ascii_digit()) {
@@ -118,6 +121,19 @@ fn is_bullet_line(line: &str) -> bool {
         return true;
     }
     false
+}
+
+fn starts_with_pawprint_modal_label(mut text: &str) -> bool {
+    let mut seen_pawprint = false;
+    loop {
+        text = text.trim_start();
+        if !text.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("{p}")) {
+            break;
+        }
+        seen_pawprint = true;
+        text = &text[3..];
+    }
+    seen_pawprint && text.trim_start().starts_with('—')
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
@@ -2260,6 +2276,28 @@ mod tests {
                 assert!(!modal.modes[1].effects_ast.is_empty());
             }
             other => panic!("expected one modal block, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn modal_mode_cst_groups_season_of_the_burrow_pawprint_modes() -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Season of the Burrow")
+                .card_types(vec![CardType::Sorcery]),
+            "Choose up to five {P} worth of modes. You may choose the same mode more than once.\n{P} — Create a 1/1 white Rabbit creature token.\n{P}{P} — Exile target nonland permanent. Its controller draws a card.\n{P}{P}{P} — Return target permanent card with mana value 3 or less from your graveyard to the battlefield with an indestructible counter on it.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Modal(modal)] => {
+                assert_eq!(modal.modes.len(), 3);
+                assert_eq!(modal.modes[0].text, "Create a 1/1 white Rabbit creature token.");
+                assert!(modal.modes[1].text.starts_with("Exile target nonland permanent"));
+                assert!(modal.modes[2].text.starts_with("Return target permanent card"));
+            }
+            other => panic!("expected Season of the Burrow pawprint modes to form one modal block, got {other:?}"),
         }
 
         Ok(())

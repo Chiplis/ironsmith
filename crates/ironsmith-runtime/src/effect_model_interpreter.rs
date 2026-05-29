@@ -213,6 +213,7 @@ where
         converted.choose_count = payload.choose_count.clone();
         converted.min_choose_count = payload.min_choose_count.clone();
         converted.allow_repeated_modes = payload.allow_repeated_modes;
+        converted.mode_point_costs = payload.mode_point_costs.clone();
         converted.disallow_previously_chosen_modes = payload.disallow_previously_chosen_modes;
         converted.disallow_previously_chosen_modes_this_turn =
             payload.disallow_previously_chosen_modes_this_turn;

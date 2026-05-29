@@ -102,6 +102,22 @@ fn find_source_activated_ability_index(
     None
 }
 
+fn mode_point_cost(effect: &ChooseModeEffect, mode_idx: usize) -> usize {
+    effect
+        .mode_point_costs
+        .get(mode_idx)
+        .copied()
+        .unwrap_or(1)
+        .max(1) as usize
+}
+
+fn selected_mode_point_total(effect: &ChooseModeEffect, mode_indices: &[usize]) -> usize {
+    mode_indices
+        .iter()
+        .map(|idx| mode_point_cost(effect, *idx))
+        .sum()
+}
+
 fn active_target_assignments_for_inner_effect(
     game: &GameState,
     effect: &crate::effect::Effect,
@@ -213,6 +229,7 @@ pub(crate) fn run_choose_mode(
 
     // Filter to valid/legal indices while preserving selection order.
     let mut valid_chosen_indices: Vec<usize> = Vec::new();
+    let mut chosen_point_total = 0usize;
     for idx in chosen_indices {
         if !is_mode_legal(idx) {
             continue;
@@ -220,13 +237,18 @@ pub(crate) fn run_choose_mode(
         if !effect.allow_repeated_modes && valid_chosen_indices.contains(&idx) {
             continue;
         }
+        let point_cost = mode_point_cost(effect, idx);
+        if chosen_point_total.saturating_add(point_cost) > max_modes {
+            continue;
+        }
         valid_chosen_indices.push(idx);
-        if valid_chosen_indices.len() >= max_modes {
+        chosen_point_total += point_cost;
+        if chosen_point_total >= max_modes {
             break;
         }
     }
 
-    if valid_chosen_indices.len() < min_modes {
+    if selected_mode_point_total(effect, &valid_chosen_indices) < min_modes {
         return Err(ExecutionError::Impossible(
             "Not enough legal modes available".to_string(),
         ));

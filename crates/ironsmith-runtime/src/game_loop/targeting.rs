@@ -769,6 +769,13 @@ fn modal_effect_has_legal_targets_internal_with_view(
                 return false;
             }
 
+            let point_cost = modal
+                .mode_point_costs
+                .get(*mode_idx)
+                .copied()
+                .unwrap_or(1)
+                .max(1) as usize;
+
             let mut mode_consumed_modal_selection = false;
             if !mode.effects.iter().all(|effect| {
                 spell_effect_has_legal_targets_internal_with_preview_mode_selection(
@@ -785,7 +792,7 @@ fn modal_effect_has_legal_targets_internal_with_view(
             }) {
                 return false;
             };
-            selected_count += 1;
+            selected_count += point_cost;
         }
 
         return if require_full_selection {
