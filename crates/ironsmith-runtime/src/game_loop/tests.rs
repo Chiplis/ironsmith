@@ -11072,6 +11072,44 @@ fn firkraag_attack_trigger_fires_once_for_each_attacked_opponent() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn firkraag_attack_trigger_does_not_fire_for_dragon_attacking_planeswalker() {
+    let (mut game, alice, bob, _charlie, _firkraag) = create_firkraag_game();
+    let dragon = create_creature(&mut game, "Planeswalker-Bound Dragon", alice, 4, 4);
+    game.object_mut(dragon)
+        .expect("Planeswalker-Bound Dragon should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    game.remove_summoning_sickness(dragon);
+    let planeswalker = CardBuilder::new(CardId::from_raw(72_942), "Bob Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .build();
+    let planeswalker_id = game.create_object_from_card(&planeswalker, bob, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: dragon,
+            target: AttackTarget::Planeswalker(planeswalker_id),
+        }],
+    )
+    .expect("Dragon should be able to attack an opponent's planeswalker");
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Firkraag should trigger only for Dragons attacking an opponent, not a planeswalker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn firkraag_damage_trigger_requires_creature_that_had_to_attack() {
     let (mut game, alice, bob, charlie, firkraag) = create_firkraag_game();
     let forced_attacker = create_creature(&mut game, "Forced Attacker", bob, 2, 2);
