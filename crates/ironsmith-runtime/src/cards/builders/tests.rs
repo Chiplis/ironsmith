@@ -36071,19 +36071,13 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
 fn valiant_endeavor_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Valiant Endeavor");
 
-    let rendered = canonical_compiled_lines(&def).join("\n");
-    assert!(
-        rendered.contains("Roll two d6 and choose one result"),
-        "Valiant Endeavor should render the dice-choice clause, got {rendered}"
-    );
-    assert!(
-        rendered.contains("that result"),
-        "Valiant Endeavor should render the destroy threshold as the chosen result, got {rendered}"
-    );
-    assert!(
-        rendered.contains("a number of 2/2 white Knight creature tokens")
-            && rendered.contains("equal to the other result"),
-        "Valiant Endeavor should render the token count as the other result, got {rendered}"
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Roll two d6 and choose one result. Destroy each creature with power greater than or equal to that result. Then create a number of 2/2 white Knight creature tokens with vigilance equal to the other result.".to_string(),
+        ],
+        "Valiant Endeavor should render the dice choice, destroy threshold, and other-result token count"
     );
 }
 

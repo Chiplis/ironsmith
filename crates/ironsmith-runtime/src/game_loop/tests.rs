@@ -11496,6 +11496,8 @@ fn valiant_endeavor_uses_chosen_result_for_destroy_and_other_result_for_tokens()
     let small = create_creature(&mut game, "Small Creature", bob, 1, 1);
     let equal = create_creature(&mut game, "Equal Creature", bob, 2, 2);
     let large = create_creature(&mut game, "Large Creature", alice, 5, 5);
+    let equal_stable = game.object(equal).expect("equal creature exists").stable_id;
+    let large_stable = game.object(large).expect("large creature exists").stable_id;
 
     game.force_next_die_roll(5);
     game.force_next_die_roll(2);
@@ -11519,24 +11521,67 @@ fn valiant_endeavor_uses_chosen_result_for_destroy_and_other_result_for_tokens()
         game.battlefield.contains(&small),
         "creature below the chosen result should survive"
     );
+    let equal_graveyard_id = game
+        .find_object_by_stable_id(equal_stable)
+        .expect("destroyed equal creature should still be tracked by stable id");
     assert!(
-        !game.battlefield.contains(&equal) && game.player(bob).unwrap().graveyard.contains(&equal),
+        !game.battlefield.contains(&equal)
+            && game.player(bob).unwrap().graveyard.contains(&equal_graveyard_id),
         "creature with power equal to the chosen result should be destroyed"
     );
+    let large_graveyard_id = game
+        .find_object_by_stable_id(large_stable)
+        .expect("destroyed large creature should still be tracked by stable id");
     assert!(
-        !game.battlefield.contains(&large) && game.player(alice).unwrap().graveyard.contains(&large),
+        !game.battlefield.contains(&large)
+            && game
+                .player(alice)
+                .unwrap()
+                .graveyard
+                .contains(&large_graveyard_id),
         "creature with power greater than the chosen result should be destroyed"
     );
 
     let knight_tokens = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Knight"))
-        .count();
+        .copied()
+        .filter(|&id| game.object(id).is_some_and(|object| object.name == "Knight"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        knight_tokens, 5,
+        knight_tokens.len(),
+        5,
         "the token count should use the unchosen die result"
     );
+    for token_id in knight_tokens {
+        let token = game.object(token_id).expect("Knight token should exist");
+        assert_eq!(
+            token.owner, alice,
+            "Valiant Endeavor should create tokens for its controller"
+        );
+        assert!(
+            token.card_types.contains(&CardType::Creature),
+            "Valiant Endeavor tokens should be creatures"
+        );
+        assert!(
+            token.subtypes.contains(&Subtype::Knight),
+            "Valiant Endeavor tokens should be Knights"
+        );
+        assert_eq!(game.current_power(token_id), Some(2));
+        assert_eq!(game.current_toughness(token_id), Some(2));
+        assert_eq!(
+            game.current_colors(token_id),
+            Some(crate::color::ColorSet::WHITE),
+            "Valiant Endeavor tokens should be white"
+        );
+        assert!(
+            game.object_has_static_ability_id(
+                token_id,
+                crate::static_abilities::StaticAbilityId::Vigilance,
+            ),
+            "Valiant Endeavor tokens should have vigilance"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
